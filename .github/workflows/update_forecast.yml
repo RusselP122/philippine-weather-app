@@ -1,0 +1,50 @@
+name: Update Forecast Images
+
+on:
+  schedule:
+    # Runs at 00:00, 06:00, 12:00, and 18:00 UTC every day
+    - cron: '0 0,6,12,18 * * *'
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  update-forecast:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9' # Adjust if your script uses a newer version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run forecast logic
+        run: |
+          # Running both forecast scripts
+          python Forcast.py
+          python Forcast2.py
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Add any new images in the public/assets folder
+          git add public/assets/*.png
+          
+          # Commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-update forecast images [skip ci]"
+            git push
+          fi

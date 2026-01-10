@@ -1,0 +1,7 @@
+# Add the libraries your script uses here
+# Examples:
+matplotlib
+pandas
+requests
+Pillow
+# cartopy (Note: Cartopy can sometimes be tricky to install in basic environments, let me know if you use it)

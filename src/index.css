@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+    monospace;
+}
+
+/* Keep Leaflet attribution compact in the bottom-right instead of full-width */
+.leaflet-control-attribution {
+  max-width: 70%;
+  right: 0;
+  bottom: 0;
+  margin: 0.25rem;
+  padding: 0.15rem 0.4rem;
+  background: rgba(15, 23, 42, 0.7);
+  /* slate-ish, semi-transparent */
+  color: #e5e7eb;
+  /* light text */
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 640px) {
+  .leaflet-control-attribution {
+    max-width: 60%;
+  }
+}
+
+/* Storm Marker Animations */
+
+/* 1. Pulse Animation for Low Pressure Areas (LPA) / Invest */
+@keyframes pulse-lpa {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4);
+  }
+
+  70% {
+    transform: scale(1.05);
+    opacity: 0.9;
+    box-shadow: 0 0 0 6px rgba(255, 255, 255, 0);
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+  }
+}
+
+.storm-marker.lpa .rounded-full,
+.storm-marker.invest .rounded-full {
+  animation: pulse-lpa 2s infinite ease-in-out;
+}
+
+/* 2. Spinning Ring Animation for Cyclones (TD - STY) */
+@keyframes spin-ring {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Use a pseudo-element to create the spinning ring without rotating the text */
+.storm-marker.td .rounded-full::after,
+.storm-marker.ts .rounded-full::after,
+.storm-marker.sts .rounded-full::after,
+.storm-marker.ty .rounded-full::after,
+.storm-marker.sty .rounded-full::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  border-radius: 50%;
+  border: 2px dashed rgba(255, 255, 255, 0.8);
+  border-top-color: transparent;
+  /* Create a gap for the spinning effect */
+  border-left-color: transparent;
+  animation: spin-ring 3s linear infinite;
+  pointer-events: none;
+  /* Ensure clicks pass through to the marker */
+}
+
+/* Differentiate intensities slightly if needed */
+.storm-marker.ty .rounded-full::after,
+.storm-marker.sty .rounded-full::after {
+  border-width: 3px;
+  animation-duration: 2s;
+  /* Faster spin for stronger storms */
+  border-color: rgba(255, 255, 255, 0.9);
+  border-top-color: transparent;
+  border-left-color: transparent;
+}
