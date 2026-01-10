@@ -47,7 +47,9 @@ def get_latest_run_url():
 # Load the CSV file, skipping comment lines
 try:
     date_str, hour_str, latest_url = get_latest_run_url()
-    local_csv = fr"C:\Users\Russel\Desktop\Weather alert\FNV3_{date_str}T{hour_str}_00_cyclogenesis.csv"
+    import os
+    os.makedirs("temp_data", exist_ok=True)
+    local_csv = f"temp_data/FNV3_{date_str}T{hour_str}_00_cyclogenesis.csv"
     print(f"Downloading latest run with curl to: {local_csv}")
     subprocess.run([
         "curl",
@@ -276,7 +278,9 @@ ax.set_title(f"15-Day Forecast Tropical Cyclone Tracks - Western Pacific ({start
 try:
     # Generate filename based on init_time
     init_time_str = init_times[0].replace(':', '').replace(' ', 'T') if len(init_times) > 0 else '20250621T1200'
-    output_file = f"C:\\Users\\Russel\\Desktop\\Weather alert\\tropical_cyclone_15day_forecast_{init_time_str}.png"
+    output_dir = "public/assets"
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = f"{output_dir}/tropical_cyclone_15day_forecast_{init_time_str}.png"
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Plot saved to {output_file}")
 except Exception as e:

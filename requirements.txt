@@ -1,7 +1,11 @@
-# Add the libraries your script uses here
-# Examples:
 matplotlib
 pandas
 requests
-Pillow
-# cartopy (Note: Cartopy can sometimes be tricky to install in basic environments, let me know if you use it)
+numpy
+# Cartopy is pre-installed in some environments or needs system libs (proj, geos). 
+# We'll try installing it via pip, but it might require extra apt-get steps in the workflow.
+cartopy
+scipy
+pyshp
+shapely
+
