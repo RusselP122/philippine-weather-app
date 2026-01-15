@@ -1,6 +1,14 @@
 {
     "rewrites": [
         {
+            "source": "/api/earthquake-data",
+            "destination": "https://data.garbinwx.cloud/api/earthquakes.json"
+        },
+        {
+            "source": "/api/cap-alerts",
+            "destination": "https://data.garbinwx.cloud/api/cap-alerts.json"
+        },
+        {
             "source": "/(.*)",
             "destination": "/index.html"
         }
