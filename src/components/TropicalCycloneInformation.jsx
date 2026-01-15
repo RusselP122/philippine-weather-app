@@ -1,6 +1,7 @@
 // src/components/TropicalCycloneInformation.jsx
 import React, { useEffect, useState } from "react";
 import { Activity, Gauge, MapPin, Navigation, Wind } from "lucide-react";
+import { getStormDisplayName } from "../utils/stormNaming";
 
 const PAR_POLYGON = [
   [5.0, 115.0],
@@ -51,114 +52,6 @@ const describeWindIntensity = (wind) => {
 
 const windIntensityPercent = (wind) => Math.min(100, Math.round((wind / 220) * 100));
 
-const PAGASA_2026_NAMES = [
-  "ADA", "BASYANG", "CALOY", "DOMENG", "ESTER",
-  "FRANCISCO", "GARDO", "HENRY", "INDAY", "JOSIE",
-  "KIYAPO", "LUIS", "MAYMAY", "NENENG", "OBET",
-  "PILANDOK", "QUEENIE", "ROSAL", "SAMUEL", "TOMAS",
-  "UMBERTO", "VENUS", "WALDO", "YAYANG", "ZENY"
-];
-
-const STORM_NAME_2026_MAP = {};
-
-const AUTO_PAGASA_SEQUENCE_2026 = [];
-
-const autoPagasaAssignments = {};
-let autoPagasaIndex = 0;
-
-const getNextAutoPagasaAssignment = (key) => {
-  const upperKey = (key || "").toUpperCase();
-  if (autoPagasaAssignments[upperKey]) return autoPagasaAssignments[upperKey];
-  if (autoPagasaIndex >= AUTO_PAGASA_SEQUENCE_2026.length) return null;
-  const assignment = AUTO_PAGASA_SEQUENCE_2026[autoPagasaIndex++];
-  autoPagasaAssignments[upperKey] = assignment;
-  return assignment;
-};
-
-const normalizeName = (name) => (name || "").trim().toUpperCase();
-
-const getStormNames = (rawName, classificationCode, insidePar, atcfId) => {
-  const upper = normalizeName(rawName);
-
-  if (!upper) {
-    return { displayName: "Tropical Disturbance", intlName: null, pagasaName: null };
-  }
-
-  if (upper.includes("INVEST")) {
-    if (atcfId) {
-      // Try to parse atcfId (e.g., "wp902025") to "90W"
-      // Basin codes: wp->W, al->L, ep->E, cp->C, io->A/B?, sh->S/P?
-      // Actually, simple way: extract generic "90W" style if possible.
-      // Standard: [basin 2 chars][number 2 chars][year 4 chars]
-      const match = atcfId.match(/^([a-zA-Z]{2})(\d{2})\d{4}$/);
-      if (match) {
-        const basinRaw = match[1].toLowerCase();
-        const num = match[2];
-        let letter = "";
-        if (basinRaw === 'wp') letter = "W";
-        else if (basinRaw === 'al') letter = "L";
-        else if (basinRaw === 'ep') letter = "E";
-        else if (basinRaw === 'cp') letter = "C";
-        else if (basinRaw === 'io') letter = "B"; // North Indian Ocean usually A or B
-        else if (basinRaw === 'sh') letter = "S";
-        else letter = basinRaw.toUpperCase();
-
-        return { displayName: `Invest ${num}${letter}`, intlName: null, pagasaName: null };
-      }
-      return { displayName: `Invest ${atcfId}`, intlName: null, pagasaName: null };
-    }
-    return { displayName: rawName, intlName: null, pagasaName: null };
-  }
-
-  if (classificationCode === "LPA") {
-    return { displayName: "Low Pressure Area", intlName: null, pagasaName: null };
-  }
-
-  let intlName = rawName;
-  let pagasaName = null;
-
-  const mapped = STORM_NAME_2026_MAP[upper] || autoPagasaAssignments[upper];
-  if (mapped) {
-    intlName = mapped.intl;
-    pagasaName = mapped.pagasa;
-  } else if (PAGASA_2026_NAMES.includes(upper)) {
-    pagasaName = upper.charAt(0) + upper.slice(1).toLowerCase();
-  }
-
-  if (!insidePar) {
-    return { displayName: intlName, intlName, pagasaName: null };
-  }
-
-  if (classificationCode === "TD") {
-    if (pagasaName) {
-      return { displayName: pagasaName, intlName, pagasaName };
-    }
-    const auto = getNextAutoPagasaAssignment(upper);
-    if (auto) {
-      intlName = auto.intl;
-      pagasaName = auto.pagasa;
-      return { displayName: pagasaName, intlName, pagasaName };
-    }
-    return { displayName: "Tropical Depression inside PAR", intlName, pagasaName: null };
-  }
-
-  if (["TS", "STS", "TY", "STY"].includes(classificationCode)) {
-    if (!pagasaName && insidePar) {
-      const auto = getNextAutoPagasaAssignment(upper);
-      if (auto) {
-        intlName = auto.intl;
-        pagasaName = auto.pagasa;
-      }
-    }
-
-    if (pagasaName && intlName) {
-      return { displayName: `${pagasaName} (${intlName})`, intlName, pagasaName };
-    }
-    return { displayName: intlName, intlName, pagasaName };
-  }
-
-  return { displayName: intlName || rawName, intlName: intlName || rawName, pagasaName };
-};
 
 function isInsidePar(lat, lon) {
   let inside = false;
@@ -440,7 +333,7 @@ const TropicalCycloneInformation = () => {
       return formatDataTime(iso);
     })();
 
-    const { displayName, intlName, pagasaName } = getStormNames(
+    const { displayName, intlName, pagasaName } = getStormDisplayName(
       rawName,
       classification.code,
       insidePar,
@@ -759,7 +652,7 @@ const TropicalCycloneInformation = () => {
                     const cls = classifyTropicalCyclone(wind10);
                     const insidePar = isInsidePar(lat, lon);
                     const rawName = parts[1] || s.atcf_id || "Tropical Disturbance";
-                    const refinedName = getStormNames(rawName, cls.code, insidePar, s.atcf_id);
+                    const refinedName = getStormDisplayName(rawName, cls.code, insidePar, s.atcf_id);
                     const displayName = refinedName.displayName;
                     const validSpeed = speedKnots !== null && !isNaN(speedKnots) && speedKnots >= 0;
                     const movementSpeedKmh = validSpeed ? Math.round(speedKnots * 1.852) : null;

@@ -1,303 +1,313 @@
-import React, { useEffect, useState } from "react";
-import { Cloud, CloudRain, Droplets, Eye, Moon, Sun, Thermometer, TrendingDown, TrendingUp, Wind, AlertTriangle, Umbrella, Car, Navigation } from "lucide-react";
-
-const PH_LOCATIONS = [
-  { id: "manila", name: "Manila", lat: 14.5995, lon: 120.9842 },
-  { id: "cebu", name: "Cebu City", lat: 10.3157, lon: 123.8854 },
-  { id: "davao", name: "Davao City", lat: 7.1907, lon: 125.4553 },
-  { id: "baguio", name: "Baguio City", lat: 16.4023, lon: 120.596 },
-];
+import React, { useEffect, useState, useMemo } from "react";
+import {
+  Cloud,
+  CloudRain,
+  Droplets,
+  Eye,
+  Moon,
+  Sun,
+  Thermometer,
+  TrendingDown,
+  TrendingUp,
+  Wind,
+  Navigation,
+  MapPin,
+  Search,
+  ArrowRight,
+  Calendar,
+  Umbrella,
+} from "lucide-react";
+import PH_LOCATIONS from "../data/ph_locations";
 
 const OPENWEATHERMAP_API_KEY = "138ee97bc2df4029270f36075b709726";
 
-function formatHourLabel(isoTime) {
-  if (!isoTime) return "";
-  const d = new Date(isoTime);
-  return d.toLocaleTimeString("en-PH", {
-    hour: "numeric",
-    minute: undefined,
-    hour12: true,
-    timeZone: "Asia/Manila",
-  });
-}
+// --- Helper Functions ---
 
-function formatDayLabel(isoDate, index) {
+const key = (index) => `key-${index}`;
+
+const formatHourLabel = (isoDate) => {
   if (!isoDate) return "";
-  const d = new Date(isoDate);
+  const date = new Date(isoDate);
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    hour12: true,
+  });
+};
+
+const formatDayLabel = (isoDate, index) => {
   if (index === 0) return "Today";
-  if (index === 1) return "Tomorrow";
-  return d.toLocaleDateString("en-PH", {
-    weekday: "short",
-  });
-}
+  const date = new Date(isoDate);
+  return date.toLocaleDateString("en-US", { weekday: "long" });
+};
 
-function formatLocalDate(isoTime) {
-  if (!isoTime) return "";
-  const d = new Date(isoTime);
-  return d.toLocaleDateString("en-PH", {
+const formatLocalDate = (isoDate) => {
+  if (!isoDate) return "";
+  return new Date(isoDate).toLocaleDateString("en-US", {
+    weekday: "long",
     year: "numeric",
-    month: "numeric",
+    month: "long",
     day: "numeric",
-    timeZone: "Asia/Manila",
   });
-}
+};
 
-function formatLocalTime(isoTime) {
-  if (!isoTime) return "";
-  const d = new Date(isoTime);
-  return d.toLocaleTimeString("en-PH", {
+const formatLocalTime = (isoDate) => {
+  if (!isoDate) return "";
+  return new Date(isoDate).toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
-    second: "2-digit",
     hour12: true,
-    timeZone: "Asia/Manila",
   });
-}
+};
 
-function describeConditions(current, cloudCover) {
+const describeConditions = (current, cloudCover) => {
   if (!current) return "";
-  const hasRain = typeof current.precipProb === "number" && current.precipProb >= 40;
-  if (hasRain && cloudCover >= 60) return "Rainy";
-  if (hasRain) return "Chance of rain";
-  if (cloudCover >= 80) return "Cloudy";
-  if (cloudCover >= 40) return "Partly cloudy";
-  return "Mostly clear";
-}
+  if (current.weatherMain) return current.weatherMain;
+  if (current.precipProb >= 50) return "Rainy";
+  if (cloudCover >= 80) return "Overcast";
+  if (cloudCover >= 50) return "Cloudy";
+  if (cloudCover >= 20) return "Partly Cloudy";
+  return "Clear Sky";
+};
 
-function formatTemp(tempC, unit) {
-  if (typeof tempC !== "number") return "";
-  if (unit === "f") {
-    return Math.round((tempC * 9) / 5 + 32);
-  }
-  return Math.round(tempC);
-}
+const getUVLevel = (uv) => {
+  if (uv <= 2) return { level: "Low", color: "text-emerald-400" };
+  if (uv <= 5) return { level: "Moderate", color: "text-yellow-400" };
+  if (uv <= 7) return { level: "High", color: "text-orange-400" };
+  if (uv <= 10) return { level: "Very High", color: "text-red-400" };
+  return { level: "Extreme", color: "text-purple-400" };
+};
 
-function getTempPercent(temp, min, max) {
-  if (
-    typeof temp !== "number" ||
-    typeof min !== "number" ||
-    typeof max !== "number" ||
-    !Number.isFinite(min) ||
-    !Number.isFinite(max)
-  ) {
-    return 0;
-  }
-  if (max === min) {
-    return 50;
-  }
-  const pct = ((temp - min) / (max - min)) * 100;
-  if (pct < 0) return 0;
-  if (pct > 100) return 100;
-  return pct;
-}
-
-function isWithinPhilippines(lat, lon) {
-  if (typeof lat !== "number" || typeof lon !== "number") return false;
-  const withinLat = lat >= 4 && lat <= 22;
-  const withinLon = lon >= 116 && lon <= 127.5;
-  return withinLat && withinLon;
-}
-
-function getMoonPhaseInfo(isoTime) {
-  if (!isoTime) {
-    return { label: "", illumination: 0 };
-  }
-  const date = new Date(isoTime);
-  if (Number.isNaN(date.getTime())) {
-    return { label: "", illumination: 0 };
-  }
-  const synodicMonth = 29.53058867;
-  const reference = new Date("2000-01-06T18:14:00Z");
-  const daysSince = (date.getTime() - reference.getTime()) / 86400000;
-  const normalized = ((daysSince % synodicMonth) + synodicMonth) % synodicMonth;
-  const phase = normalized;
-  let label;
-  if (phase < 1.84566) label = "New Moon";
-  else if (phase < 5.53699) label = "Waxing Crescent";
-  else if (phase < 9.22831) label = "First Quarter";
-  else if (phase < 12.91963) label = "Waxing Gibbous";
-  else if (phase < 16.61096) label = "Full Moon";
-  else if (phase < 20.30228) label = "Waning Gibbous";
-  else if (phase < 23.99361) label = "Last Quarter";
-  else if (phase < 27.68493) label = "Waning Crescent";
-  else label = "New Moon";
-  const illumination = Math.max(0, Math.min(1, phase / synodicMonth));
-  return { label, illumination };
-}
-
-function getMoonPhaseEmoji(label) {
-  switch (label) {
-    case "New Moon":
-      return "🌑";
-    case "Waxing Crescent":
-      return "🌒";
-    case "First Quarter":
-      return "🌓";
-    case "Waxing Gibbous":
-      return "🌔";
-    case "Full Moon":
-      return "🌕";
-    case "Waning Gibbous":
-      return "🌖";
-    case "Last Quarter":
-      return "🌗";
-    case "Waning Crescent":
-      return "🌘";
-    default:
-      return "🌑";
-  }
-}
-
-function getUVLevel(uvIndex) {
-  if (typeof uvIndex !== "number") return { level: "Unknown", color: "slate" };
-  if (uvIndex <= 2) return { level: "Low", color: "green" };
-  if (uvIndex <= 5) return { level: "Moderate", color: "yellow" };
-  if (uvIndex <= 7) return { level: "High", color: "orange" };
-  if (uvIndex <= 10) return { level: "Very High", color: "red" };
-  return { level: "Extreme", color: "purple" };
-}
-
-function getAqiInfo(aqiIndex) {
-  if (typeof aqiIndex !== "number") {
-    return {
-      label: "Unknown",
-      message: "Air quality data is not available.",
-    };
-  }
-  switch (aqiIndex) {
-    case 1:
-      return {
-        label: "Good",
-        message: "Air quality is good. Outdoor activities are safe for most people.",
-      };
-    case 2:
-      return {
-        label: "Fair",
-        message: "Air quality is acceptable. Very sensitive people may notice minor effects.",
-      };
-    case 3:
-      return {
-        label: "Moderate",
-        message: "Sensitive groups may experience mild irritation outdoors.",
-      };
-    case 4:
-      return {
-        label: "Poor",
-        message: "Sensitive groups should limit time outdoors and heavy exertion.",
-      };
-    case 5:
-      return {
-        label: "Very Poor",
-        message: "Everyone may feel stronger effects. Consider staying indoors.",
-      };
-    default:
-      return {
-        label: "Unknown",
-        message: "Air quality data is not available.",
-      };
-  }
-}
-
-function getRainType(precipMm) {
-  if (typeof precipMm !== "number" || precipMm === 0) return { type: "None", icon: "☀️" };
-  if (precipMm < 2.5) return { type: "Light rain", icon: "🌦️" };
-  if (precipMm < 10) return { type: "Moderate rain", icon: "🌧️" };
-  if (precipMm < 50) return { type: "Heavy rain", icon: "⛈️" };
-  return { type: "Torrential rain", icon: "🌧️" };
-}
-
-function getVisibilityLevel(visibilityKm) {
-  if (typeof visibilityKm !== "number") return "Unknown";
-  if (visibilityKm >= 10) return "Excellent";
-  if (visibilityKm >= 5) return "Good";
-  if (visibilityKm >= 2) return "Moderate";
-  if (visibilityKm >= 1) return "Poor";
+const getVisibilityLevel = (km) => {
+  if (km >= 10) return "Excellent";
+  if (km >= 5) return "Good";
+  if (km >= 2) return "Moderate";
+  if (km >= 1) return "Poor";
   return "Very Poor";
-}
+};
 
-function generateWeatherImpact(current, cloudCover) {
-  const impacts = [];
-  if (current.precipProb >= 60) {
-    impacts.push({ icon: Umbrella, text: "High chance of rain: bring an umbrella.", color: "cyan" });
-  } else if (current.precipProb >= 30) {
-    impacts.push({ icon: Umbrella, text: "Possible rain: consider an umbrella.", color: "sky" });
+const getMoonPhaseInfo = (dateIso) => {
+  const date = new Date(dateIso);
+  let year = date.getFullYear();
+  let month = date.getMonth() + 1;
+  const day = date.getDate();
+  let c = 0,
+    e = 0,
+    jd = 0,
+    b = 0;
+  if (month < 3) {
+    year--;
+    month += 12;
   }
-  if (current.visibility && current.visibility < 5) {
-    impacts.push({ icon: Car, text: "Low visibility: drive carefully.", color: "amber" });
-  }
-  if (current.humidity && current.humidity >= 80) {
-    impacts.push({ icon: Droplets, text: "Humid conditions may feel warmer.", color: "emerald" });
-  } else if (current.humidity && current.humidity <= 30) {
-    impacts.push({ icon: Wind, text: "Dry air: stay hydrated.", color: "blue" });
-  }
-  if (current.temp >= 32) {
-    impacts.push({ icon: Sun, text: "Very hot: avoid prolonged sun exposure.", color: "orange" });
-  } else if (current.temp <= 20) {
-    impacts.push({ icon: Cloud, text: "Cool weather: light jacket recommended.", color: "slate" });
-  }
-  if (current.uvIndex && current.uvIndex >= 6) {
-    impacts.push({ icon: AlertTriangle, text: "High UV: use sunscreen.", color: "red" });
-  }
-  if (current.pressureTrend === "rising") {
-    impacts.push({ icon: TrendingUp, text: "Rising pressure: improving weather.", color: "green" });
-  } else if (current.pressureTrend === "falling") {
-    impacts.push({ icon: TrendingDown, text: "Falling pressure: worsening weather.", color: "red" });
-  }
-  return impacts;
-}
+  ++month;
+  c = 365.25 * year;
+  e = 30.6 * month;
+  jd = c + e + day - 694039.09;
+  jd /= 29.5305882;
+  b = parseInt(jd);
+  jd -= b;
+  b = Math.round(jd * 8);
+  if (b >= 8) b = 0;
 
-function generateWeeklyInsight(daily, unit) {
-  if (!daily || daily.length === 0) return "";
-  const days = daily.slice(0, 5);
-  const labels = days.map((d, idx) => formatDayLabel(d.date, idx));
+  const phases = [
+    "New Moon",
+    "Waxing Crescent",
+    "First Quarter",
+    "Waxing Gibbous",
+    "Full Moon",
+    "Waning Gibbous",
+    "Last Quarter",
+    "Waning Crescent",
+  ];
+  return { label: phases[b], illumination: 0.5 }; // Sim simplified
+};
 
-  const avgPrecip =
-    days.reduce((sum, d) => sum + (typeof d.precipProb === "number" ? d.precipProb : 0), 0) /
-    days.length;
+const generateWeeklyInsight = (daily, unit = "c") => {
+  if (!daily || daily.length === 0) return "No forecast data available.";
 
-  const rainy = days
-    .map((d, idx) => ({ d, idx }))
-    .filter((x) => (x.d.precipProb || 0) >= 60);
+  const rainyDays = daily.filter((d) => d.precipProb >= 50);
+  const hotDays = daily.filter((d) => d.hi >= (unit === "c" ? 32 : 89.6));
 
-  const first = days[0];
-  const last = days[days.length - 1];
-  const tempTrend =
-    typeof last.hi === "number" && typeof first.hi === "number" ? last.hi - first.hi : 0;
-
-  const hiValues = days
-    .map((d) => d.hi)
-    .filter((v) => typeof v === "number");
-
-  const parts = [];
-
-  if (rainy.length >= 1) {
-    const main = rainy[0];
-    const label = labels[main.idx] || "mid-week";
-    parts.push(`Expect scattered to frequent rain around ${label}.`);
-  } else if (avgPrecip < 30) {
-    parts.push("Mostly dry conditions with only isolated showers.");
+  let insight = "";
+  if (rainyDays.length >= 3) {
+    insight = "Expect a wet week ahead with frequent rain. Keeping an umbrella handy is recommended.";
+  } else if (rainyDays.length > 0) {
+    insight = `There's a chance of rain on ${formatDayLabel(rainyDays[0].date, 0).replace("Today", "today")}. Otherwise, mostly dry conditions expected.`;
   } else {
-    parts.push("Scattered showers possible on several days.");
+    insight = "It looks like a dry week ahead. Great for outdoor activities.";
   }
 
-  if (tempTrend >= 2) {
-    parts.push("Temperatures trend a bit warmer toward the end of the period.");
-  } else if (tempTrend <= -2) {
-    parts.push("Temperatures trend slightly cooler later in the week.");
+  if (hotDays.length >= 3) {
+    insight += " Temperatures will be quite high, so stay hydrated and avoid prolonged sun exposure.";
+  } else if (daily[0] && daily[0].hi < (unit === "c" ? 25 : 77)) { // Cool threshold
+    insight += " Conditions will be relatively cool and comfortable.";
   }
 
-  if (hiValues.length) {
-    const maxHi = Math.max(...hiValues);
-    const minHi = Math.min(...hiValues);
-    if (maxHi >= 33) {
-      parts.push("At least one day may feel hot and humid; stay hydrated if outdoors.");
-    } else if (minHi <= 24) {
-      parts.push("Some periods may feel cooler, especially at night or early morning.");
-    }
-  }
+  return insight;
+};
 
-  return parts.join(" ");
+// --- Check Location ---
+const isWithinPhilippines = (lat, lon) => {
+  if (typeof lat !== "number" || typeof lon !== "number") return false;
+  return lat >= 4.5 && lat <= 21.5 && lon >= 116 && lon <= 127;
+};
+
+// --- Helper for AQI ---
+function getAqiInfo(aqi) {
+  if (aqi === 1) return { label: "Good", message: "Air quality is considered satisfactory, and air pollution poses little or no risk.", color: "text-emerald-400" };
+  if (aqi === 2) return { label: "Fair", message: "Air quality is acceptable; however, for some pollutants there may be a moderate health concern for a very small number of people who are unusually sensitive to air pollution.", color: "text-yellow-400" };
+  if (aqi === 3) return { label: "Moderate", message: "Members of sensitive groups may experience health effects. The general public is not likely to be affected.", color: "text-orange-400" };
+  if (aqi === 4) return { label: "Poor", message: "Everyone may begin to experience health effects; members of sensitive groups may experience more serious health effects.", color: "text-red-400" };
+  if (aqi === 5) return { label: "Very Poor", message: "Health warnings of emergency conditions. The entire population is more likely to be affected.", color: "text-purple-400" };
+  return { label: "Unknown", message: "", color: "text-slate-400" };
 }
+
+// --- Sub-Components ---
+
+const WeatherHero = ({ current, locationName }) => {
+  if (!current) return null;
+  return (
+    <div className="relative overflow-hidden rounded-3xl bg-white/5 p-8 text-white ring-1 ring-white/10 backdrop-blur-md">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-300 uppercase tracking-wider mb-1">
+            <MapPin className="h-4 w-4 text-sky-400" />
+            {locationName}
+          </div>
+          <div className="text-[10px] text-slate-400 mb-6 font-mono">
+            {current.time ? new Date(current.time).toLocaleString('en-US', { weekday: 'long', hour: 'numeric', minute: 'numeric', hour12: true }) : ''}
+          </div>
+
+          <div className="flex items-start">
+            <span className="text-8xl font-bold tracking-tighter bg-gradient-to-br from-white to-white/60 bg-clip-text text-transparent">
+              {current.temp}°
+            </span>
+          </div>
+          <div className="mt-2 flex items-center gap-4 text-sm font-medium text-slate-200">
+            <span>H: {current.hi}°</span>
+            <span>L: {current.lo}°</span>
+            <span>Feels like {current.feelsLike}°</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-start md:items-end gap-2">
+          {current.precipProb >= 30 && (
+            <div className="flex items-center gap-2 rounded-full bg-sky-500/20 px-4 py-1.5 text-xs text-sky-200 ring-1 ring-sky-500/30">
+              <Umbrella className="h-3.5 w-3.5" />
+              <span>{current.precipProb}% Rain Chance</span>
+            </div>
+          )}
+          <div className="text-right">
+            <p className="text-xl font-semibold">{current.weatherMain || "Clear"}</p>
+            <p className="text-sm text-slate-400">{describeConditions(current, current.cloudCover)}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MetricCard = ({ icon: Icon, label, value, subtext, color = "slate", className = "" }) => {
+  return (
+    <div className={`flex flex-col justify-between rounded-2xl bg-white/5 p-5 backdrop-blur-sm ring-1 ring-white/10 transition-all hover:bg-white/10 ${className}`}>
+      <div className="flex items-center gap-2 text-slate-400 mb-2">
+        <Icon className="h-4 w-4" />
+        <span className="text-xs font-semibold uppercase tracking-wider">{label}</span>
+      </div>
+      <div>
+        <div className="text-2xl font-bold text-white">{value}</div>
+        {subtext && <div className="mt-1 text-xs text-slate-400">{subtext}</div>}
+      </div>
+    </div>
+  );
+};
+
+const BentoGrid = ({ current }) => {
+  if (!current) return null;
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* UV Index */}
+      <MetricCard
+        icon={Sun}
+        label="UV Index"
+        value={current.uvIndex}
+        subtext={getUVLevel(current.uvIndex).level}
+        color="amber"
+        className="md:col-span-1"
+      />
+
+      {/* Wind */}
+      <div className="col-span-1 md:col-span-1 rounded-2xl bg-white/5 p-5 backdrop-blur-sm ring-1 ring-white/10 flex flex-col justify-between">
+        <div className="flex items-center gap-2 text-slate-400">
+          <Wind className="h-4 w-4" />
+          <span className="text-xs font-semibold uppercase tracking-wider">Wind</span>
+        </div>
+        <div className="mt-2">
+          <div className="text-2xl font-bold text-white">{current.windSpeed} <span className="text-sm font-normal text-slate-400">km/h</span></div>
+          <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+            <Navigation className="h-3 w-3" style={{ transform: `rotate(${current.windDir}deg)` }} />
+            <span>{current.windDir}°</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Sunrise / Sunset */}
+      <div className="col-span-2 md:col-span-2 rounded-2xl bg-white/5 p-5 backdrop-blur-sm ring-1 ring-white/10 flex items-center justify-between">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 text-slate-400 mb-1">
+            <Sun className="h-4 w-4" />
+            <span className="text-xs font-semibold uppercase tracking-wider">Sun</span>
+          </div>
+          <div className="flex gap-8">
+            <div>
+              <div className="text-xs text-slate-500 mb-1">Sunrise</div>
+              <div className="text-lg font-bold text-slate-200">{formatLocalTime(current.sunrise)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 mb-1">Sunset</div>
+              <div className="text-lg font-bold text-slate-200">{formatLocalTime(current.sunset)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Humidity */}
+      <MetricCard
+        icon={Droplets}
+        label="Humidity"
+        value={`${current.humidity}%`}
+        subtext={`Dew Point: ${current.dewPoint}°`}
+        color="blue"
+      />
+
+      {/* Visibility */}
+      <MetricCard
+        icon={Eye}
+        label="Visibility"
+        value={`${current.visibility} km`}
+        subtext={getVisibilityLevel(parseFloat(current.visibility))}
+        color="emerald"
+      />
+
+      {/* Pressure */}
+      <MetricCard
+        icon={TrendingDown}
+        label="Pressure"
+        value={`${current.pressure} hPa`}
+        subtext={current.pressureTrend === "rising" ? "Rising ↑" : current.pressureTrend === "falling" ? "Falling ↓" : "Steady"}
+        color="slate"
+      />
+
+      {/* Rain */}
+      <MetricCard
+        icon={CloudRain}
+        label="Rainfall"
+        value={`${current.rainMm} mm`}
+        subtext="Last 3h"
+        color="sky"
+      />
+    </div>
+  );
+};
 
 const Weather = () => {
   const [selectedId, setSelectedId] = useState("manila");
@@ -315,7 +325,6 @@ const Weather = () => {
   const [geoLoading, setGeoLoading] = useState(false);
   const [locationError, setLocationError] = useState(null);
   const [recentSearches, setRecentSearches] = useState([]);
-  const [timelineHoverIndex, setTimelineHoverIndex] = useState(null);
 
   useEffect(() => {
     try {
@@ -518,97 +527,19 @@ const Weather = () => {
   const allLocations = [...PH_LOCATIONS, ...favorites, ...customLocations];
   const selectedLocation =
     allLocations.find((l) => l.id === selectedId) || allLocations[0] || PH_LOCATIONS[0];
-  const unitSymbol = unit === "c" ? "C" : "F";
   const isCurrentFavorite = favorites.some((f) => f.id === selectedId);
-  const hourlyTempRange =
-    hourly && hourly.length > 0
-      ? {
-          min: Math.min(...hourly.map((h) => h.temp)),
-          max: Math.max(...hourly.map((h) => h.temp)),
-        }
-      : null;
 
   const hasFavorites = favorites && favorites.length > 0;
   const hasRecentSearches = recentSearches && recentSearches.length > 0;
 
-  const suggestionOptions =
-    searchQuery && searchQuery.length >= 2
-      ? Array.from(
-          new Set(
-            [...PH_LOCATIONS, ...favorites, ...customLocations]
-              .map((loc) => loc.name)
-              .filter((name) =>
-                typeof name === "string"
-                  ? name.toLowerCase().includes(searchQuery.toLowerCase())
-                  : false
-              )
-          )
-        ).slice(0, 6)
-      : [];
-  const tempTimelineData =
-    hourly && hourly.length > 1
-      ? (() => {
-          const temps = hourly.map((h) => h.temp).filter((t) => typeof t === "number");
-          if (!temps.length) return [];
-          const minT = Math.min(...temps);
-          const maxT = Math.max(...temps);
-          const range = maxT - minT || 1;
-          const len = hourly.length;
-          return hourly
-            .map((h, idx) => {
-              if (typeof h.temp !== "number") return null;
-              const x = len === 1 ? 0 : (idx / (len - 1)) * 100;
-              const norm = (h.temp - minT) / range;
-              const y = 90 - norm * 70;
-              return {
-                x,
-                y,
-                temp: h.temp,
-                timeLabel: formatHourLabel(h.time),
-              };
-            })
-            .filter(Boolean);
-        })()
-      : [];
-
-  const tempTimelinePoints =
-    tempTimelineData && tempTimelineData.length > 1
-      ? tempTimelineData.map((p) => `${p.x},${p.y}`).join(" ")
-      : "";
-
-  let backgroundClass = "bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950";
+  // Updated Background Class logic for premium feel
+  let premiumBg = "bg-slate-950";
   if (current) {
-    const date = new Date(current.time);
-    const hourPh = parseInt(
-      date.toLocaleTimeString("en-PH", {
-        hour: "2-digit",
-        hour12: false,
-        timeZone: "Asia/Manila",
-      }),
-      10
-    );
-    const isNight = Number.isFinite(hourPh) && (hourPh >= 18 || hourPh < 6);
-    const precip = typeof current.precipProb === "number" ? current.precipProb : 0;
-    const clouds =
-      typeof current.cloudCover === "number"
-        ? current.cloudCover
-        : typeof cloudCoverNow === "number"
-        ? cloudCoverNow
-        : 0;
-
-    if (precip >= 60) {
-      backgroundClass = isNight
-        ? "bg-gradient-to-br from-slate-950 via-sky-950 to-slate-900"
-        : "bg-gradient-to-br from-sky-900 via-slate-900 to-slate-950";
-    } else if (clouds >= 70) {
-      backgroundClass = isNight
-        ? "bg-gradient-to-br from-slate-950 via-slate-800 to-slate-950"
-        : "bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950";
-    } else if (isNight) {
-      backgroundClass = "bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950";
-    } else {
-      backgroundClass = "bg-gradient-to-br from-sky-900 via-slate-900 to-slate-950";
-    }
+    // Dynamic logic for premium glassmorphism background
+    const isNight = new Date(current.time).getHours() >= 18 || new Date(current.time).getHours() < 6;
+    if (current.precipProb >= 50) premiumBg = "bg-gradient-to-br from-slate-950 via-slate-900 to-sky-950";
+    else if (isNight) premiumBg = "bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950";
+    else premiumBg = "bg-gradient-to-br from-blue-900 via-sky-900 to-slate-900";
   }
 
   const handleSearchSubmit = async (event) => {
@@ -736,652 +667,134 @@ const Weather = () => {
     }
   };
 
-  const dailyTempRange =
-    daily && daily.length > 0
-      ? (() => {
-          const temps = [];
-          daily.forEach((d) => {
-            if (typeof d.lo === "number") temps.push(d.lo);
-            if (typeof d.hi === "number") temps.push(d.hi);
-          });
-          if (!temps.length) return null;
-          return {
-            min: Math.min(...temps),
-            max: Math.max(...temps),
-          };
-        })()
-      : null;
-
   const moonPhase = current ? getMoonPhaseInfo(current.time) : null;
 
   return (
-    <div className={`min-h-screen ${backgroundClass} text-slate-50 flex flex-col`}>
-      <div className="max-w-6xl mx-auto w-full px-4 py-8 md:px-8 md:py-12">
-        <header className="mb-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-2">
-            <p className="text-[10px] uppercase tracking-[0.4em] text-slate-500 font-medium">Local Weather</p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-50 md:text-4xl bg-gradient-to-r from-slate-50 to-slate-300 bg-clip-text text-transparent">
-              Philippine Weather
-            </h1>
-            <p className="text-sm text-slate-400 max-w-md">
-              Real-time conditions, hourly forecasts, and daily outlook for major Philippine cities.
-            </p>
+    <div className={`min-h-screen ${premiumBg} text-slate-50 relative selection:bg-sky-500/30 font-sans`}>
+      {/* Background noise/texture overlay */}
+      <div className="fixed inset-0 z-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='1'/%3E%3C/svg%3E")` }}></div>
+
+      <div className="relative z-10 max-w-6xl mx-auto px-4 py-8 md:px-8">
+
+        {/* Header */}
+        <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-white mb-1">Philippine Weather</h1>
+            <p className="text-sm text-slate-400">Real-time local forecasts.</p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 bg-slate-900/50 backdrop-blur-sm rounded-2xl px-5 py-3 border border-slate-800/50">
-            <div className="flex flex-1 flex-col gap-2">
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-400 font-medium">Location</span>
-                <select
-                  value={selectedId}
-                  onChange={(e) => setSelectedId(e.target.value)}
-                  className="rounded-xl border border-slate-700/50 bg-slate-800/50 backdrop-blur-sm px-4 py-2.5 text-sm text-slate-100 font-medium cursor-pointer hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500/50"
-                >
-                  {allLocations.map((loc) => (
-                    <option key={loc.id} value={loc.id}>
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={handleToggleFavorite}
-                  className={
-                    "rounded-full border px-3 py-1 text-[11px] font-medium transition-colors " +
-                    (isCurrentFavorite
-                      ? "border-emerald-400 bg-emerald-500/10 text-emerald-300"
-                      : "border-slate-700/70 bg-slate-900/40 text-slate-300 hover:border-emerald-400 hover:text-emerald-200")
-                  }
-                >
-                  {isCurrentFavorite ? "Saved" : "Save"}
-                </button>
-              </div>
-              <form
-                onSubmit={handleSearchSubmit}
-                className="flex items-center gap-2 text-[11px] text-slate-400"
-              >
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search city (e.g. Quezon City)"
-                  className="flex-1 rounded-lg border border-slate-700/60 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500/60"
-                />
-                <button
-                  type="submit"
-                  disabled={searchLoading || geoLoading}
-                  className="rounded-full border border-sky-500/60 bg-sky-500/10 px-3 py-1.5 text-[11px] font-medium text-sky-300 hover:bg-sky-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {searchLoading ? "Searching..." : "Search"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleUseMyLocation}
-                  disabled={geoLoading || searchLoading}
-                  className="group flex items-center gap-1 rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1.5 text-[11px] font-medium text-slate-300 hover:border-sky-500/40 hover:text-sky-200 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <Navigation
-                    className={
-                      "h-3.5 w-3.5 text-sky-300 " +
-                      (geoLoading
-                        ? "motion-safe:animate-spin"
-                        : "motion-safe:group-hover:animate-pulse")
-                    }
-                  />
-                  <span>{geoLoading ? "Locating..." : "Use my location"}</span>
-                </button>
-              </form>
-              {suggestionOptions.length > 0 && (
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                  <span className="uppercase tracking-[0.2em] text-slate-500">Suggestions</span>
-                  {suggestionOptions.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => setSearchQuery(name)}
-                      className="rounded-full border border-slate-700/70 bg-slate-900/40 px-2.5 py-1 hover:border-sky-500/40 hover:text-sky-200 transition-colors"
-                    >
-                      {name}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {hasFavorites && (
-                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                  <span className="uppercase tracking-[0.2em] text-slate-500">Favorites</span>
-                  {favorites.map((fav) => (
-                    <button
-                      key={fav.id}
-                      type="button"
-                      onClick={() => setSelectedId(fav.id)}
-                      className={
-                        "rounded-full border px-3 py-1 transition-colors " +
-                        (fav.id === selectedId
-                          ? "border-sky-400 bg-sky-500/10 text-sky-300"
-                          : "border-slate-700/70 bg-slate-900/40 text-slate-300 hover:border-sky-500/40 hover:text-sky-200")
-                      }
-                    >
-                      {fav.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {hasRecentSearches && (
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                  <span className="uppercase tracking-[0.2em] text-slate-500">Recent</span>
-                  {recentSearches.map((term) => (
-                    <button
-                      key={term}
-                      type="button"
-                      onClick={() => setSearchQuery(term)}
-                      className="rounded-full border border-slate-700/70 bg-slate-900/40 px-2.5 py-1 hover:border-sky-500/40 hover:text-sky-200 transition-colors"
-                    >
-                      {term}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {locationError && (
-                <p className="text-[11px] text-red-300">
-                  {locationError}
-                </p>
-              )}
+
+          {/* Unified Search & Actions */}
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="relative flex-1 md:w-80 group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-sky-400 transition-colors" />
+              <input
+                type="text"
+                placeholder="Search city..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit(e)}
+                className="w-full rounded-2xl bg-white/5 border border-white/10 py-2.5 pl-10 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:bg-white/10 focus:border-sky-500/50 transition-all"
+              />
             </div>
-            <div className="flex items-center justify-end gap-2 text-[11px] font-medium text-slate-400">
-              <span className="uppercase tracking-[0.2em] text-slate-500">Units</span>
-              <button
-                type="button"
-                onClick={() => setUnit("c")}
-                className={
-                  "px-2 py-1 rounded-full border transition-colors text-xs " +
-                  (unit === "c"
-                    ? "border-sky-400 bg-sky-500/10 text-sky-300"
-                    : "border-transparent text-slate-400 hover:border-slate-600 hover:bg-slate-800/70")
-                }
+
+            <button
+              onClick={handleUseMyLocation}
+              className="p-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 transition-colors"
+              title="Use my location"
+            >
+              <Navigation className={`h-5 w-5 ${geoLoading ? 'animate-spin' : ''}`} />
+            </button>
+
+            <div className="relative">
+              <select
+                value={selectedId}
+                onChange={(e) => setSelectedId(e.target.value)}
+                className="appearance-none p-2.5 pr-8 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 text-sm focus:outline-none cursor-pointer"
               >
-                °C
-              </button>
-              <button
-                type="button"
-                onClick={() => setUnit("f")}
-                className={
-                  "px-2 py-1 rounded-full border transition-colors text-xs " +
-                  (unit === "f"
-                    ? "border-sky-400 bg-sky-500/10 text-sky-300"
-                    : "border-transparent text-slate-400 hover:border-slate-600 hover:bg-slate-800/70")
-                }
-              >
-                °F
-              </button>
+                {allLocations.map((loc) => (
+                  <option key={loc.id} value={loc.id} className="bg-slate-900">
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+              <ArrowRight className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none rotate-90" />
             </div>
           </div>
         </header>
 
         {loading ? (
-          <div className="space-y-6">
-            <div className="rounded-3xl border border-slate-800/60 bg-gradient-to-br from-slate-900/80 to-slate-900/40 backdrop-blur-xl p-6 md:p-8 animate-pulse">
-              <div className="flex items-center gap-6">
-                <div className="h-16 w-16 rounded-full bg-slate-800/80" />
-                <div className="flex-1 space-y-3">
-                  <div className="h-3 w-24 rounded-full bg-slate-800/80" />
-                  <div className="h-8 w-32 rounded-full bg-slate-800/80" />
-                  <div className="h-3 w-40 rounded-full bg-slate-800/70" />
-                  <div className="h-2 w-32 rounded-full bg-slate-900/70" />
-                </div>
-              </div>
-              <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="h-16 rounded-2xl bg-slate-900/80" />
-                <div className="h-16 rounded-2xl bg-slate-900/80" />
-                <div className="h-16 rounded-2xl bg-slate-900/80" />
-                <div className="h-16 rounded-2xl bg-slate-900/80" />
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-slate-800/60 bg-gradient-to-br from-slate-900/80 to-slate-900/40 backdrop-blur-xl p-5 animate-pulse">
-              <div className="mb-4 h-3 w-32 rounded-full bg-slate-800/80" />
-              <div className="flex gap-3 overflow-hidden">
-                {Array.from({ length: 6 }).map((_, idx) => (
-                  <div
-                    key={idx}
-                    className="flex min-w-[70px] flex-col items-center gap-2 rounded-2xl bg-slate-900/70 px-3 py-3"
-                  >
-                    <div className="h-2 w-10 rounded-full bg-slate-800/80" />
-                    <div className="h-4 w-6 rounded-full bg-slate-800/80" />
-                    <div className="h-2 w-8 rounded-full bg-slate-900/80" />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-slate-800/60 bg-gradient-to-br from-slate-900/80 to-slate-900/40 backdrop-blur-xl p-5 animate-pulse">
-              <div className="mb-4 h-3 w-32 rounded-full bg-slate-800/80" />
-              <div className="space-y-2">
-                {Array.from({ length: 4 }).map((_, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between rounded-2xl bg-slate-900/70 px-4 py-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="h-3 w-16 rounded-full bg-slate-800/80" />
-                      <div className="h-2 w-10 rounded-full bg-slate-900/80" />
-                    </div>
-                    <div className="h-3 w-12 rounded-full bg-slate-800/80" />
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className="flex h-96 items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-700 border-t-sky-400"></div>
           </div>
         ) : error ? (
-          <div className="rounded-3xl border border-red-500/40 bg-gradient-to-br from-red-900/40 to-red-900/20 backdrop-blur-sm px-6 py-5 text-sm text-red-100 shadow-lg shadow-red-900/20">
-            <p className="font-medium">{error}</p>
+          <div className="rounded-3xl bg-red-500/10 p-8 text-center border border-red-500/20">
+            <p className="text-red-300">{error}</p>
           </div>
-        ) : current ? (
-          <>
-            {/* Top current conditions card */}
-            <section className="mb-10 grid gap-8 rounded-3xl border border-slate-800/50 bg-gradient-to-br from-slate-900/80 via-slate-900/50 to-slate-900/30 backdrop-blur-xl p-8 md:grid-cols-[2fr,1.5fr] shadow-2xl shadow-slate-950/50 hover:shadow-sky-900/10 transition-all duration-300">
-              <div className="mb-4 flex justify-end text-xs text-slate-400">
-                <div className="flex flex-col items-end">
-                  <span className="font-semibold text-slate-100">Current weather</span>
-                  <span className="mt-0.5 text-[11px] text-slate-500">
-                    {formatLocalTime(current.time)}
-                  </span>
-                </div>
-              </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Hero */}
+            <WeatherHero current={current} locationName={selectedLocation.name} />
 
-              <div className="flex items-center gap-8">
-                <div className="relative flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-sky-500/20 to-blue-500/10 text-sky-300 shadow-lg shadow-sky-500/20">
-                  {cloudCoverNow >= 60 ? (
-                    <Cloud className="h-12 w-12 motion-safe:animate-pulse" />
-                  ) : (
-                    <Sun className="h-12 w-12 motion-safe:animate-pulse" />
-                  )}
-                  <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-sky-400/10 to-transparent blur-xl" />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm text-slate-400 font-medium tracking-wide">
-                    {selectedLocation.name}
-                  </p>
-                  <div className="flex items-end gap-3">
-                    <p className="text-6xl font-bold leading-none text-slate-50 drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]">
-                      {formatTemp(current.temp, unit)}
-                      <span className="align-top text-3xl">°{unitSymbol}</span>
-                    </p>
-                    <p className="text-base text-slate-300 mb-2 font-semibold drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-                      H: {formatTemp(current.hi, unit)}°{unitSymbol} L: {formatTemp(current.lo, unit)}°{unitSymbol}
-                    </p>
-                  </div>
-                  <p className="text-base text-slate-300 font-medium">
-                    {describeConditions(current, cloudCoverNow)}
-                  </p>
-                  <p className="text-sm text-slate-400">
-                    {current.precipProb}% chance of rain today
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-sky-500/30 transition-all duration-300 group">
-                  <span className="rounded-xl bg-gradient-to-br from-sky-500/20 to-sky-600/10 p-3 text-sky-300 group-hover:scale-110 transition-transform duration-300">
-                    <Thermometer className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Feels like</p>
-                    <p className="text-lg font-bold text-slate-50 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{formatTemp(current.feelsLike, unit)}°{unitSymbol}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-emerald-500/30 transition-all duration-300 group">
-                  <span className="rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 p-3 text-emerald-300 group-hover:scale-110 transition-transform duration-300">
-                    <Wind className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Wind</p>
-                    <p className="text-lg font-bold text-slate-50 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{current.windSpeed} km/h</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-cyan-500/30 transition-all duration-300 group">
-                  <span className="rounded-xl bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 p-3 text-cyan-300 group-hover:scale-110 transition-transform duration-300 motion-safe:animate-pulse">
-                    <Droplets className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Rain today</p>
-                    <p className="text-lg font-bold text-slate-50 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{current.precipProb}%</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      {getRainType(current.rainMm).type}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-amber-500/30 transition-all duration-300 group">
-                  <span className="rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 p-3 text-amber-300 group-hover:scale-110 transition-transform duration-300">
-                    <Sun className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Sun</p>
-                    <p className="text-xs font-bold text-slate-50">
-                      {new Date(current.sunrise).toLocaleTimeString("en-PH", {
-                        hour: "numeric",
-                        minute: "2-digit",
-                        hour12: true,
-                        timeZone: "Asia/Manila",
-                      })}
-                      {" "}/
-                      {" "}
-                      {new Date(current.sunset).toLocaleTimeString("en-PH", {
-                        hour: "numeric",
-                        minute: "2-digit",
-                        hour12: true,
-                        timeZone: "Asia/Manila",
-                      })}
-                    </p>
-                  </div>
-                </div>
-                {(typeof current.humidity === "number" || typeof current.pressure === "number") && (
-                  <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-cyan-400/30 transition-all duration-300 group">
-                    <span className="rounded-xl bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 p-3 text-cyan-300 group-hover:scale-110 transition-transform duration-300">
-                      <Droplets className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Humidity / Pressure</p>
-                      <p className="text-xs font-semibold text-slate-200">
-                        {typeof current.humidity === "number" ? `${current.humidity}%` : "–"}
-                        {" "}
-                        ·
-                        {" "}
-                        {typeof current.pressure === "number" ? `${current.pressure} hPa` : "–"}
-                      </p>
-                      {current.pressureTrend && (
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Pressure {current.pressureTrend}
-                          {typeof current.pressureDelta === "number" && Math.abs(current.pressureDelta) >= 1
-                            ? ` (${current.pressureDelta > 0 ? "+" : ""}${current.pressureDelta.toFixed(1)} hPa)`
-                            : ""}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {moonPhase && moonPhase.label && (
-                  <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-indigo-500/30 transition-all duration-300 group">
-                    <span className="rounded-xl bg-gradient-to-br from-indigo-500/20 to-indigo-600/10 p-3 text-indigo-300 group-hover:scale-110 transition-transform duration-300">
-                      <Moon className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Moon phase</p>
-                      <p className="text-xs font-semibold text-slate-200">
-                        {getMoonPhaseEmoji(moonPhase.label)} {moonPhase.label}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                {typeof current.uvIndex === "number" && (
-                  <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-orange-500/30 transition-all duration-300 group">
-                    <span className="rounded-xl bg-gradient-to-br from-orange-500/20 to-orange-600/10 p-3 text-orange-300 group-hover:scale-110 transition-transform duration-300">
-                      <Sun className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">UV Index</p>
-                      <p className="text-xs font-semibold text-slate-200">
-                        {current.uvIndex} — {getUVLevel(current.uvIndex).level}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                {current.visibility && (
-                  <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-blue-500/30 transition-all duration-300 group">
-                    <span className="rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 p-3 text-blue-300 group-hover:scale-110 transition-transform duration-300 motion-safe:animate-pulse">
-                      <Eye className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Visibility</p>
-                      <p className="text-xs font-semibold text-slate-200">
-                        {current.visibility} km — {getVisibilityLevel(parseFloat(current.visibility))}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                {typeof current.dewPoint === "number" && (
-                  <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-teal-500/30 transition-all duration-300 group">
-                    <span className="rounded-xl bg-gradient-to-br from-teal-500/20 to-teal-600/10 p-3 text-teal-300 group-hover:scale-110 transition-transform duration-300 motion-safe:animate-pulse">
-                      <Droplets className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Dew Point</p>
-                      <p className="text-lg font-bold text-slate-50 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{formatTemp(current.dewPoint, unit)}°{unitSymbol}</p>
-                    </div>
-                  </div>
-                )}
-                {typeof current.cloudCover === "number" && (
-                  <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-slate-400/30 transition-all duration-300 group">
-                    <span className="rounded-xl bg-gradient-to-br from-slate-500/20 to-slate-600/10 p-3 text-slate-300 group-hover:scale-110 transition-transform duration-300">
-                      <Cloud className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Cloud Cover</p>
-                      <p className="text-lg font-bold text-slate-50 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{current.cloudCover}%</p>
-                    </div>
-                  </div>
-                )}
-                {typeof current.aqiIndex === "number" && (
-                  <div className="flex items-start sm:items-center gap-3 sm:gap-4 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-emerald-400/30 transition-all duration-300 group">
-                    <span className="rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 p-3 text-emerald-300 group-hover:scale-110 transition-transform duration-300">
-                      <Wind className="h-5 w-5" />
-                    </span>
-                    <div className="max-w-[12rem] sm:max-w-none">
-                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Air Quality</p>
-                      <p className="text-xs font-semibold text-slate-100">
-                        {current.aqiLabel} (AQI {current.aqiIndex})
-                      </p>
-                      <p className="text-[10px] sm:text-[11px] text-slate-300 mt-0.5 leading-snug break-words">
-                        {current.aqiMessage}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {generateWeatherImpact(current, cloudCoverNow).length > 0 && (
-              <section className="mb-10 rounded-3xl border border-slate-800/50 bg-gradient-to-br from-slate-900/70 to-slate-900/30 backdrop-blur-xl p-6 shadow-xl shadow-slate-950/50">
-                <div className="flex items-center gap-2 mb-5">
-                  <div className="h-1 w-1 rounded-full bg-emerald-400 animate-pulse" />
-                  <p className="text-xs uppercase tracking-[0.35em] text-slate-400 font-semibold">Weather Impact</p>
-                </div>
-                <div className="space-y-3">
-                  {generateWeatherImpact(current, cloudCoverNow).map((impact, idx) => {
-                    const IconComponent = impact.icon;
-                    return (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-4 rounded-2xl bg-gradient-to-r from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-emerald-500/40 transition-all duration-300"
-                      >
-                        <span className={`rounded-xl bg-gradient-to-br from-${impact.color}-500/20 to-${impact.color}-600/10 p-3 text-${impact.color}-300`}>
-                          <IconComponent className="h-5 w-5" />
-                        </span>
-                        <p className="text-sm text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">{impact.text}</p>
+            {/* Hourly Scroll */}
+            {hourly.length > 0 && (
+              <div className="w-full overflow-x-auto pb-4 scrollbar-hide">
+                <div className="flex gap-4 min-w-max">
+                  {hourly.map((h, i) => (
+                    <div key={i} className="flex flex-col items-center gap-2 rounded-2xl bg-white/5 p-4 border border-white/5 min-w-[5rem] hover:bg-white/10 transition-colors">
+                      <span className="text-xs text-slate-400">{i === 0 ? 'Now' : formatHourLabel(h.time)}</span>
+                      <div className="text-2xl pt-1">
+                        {h.precipProb >= 50 ? '🌧️' : h.temp >= 30 ? '☀️' : '☁️'}
                       </div>
-                    );
-                  })}
+                      <span className="text-lg font-bold">{h.temp}°</span>
+                      <span className="text-[10px] text-sky-300 font-medium">{h.precipProb > 0 ? `${h.precipProb}%` : ''}</span>
+                    </div>
+                  ))}
                 </div>
-              </section>
+              </div>
             )}
 
-            {/* Hourly strip */}
-            <section className="mb-10 rounded-3xl border border-slate-800/50 bg-gradient-to-br from-slate-900/70 to-slate-900/30 backdrop-blur-xl p-6 shadow-xl shadow-slate-950/50">
-              <div className="flex items-center gap-2 mb-5">
-                <div className="h-1 w-1 rounded-full bg-sky-400 animate-pulse" />
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-400 font-semibold">Hourly Forecast</p>
-              </div>
-              <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                {hourly.map((h, idx) => {
-                  const barHeight =
-                    hourlyTempRange && Number.isFinite(hourlyTempRange.min) && Number.isFinite(hourlyTempRange.max)
-                      ? getTempPercent(h.temp, hourlyTempRange.min, hourlyTempRange.max)
-                      : 0;
-                  const rainInfo = getRainType(h.rainMm);
-                  const prev = idx > 0 ? hourly[idx - 1] : null;
-                  const delta = prev ? h.precipProb - prev.precipProb : 0;
-                  let trendIcon = null;
-                  let trendColor = "text-slate-400";
-                  if (delta > 5) {
-                    trendIcon = <TrendingUp className="h-3 w-3" />;
-                    trendColor = "text-emerald-400";
-                  } else if (delta < -5) {
-                    trendIcon = <TrendingDown className="h-3 w-3" />;
-                    trendColor = "text-sky-400";
-                  }
-                  const probClass =
-                    h.precipProb >= 70
-                      ? "text-sky-300 font-semibold"
-                      : h.precipProb >= 40
-                      ? "text-sky-200"
-                      : "text-slate-400";
-                  return (
-                    <div
-                      key={h.time}
-                      className="min-w-[95px] flex flex-col items-center rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-4 py-4 text-xs text-slate-300 border border-slate-700/30 hover:border-sky-500/40 hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-sky-500/10"
-                      style={{ animationDelay: `${idx * 50}ms` }}
-                    >
-                      <p className="mb-2 text-[11px] text-slate-400 font-medium">{formatHourLabel(h.time)}</p>
-                      <p className="mb-1 text-2xl font-bold text-slate-50 drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]">{formatTemp(h.temp, unit)}°{unitSymbol}</p>
-                      <div className="mb-2 flex flex-col items-center gap-1">
-                        <div className="flex items-center gap-1">
-                          <span className="text-base leading-none">
-                            {rainInfo.icon}
-                          </span>
-                          <span className={`text-[11px] ${probClass}`}>
-                            {h.precipProb}%
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400">
-                          {rainInfo.type}
-                        </p>
-                        {trendIcon && (
-                          <div className={`flex items-center gap-1 text-[10px] ${trendColor}`}>
-                            {trendIcon}
-                            <span>{delta > 0 ? "Increasing" : "Decreasing"}</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="mt-1 h-10 w-1.5 rounded-full bg-slate-800/80 overflow-hidden">
-                        <div
-                          className="w-full rounded-full bg-gradient-to-t from-sky-500 to-emerald-400"
-                          style={{ height: `${barHeight}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+            {/* Bento Grid */}
+            <BentoGrid current={current} />
 
-              {tempTimelinePoints && tempTimelineData && tempTimelineData.length > 0 && (
-                <div className="mt-6">
-                  <div className="mb-2 text-[10px] uppercase tracking-[0.25em] text-slate-500 font-medium">
-                    Today Temperature Timeline
-                  </div>
-                  <div className="relative h-32 rounded-2xl bg-slate-900/70 border border-slate-800 overflow-hidden">
-                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,#38bdf8_0,transparent_55%)] opacity-30" />
-                    <svg
-                      viewBox="0 0 100 100"
-                      className="relative h-full w-full cursor-crosshair"
-                      onMouseLeave={() => setTimelineHoverIndex(null)}
-                    >
-                      <polyline
-                        points={tempTimelinePoints}
-                        fill="none"
-                        stroke="#22d3ee"
-                        strokeWidth="1.5"
-                        className="drop-shadow-[0_0_8px_rgba(56,189,248,0.75)]"
-                      />
-                      {tempTimelineData.map((p, idx) => (
-                        <circle
-                          key={idx}
-                          cx={p.x}
-                          cy={p.y}
-                          r={timelineHoverIndex === idx ? 2.2 : 1.4}
-                          fill="#22d3ee"
-                          className="transition-all duration-150"
-                          onMouseEnter={() => setTimelineHoverIndex(idx)}
-                          onClick={() => setTimelineHoverIndex(idx)}
-                        />
-                      ))}
-                      {timelineHoverIndex !== null && tempTimelineData[timelineHoverIndex] && (
-                        <g>
-                          <line
-                            x1={tempTimelineData[timelineHoverIndex].x}
-                            x2={tempTimelineData[timelineHoverIndex].x}
-                            y1={tempTimelineData[timelineHoverIndex].y}
-                            y2={100}
-                            stroke="#0ea5e9"
-                            strokeWidth="0.5"
-                            strokeDasharray="2,2"
-                          />
-                        </g>
-                      )}
-                    </svg>
-                    {timelineHoverIndex !== null && tempTimelineData[timelineHoverIndex] && (
-                      <div className="pointer-events-none absolute top-2 left-3 rounded-xl bg-slate-900/90 border border-sky-500/40 px-3 py-1.5 text-[11px] text-slate-100 shadow-lg shadow-sky-900/30">
-                        <div className="font-semibold">
-                          {formatTemp(tempTimelineData[timelineHoverIndex].temp, unit)}°{unitSymbol}
-                        </div>
-                        <div className="text-[10px] text-slate-300">
-                          {tempTimelineData[timelineHoverIndex].timeLabel}
-                        </div>
+            {/* Daily Forecast List & Insight */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10 backdrop-blur-md">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+                  <Calendar className="h-4 w-4" /> 5-DAY FORECAST
+                </h3>
+                <div className="space-y-4">
+                  {daily.map((d, i) => (
+                    <div key={i} className="flex items-center justify-between group hover:bg-white/5 p-2 rounded-lg transition-colors">
+                      <span className="w-24 font-medium text-slate-200">{formatDayLabel(d.date, i)}</span>
+                      <div className="flex items-center gap-2 text-xs text-sky-300 bg-sky-500/10 px-2 py-1 rounded-full w-16 justify-center">
+                        <Droplets className="h-3 w-3" /> {d.precipProb}%
                       </div>
-                    )}
-                    <div className="pointer-events-none absolute bottom-1 left-3 right-3 flex justify-between text-[10px] text-slate-400">
-                      <span>
-                        {tempTimelineData[0] ? tempTimelineData[0].timeLabel : ""}
-                      </span>
-                      <span>
-                        {tempTimelineData[tempTimelineData.length - 1]
-                          ? tempTimelineData[tempTimelineData.length - 1].timeLabel
-                          : ""}
-                      </span>
+                      <div className="flex flex-1 items-center justify-end gap-3 px-4">
+                        <span className="text-sm text-slate-400 w-8 text-right">{d.lo}°</span>
+                        <div className="h-1.5 flex-1 rounded-full bg-slate-800 overflow-hidden relative max-w-[8rem]">
+                          <div className="absolute inset-y-0 rounded-full bg-gradient-to-r from-sky-500 to-amber-400 opacity-80" style={{ left: '10%', right: '10%' }}></div>
+                        </div>
+                        <span className="text-sm font-bold text-white w-8 text-right">{d.hi}°</span>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              )}
-            </section>
-
-            {/* Daily forecast */}
-            <section className="rounded-3xl border border-slate-800/50 bg-gradient-to-br from-slate-900/70 to-slate-900/30 backdrop-blur-xl p-6 shadow-xl shadow-slate-950/50">
-              <div className="flex items-center gap-2 mb-5">
-                <div className="h-1 w-1 rounded-full bg-sky-400 animate-pulse" />
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-400 font-semibold">5-Day Forecast</p>
-              </div>
-              <div className="space-y-3 text-sm">
-                {daily.map((d, idx) => (
-                  <div
-                    key={d.date}
-                    className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-slate-800/60 to-slate-900/40 backdrop-blur-sm px-5 py-4 border border-slate-700/30 hover:border-sky-500/40 hover:scale-[1.02] transition-all duration-300 shadow-lg hover:shadow-sky-500/10 group"
-                  >
-                    <div className="flex items-center gap-5 flex-1">
-                      <span className="w-24 text-slate-200 font-semibold group-hover:text-sky-300 transition-colors">
-                        {formatDayLabel(d.date, idx)}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <Droplets className="h-3.5 w-3.5 text-sky-400" />
-                        <span className="text-xs text-sky-300 font-medium">
-                          {d.precipProb}%
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4 text-base">
-                      <span className="text-slate-50 font-bold">{formatTemp(d.hi, unit)}°{unitSymbol}</span>
-                      <div className="h-1 w-8 rounded-full bg-gradient-to-r from-slate-400 to-slate-600" />
-                      <span className="text-slate-400 font-semibold">{formatTemp(d.lo, unit)}°{unitSymbol}</span>
-                    </div>
-                  </div>
-                ))}
               </div>
 
-              <div className="mt-6 text-xs md:text-sm text-slate-300">
-                <p className="font-semibold text-slate-100 mb-1">Weekly insight</p>
-                <p>
-                  {generateWeeklyInsight(daily, unit) || "Forecast pattern not available."}
-                </p>
+              <div className="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10 backdrop-blur-md flex flex-col justify-center">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4">Weekly Insight</h3>
+                <div className="text-slate-300 leading-loose text-lg font-light">
+                  "{generateWeeklyInsight(daily)}"
+                </div>
+                <div className="mt-6 flex items-center gap-3 text-xs text-slate-500">
+                  <div className="h-px flex-1 bg-slate-800"></div>
+                  <span>AI Summary</span>
+                  <div className="h-px flex-1 bg-slate-800"></div>
+                </div>
               </div>
-            </section>
-          </>
-        ) : null}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

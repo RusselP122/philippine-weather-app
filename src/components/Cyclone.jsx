@@ -1,8 +1,8 @@
-// src/components/Cyclone.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { MapContainer, TileLayer, LayersControl, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { getStormDisplayName } from "../utils/stormNaming";
 
 const { BaseLayer } = LayersControl;
 
@@ -15,89 +15,6 @@ const PAR_POLYGON = [
   [5.0, 135.0],
   [5.0, 115.0],
 ];
-
-const PAGASA_2026_NAMES = [
-  "ADA", "BASYANG", "CALOY", "DOMENG", "ESTER",
-  "FRANCISCO", "GARDO", "HENRY", "INDAY", "JOSIE",
-  "KIYAPO", "LUIS", "MAYMAY", "NENENG", "OBET",
-  "PILANDOK", "QUEENIE", "ROSAL", "SAMUEL", "TOMAS",
-  "UMBERTO", "VENUS", "WALDO", "YAYANG", "ZENY"
-];
-
-const STORM_NAME_2026_MAP = {};
-
-const AUTO_PAGASA_SEQUENCE_2026 = [];
-
-const autoPagasaAssignments = {};
-let autoPagasaIndex = 0;
-
-const getNextAutoPagasaAssignment = (key) => {
-  const upperKey = (key || "").toUpperCase();
-  if (autoPagasaAssignments[upperKey]) return autoPagasaAssignments[upperKey];
-  if (autoPagasaIndex >= AUTO_PAGASA_SEQUENCE_2026.length) return null;
-  const assignment = AUTO_PAGASA_SEQUENCE_2026[autoPagasaIndex++];
-  autoPagasaAssignments[upperKey] = assignment;
-  return assignment;
-};
-
-const normalizeName = (name) => (name || "").trim().toUpperCase();
-
-const getStormNames = (rawName, classificationCode, insidePar) => {
-  const upper = normalizeName(rawName);
-
-  if (!upper) {
-    return { displayName: "Tropical Disturbance", intlName: null, pagasaName: null };
-  }
-
-  if (upper.includes("INVEST") || classificationCode === "LPA") {
-    return { displayName: "Low Pressure Area", intlName: null, pagasaName: null };
-  }
-
-  let intlName = rawName;
-  let pagasaName = null;
-
-  const mapped = STORM_NAME_2026_MAP[upper] || autoPagasaAssignments[upper];
-  if (mapped) {
-    intlName = mapped.intl;
-    pagasaName = mapped.pagasa;
-  } else if (PAGASA_2026_NAMES.includes(upper)) {
-    pagasaName = upper.charAt(0) + upper.slice(1).toLowerCase();
-  }
-
-  if (!insidePar) {
-    return { displayName: intlName, intlName, pagasaName: null };
-  }
-
-  if (classificationCode === "TD") {
-    if (pagasaName) {
-      return { displayName: pagasaName, intlName, pagasaName };
-    }
-    const auto = getNextAutoPagasaAssignment(upper);
-    if (auto) {
-      intlName = auto.intl;
-      pagasaName = auto.pagasa;
-      return { displayName: pagasaName, intlName, pagasaName };
-    }
-    return { displayName: "Tropical Depression inside PAR", intlName, pagasaName: null };
-  }
-
-  if (["TS", "STS", "TY", "STY"].includes(classificationCode)) {
-    if (!pagasaName && insidePar) {
-      const auto = getNextAutoPagasaAssignment(upper);
-      if (auto) {
-        intlName = auto.intl;
-        pagasaName = auto.pagasa;
-      }
-    }
-
-    if (pagasaName && intlName) {
-      return { displayName: `${pagasaName} (${intlName})`, intlName, pagasaName };
-    }
-    return { displayName: intlName, intlName, pagasaName };
-  }
-
-  return { displayName: intlName || rawName, intlName: intlName || rawName, pagasaName };
-};
 
 function isInsidePar(lat, lon) {
   let inside = false;
@@ -358,7 +275,7 @@ const CycloneMapLogic = () => {
         const categoryInfo = getStormCategory(winds10MinKph);
         const rawName = stormName || storm.atcf_id || "Tropical Disturbance";
         const insidePar = isInsidePar(latitude, longitude);
-        const { displayName } = getStormNames(rawName, categoryInfo.abbrev, insidePar);
+        const { displayName } = getStormDisplayName(rawName, categoryInfo.abbrev, insidePar, storm.atcf_id);
         const gustKph = toGustKmH(winds10MinKph);
         const categoryClass = categoryInfo.abbrev.toLowerCase();
         const iconSize = sizeMap[categoryInfo.abbrev] || [32, 32];

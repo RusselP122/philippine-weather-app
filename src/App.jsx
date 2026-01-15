@@ -9,6 +9,8 @@ import TropicalOutlook from "./components/TropicalOutlook";
 import TropicalCycloneInformation from "./components/TropicalCycloneInformation";
 import Weather from "./components/Weather";
 import Alert from "./components/alert";
+import Warning from "./components/Warning";
+import Earthquake from "./components/Earthquake";
 import Footer from "./components/Footer";
 
 function App() {
@@ -92,6 +94,30 @@ function App() {
         <Navbar />
         <main className="flex-grow">
           <Alert />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (path === "/warning") {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <Warning />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (path === "/earthquake") {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <Earthquake />
         </main>
         <Footer />
       </div>

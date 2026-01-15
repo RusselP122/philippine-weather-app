@@ -229,6 +229,12 @@ function buildRainfallSummary(alerts) {
         return;
       }
 
+      // Explicitly check for color-coded warning levels (Yellow/Orange/Red)
+      if (["red", "orange", "yellow"].includes(pType)) {
+        heavy.add(name);
+        return;
+      }
+
       if (severity.includes("severe") || severity.includes("extreme")) {
         heavy.add(name);
       } else if (severity.includes("moderate")) {
@@ -259,9 +265,35 @@ function buildThunderstormSummary(alerts) {
       const name = prov.province || prov.areaDesc;
       if (!name) return;
       const pType = String(prov.type || "").toLowerCase();
-      if (pType === "expecting" || /expected/i.test(msg)) {
+      const headline = String(alert.headline || "").toLowerCase();
+      const subtype = String(alert.subtype || "").toLowerCase();
+
+      // Prioritize explicit type from API
+      if (pType === "expecting") {
+        expected.add(name);
+        return;
+      }
+      if (pType === "affecting") {
+        affecting.add(name);
+        return;
+      }
+
+      // Check Headline/Subtype keywords
+      if (headline.includes("watch") || subtype.includes("watch")) {
+        expected.add(name);
+        return;
+      }
+      if (headline.includes("advisory") || subtype.includes("advisory")) {
+        affecting.add(name);
+        return;
+      }
+
+      // Dangerous fallback: "expected" is common in "expected to persist" (Affecting)
+      // Only use if we really have no other signal.
+      if (/expected to develop/i.test(msg) || /estimated to arrive/i.test(msg)) {
         expected.add(name);
       } else {
+        // Default to affecting for Thunderstorms if active and not explicitly a Watch
         affecting.add(name);
       }
     });
@@ -332,6 +364,18 @@ const Alert = () => {
             return false;
           }
           if (headlineLower.includes("thunderstorm watch") || subtypeLower.includes("thunderstorm watch") || eventLower.includes("thunderstorm watch")) {
+            return false;
+          }
+
+          // EXCLUDE Tropical Cyclone / Signals (Handled in Warning.jsx)
+          if (
+            headlineLower.includes("tropical cyclone") ||
+            eventLower.includes("tropical cyclone") ||
+            subtypeLower.includes("tropical cyclone") ||
+            headlineLower.includes("signal no.") ||
+            messageLower.includes("signal no.") ||
+            headlineLower.includes("tcws")
+          ) {
             return false;
           }
 
