@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { Activity, AlertTriangle, Layers, Calendar } from "lucide-react";
+import { Activity, AlertTriangle, Layers, Calendar, ChevronDown, ChevronUp } from "lucide-react";
 
 // Internal component to handle map movement
 const MapController = ({ center, zoom }) => {
@@ -17,7 +17,7 @@ const MapController = ({ center, zoom }) => {
     return null;
 };
 
-const EARTHQUAKE_API = "https://data.garbinwx.cloud/api/earthquakes.json";
+const EARTHQUAKE_API = "/api/earthquake-data";
 
 const PH_BOUNDS = [
     [4, 116],
@@ -50,6 +50,9 @@ const Earthquake = () => {
     // Filter State
     const [filterType, setFilterType] = useState('today'); // today, yesterday, month, year, custom
     const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
+
+    // Legend State
+    const [isLegendOpen, setIsLegendOpen] = useState(true);
 
     const handleQuakeClick = (quake) => {
         if (!quake || !quake.geometry) return;
@@ -296,22 +299,33 @@ const Earthquake = () => {
                         </MapContainer>
 
                         {/* Legend Overlay */}
-                        <div className="absolute bottom-4 left-4 z-[400] rounded-lg border border-slate-700/50 bg-slate-900/90 p-3 backdrop-blur-sm shadow-xl">
-                            <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Magnitude Scale</h3>
-                            <div className="space-y-1.5">
-                                {[
-                                    { label: "Major (7+)", color: "#7f00ff" },
-                                    { label: "Strong (6.0-6.9)", color: "#ff0000" },
-                                    { label: "Moderate (5.0-5.9)", color: "#ff8c00" },
-                                    { label: "Light (4.0-4.9)", color: "#ffca28" },
-                                    { label: "Minor (<4.0)", color: "#4caf50" },
-                                ].map((item) => (
-                                    <div key={item.label} className="flex items-center gap-2">
-                                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }}></span>
-                                        <span className="text-[10px] text-slate-300">{item.label}</span>
-                                    </div>
-                                ))}
+                        <div className="absolute bottom-4 left-4 z-[400] rounded-lg border border-slate-700/50 bg-slate-900/90 p-3 backdrop-blur-sm shadow-xl transition-all duration-300 min-w-[160px]">
+                            <div
+                                className="flex items-center justify-between gap-2 cursor-pointer"
+                                onClick={() => setIsLegendOpen(!isLegendOpen)}
+                            >
+                                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Magnitude Scale</h3>
+                                <button className="text-slate-400 hover:text-slate-200 transition-colors">
+                                    {isLegendOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+                                </button>
                             </div>
+
+                            {isLegendOpen && (
+                                <div className="space-y-1.5 mt-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                    {[
+                                        { label: "Major (7+)", color: "#7f00ff" },
+                                        { label: "Strong (6.0-6.9)", color: "#ff0000" },
+                                        { label: "Moderate (5.0-5.9)", color: "#ff8c00" },
+                                        { label: "Light (4.0-4.9)", color: "#ffca28" },
+                                        { label: "Minor (<4.0)", color: "#4caf50" },
+                                    ].map((item) => (
+                                        <div key={item.label} className="flex items-center gap-2">
+                                            <span className="h-2 w-2 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)]" style={{ backgroundColor: item.color }}></span>
+                                            <span className="text-[10px] text-slate-300">{item.label}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
 

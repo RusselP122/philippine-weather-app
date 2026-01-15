@@ -4,7 +4,7 @@ import "leaflet/dist/leaflet.css";
 import { CloudRain, Zap, AlertTriangle, Wind } from "lucide-react";
 
 // Robustly handle API URL - fallback to known working endpoint patterns if needed
-const ALERTS_URL = "https://data.garbinwx.cloud/api/cap-alerts.json";
+const ALERTS_URL = "/api/cap-alerts";
 
 const PH_BOUNDS = [
   [4, 116],

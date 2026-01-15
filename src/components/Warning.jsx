@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Polygon, Tooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { AlertCircle, Wind, AlertTriangle } from "lucide-react";
 
-const ALERT_API = "https://data.garbinwx.cloud/api/cap-alerts.json";
+const ALERT_API = "/api/cap-alerts";
 
 const PH_BOUNDS = [
     [4, 116],
