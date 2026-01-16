@@ -208,66 +208,86 @@ function collectProvincePolygons(alerts) {
 }
 
 function buildRainfallSummary(alerts) {
-  const red = new Set();
-  const orange = new Set();
-  const yellow = new Set();
-  const severe = new Set(); // Fallback for heavy but uncolored
-  const moderate = new Set();
-  const expected = new Set();
+  // Structure: { red: { "Cebu": Set("Bogo", "San Remigio") }, ... }
+  const categories = {
+    red: {},
+    orange: {},
+    yellow: {},
+    severe: {},
+    moderate: {},
+    expected: {},
+  };
+
+  const addToCategory = (cat, province, municipality) => {
+    // If no province name, try to use municipality as main, or skip?
+    // Using a fallback "Unspecified Area" if absolutely nothing
+    const provKey = province || "General Area";
+
+    if (!categories[cat][provKey]) {
+      categories[cat][provKey] = new Set();
+    }
+
+    // Only add municipality if it exists and is different from province/generic
+    if (municipality && municipality !== province) {
+      categories[cat][provKey].add(municipality);
+    }
+  };
 
   alerts.forEach((alert) => {
     const severityText = String(alert.subtype || "");
-    const severity = severityText.toLowerCase();
+    let severity = severityText.toLowerCase();
+
+    // Sometimes severity is in the type or note, but we stick to existing logic
     if (severity.includes("final")) {
       return;
     }
+
     const provinces = normalizeProvinces(alert.provinces);
     provinces.forEach((prov) => {
-      const name = prov.province || prov.areaDesc;
-      if (!name) return;
+      // Extract province and potential municipality
+      // Fallback: existing code used 'prov.province || prov.areaDesc'
+      // We prioritize exact 'province' field for grouping.
+      const provinceName = prov.province || prov.areaDesc || "Unknown Province";
+      const municipalityName = prov.municipality || "";
+
       const pType = String(prov.type || "").toLowerCase();
 
       if (pType === "expecting") {
-        expected.add(name);
+        addToCategory("expected", provinceName, municipalityName);
         return;
       }
 
       // Explicitly check for color-coded warning levels
       if (pType === "red") {
-        red.add(name);
+        addToCategory("red", provinceName, municipalityName);
         return;
       }
       if (pType === "orange") {
-        orange.add(name);
+        addToCategory("orange", provinceName, municipalityName);
         return;
       }
       if (pType === "yellow") {
-        yellow.add(name);
+        addToCategory("yellow", provinceName, municipalityName);
         return;
       }
 
       // Semantic checks if color is missing
       if (severity.includes("severe") || severity.includes("extreme")) {
-        // Fallback for heavy rain without clear color
-        severe.add(name);
+        addToCategory("severe", provinceName, municipalityName);
       } else if (severity.includes("moderate")) {
-        moderate.add(name);
+        addToCategory("moderate", provinceName, municipalityName);
       } else {
-        if (!red.has(name) && !orange.has(name) && !yellow.has(name) && !severe.has(name) && !moderate.has(name)) {
-          moderate.add(name);
-        }
+        // Default to moderate if not caught elsewhere? 
+        // Logic from before: "if not heavy and not moderate -> moderate"
+        // We'll check if it exists in heavy categories first? 
+        // Existing logic was simple else -> moderate.
+        // We will just simplify: if unknown severity but active -> moderate
+        addToCategory("moderate", provinceName, municipalityName);
       }
     });
   });
 
-  return {
-    red: Array.from(red).sort(),
-    orange: Array.from(orange).sort(),
-    yellow: Array.from(yellow).sort(),
-    severe: Array.from(severe).sort(), // Can append to Red or show mostly
-    moderate: Array.from(moderate).sort(),
-    expected: Array.from(expected).sort(),
-  };
+  return categories;
 }
 
 function buildThunderstormSummary(alerts) {
@@ -324,6 +344,30 @@ function buildThunderstormSummary(alerts) {
 function formatList(items) {
   if (!items || !items.length) return "None indicated.";
   return items.join(", ");
+}
+
+function renderAlertList(categoryData) {
+  if (!categoryData) return null;
+  const provinces = Object.keys(categoryData).sort();
+  if (provinces.length === 0) return null;
+
+  return (
+    <div className="pl-4 text-[11px] text-slate-400 leading-relaxed">
+      {provinces.map((prov) => {
+        const municipalities = Array.from(categoryData[prov]).sort();
+        return (
+          <div key={prov} className="mb-2 last:mb-0">
+            <span className="font-medium text-slate-300 block">{prov}</span>
+            {municipalities.length > 0 && (
+              <p className="pl-3 mt-0.5 text-slate-500 border-l border-slate-700/50">
+                {municipalities.join(", ")}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 const Alert = () => {
@@ -554,7 +598,7 @@ const Alert = () => {
             </div>
             <div>
               <p className="text-sm leading-relaxed text-slate-400">
-                Real-time official advisory polygons from local hydrometeorological agencies.
+                Real-time official advisory polygons from official monitoring agencies.
               </p>
               <div className="mt-3 h-px w-28 bg-gradient-to-r from-amber-400/70 via-orange-300/60 to-transparent" />
             </div>
@@ -586,16 +630,16 @@ const Alert = () => {
           </div>
         </header>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:h-[calc(100vh-9rem)]">
           {/* Map Section */}
-          <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/50 shadow-2xl shadow-slate-950/50">
+          <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/50 shadow-2xl shadow-slate-950/50 flex flex-col">
             <MapContainer
               center={[12.8797, 121.774]}
               zoom={6}
               minZoom={4.5}
               maxZoom={11}
               scrollWheelZoom
-              className="h-[60vh] w-full"
+              className="h-[60vh] lg:h-full w-full"
               maxBounds={PH_BOUNDS}
               maxBoundsViscosity={0.8}
             >
@@ -708,7 +752,7 @@ const Alert = () => {
           </div>
 
           {/* Sidebar Summary */}
-          <aside className="rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-900/70 to-slate-900/40 p-6 shadow-xl">
+          <aside className="rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-900/70 to-slate-900/40 p-6 shadow-xl lg:h-full lg:overflow-y-auto custom-scrollbar">
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                 {mode === "rainfall" ? "Rainfall Summary" : "Thunderstorm Status"}
@@ -742,66 +786,70 @@ const Alert = () => {
                 <div className="divide-y divide-slate-800/50">
                   <div className="pb-4">
                     {/* Red / Heavy */}
-                    {(rainfallSummary.red.length > 0 || rainfallSummary.severe.length > 0) && (
+                    {Object.keys(rainfallSummary.red).length > 0 && (
                       <div className="mb-4">
                         <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-red-400">
                           <span className="h-2 w-2 rounded-full bg-red-600 animate-pulse"></span>
                           Red Warning (Torrential)
                         </p>
-                        <p className="text-[11px] leading-relaxed text-slate-400 pl-4">
-                          {formatList([...rainfallSummary.red, ...rainfallSummary.severe])}
+                        {renderAlertList(rainfallSummary.red)}
+                      </div>
+                    )}
+
+                    {/* Severe (Uncolored Heavy) */}
+                    {Object.keys(rainfallSummary.severe).length > 0 && (
+                      <div className="mb-4">
+                        <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-red-400">
+                          <AlertTriangle className="h-3 w-3 text-red-500" />
+                          Severe Rainfall
                         </p>
+                        {renderAlertList(rainfallSummary.severe)}
                       </div>
                     )}
 
                     {/* Orange */}
-                    {rainfallSummary.orange.length > 0 && (
+                    {Object.keys(rainfallSummary.orange).length > 0 && (
                       <div className="mb-4">
                         <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-orange-400">
                           <span className="h-2 w-2 rounded-full bg-orange-500"></span>
                           Orange Warning (Intense)
                         </p>
-                        <p className="text-[11px] leading-relaxed text-slate-400 pl-4">
-                          {formatList(rainfallSummary.orange)}
-                        </p>
+                        {renderAlertList(rainfallSummary.orange)}
                       </div>
                     )}
 
                     {/* Yellow */}
-                    {rainfallSummary.yellow.length > 0 && (
+                    {Object.keys(rainfallSummary.yellow).length > 0 && (
                       <div>
                         <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-yellow-400">
                           <span className="h-2 w-2 rounded-full bg-yellow-500"></span>
                           Yellow Warning (Heavy)
                         </p>
-                        <p className="text-[11px] leading-relaxed text-slate-400 pl-4">
-                          {formatList(rainfallSummary.yellow)}
-                        </p>
+                        {renderAlertList(rainfallSummary.yellow)}
                       </div>
                     )}
 
-                    {/* Fallback if no specific colors but logic led here? - Covered by checks above */}
-                    {rainfallSummary.red.length === 0 && rainfallSummary.severe.length === 0 && rainfallSummary.orange.length === 0 && rainfallSummary.yellow.length === 0 && (
-                      <p className="text-[11px] text-slate-500 italic pl-3.5">No heavy rainfall warnings active.</p>
-                    )}
+                    {/* Fallback */}
+                    {Object.keys(rainfallSummary.red).length === 0 &&
+                      Object.keys(rainfallSummary.severe).length === 0 &&
+                      Object.keys(rainfallSummary.orange).length === 0 &&
+                      Object.keys(rainfallSummary.yellow).length === 0 && (
+                        <p className="text-[11px] text-slate-500 italic pl-3.5">No heavy rainfall warnings active.</p>
+                      )}
                   </div>
                   <div className="py-4">
                     <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-sky-200">
                       <span className="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
                       Light-Moderate Rain
                     </p>
-                    <p className="text-[11px] leading-relaxed text-slate-400 pl-3.5">
-                      {formatList(rainfallSummary.moderate)}
-                    </p>
+                    {renderAlertList(rainfallSummary.moderate)}
                   </div>
                   <div className="pt-4">
                     <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-300">
                       <span className="h-1.5 w-1.5 rounded-full bg-slate-500"></span>
                       Expecting Rain
                     </p>
-                    <p className="text-[11px] leading-relaxed text-slate-400 pl-3.5">
-                      {formatList(rainfallSummary.expected)}
-                    </p>
+                    {renderAlertList(rainfallSummary.expected)}
                   </div>
                 </div>
               )}
