@@ -208,7 +208,10 @@ function collectProvincePolygons(alerts) {
 }
 
 function buildRainfallSummary(alerts) {
-  const heavy = new Set();
+  const red = new Set();
+  const orange = new Set();
+  const yellow = new Set();
+  const severe = new Set(); // Fallback for heavy but uncolored
   const moderate = new Set();
   const expected = new Set();
 
@@ -229,18 +232,28 @@ function buildRainfallSummary(alerts) {
         return;
       }
 
-      // Explicitly check for color-coded warning levels (Yellow/Orange/Red)
-      if (["red", "orange", "yellow"].includes(pType)) {
-        heavy.add(name);
+      // Explicitly check for color-coded warning levels
+      if (pType === "red") {
+        red.add(name);
+        return;
+      }
+      if (pType === "orange") {
+        orange.add(name);
+        return;
+      }
+      if (pType === "yellow") {
+        yellow.add(name);
         return;
       }
 
+      // Semantic checks if color is missing
       if (severity.includes("severe") || severity.includes("extreme")) {
-        heavy.add(name);
+        // Fallback for heavy rain without clear color
+        severe.add(name);
       } else if (severity.includes("moderate")) {
         moderate.add(name);
       } else {
-        if (!heavy.has(name) && !moderate.has(name)) {
+        if (!red.has(name) && !orange.has(name) && !yellow.has(name) && !severe.has(name) && !moderate.has(name)) {
           moderate.add(name);
         }
       }
@@ -248,7 +261,10 @@ function buildRainfallSummary(alerts) {
   });
 
   return {
-    heavy: Array.from(heavy).sort(),
+    red: Array.from(red).sort(),
+    orange: Array.from(orange).sort(),
+    yellow: Array.from(yellow).sort(),
+    severe: Array.from(severe).sort(), // Can append to Red or show mostly
     moderate: Array.from(moderate).sort(),
     expected: Array.from(expected).sort(),
   };
@@ -725,13 +741,49 @@ const Alert = () => {
               {!loading && !error && mode === "rainfall" && (
                 <div className="divide-y divide-slate-800/50">
                   <div className="pb-4">
-                    <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-yellow-200">
-                      <span className="h-1.5 w-1.5 rounded-full bg-yellow-400"></span>
-                      Heaviest Rainfall
-                    </p>
-                    <p className="text-[11px] leading-relaxed text-slate-400 pl-3.5">
-                      {formatList(rainfallSummary.heavy)}
-                    </p>
+                    {/* Red / Heavy */}
+                    {(rainfallSummary.red.length > 0 || rainfallSummary.severe.length > 0) && (
+                      <div className="mb-4">
+                        <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-red-400">
+                          <span className="h-2 w-2 rounded-full bg-red-600 animate-pulse"></span>
+                          Red Warning (Torrential)
+                        </p>
+                        <p className="text-[11px] leading-relaxed text-slate-400 pl-4">
+                          {formatList([...rainfallSummary.red, ...rainfallSummary.severe])}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Orange */}
+                    {rainfallSummary.orange.length > 0 && (
+                      <div className="mb-4">
+                        <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-orange-400">
+                          <span className="h-2 w-2 rounded-full bg-orange-500"></span>
+                          Orange Warning (Intense)
+                        </p>
+                        <p className="text-[11px] leading-relaxed text-slate-400 pl-4">
+                          {formatList(rainfallSummary.orange)}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Yellow */}
+                    {rainfallSummary.yellow.length > 0 && (
+                      <div>
+                        <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-yellow-400">
+                          <span className="h-2 w-2 rounded-full bg-yellow-500"></span>
+                          Yellow Warning (Heavy)
+                        </p>
+                        <p className="text-[11px] leading-relaxed text-slate-400 pl-4">
+                          {formatList(rainfallSummary.yellow)}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Fallback if no specific colors but logic led here? - Covered by checks above */}
+                    {rainfallSummary.red.length === 0 && rainfallSummary.severe.length === 0 && rainfallSummary.orange.length === 0 && rainfallSummary.yellow.length === 0 && (
+                      <p className="text-[11px] text-slate-500 italic pl-3.5">No heavy rainfall warnings active.</p>
+                    )}
                   </div>
                   <div className="py-4">
                     <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-sky-200">
