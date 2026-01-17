@@ -117,72 +117,85 @@ function normalizeProvinces(provinces) {
     return [];
 }
 
-function collectSignalPolygons(alerts) {
-    const results = [];
-    alerts.forEach((alert) => {
-        const provinces = normalizeProvinces(alert.provinces);
-        provinces.forEach((prov, index) => {
-            const name = prov.province || prov.areaDesc;
-            if (!name) return;
-            let latlngs = null;
-            if (prov.shape) {
-                latlngs = shapeToLatLngs(prov.shape);
-            }
-            if (!latlngs && prov.polygon) {
-                latlngs = polygonStringToLatLngs(prov.polygon);
-            }
-            if (!latlngs || !latlngs.length) return;
 
-            // Determine signal level
-            // Check province level info first, then alert hierarchy
-            const combinedText = `${prov.headline || ""} ${prov.description || ""} ${alert.headline || ""} ${alert.description || ""} ${alert.subtype || ""}`;
-            const signal = parseSignalLevel(combinedText);
-
-            if (signal) {
-                results.push({
-                    id: `${alert.identifier || alert.headline || "tcws"}-${name}-${index}`,
-                    name,
-                    latlngs,
-                    alert,
-                    signal,
-                });
-            }
-        });
-    });
-    return results;
-}
-
-function buildSignalSummary(alerts) {
-    const summary = {
-        1: new Set(),
-        2: new Set(),
-        3: new Set(),
-        4: new Set(),
-        5: new Set(),
-    };
+function getHighestSignalPerArea(alerts) {
+    const areaMap = new Map(); // Key: "Province|Municipality", Value: { maxSignal, alert, provData }
 
     alerts.forEach((alert) => {
         const provinces = normalizeProvinces(alert.provinces);
         provinces.forEach((prov) => {
-            const name = prov.province || prov.areaDesc;
-            if (!name) return;
+            const provinceName = prov.province || prov.areaDesc;
+            const municipalityName = prov.municipality || "";
+            if (!provinceName) return;
 
             const combinedText = `${prov.headline || ""} ${prov.description || ""} ${alert.headline || ""} ${alert.description || ""} ${alert.subtype || ""}`;
             const signal = parseSignalLevel(combinedText);
 
-            if (signal && summary[signal]) {
-                summary[signal].add(name);
+            if (signal) {
+                const key = `${provinceName}|${municipalityName}`;
+                if (!areaMap.has(key) || signal > areaMap.get(key).maxSignal) {
+                    areaMap.set(key, { maxSignal: signal, alert, prov });
+                }
             }
         });
     });
 
-    return {
-        1: Array.from(summary[1]).sort(),
-        2: Array.from(summary[2]).sort(),
-        3: Array.from(summary[3]).sort(),
-        4: Array.from(summary[4]).sort(),
-        5: Array.from(summary[5]).sort(),
+    return Array.from(areaMap.values());
+}
+
+function collectSignalPolygons(alerts) {
+    const uniqueAreas = getHighestSignalPerArea(alerts);
+    const results = [];
+
+    uniqueAreas.forEach(({ maxSignal, alert, prov }, index) => {
+        const name = prov.province || prov.areaDesc;
+        let latlngs = null;
+        if (prov.shape) {
+            latlngs = shapeToLatLngs(prov.shape);
+        }
+        if (!latlngs && prov.polygon) {
+            latlngs = polygonStringToLatLngs(prov.polygon);
+        }
+
+        if (latlngs && latlngs.length) {
+            results.push({
+                id: `${alert.identifier || "tcws"}-${name}-${index}-${maxSignal}`,
+                name,
+                latlngs,
+                alert,
+                signal: maxSignal,
+            });
+        }
+    });
+
+    return results;
+}
+
+function buildSignalSummary(alerts) {
+    const uniqueAreas = getHighestSignalPerArea(alerts);
+    const summary = {
+        1: {},
+        2: {},
+        3: {},
+        4: {},
+        5: {},
     };
+
+    uniqueAreas.forEach(({ maxSignal, prov }) => {
+        const provinceName = prov.province || prov.areaDesc;
+        const municipalityName = prov.municipality || "";
+
+        if (summary[maxSignal]) {
+            if (!summary[maxSignal][provinceName]) {
+                summary[maxSignal][provinceName] = new Set();
+            }
+            if (municipalityName && municipalityName !== provinceName) {
+                summary[maxSignal][provinceName].add(municipalityName);
+            }
+        }
+    });
+
+    return summary;
 }
 
 function formatList(items) {
@@ -212,6 +225,25 @@ function getCycloneName(alerts) {
         }
     }
     return "Active Tropical Cyclone";
+}
+
+function renderSignalList(data) {
+    if (!data || Object.keys(data).length === 0) return <p className="text-[11px] text-slate-500 pl-4">None indicated.</p>;
+
+    return (
+        <ul className="space-y-3 pl-4">
+            {Object.entries(data).sort().map(([province, municipalities]) => (
+                <li key={province} className="text-[11px] leading-relaxed text-slate-400">
+                    <span className="font-semibold text-slate-300 block">{province}</span>
+                    {municipalities.size > 0 && (
+                        <span className="block text-slate-500 pl-2 mt-0.5 border-l-2 border-slate-800">
+                            {Array.from(municipalities).sort().join(", ")}
+                        </span>
+                    )}
+                </li>
+            ))}
+        </ul>
+    );
 }
 
 const Warning = () => {
@@ -301,7 +333,7 @@ const Warning = () => {
     }, []);
 
     const signalPolygons = useMemo(
-        () => collectSignalPolygons(alerts),
+        () => collectSignalPolygons(alerts).sort((a, b) => a.signal - b.signal),
         [alerts]
     );
 
@@ -310,7 +342,7 @@ const Warning = () => {
         [alerts]
     );
 
-    const hasSignals = Object.values(signalSummary).some(list => list.length > 0);
+    const hasSignals = Object.values(signalSummary).some(obj => Object.keys(obj).length > 0);
     const cycloneName = useMemo(() => getCycloneName(alerts), [alerts]);
 
     return (
@@ -339,16 +371,16 @@ const Warning = () => {
                     </div>
                 </header>
 
-                <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:h-[calc(100vh-9rem)]">
                     {/* Map Section */}
-                    <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/50 shadow-2xl shadow-slate-950/50">
+                    <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/50 shadow-2xl shadow-slate-950/50 flex flex-col">
                         <MapContainer
                             center={[12.8797, 121.774]}
                             zoom={6}
                             minZoom={4.5}
                             maxZoom={11}
                             scrollWheelZoom
-                            className="h-[60vh] w-full"
+                            className="h-[60vh] lg:h-full w-full"
                             maxBounds={PH_BOUNDS}
                             maxBoundsViscosity={0.8}
                             style={{ background: '#0f172a' }}
@@ -401,7 +433,7 @@ const Warning = () => {
                     </div>
 
                     {/* Sidebar Summary */}
-                    <aside className="rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-900/70 to-slate-900/40 p-6 shadow-xl">
+                    <aside className="rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-900/70 to-slate-900/40 p-6 shadow-xl lg:h-full lg:overflow-y-auto custom-scrollbar">
                         <div className="mb-6 flex items-center justify-between">
                             <div>
                                 <h2 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
@@ -443,8 +475,8 @@ const Warning = () => {
                                     {hasSignals ? (
                                         <>
                                             {[5, 4, 3, 2, 1].map(num => {
-                                                const list = signalSummary[num];
-                                                if (!list.length) return null;
+                                                const data = signalSummary[num];
+                                                if (Object.keys(data).length === 0) return null;
                                                 const color = SIGNAL_COLORS[num];
 
                                                 return (
@@ -453,9 +485,7 @@ const Warning = () => {
                                                             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color.fill }}></span>
                                                             Signal No. {num}
                                                         </p>
-                                                        <p className="text-[11px] leading-relaxed text-slate-400 pl-4">
-                                                            {formatList(list)}
-                                                        </p>
+                                                        {renderSignalList(data)}
                                                     </div>
                                                 );
                                             })}

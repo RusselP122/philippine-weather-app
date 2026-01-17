@@ -1,10 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MapContainer, TileLayer, LayersControl, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { getStormDisplayName } from "../utils/stormNaming";
 
-const { BaseLayer } = LayersControl;
+const { BaseLayer, Overlay } = LayersControl;
+
+const OWM_API_KEY = "138ee97bc2df4029270f36075b709726"; // Using shared key
+const precipLayer = `https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`;
+const pressureLayer = `https://tile.openweathermap.org/map/pressure_new/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`;
+const windLayer = `https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`;
 
 const PAR_POLYGON = [
   [5.0, 115.0],
@@ -31,6 +37,34 @@ function isInsidePar(lat, lon) {
   }
   return inside;
 }
+
+// Helper: Custom Leaflet Control to stack seamlessly with other controls
+const LeafletCustomControl = ({ position, children }) => {
+  const map = useMap();
+  const [container, setContainer] = useState(null);
+
+  useEffect(() => {
+    if (!map) return;
+    const control = L.control({ position });
+    const div = L.DomUtil.create("div", "leaflet-custom-control"); // base class
+
+    control.onAdd = () => {
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
+      return div;
+    };
+
+    control.addTo(map);
+    setContainer(div);
+
+    return () => {
+      control.remove();
+    };
+  }, [map, position]);
+
+  if (!container) return null;
+  return createPortal(children, container);
+};
 
 // Helper component that forces the Leaflet map to recalculate its size
 // whenever fullscreen mode is toggled, so tiles and controls render correctly.
@@ -407,6 +441,24 @@ const CycloneMapLogic = () => {
     const stormInterval = setInterval(fetchStormData, 600000);
     const positionInterval = setInterval(() => updateStormPositions(), 10000);
 
+    // Create a custom pane for OWM layers to ensure they are always above base maps
+    const OWM_PANE = "owmPane";
+    if (!map.getPane(OWM_PANE)) {
+      map.createPane(OWM_PANE);
+      map.getPane(OWM_PANE).style.zIndex = 500; // Above tilePane (200) and overlayPane (400)
+    }
+
+    // OWM Layers
+    const owmTiles = {
+      precip: new L.TileLayer(precipLayer, { opacity: 0.7, pane: OWM_PANE, maxZoom: 18 }),
+      pressure: new L.TileLayer(pressureLayer, { opacity: 0.6, pane: OWM_PANE, maxZoom: 18 }),
+      wind: new L.TileLayer(windLayer, { opacity: 0.6, pane: OWM_PANE, maxZoom: 18 }),
+    };
+
+    const btnPrecip = document.getElementById("btn-precip");
+    const btnPressure = document.getElementById("btn-pressure");
+    const btnWind = document.getElementById("btn-wind");
+
     // RainViewer API & Animation
     let apiData = {};
     let mapFrames = [];
@@ -415,7 +467,7 @@ const CycloneMapLogic = () => {
     let radarLayers = {};
     let satOverlayLayer = null; // for Radar + Satellite combined mode
     let optionKind = "satellite"; // dataset driving animation: "radar" or "satellite"
-    let displayMode = "satellite"; // UI mode: "radar" | "satellite" | "both" | "none"
+    let displayMode = "satellite"; // UI mode: "radar" | "satellite" | "both" | "precip" | "pressure" | "wind"
     const optionTileSize = 256;
     let optionColorScheme = 2;
     const optionSmoothData = 1;
@@ -560,26 +612,69 @@ const CycloneMapLogic = () => {
     }
 
     function clearRadarLayers() {
+      // 1. Clear tracked layers
       for (let key in radarLayers) {
-        map.removeLayer(radarLayers[key]);
+        if (map.hasLayer(radarLayers[key])) {
+          map.removeLayer(radarLayers[key]);
+        }
       }
       radarLayers = {};
       mapFrames = [];
+      latestFrameIndex = -1;
+      lastPastFramePosition = -1;
+
       if (satOverlayLayer) {
-        map.removeLayer(satOverlayLayer);
+        if (map.hasLayer(satOverlayLayer)) map.removeLayer(satOverlayLayer);
         satOverlayLayer = null;
       }
       timestampEl.innerHTML = "";
+
+      // 2. Nuclear Option: Scan all map layers and remove any untracked RainViewer tiles
+      map.eachLayer((layer) => {
+        if (layer instanceof L.TileLayer) {
+          // efficient check for RainViewer domain in the tile URL template
+          const url = layer._url || (layer.options && layer.options.url) || "";
+          if (url.includes("rainviewer.com")) {
+            map.removeLayer(layer);
+          }
+        }
+      });
+
+      // 3. Clear OWM layers
+      Object.values(owmTiles).forEach(layer => {
+        if (map.hasLayer(layer)) map.removeLayer(layer);
+      });
     }
 
     function initialize(api, kind) {
-      stop();
       clearRadarLayers();
+      stop();
       animationPosition = 0;
 
-
-
       radarControls.style.display = "flex";
+
+      // Check if kind is one of the OWM layers
+      if (["precip", "pressure", "wind"].includes(kind)) {
+        if (btnPlay) btnPlay.style.display = 'none'; // Hide play button for static layers
+
+        // Force hide loading indicator with fresh lookup
+        const currentLoader = document.getElementById("cyclone-loading");
+        if (currentLoader) currentLoader.classList.add("hidden");
+
+        const layer = owmTiles[kind];
+        if (layer) {
+          layer.addTo(map);
+        }
+        return;
+      }
+
+      // Ensure loading indicator is reset for RainViewer if needed, though they manage their own events.
+      // But we should probably ensure it's hidden if we are just starting fresh.
+      // Actually, keep it simple: the rainviewer callbacks (startLoadingTile) will show it if needed.
+
+
+      // Otherwise logic for RainViewer
+      if (btnPlay) btnPlay.style.display = 'block';
 
       if (!api) return;
 
@@ -658,12 +753,23 @@ const CycloneMapLogic = () => {
       setActive(btnRadar, mode === "radar");
       setActive(btnSatellite, mode === "satellite");
       setActive(btnBoth, mode === "both");
+      setActive(btnPrecip, mode === "precip");
+      setActive(btnPressure, mode === "pressure");
+      setActive(btnWind, mode === "wind");
 
     }
 
     function setKind(kind) {
       displayMode = kind;
       updateButtonStates(displayMode);
+
+      // Clear loading state when switching modes (fresh lookup)
+      const currentLoader = document.getElementById("cyclone-loading");
+      if (currentLoader) currentLoader.classList.add("hidden");
+
+      loadingTilesCount = 0;
+      loadedTilesCount = 0;
+
       initialize(apiData, kind);
     }
 
@@ -707,6 +813,15 @@ const CycloneMapLogic = () => {
     if (btnBoth) {
       btnBoth.addEventListener("click", () => setKind("both"));
     }
+    if (btnPrecip) {
+      btnPrecip.addEventListener("click", () => setKind("precip"));
+    }
+    if (btnPressure) {
+      btnPressure.addEventListener("click", () => setKind("pressure"));
+    }
+    if (btnWind) {
+      btnWind.addEventListener("click", () => setKind("wind"));
+    }
 
     if (btnPlay) {
       btnPlay.addEventListener("click", () => playStop());
@@ -722,6 +837,9 @@ const CycloneMapLogic = () => {
       if (btnRadar) btnRadar.replaceWith(btnRadar.cloneNode(true));
       if (btnSatellite) btnSatellite.replaceWith(btnSatellite.cloneNode(true));
       if (btnBoth) btnBoth.replaceWith(btnBoth.cloneNode(true));
+      if (btnPrecip) btnPrecip.replaceWith(btnPrecip.cloneNode(true));
+      if (btnPressure) btnPressure.replaceWith(btnPressure.cloneNode(true));
+      if (btnWind) btnWind.replaceWith(btnWind.cloneNode(true));
 
       if (btnPlay) btnPlay.replaceWith(btnPlay.cloneNode(true));
     };
@@ -812,65 +930,112 @@ const Cyclone = () => {
                   attribution="&copy; OpenStreetMap contributors"
                 />
               </BaseLayer>
-              <BaseLayer checked name="Dark Mode">
+              <BaseLayer checked name="Dark Matter">
                 <TileLayer
                   url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                  attribution="&copy; OpenStreetMap contributors &copy; Philippine Typhoon/Weather"
+                  attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+                />
+              </BaseLayer>
+              <BaseLayer name="OpenStreetMap">
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 />
               </BaseLayer>
             </LayersControl>
-            <CycloneMapLogic />
-          </MapContainer>
-          <div
-            id="cyclone-loading"
-            className="pointer-events-none absolute top-4 left-1/2 z-[1200] -translate-x-1/2 rounded-full bg-slate-900/80 px-4 py-1 text-xs font-medium text-sky-300 shadow-lg backdrop-blur-md"
-          >
-            Loading storm data...
-          </div>
-          <div
-            id="radar-controls"
-            className="absolute bottom-4 left-4 z-[1200] flex min-w-[260px] flex-col gap-2 rounded-lg bg-slate-900/85 p-3 text-xs text-slate-100 shadow-lg backdrop-blur-md"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex gap-1">
-                <button
-                  id="btn-radar"
-                  className="rounded-md bg-slate-700/80 px-2 py-1 text-[11px] font-medium hover:bg-slate-600"
-                >
-                  Radar
-                </button>
-                <button
-                  id="btn-satellite"
-                  className="rounded-md bg-sky-500 px-2 py-1 text-[11px] font-medium text-slate-900 ring ring-sky-400 ring-offset-1 hover:bg-sky-400"
-                >
-                  Infrared
-                </button>
-                <button
-                  id="btn-both"
-                  className="rounded-md bg-slate-700/80 px-2 py-1 text-[11px] font-medium hover:bg-slate-600"
-                >
-                  Radar + Satellite
-                </button>
 
+            <LeafletCustomControl position="topright">
+              <div id="radar-controls-container" className="flex flex-col items-end">
+                <button
+                  id="btn-layers-toggle"
+                  onClick={() => {
+                    const controls = document.getElementById("radar-controls-panel");
+                    if (controls) {
+                      controls.classList.toggle("hidden");
+                    }
+                  }}
+                  className="mb-2 flex h-[34px] w-[34px] items-center justify-center rounded-[4px] bg-white text-slate-800 shadow-[0_1px_5px_rgba(0,0,0,0.65)] hover:bg-[#f4f4f4] transition-colors"
+                  title="Toggle Weather Layers"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                    <polyline points="2 17 12 22 22 17" />
+                    <polyline points="2 12 12 17 22 12" />
+                  </svg>
+                </button>
+                <div
+                  id="radar-controls-panel"
+                  className="hidden flex flex-col gap-2 rounded-lg bg-slate-900/90 p-3 backdrop-blur-sm border border-slate-700 shadow-xl w-32 mr-[10px]"
+                >
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700 pb-1 mb-1 text-center">
+                    Weather Layers
+                  </span>
+                  <button
+                    id="btn-radar"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left"
+                  >
+                    Radar
+                  </button>
+                  <button
+                    id="btn-satellite"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left"
+                  >
+                    Satellite
+                  </button>
+                  <button
+                    id="btn-both"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left"
+                  >
+                    Both
+                  </button>
+                  <div className="h-px bg-slate-700 my-1"></div>
+                  <button
+                    id="btn-precip"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left"
+                  >
+                    Precip
+                  </button>
+                  <button
+                    id="btn-pressure"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left"
+                  >
+                    Pressure
+                  </button>
+                  <button
+                    id="btn-wind"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left"
+                  >
+                    Wind
+                  </button>
+                </div>
+                {/* Hidden div to maintain id reference logic */}
+                <div id="radar-controls" className="hidden"></div>
               </div>
-              <button
-                id="btn-play"
-                className="rounded-full border border-slate-600/70 px-2 py-1 text-[11px] hover:bg-slate-700/80"
-              >
-                Play
-              </button>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <p
-                id="radar-timestamp"
-                className="line-clamp-1 text-[11px] text-slate-300"
-              ></p>
-            </div>
+              <CycloneMapLogic />
+            </LeafletCustomControl>
+          </MapContainer>
+
+          <div className="absolute bottom-4 left-4 z-[500] rounded-lg bg-slate-900/80 p-2 text-xs text-slate-200 backdrop-blur-sm shadow-xl border border-slate-700 font-mono" id="radar-timestamp"></div>
+          <div id="cyclone-loading" className="absolute top-1/2 left-1/2 z-[1000] -translate-x-1/2 -translate-y-1/2 transform rounded-lg bg-slate-950/90 px-4 py-2 text-sm text-white shadow-2xl border border-slate-700 flex items-center gap-2 hidden">
+            <svg className="animate-spin h-4 w-4 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Loading data...
+          </div>
+          <div className="absolute bottom-4 right-4 z-[500]">
+            <button
+              id="btn-play"
+              className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-lg transition hover:bg-emerald-500 active:scale-95 border border-emerald-500/50"
+            >
+              Play
+            </button>
           </div>
         </div>
       </div>
     </div>
   );
 };
+
 
 export default Cyclone;
