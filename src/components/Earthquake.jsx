@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap, Marker, Popup, useMapEvents, GeoJSON } from "react-leaflet";
+import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import * as toGeoJSON from "@tmcw/togeojson";
+import JSZip from "jszip";
 import { Activity, AlertTriangle, Layers, Calendar, ChevronDown, ChevronUp } from "lucide-react";
 
 // Internal component to handle map movement
@@ -17,12 +20,54 @@ const MapController = ({ center, zoom }) => {
     return null;
 };
 
+// Internal component to track zoom level
+const ZoomHandler = ({ setZoom }) => {
+    const map = useMapEvents({
+        zoomend: () => {
+            setZoom(map.getZoom());
+        },
+    });
+    return null;
+};
+
+
+
 const EARTHQUAKE_API = "/api/earthquake-data";
 
 const PH_BOUNDS = [
     [4, 116],
     [22.5, 127.5],
 ];
+
+// Volcano Data
+const VOLCANO_DATA = [
+    { name: "Banahaw", lat: 14.06038, lon: 121.48803 },
+    { name: "Bulusan", lat: 12.76853, lon: 124.05445 },
+    { name: "Hibok-hibok", lat: 9.20427, lon: 124.67115 },
+    { name: "Kanlaon", lat: 10.41129, lon: 123.13243 },
+    { name: "Mayon", lat: 13.25519, lon: 123.68615 },
+    { name: "Pinatubo", lat: 15.14162, lon: 120.350845 },
+    { name: "Taal", lat: 14.01024, lon: 120.99812 },
+];
+
+// Custom Volcano Icon Generator
+const getVolcanoIcon = (zoom) => {
+    // Dynamic size scaling based on zoom
+    // Default zoom is ~6. Scale down for zoomed out, up for zoomed in.
+    let size = 24;
+    if (zoom < 6) size = 12;      // Very small for country view
+    else if (zoom < 8) size = 18; // Medium for regional view
+    else if (zoom < 10) size = 24; // Standard size
+    else size = 25;               // Large for local view
+
+    return L.divIcon({
+        className: 'custom-volcano-icon',
+        html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ef4444" stroke="#7f1d1d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full drop-shadow-md"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/></svg>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size],
+        popupAnchor: [0, -size],
+    });
+};
 
 // Helper to determine color based on magnitude
 const getMagColor = (mag) => {
@@ -46,6 +91,7 @@ const Earthquake = () => {
 
     // View State for Zoom interaction
     const [mapView, setMapView] = useState(null);
+    const [currentZoom, setCurrentZoom] = useState(6); // Default zoom
 
     // Filter State
     const [filterType, setFilterType] = useState('today'); // today, yesterday, month, year, custom
@@ -53,6 +99,48 @@ const Earthquake = () => {
 
     // Legend State
     const [isLegendOpen, setIsLegendOpen] = useState(true);
+
+    // Fault Lines State
+    const [showFaultLines, setShowFaultLines] = useState(true);
+    const [faultLineData, setFaultLineData] = useState(null);
+
+    // Load Fault Line Data Once
+    useEffect(() => {
+        const loadFaults = async () => {
+            try {
+                const response = await fetch("/gem_active_faults.kml");
+                if (!response.ok) throw new Error("Failed to fetch KML");
+
+                const kmlText = await response.text();
+                const parser = new DOMParser();
+                const kmlDom = parser.parseFromString(kmlText, "text/xml");
+                const geoJson = toGeoJSON.kml(kmlDom);
+
+                // Filter for Philippines only (Approximate Bounding Box)
+                const MIN_LAT = 4, MAX_LAT = 22.5;
+                const MIN_LON = 116, MAX_LON = 129;
+
+                const filteredFeatures = geoJson.features.filter(feature => {
+                    if (!feature.geometry || !feature.geometry.coordinates) return false;
+
+                    const coords = feature.geometry.type === "MultiLineString"
+                        ? feature.geometry.coordinates.flat()
+                        : feature.geometry.coordinates;
+
+                    return coords.some(([lon, lat]) =>
+                        lat >= MIN_LAT && lat <= MAX_LAT &&
+                        lon >= MIN_LON && lon <= MAX_LON
+                    );
+                });
+
+                setFaultLineData({ ...geoJson, features: filteredFeatures });
+            } catch (error) {
+                console.error("Error loading fault lines:", error);
+            }
+        };
+
+        loadFaults();
+    }, []);
 
     const handleQuakeClick = (quake) => {
         if (!quake || !quake.geometry) return;
@@ -98,9 +186,11 @@ const Earthquake = () => {
     useEffect(() => {
         let cancelled = false;
 
-        async function fetchQuakes() {
+        async function fetchQuakes(isBackground = false) {
             try {
-                setLoading(true);
+                if (!isBackground) {
+                    setLoading(true);
+                }
                 setError(null);
 
                 const cacheBust = `t=${Date.now()}`;
@@ -139,18 +229,21 @@ const Earthquake = () => {
             } catch (err) {
                 if (!cancelled) {
                     console.error("Failed to fetch earthquake data:", err);
-                    setError("Unable to load earthquake data.");
+                    if (!isBackground) {
+                        setError("Unable to load earthquake data.");
+                    }
                 }
             } finally {
-                if (!cancelled) {
+                if (!cancelled && !isBackground) {
                     setLoading(false);
                 }
             }
         }
 
-        fetchQuakes();
-        // Auto refresh every 5 minutes
-        const intervalId = window.setInterval(fetchQuakes, 5 * 60 * 1000);
+        fetchQuakes(false); // Initial load
+
+        // Auto refresh every 60 seconds (Silent update)
+        const intervalId = window.setInterval(() => fetchQuakes(true), 60 * 1000);
 
         return () => {
             cancelled = true;
@@ -224,6 +317,18 @@ const Earthquake = () => {
                             {filterType === 'custom' ? 'Custom' : 'Date'}
                         </span>
                     </div>
+
+                    {/* Fault Line Toggle */}
+                    <button
+                        onClick={() => setShowFaultLines(!showFaultLines)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all cursor-pointer border ${showFaultLines
+                            ? "bg-red-500/10 border-red-500/50 text-red-400"
+                            : "bg-slate-900 border-slate-700 text-slate-400 hover:border-red-500/30 hover:text-red-300"
+                            }`}
+                    >
+                        <Activity className="h-3.5 w-3.5" />
+                        {showFaultLines ? 'Hide Faults' : 'Show Faults'}
+                    </button>
                 </div>
 
                 <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
@@ -245,9 +350,45 @@ const Earthquake = () => {
                                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                             />
 
+                            <ZoomHandler setZoom={setCurrentZoom} />
+
+                            {/* Fault Lines */}
+                            {showFaultLines && faultLineData && (
+                                <GeoJSON
+                                    data={faultLineData}
+                                    style={() => ({
+                                        color: "#ef4444",
+                                        weight: 2,
+                                        opacity: 0.8,
+                                    })}
+                                    onEachFeature={(feature, layer) => {
+                                        if (feature.properties && feature.properties.name) {
+                                            layer.bindTooltip(feature.properties.name, {
+                                                direction: 'top',
+                                                sticky: true,
+                                                className: 'bg-slate-900 border border-slate-700 text-slate-100 font-sans text-xs px-2 py-1 rounded shadow-lg'
+                                            });
+                                        }
+                                    }}
+                                />
+                            )}
+
                             {mapView && (
                                 <MapController center={mapView.center} zoom={mapView.zoom} />
                             )}
+
+                            {/* Volcano Markers */}
+                            {VOLCANO_DATA.map((volcano) => (
+                                <Marker
+                                    key={volcano.name}
+                                    position={[volcano.lat, volcano.lon]}
+                                    icon={getVolcanoIcon(currentZoom)}
+                                >
+                                    <Popup className="font-sans text-sm font-semibold text-slate-800">
+                                        {volcano.name} Volcano
+                                    </Popup>
+                                </Marker>
+                            ))}
 
                             {filteredQuakes.map((quake) => {
                                 if (!quake || !quake.geometry || !quake.geometry.coordinates || !quake.properties) {
@@ -327,10 +468,10 @@ const Earthquake = () => {
                                 </div>
                             )}
                         </div>
-                    </div>
+                    </div >
 
                     {/* Sidebar Summary */}
-                    <aside className="rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-900/70 to-slate-900/40 p-6 shadow-xl flex flex-col h-[60vh]">
+                    < aside className="rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-900/70 to-slate-900/40 p-6 shadow-xl flex flex-col h-[60vh]" >
                         <div className="mb-4 flex items-center justify-between shrink-0">
                             <div>
                                 <h2 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
@@ -433,10 +574,10 @@ const Earthquake = () => {
                                 );
                             })}
                         </div>
-                    </aside>
-                </div>
-            </div>
-        </div>
+                    </aside >
+                </div >
+            </div >
+        </div >
     );
 };
 

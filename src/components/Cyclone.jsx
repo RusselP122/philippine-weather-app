@@ -7,7 +7,7 @@ import { getStormDisplayName } from "../utils/stormNaming";
 
 const { BaseLayer, Overlay } = LayersControl;
 
-const OWM_API_KEY = "138ee97bc2df4029270f36075b709726"; // Using shared key
+const OWM_API_KEY = "138ee97bc2df4029270f36075b709726";
 const precipLayer = `https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`;
 const pressureLayer = `https://tile.openweathermap.org/map/pressure_new/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`;
 const windLayer = `https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`;

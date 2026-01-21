@@ -265,7 +265,7 @@ const Features = () => {
             </p>
             <div className="bg-slate-900 border border-violet-500/40 h-44 md:h-48 rounded-xl overflow-hidden flex items-center justify-center">
               <div className="px-4 text-center text-xs text-slate-300">
-                Data provided by PHIVOLCS / USGS. Updates every 5 minutes.
+                Data provided by PHIVOLCS. Updates every 1 minutes.
               </div>
             </div>
             <div className="flex justify-end mt-2">
