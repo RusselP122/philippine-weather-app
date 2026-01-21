@@ -1,0 +1,6 @@
+# Ignore Python backend files (Vercel Build Optimization)
+*.py
+requirements.txt
+automation_guide.md
+README.md
++
