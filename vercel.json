@@ -9,6 +9,10 @@
             "destination": "https://data.garbinwx.cloud/api/cap-alerts.json"
         },
         {
+            "source": "/api/ogimet/:path*",
+            "destination": "http://www.ogimet.com/cgi-bin/:path*"
+        },
+        {
             "source": "/(.*)",
             "destination": "/index.html"
         }

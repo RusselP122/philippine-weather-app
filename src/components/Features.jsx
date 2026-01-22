@@ -91,6 +91,33 @@ const Features = () => {
               </a>
             </div>
           </div>
+          {/* Daily Temperature Feature */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col h-full gap-4 hover:border-orange-500/60 hover:shadow-lg hover:shadow-orange-900/30 transition-all">
+            <h2 className="text-xl font-semibold text-slate-50 flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-orange-500/15 text-orange-300 text-sm font-bold">
+                DS
+              </span>
+              Daily Synoptic Reports
+            </h2>
+            <p className="text-sm text-slate-300">
+              View official minimum and maximum temperatures from synoptic stations
+              across the Philippines, derived from Ogimet reports.
+            </p>
+            <div className="bg-slate-900 border border-orange-500/40 h-44 md:h-48 rounded-xl overflow-hidden flex items-center justify-center">
+              <div className="px-4 text-center text-xs text-slate-300">
+                Official synoptic data. Updates daily.
+              </div>
+            </div>
+            <div className="flex justify-end mt-2">
+              <a
+                href="/synoptic-reports"
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-orange-500 text-slate-50 text-xs font-medium tracking-wide hover:bg-orange-400 transition-colors"
+              >
+                View Synoptic Reports
+                <span className="text-[10px]">→</span>
+              </a>
+            </div>
+          </div>
           {/* Tropical Cyclone Feature */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col h-full gap-4 hover:border-sky-500/60 hover:shadow-lg hover:shadow-sky-900/30 transition-all">
             <h2 className="text-xl font-semibold text-slate-50 flex items-center gap-2">
@@ -278,6 +305,8 @@ const Features = () => {
               </a>
             </div>
           </div>
+
+
         </div>
       </div>
     </section>

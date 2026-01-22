@@ -16,6 +16,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/cap-alerts/, '/api/cap-alerts.json'),
       },
+      '/api/ogimet': {
+        target: 'http://www.ogimet.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/ogimet/, '/cgi-bin'),
+      },
     },
   },
 });
