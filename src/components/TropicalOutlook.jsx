@@ -1,5 +1,5 @@
 // src/components/TropicalOutlook.jsx
-import React from "react";
+import React, { useState } from "react";
 
 // Build dynamic date string for today in YYYY-MM-DD format to match
 // filenames like cyclone_development_areas_2025-11-18.png
@@ -10,6 +10,8 @@ const dd = String(today.getDate()).padStart(2, "0");
 const todayDateStr = `${yyyy}-${mm}-${dd}`;
 
 const TropicalOutlook = () => {
+  const [activeTab, setActiveTab] = useState('week1');
+
   return (
     <section className="bg-slate-950 py-12">
       <div className="max-w-6xl mx-auto px-4">
@@ -29,17 +31,45 @@ const TropicalOutlook = () => {
         <div className="grid grid-cols-1 lg:grid-cols-[2fr,1fr] gap-8 items-start">
           {/* Outlook map / graphic */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden">
-            <div className="border-b border-slate-800 px-4 py-2 flex items-center justify-between text-xs text-slate-400">
-              <span>Potential development areas</span>
+            <div className="border-b border-slate-800 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              {/* Controls */}
+              <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-800">
+                <button
+                  onClick={() => setActiveTab('week1')}
+                  className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'week1'
+                    ? 'bg-slate-800 text-white shadow-sm ring-1 ring-slate-700'
+                    : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                >
+                  Week 1 (Day 1-7)
+                </button>
+                <button
+                  onClick={() => setActiveTab('week2')}
+                  className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'week2'
+                    ? 'bg-slate-800 text-white shadow-sm ring-1 ring-slate-700'
+                    : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                >
+                  Week 2 (Day 8-14)
+                </button>
+              </div>
+
               <span className="font-mono text-[11px] text-slate-500">
-                Last updated: {todayDateStr}
+                Updated Weekly
               </span>
             </div>
-            <div className="h-80 md:h-[26rem] flex items-center justify-center bg-slate-900">
+            <div className="h-80 md:h-[26rem] flex items-center justify-center bg-slate-900 relative">
+              {/* Image for Week 1 */}
               <img
-                src={`/images/cyclone_development_areas_${todayDateStr}.png`}
-                alt="Tropical weather outlook potential development areas"
-                className="h-full w-full object-contain"
+                src="/images/tropical_outlook_week1_latest.png"
+                alt="Tropical weather outlook Week 1"
+                className={`h-full w-full object-contain absolute transition-opacity duration-300 ${activeTab === 'week1' ? 'opacity-100' : 'opacity-0'}`}
+              />
+              {/* Image for Week 2 */}
+              <img
+                src="/images/tropical_outlook_week2_latest.png"
+                alt="Tropical weather outlook Week 2"
+                className={`h-full w-full object-contain absolute transition-opacity duration-300 ${activeTab === 'week2' ? 'opacity-100' : 'opacity-0'}`}
               />
             </div>
           </div>

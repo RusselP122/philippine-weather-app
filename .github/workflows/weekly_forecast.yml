@@ -1,14 +1,14 @@
-name: Update Forecast Images
+name: Update Weekly Tropical Outlook
 
 on:
   schedule:
-    # Runs at 00:00, 06:00, 12:00, and 18:00 UTC every day
-    - cron: '0 0,6,12,18 * * *'
+    # Runs at 00:00 UTC every Monday
+    - cron: '0 0 * * 1'
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
-  update-forecast:
+  update-weekly-forecast:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -25,7 +25,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9' # Adjust if your script uses a newer version
+          python-version: '3.9'
 
       - name: Install dependencies
         run: |
@@ -33,24 +33,24 @@ jobs:
           python -m pip install matplotlib cartopy pandas numpy requests scikit-learn scipy
           if [ -f requirements_dev.txt ]; then pip install -r requirements_dev.txt; fi
 
-      - name: Run forecast logic
+      - name: Run weekly forecast logic
         run: |
-          # Running forecast scripts
-          python Forcast.py
-          python Forcast2.py
+          # Running weekly outlook scripts
+          python forcast5.py
+          python forcast6.py
 
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Add any new images in the public/assets folder
-          git add public/assets/*.png
+          # Add the new weekly images in public/images folder
+          git add public/images/*.png
           
           # Commit if there are changes
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Auto-update forecast images [skip ci]"
+            git commit -m "Auto-update weekly tropical outlook [skip ci]"
             git push
           fi
