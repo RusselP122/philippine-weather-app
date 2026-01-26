@@ -143,7 +143,7 @@ def get_latest_run_url():
 # Load the CSV file, skipping comment lines
 try:
     date_str, hour_str, latest_url = get_latest_run_url()
-    local_csv = fr"C:\Users\Russel\Desktop\Weather alert\FNV3\FNV3_{date_str}T{hour_str}_00_cyclogenesis.csv"
+    local_csv = f"FNV3_{date_str}T{hour_str}_00_cyclogenesis.csv"
     print(f"Downloading latest run with curl to: {local_csv}")
     subprocess.run([
         "curl",
@@ -333,13 +333,18 @@ if len(lons) < 2:
     ax.set_title("7-Day Tropical Weather Outlook - Western Pacific", fontsize=16, weight='bold')
     
     # Save the plot to a file
+    # Save the plot to a file
     try:
-        init_time_str = init_times[0].replace(':', '').replace(' ', 'T') if len(init_times) > 0 else '20251029T0000'
-        output_file = f"C:\\Users\\Russel\\Desktop\\Weather alert\\Potential\\cyclone_development_areas_{init_time_str}.png"
+        import os
+        output_dir = "public/images"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        output_file = os.path.join(output_dir, "tropical_outlook_week1_latest.png")
         plt.savefig(output_file, dpi=300, bbox_inches='tight')
         print(f"Plot saved to {output_file}")
     except Exception as e:
         print(f"Error saving plot: {str(e)}")
+        sys.exit(1)
     
     plt.close()
     sys.exit(0)
