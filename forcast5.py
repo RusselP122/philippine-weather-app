@@ -16,6 +16,7 @@ import warnings
 import matplotlib.patches as patches  # Added for Patch
 from matplotlib.patches import Circle, Ellipse
 import requests
+import sys
 import subprocess
 
 init_text = None
@@ -170,13 +171,13 @@ try:
     init_text = f"{time_label} PHT, {latest_ph.strftime('%B %d, %Y')}"
 except subprocess.CalledProcessError as e:
     print(f"Error: curl failed to download CSV: {e}")
-    exit()
+    sys.exit(1)
 except pd.errors.ParserError:
     print("Error: Failed to parse CSV. Ensure the file is correctly formatted and contains the expected columns.")
-    exit()
+    sys.exit(1)
 except Exception as e:
     print(f"Error loading CSV: {str(e)}")
-    exit()
+    sys.exit(1)
 
 # Validate required columns
 required_columns = [
@@ -192,7 +193,7 @@ required_columns = [
 missing_columns = [col for col in required_columns if col not in data.columns]
 if missing_columns:
     print(f"Error: Missing required columns in CSV: {missing_columns}")
-    exit()
+    sys.exit(1)
 
 # Use all data up to 7 days (168 hours); adjust if data exceeds
 wp_data = data[
@@ -204,7 +205,7 @@ wp_data = data[
 num_samples = len(wp_data['sample'].unique())
 if num_samples == 0:
     print("Error: No samples found in the data.")
-    exit()
+    sys.exit(1)
 print(f"Total samples: {num_samples}")
 
 # Get all unique track IDs, filter to potential (numerical) tracks only
@@ -215,7 +216,7 @@ print(f"Processing potential track IDs: {all_track_ids}")
 # Check if any data remains
 if wp_data.empty:
     print("Error: No data found in the CSV file.")
-    exit()
+    sys.exit(1)
 
 # Ensure data is sorted by init_time, track_id, sample, and lead_time_hours
 wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
@@ -230,7 +231,7 @@ genesis_data = genesis_data[genesis_data['track_id'].isin(all_track_ids)]
 init_times = wp_data['init_time'].unique()
 if len(init_times) == 0:
     print("Error: No valid init_time values found in the data.")
-    exit()
+    sys.exit(1)
 print(f"Found {len(init_times)} forecast initialization times: {init_times}")
 
 # Use latest_ph as the initialization datetime in Philippine time
@@ -341,7 +342,7 @@ if len(lons) < 2:
         print(f"Error saving plot: {str(e)}")
     
     plt.close()
-    exit()
+    sys.exit(0)
 
 # Cluster the points using DBSCAN to separate distinct regions
 coords = np.column_stack((lons, lats))
