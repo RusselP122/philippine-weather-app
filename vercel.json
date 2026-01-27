@@ -13,7 +13,7 @@
             "destination": "http://www.ogimet.com/cgi-bin/:path*"
         },
         {
-            "source": "/(.*)",
+            "source": "/((?!data/).*)",
             "destination": "/index.html"
         }
     ],

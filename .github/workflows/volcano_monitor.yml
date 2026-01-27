@@ -1,0 +1,47 @@
+name: Monitor Volcano Alerts
+
+on:
+  schedule:
+    # 03:55 UTC -> 11:55 AM PHT
+    # 09:55 UTC -> 05:55 PM PHT
+    # 15:55 UTC -> 11:55 PM PHT (End of Day)
+    # 21:55 UTC -> 05:55 AM PHT
+    - cron: '55 3,9,15,21 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scrape-and-update:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Chrome and ChromeDriver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+          # Webdriver manager will handle the driver
+
+      - name: Install python dependencies
+        run: |
+          pip install selenium webdriver-manager pytz
+
+      - name: Run Scraper
+        run: python scrape_phivolcs.py
+
+      - name: Commit and Push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/data/volcano_data.json
+          # Only commit if there are changes
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update volcano data" && git push)

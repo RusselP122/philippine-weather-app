@@ -273,7 +273,7 @@ const Features = () => {
 
         <div className="mb-8 mt-12">
           <h2 className="text-xl md:text-2xl font-semibold text-slate-100 border-l-4 border-violet-500 pl-4">
-            Earthquake
+            Volcanology and Seismology
           </h2>
         </div>
 
@@ -301,6 +301,34 @@ const Features = () => {
                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-violet-500 text-slate-50 text-xs font-medium tracking-wide hover:bg-violet-400 transition-colors"
               >
                 View Earthquake Map
+                <span className="text-[10px]">→</span>
+              </a>
+            </div>
+          </div>
+
+          {/* Volcanoes Feature */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col h-full gap-4 hover:border-rose-500/60 hover:shadow-lg hover:shadow-rose-900/30 transition-all md:col-span-3 lg:col-span-1">
+            <h2 className="text-xl font-semibold text-slate-50 flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-rose-500/15 text-rose-300 text-sm font-bold">
+                VO
+              </span>
+              Volcanoes
+            </h2>
+            <p className="text-sm text-slate-300">
+              Stay updated on the status of active volcanoes in the Philippines.
+              Check alert levels and latest advisories from PHIVOLCS.
+            </p>
+            <div className="bg-slate-900 border border-rose-500/40 h-44 md:h-48 rounded-xl overflow-hidden flex items-center justify-center">
+              <div className="px-4 text-center text-xs text-slate-300">
+                Official volcano bulletins. Updates as needed.
+              </div>
+            </div>
+            <div className="flex justify-end mt-2">
+              <a
+                href="/volcanoes"
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-rose-500 text-slate-50 text-xs font-medium tracking-wide hover:bg-rose-400 transition-colors"
+              >
+                View Volcanoes
                 <span className="text-[10px]">→</span>
               </a>
             </div>
