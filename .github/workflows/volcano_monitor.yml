@@ -2,10 +2,10 @@ name: Monitor Volcano Alerts
 
 on:
   schedule:
-    # 03:55 UTC -> 11:55 AM PHT
-    # 09:55 UTC -> 05:55 PM PHT
-    # 15:55 UTC -> 11:55 PM PHT (End of Day)
-    # 21:55 UTC -> 05:55 AM PHT
+    # 03:55 UTC -> 11:00AM PHT
+    # 09:55 UTC -> 05:00PM PHT
+    # 15:55 UTC -> 11:00PM PHT (End of Day)
+    # 21:55 UTC -> 05:00 AM PHT
     - cron: '55 3,9,15,21 * * *'
   workflow_dispatch:
 

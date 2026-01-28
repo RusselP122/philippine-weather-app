@@ -67,14 +67,15 @@ const Volcanoes = () => {
     const filteredData = useMemo(() => {
         if (!historyData.length) return {};
 
+        // Use PHT (Asia/Manila) to determine "Today" and "Yesterday"
+        // This ensures the reset happens at 12:00 AM PHT regardless of user's local time
+        const phtOptions = { timeZone: 'Asia/Manila' };
         const now = new Date();
-        const todayStr = now.toISOString().split('T')[0];
+        const todayStr = now.toLocaleDateString('en-CA', phtOptions);
 
         // Helper to find record by date
         const findRecord = (dateStr) => {
             // Find the LAST record for that specific date (latest update)
-            // Since records are appended, we reverse to find the last one first, or just findLast if supported
-            // We'll filter then take the last one.
             const dayRecords = historyData.filter(r => r.date === dateStr);
             if (dayRecords.length > 0) {
                 return dayRecords[dayRecords.length - 1].data;
@@ -84,15 +85,14 @@ const Volcanoes = () => {
 
         if (filterType === 'today') {
             const data = findRecord(todayStr);
-            // If no data for today yet (e.g. script runs every 6 hours and it's 12:01 AM), return zeros
-            // "new day comes the VE will reset back to zero"
+            // If no data for PHT today (e.g. script runs every 6 hours and it's 12:01 AM PHT), return zeros
             return data || {};
         }
 
         if (filterType === 'yesterday') {
-            const yesterday = new Date(now);
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yStr = yesterday.toISOString().split('T')[0];
+            // Subtract 24 hours to get a time within the previous PHT day
+            const yesterday = new Date(now.getTime() - 86400000);
+            const yStr = yesterday.toLocaleDateString('en-CA', phtOptions);
             return findRecord(yStr) || {};
         }
 

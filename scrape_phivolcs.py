@@ -35,8 +35,8 @@ def scrape_phivolcs_data():
             lambda d: "MAYON" in d.find_element(By.TAG_NAME, "body").text
         )
 
-        # Wait
-        time.sleep(5)
+        # Wait to ensure full data load (User requested 1-2 mins)
+        time.sleep(60)
         
         # Get the text from the body
         body_text = driver.find_element(By.TAG_NAME, "body").text
@@ -96,6 +96,15 @@ def scrape_phivolcs_data():
                 except json.JSONDecodeError:
                     print("Warning: Existing JSON corrupted, starting fresh.")
 
+            # Backfill logic: Ensure all existing records have 'total_Volcanic_earthquakes'
+            for record in current_data["records"]:
+                if "total_Volcanic_earthquakes" not in record and "data" in record:
+                    parts = []
+                    # Ensure consistent order or just iterate
+                    for code, count in record["data"].items():
+                         parts.append(f"{code}: {count}")
+                    record["total_Volcanic_earthquakes"] = ", ".join(parts)
+
             # Get current time in PHT
             pht = pytz.timezone('Asia/Manila')
             now_pht = datetime.now(pht)
@@ -115,7 +124,8 @@ def scrape_phivolcs_data():
             new_record = {
                 "timestamp": timestamp_str,
                 "date": date_str,
-                "data": structured_data
+                "data": structured_data,
+                "total_Volcanic_earthquakes":  ", ".join([f"{k}: {v}" for k, v in structured_data.items()])
             }
             current_data["records"].append(new_record)
 
