@@ -27,7 +27,7 @@ jobs:
 
     - name: Install Python Dependencies
       run: |
-        pip install requests numpy matplotlib cartopy pydap netCDF4 scipy
+        pip install requests numpy matplotlib cartopy pydap netCDF4 scipy Jinja2
 
     - name: Ensure Output Directory Exists
       run: |

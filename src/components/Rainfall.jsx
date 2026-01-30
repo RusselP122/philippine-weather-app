@@ -13,7 +13,6 @@ import { CloudRain, Calendar, Info, RefreshCw, AlertTriangle } from "lucide-reac
 
 // --- Constants ---
 
-// ... (imports remain)
 const MODELS = [
     { id: "gfs_seamless", name: "GFS Seamless (Direct)", color: "#22c55e" },
 ];
@@ -22,6 +21,7 @@ const PERIODS = [
     { id: "24h", label: "24 Hours" },
     { id: "3d", label: "3 Days" },
     { id: "7d", label: "7 Days" },
+    { id: "animation", label: "Animation" },
 ];
 
 const Rainfall = () => {
@@ -31,22 +31,65 @@ const Rainfall = () => {
     const [metadata, setMetadata] = useState(null);
     const [isZoomed, setIsZoomed] = useState(false);
 
-    // Image Path: e.g., /images/rainfall/gfs_24h.png
-    // Note: The script outputs gfs_24h.png, gfs_3d.png, gfs_7d.png
-    // Let's ensure consistency with Python script: "gfs_{period_name}"
-    const imagePath = `/images/rainfall/${selectedModel.split('_')[0]}_${timePeriod}.png`;
+    // Animation State
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [frameIndex, setFrameIndex] = useState(0);
+
+    // Determine current image path
+    let imagePath = "";
+    if (timePeriod === "animation" && metadata?.animation_frames?.length > 0) {
+        // Use frame index
+        const frameName = metadata.animation_frames[frameIndex]; // e.g. "gfs_day_1"
+        imagePath = `/images/rainfall/${frameName}.png`;
+    } else {
+        // Static
+        imagePath = `/images/rainfall/${selectedModel.split('_')[0]}_${timePeriod !== 'animation' ? timePeriod : '24h'}.png`;
+    }
 
     useEffect(() => {
         // Fetch Metadata
         fetch('/data/rainfall_meta.json')
             .then(res => res.json())
-            .then(data => setMetadata(data))
+            .then(data => {
+                setMetadata(data);
+                // Preload Animation Images
+                if (data.animation_frames) {
+                    data.animation_frames.forEach(frame => {
+                        const img = new Image();
+                        img.src = `/images/rainfall/${frame}.png?t=${imageTimestamp}`;
+                    });
+                }
+            })
             .catch(err => console.error("Failed to load metadata", err));
-    }, [imageTimestamp]); // Reload meta on refresh too
+    }, [imageTimestamp]);
 
-    const handleRefresh = () => {
-        setImageTimestamp(Date.now());
-    };
+    // Animation Loop
+    useEffect(() => {
+        let interval;
+        if (isPlaying && timePeriod === "animation" && metadata?.animation_frames) {
+            interval = setInterval(() => {
+                setFrameIndex(prev => (prev + 1) % metadata.animation_frames.length);
+            }, 800); // 800ms per frame
+        } else {
+            // Reset if switched away?
+            // Optional: setIsPlaying(false) if period changes?
+        }
+        return () => clearInterval(interval);
+    }, [isPlaying, timePeriod, metadata]);
+
+    // Reset frame on period change
+    useEffect(() => {
+        if (timePeriod === "animation") {
+            setIsPlaying(true);
+            setFrameIndex(0);
+        } else {
+            setIsPlaying(false);
+        }
+    }, [timePeriod]);
+
+
+
+    const togglePlay = () => setIsPlaying(!isPlaying);
 
     return (
         <section className="min-h-screen bg-slate-950 text-slate-50 pt-6 pb-12">
@@ -66,13 +109,20 @@ const Rainfall = () => {
                         <p className="text-slate-400 text-sm md:text-base max-w-2xl">
                             Accumulated precipitation forecasts from the NOAA GFS model.
                         </p>
+                        <div className="mt-2 text-xs text-slate-500 bg-slate-900/50 p-2 rounded-lg border border-slate-800 max-w-xl">
+                            <span className="font-semibold text-slate-400">Note:</span>
+                            <ul className="list-disc list-inside mt-1 space-y-0.5">
+                                <li><b>24h / 3d / 7d:</b> Total rain accumulated from now until the end of the period.</li>
+                                <li><b>Animation:</b> Rain accumulated specifically during each 24-hour day (Daily Increments).</li>
+                            </ul>
+                        </div>
                     </div>
 
                     <div className="flex flex-col gap-3">
                         {/* Controls */}
                         <div className="flex flex-wrap items-center gap-4">
                             {/* Period Selector */}
-                            <div className="bg-slate-900 p-1 rounded-lg border border-slate-700 flex">
+                            <div className="bg-slate-900 p-1 rounded-lg border border-slate-700 flex flex-wrap">
                                 {PERIODS.map(p => (
                                     <button
                                         key={p.id}
@@ -87,15 +137,36 @@ const Rainfall = () => {
                                 ))}
                             </div>
 
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={handleRefresh}
-                                    className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
-                                    title="Refresh Image"
-                                >
-                                    <RefreshCw className="h-4 w-4" />
-                                </button>
-                            </div>
+                            {/* Animation Controls (Only visible in animation mode) */}
+                            {timePeriod === "animation" && (
+                                <div className="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-lg p-1 pr-3">
+                                    <button
+                                        onClick={togglePlay}
+                                        className="p-1 px-3 bg-slate-800 hover:bg-slate-700 rounded text-xs font-bold w-16 text-center transition-colors"
+                                    >
+                                        {isPlaying ? "PAUSE" : "PLAY"}
+                                    </button>
+
+                                    {/* Slider */}
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max={(metadata?.animation_frames?.length || 7) - 1}
+                                        value={frameIndex}
+                                        onChange={(e) => {
+                                            setFrameIndex(parseInt(e.target.value));
+                                            setIsPlaying(false); // Pause on scrub
+                                        }}
+                                        className="w-24 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                    />
+
+                                    <div className="text-xs text-slate-400 px-2 min-w-[60px] text-center font-mono">
+                                        Day {frameIndex + 1}/7
+                                    </div>
+                                </div>
+                            )}
+
+
                         </div>
                     </div>
                 </header>
@@ -109,13 +180,16 @@ const Rainfall = () => {
                     {/* Dynamic Text Overlays */}
                     <div className="absolute top-4 left-4 z-10 pointer-events-none">
                         <h3 className="text-xl font-bold text-slate-900 bg-white/90 backdrop-blur px-3 py-1 rounded-md shadow-sm border border-slate-200">
-                            {timePeriod.toUpperCase()} RAINFALL FORECAST
+                            {timePeriod === 'animation'
+                                ? `DAY ${frameIndex + 1} FORECAST`
+                                : `${timePeriod.toUpperCase()} RAINFALL FORECAST`
+                            }
                         </h3>
                     </div>
 
                     <div className="absolute bottom-4 right-4 z-10 pointer-events-none text-right">
                         <div className="bg-white/90 backdrop-blur px-3 py-2 rounded-md shadow-sm border border-slate-200 text-slate-900 text-xs font-mono">
-                            <div className="font-bold">NOAA GFS | THREDDS</div>
+                            <div className="font-bold">GFS</div>
                             <div>Gen: {metadata?.generated_at || "Loading..."}</div>
                             {metadata?.run_time && <div>Run: {metadata.run_time}</div>}
                         </div>
@@ -130,6 +204,7 @@ const Rainfall = () => {
 
                     {/* Main Map Image */}
                     <img
+                        key={`${imagePath}-${imageTimestamp}`}
                         src={`${imagePath}?t=${imageTimestamp}`}
                         alt={`Rainfall Forecast - ${timePeriod}`}
                         className="w-full h-auto object-contain max-h-[800px]"
@@ -145,7 +220,7 @@ const Rainfall = () => {
                         <AlertTriangle className="h-12 w-12 text-yellow-500 mb-4" />
                         <h3 className="text-lg font-semibold text-slate-200">Map Not Available</h3>
                         <p className="text-sm max-w-md mt-2">
-                            The <b>{PERIODS.find(p => p.id === timePeriod)?.label}</b> forecast map has not been generated yet.
+                            The data for this forecast is currently processing or unavailable.
                         </p>
                     </div>
                 </div>
@@ -172,7 +247,10 @@ const Rainfall = () => {
                             />
                             {/* Overlay Info in Modal too? Optional, keeps context */}
                             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur px-4 py-2 rounded-full text-white text-sm">
-                                {timePeriod.toUpperCase()} Forecast
+                                {timePeriod === 'animation'
+                                    ? `DAY ${frameIndex + 1} FORECAST`
+                                    : `${timePeriod.toUpperCase()} Forecast`
+                                }
                             </div>
                         </div>
                     </div>

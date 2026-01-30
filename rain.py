@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import re
 import time
 import sys
+from matplotlib.colors import ListedColormap, BoundaryNorm
 
 # Output directory
 OUTPUT_DIR = r"C:\Users\Russel\Desktop\philippine-weather-app\public\images\rainfall"
@@ -159,9 +160,11 @@ def fetch_and_plot_gfs(target_url=None, target_run_time=None):
         
         # Normalize Longitude (0-360) same as before 
         
-        # 4. Filter Region (PH)
-        lat_min, lat_max = 4.0, 22.0
-        lon_min, lon_max = 116.0, 128.0
+        # 4. Filter Region (Expanded for PAR + Palau, excluding Vietnam)
+        # PAR: 5-25N, 115-135E. Palau: ~7N, 134E.
+        # Fetch slightly larger to avoid edge artifacts
+        lat_min, lat_max = 2.0, 28.0
+        lon_min, lon_max = 112.0, 140.0
 
         lat_indices = np.where((lat_data >= lat_min) & (lat_data <= lat_max))[0]
         lon_indices = np.where((lon_data >= lon_min) & (lon_data <= lon_max))[0]
@@ -220,82 +223,123 @@ def fetch_and_plot_gfs(target_url=None, target_run_time=None):
         # 6. Forecast Window Logic (Existing)
         now = datetime.now(timezone.utc)
         end_time = now + timedelta(hours=24)
-        
-        # Define Periods to Generate
+        # Define Periods to Generate (Cumulative Summaries)
         periods = {
             "24h": 24,
             "3d": 72,
             "7d": 168
         }
         
+        # Animation Frames: Daily Increments (Day 1, Day 2 ... Day 7)
+        # We will generate these as well.
+        animation_frames = []
+
+        all_periods = []
+        # Add Summary Periods
+        for p_name, hours in periods.items():
+            all_periods.append({"name": p_name, "hours": hours, "type": "cumulative"})
+            
+        # Add Daily Frames
+        for day in range(1, 8):
+            all_periods.append({
+                "name": f"day_{day}", 
+                "hours": day*24, 
+                "prev_hours": (day-1)*24, 
+                "type": "sequential"
+            })
+
         meta_info = {
             "model": "GFS Seamless",
             "source": "NOAA NOMADS / THREDDS",
             "generated_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
-            "run_time": all_dates[0].strftime("%Y-%m-%d %H:%M UTC") if all_dates else "Unknown" # Approximation
+            "run_time": all_dates[0].strftime("%Y-%m-%d %H:%M UTC") if all_dates else "Unknown",
+            "animation_frames": [f"gfs_day_{i}" for i in range(1, 8)]
         }
 
-        for period_name, hours in periods.items():
-            print(f"\nGenerating {period_name} ({hours}h) map...")
+        for item in all_periods:
+            period_name = item["name"]
             
-            end_time_period = now + timedelta(hours=hours)
-            
-            # Find time indices for this specific period
-            # Note: We can reuse the parsed dates
-            period_indices = [i for i, t in enumerate(all_dates) if now <= t <= end_time_period]
-            
-            if not period_indices:
-                print(f"Skipping {period_name}: No data in range.")
-                continue
+            # Determine Time Window
+            if item["type"] == "cumulative":
+                # From Start (0) to Hours
+                start_hour_offset = 0
+                end_hour_offset = item["hours"]
+            else:
+                # Sequential (e.g. Day 2: 24h to 48h)
+                start_hour_offset = item["prev_hours"]
+                end_hour_offset = item["hours"]
                 
-            p_start, p_end = min(period_indices), max(period_indices)
+            print(f"\nGenerating {period_name} ({start_hour_offset}h - {end_hour_offset}h)...")
             
-            # Fetch slice
-            # Warning: Pydap might be slow if we fetch 3 times. 
-            # Optimization: Fetch max range (7d) once, then slice in memory?
-            # 7 Days is 168 hours = ~56 steps (3h intervals). 56x72x144 floats is small.
-            # Let's fetch each time to be safe on memory if grid is huge, but it's small enough here.
+            end_time_period = now + timedelta(hours=end_hour_offset)
+            start_time_period = now + timedelta(hours=start_hour_offset)
             
-            print(f"Fetching data slice {p_start}-{p_end}...")
-            precip_data = precip_var[p_start:p_end+1, lat_min_idx:lat_max_idx+1, lon_min_idx:lon_max_idx+1].data
-            precip_data = np.array(precip_data).astype(float)
+            # Find indices
+            # Need to span from Start Time to End Time
+            # For cumulative, start is 'now'.
+            # For sequential, start is 'now + offset'.
             
-            # Mask improbable values (artifacts)
-            precip_data[precip_data > 2000] = 0 
-            precip_data[precip_data < 0] = 0
+            # Indices in all_dates that cover this range
+            # We need the value at Start and Value at End.
+            # GFS Single Run is cumulative from T=0 (Model Run Start).
+            # So Rain_in_Window = Accum(End) - Accum(Start).
+            # We need index for End Time and index for Start Time.
             
-            # Simplified/Correct Calculation for Cumulative Variable
-            # GFS "Mixed_intervals_Accumulation" in a Single Run is cumulative from Run Start
-            # So: Total Rain in Window = Value[End] - Value[Start]
+            # Find closest index for start and end
+            errors = []
             
-            # Check if we have data points
-            if precip_data.shape[0] > 0:
-                # Value at end of period
-                end_val = precip_data[-1]
+            # Helper to find index
+            def find_idx(target_time):
+                # Find closest
+                times = [t for t in all_dates]
+                # Assuming sorted
+                # Bisect or just min diff
+                # We need exact or closest forward?
+                # Let's find index where time is closest
+                deltas = [abs((t - target_time).total_seconds()) for t in times]
+                min_delta = min(deltas)
+                idx = deltas.index(min_delta)
+                return idx, times[idx]
+
+            idx_start, t_start = find_idx(start_time_period)
+            idx_end, t_end = find_idx(end_time_period)
+            
+            # Safety check
+            if idx_end <= idx_start and item["type"] == "sequential" and idx_end != idx_start:
+                 # Should not happen unless resolution is coarse
+                 if start_hour_offset != end_hour_offset:
+                     print(f"Warning: Start index {idx_start} >= End index {idx_end}. Skipping {period_name}")
+                     continue
+
+            # Fetch data at these two points
+            # Optimized: Just fetch two slices 
+            # Or fetch generic slice if close? 
+            # Actually, `precip_var[idx]` gets the 2D grid at that time.
+            
+            try:
+                # Fetch End Grid
+                grid_end = precip_var[idx_end, lat_min_idx:lat_max_idx+1, lon_min_idx:lon_max_idx+1].data
+                grid_end = np.array(grid_end).astype(float).squeeze()
                 
-                # Value at start of period (baseline)
-                # If the period starts at the beginning of available data, use 0? 
-                # No, we fetched a slice. precip_data[0] is the accumulation at t=now.
-                # So forecast from Now to End = Acc(End) - Acc(Now).
-                start_val = precip_data[0]
+                # Fetch Start Grid
+                grid_start = precip_var[idx_start, lat_min_idx:lat_max_idx+1, lon_min_idx:lon_max_idx+1].data
+                grid_start = np.array(grid_start).astype(float).squeeze()
                 
-                # Total precip is the difference
-                total_precip = end_val - start_val
+                # Mask artifacts
+                grid_end[grid_end > 3000] = 0
+                grid_end[grid_end < 0] = 0
+                grid_start[grid_start > 3000] = 0 
+                grid_start[grid_start < 0] = 0
                 
-                # Handle any negative values (if reset happened contrary to assumption)
-                # In strict cumulative, diff should be >= 0.
-                # If negative, it implies a reset occurred (End < Start). 
-                # Result would be negative. 
-                # Fallback: if negative, just take End val (assuming Start was from prev cycle)? 
-                # Or stick to diff sum if robust. 
-                # User requested Subtraction. Let's enforce non-negative.
+                # Calculate Difference
+                total_precip = grid_end - grid_start
                 total_precip = np.maximum(total_precip, 0)
                 
-            else:
-                total_precip = np.zeros((subset_lats.shape[0], subset_lons.shape[0]))
+            except Exception as slice_err:
+                print(f"Data fetch error for {period_name}: {slice_err}")
+                continue
             
-            # Cap Total (Artifact Removal)
-            # Clip at 3000mm to prevent scale compression by anomalies
+            # Cap Total
             total_precip = np.clip(total_precip, 0, 3000)
 
             max_val = np.nanmax(total_precip)
@@ -315,20 +359,36 @@ def fetch_and_plot_gfs(target_url=None, target_run_time=None):
         print(f"CRITICAL ERROR: {e}")
         import traceback
         traceback.print_exc()
-
+    
 def plot_rainfall(lons, lats, data, filename_id):
-    fig = plt.figure(figsize=(12, 12))
+    # Landscape
+    fig = plt.figure(figsize=(16, 10))
     ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.set_extent([116, 127, 4, 21], crs=ccrs.PlateCarree())
+    
+    # Extent: Includes PAR (115-135), Palau (134), Excludes mostly Vietnam (<109)
+    # [LonMin, LonMax, LatMin, LatMax]
+    ax.set_extent([114, 138, 3, 27], crs=ccrs.PlateCarree())
 
     # Features
-    ax.add_feature(cfeature.LAND, facecolor='lightgray')
-    ax.add_feature(cfeature.COASTLINE, linewidth=1.5)
-    ax.add_feature(cfeature.BORDERS, linestyle=':', linewidth=1)
-    ax.add_feature(cfeature.OCEAN, facecolor='aliceblue')
+    ax.add_feature(cfeature.LAND, facecolor='#f0f0f0') # Lighter land
+    ax.add_feature(cfeature.COASTLINE, linewidth=1.0, edgecolor='#555')
+    ax.add_feature(cfeature.BORDERS, linestyle=':', linewidth=0.8, edgecolor='#777')
+    ax.add_feature(cfeature.OCEAN, facecolor='#e0f7fa') # Light cyan ocean
+    
+    # Plot PAR (Philippine Area of Responsibility)
+    # Polygon Logic: [Lon, Lat]
+    par_lons = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
+    par_lats = [5.0, 15.0, 21.0, 25.0, 25.0, 5.0, 5.0]
+    
+    ax.plot(par_lons, par_lats, transform=ccrs.PlateCarree(), 
+            color='red', linestyle='-', linewidth=2, label='PAR', alpha=0.7)
     
     # Gridlines
-    gl = ax.gridlines(draw_labels=False, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.3, linestyle='--')
+    gl.top_labels = False
+    gl.right_labels = False
+    gl.xlabel_style = {'size': 9, 'color': 'gray'}
+    gl.ylabel_style = {'size': 9, 'color': 'gray'}
 
     # Extended Rainfall Levels (Granular scale as requested)
     levels = [0, 5, 10, 15, 20, 25, 30, 35, 40, 50, 70, 100, 125, 150, 175, 200, 250, 300, 400, 500]
@@ -336,54 +396,30 @@ def plot_rainfall(lons, lats, data, filename_id):
     # Custom Distinct Colors corresponding to intervals (19 colors needed for 20 levels)
     colors = [
         '#ffffff00', # 0-5 (Transparent)
-        '#e0f2fe',   # 5-10 (Very Light Blue)
+        '#e0f2fe',   # 5-10
         '#bae6fd',   # 10-15
         '#7dd3fc',   # 15-20
         '#38bdf8',   # 20-25
-        '#0ea5e9',   # 25-30 (Sky Blue)
+        '#0ea5e9',   # 25-30
         '#0284c7',   # 30-35
-        '#0369a1',   # 35-40 (Deep Blue)
-        '#4ade80',   # 40-50 (Light Green)
-        '#22c55e',   # 50-70 (Green)
-        '#16a34a',   # 70-100 (Dark Green)
-        '#facc15',   # 100-125 (Yellow)
-        '#eab308',   # 125-150 (Dark Yellow)
-        '#fb923c',   # 150-175 (Orange)
-        '#f97316',   # 175-200 (Dark Orange)
-        '#ef4444',   # 200-250 (Red)
-        '#dc2626',   # 250-300 (Dark Red)
-        '#d946ef',   # 300-400 (Fuchsia)
-        '#a21caf',   # 400-500 (Purple)
-        '#581c87'    # > 500 (Deep Purple - Max)
+        '#0369a1',   # 35-40
+        '#4ade80',   # 40-50
+        '#22c55e',   # 50-70
+        '#16a34a',   # 70-100
+        '#facc15',   # 100-125
+        '#eab308',   # 125-150
+        '#fb923c',   # 150-175
+        '#f97316',   # 175-200
+        '#ef4444',   # 200-250
+        '#dc2626',   # 250-300
+        '#d946ef',   # 300-400
+        '#a21caf',   # 400-500
+        '#581c87'    # > 500
     ]
-    
-    # Ensure color list matches level intervals (N levels -> N-1 colors usually, or N+1 with extend)
-    # Contourf usually uses N-1 colors for N levels.
-    # We have 20 levels, so we need 19 colors for the intervals between them.
-    # The 'extend="max"' will use the last color or a separate one for >500.
-    # Let's verify lengths: len(levels) = 20. Intervals = 19.
-    # len(colors) = 20. 
-    # We will slice colors[1:] if needed, or pass full list if it aligns with "extend".
-    # Standard matplotlib: colors should be len(levels)-1.
-    # We have 20 levels -> 19 intervals.
-    # 0-5, 5-10, ..., 400-500.
-    # The list above has 20 colors. 
-    # Use colors[1:] to skip the transparent one if we want 0-5 to be the first colored syntax?
-    # Actually, usually index 0 is 0-5.
-    
-    # Let's explicitly define the cmap.
-    from matplotlib.colors import ListedColormap, BoundaryNorm
-    
-    # We want 0-5 to be Transparent (#ffffff00).
-    # 5-10 to be #e0f2fe, etc.
-    # If we pass `colors`, we have 20 items.
-    # We need 19 items for 19 intervals.
-    # The last color in my list '#581c87' is for >500 (extend).
-    # So for the main intervals, we use colors[:-1] (19 items).
     
     cmap_cols = colors[:-1] 
     cmap = ListedColormap(cmap_cols)
-    cmap.set_over(colors[-1]) # Set >500 color
+    cmap.set_over(colors[-1])
     
     norm = BoundaryNorm(levels, ncolors=len(cmap_cols), clip=False)
 
@@ -394,11 +430,12 @@ def plot_rainfall(lons, lats, data, filename_id):
         LONS, LATS = lons, lats
 
     if np.nanmax(data) > 0:
-        # Extend max to handle > 500
         contour = ax.contourf(LONS, LATS, data, levels=levels, cmap=cmap, norm=norm, extend='max', transform=ccrs.PlateCarree())
         
-        # Colorbar
-        cb = fig.colorbar(contour, ax=ax, orientation='vertical', pad=0.02, shrink=0.8, aspect=30)
+        # Colorbar (Horizontal for landscape?)
+        # Vertical usually saves space on side for landscape if ratio is wide.
+        # But let's stick to vertical right.
+        cb = fig.colorbar(contour, ax=ax, orientation='vertical', pad=0.01, shrink=0.7, aspect=35)
         cb.ax.tick_params(labelsize=9)
     
     # Save
