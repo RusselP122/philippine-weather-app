@@ -218,7 +218,7 @@ const Volcanoes = () => {
 
                     {/* Last Updated Label */}
                     {metadata && (
-                        <div className="ml-auto text-[10px] text-slate-500 hidden md:block">
+                        <div className="ml-auto text-[10px] text-slate-500">
                             Updated: {new Date(metadata.last_updated).toLocaleString('en-US')}
                         </div>
                     )}

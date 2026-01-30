@@ -1,0 +1,45 @@
+name: Update Rainfall Forecast
+on:
+  schedule:
+    - cron: '0 */3 * * *' # Run every 3 hours to cover GFS 6h cycles
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  update-maps:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install System Dependencies (Cartopy)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgeos-dev libproj-dev proj-data proj-bin libgdal-dev
+
+    - name: Install Python Dependencies
+      run: |
+        pip install requests numpy matplotlib cartopy pydap netCDF4 scipy
+
+    - name: Ensure Output Directory Exists
+      run: |
+        mkdir -p public/images/rainfall
+        mkdir -p public/data
+
+    - name: Run Rain Generation Script
+      run: python rain.py
+      # Note: rain.py default is now single run.
+
+    - name: Commit and Push Changes
+      uses: stefanzweifel/git-auto-commit-action@v4
+      with:
+        commit_message: "Update GFS Rainfall Forecast Maps [Automated]"
+        file_pattern: 'public/images/rainfall/*.png public/data/rainfall_meta.json'

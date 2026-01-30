@@ -13,6 +13,7 @@ import Warning from "./components/Warning";
 import Earthquake from "./components/Earthquake";
 import DailySynoptic from "./components/DailySynoptic";
 import Volcanoes from "./components/Volcanoes";
+import Rainfall from "./components/Rainfall";
 import Footer from "./components/Footer";
 
 function App() {
@@ -147,6 +148,18 @@ function App() {
         <Navbar />
         <main className="flex-grow">
           <Volcanoes />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (path === "/rainfall") {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <Rainfall />
         </main>
         <Footer />
       </div>

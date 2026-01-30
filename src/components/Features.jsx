@@ -178,6 +178,35 @@ const Features = () => {
               </a>
             </div>
           </div>
+          {/* Accumulated Rainfall Forecast Feature */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col h-full gap-4 hover:border-teal-500/60 hover:shadow-lg hover:shadow-teal-900/30 transition-all">
+            <h2 className="text-xl font-semibold text-slate-50 flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-teal-500/15 text-teal-300 text-sm font-bold">
+                RF
+              </span>
+              Accumulated Rainfall Forecast
+            </h2>
+            <p className="text-sm text-slate-300">
+              Interactive map showing expected rainfall accumulation over the next 14 days.
+              Compare forecasts from ECMWF, GFS, and JMA models.
+            </p>
+            <div className="bg-slate-900 border border-teal-500/40 h-44 md:h-48 rounded-xl overflow-hidden flex items-center justify-center">
+              <img
+                src="/images/rainfall_preview.png"
+                alt="Accumulated rainfall forecast map"
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <div className="flex justify-end mt-auto">
+              <a
+                href="/rainfall"
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-teal-500 text-slate-950 text-xs font-medium tracking-wide hover:bg-teal-400 transition-colors"
+              >
+                View Rainfall Map
+                <span className="text-[10px]">→</span>
+              </a>
+            </div>
+          </div>
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col h-full gap-4 hover:border-sky-500/60 hover:shadow-lg hover:shadow-sky-900/30 transition-all">
             <h2 className="text-xl font-semibold text-slate-50 flex items-center gap-2">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/20 text-amber-300 text-sm font-bold">

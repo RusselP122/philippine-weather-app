@@ -12,6 +12,16 @@ const todayDateStr = `${yyyy}-${mm}-${dd}`;
 const TropicalOutlook = () => {
   const [activeTab, setActiveTab] = useState('week1');
 
+  const [selectedImage, setSelectedImage] = useState(null);
+
+  const openImage = (src) => {
+    setSelectedImage(src);
+  };
+
+  const closeImage = () => {
+    setSelectedImage(null);
+  };
+
   return (
     <section className="bg-slate-950 py-12">
       <div className="max-w-6xl mx-auto px-4">
@@ -63,13 +73,15 @@ const TropicalOutlook = () => {
               <img
                 src="/images/tropical_outlook_week1_latest.png"
                 alt="Tropical weather outlook Week 1"
-                className={`h-full w-full object-contain absolute transition-opacity duration-300 ${activeTab === 'week1' ? 'opacity-100' : 'opacity-0'}`}
+                onClick={() => openImage("/images/tropical_outlook_week1_latest.png")}
+                className={`h-full w-full object-contain absolute transition-opacity duration-300 cursor-pointer hover:opacity-90 ${activeTab === 'week1' ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
               />
               {/* Image for Week 2 */}
               <img
                 src="/images/tropical_outlook_week2_latest.png"
                 alt="Tropical weather outlook Week 2"
-                className={`h-full w-full object-contain absolute transition-opacity duration-300 ${activeTab === 'week2' ? 'opacity-100' : 'opacity-0'}`}
+                onClick={() => openImage("/images/tropical_outlook_week2_latest.png")}
+                className={`h-full w-full object-contain absolute transition-opacity duration-300 cursor-pointer hover:opacity-90 ${activeTab === 'week2' ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
               />
             </div>
           </div>
@@ -97,6 +109,24 @@ const TropicalOutlook = () => {
           </aside>
         </div>
       </div>
+
+      {/* Full Screen Image Modal */}
+      {selectedImage && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm" onClick={closeImage}>
+          <button
+            onClick={closeImage}
+            className="absolute top-4 right-4 p-2 text-white/70 hover:text-white bg-slate-800/50 hover:bg-slate-800 rounded-full transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+          <img
+            src={selectedImage}
+            alt="Enlarged view"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()} // Prevent close when clicking image itself
+          />
+        </div>
+      )}
     </section>
   );
 };

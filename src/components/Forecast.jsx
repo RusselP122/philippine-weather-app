@@ -127,8 +127,8 @@ const Forecast = () => {
 
   const visibleOptions = latestModelTimes.length
     ? availableOptions
-        .filter((opt) => latestModelTimes.includes(opt.modelTime))
-        .sort((a, b) => (a.modelTime < b.modelTime ? 1 : -1))
+      .filter((opt) => latestModelTimes.includes(opt.modelTime))
+      .sort((a, b) => (a.modelTime < b.modelTime ? 1 : -1))
     : [];
 
   // Determine which option is effectively selected:
@@ -138,14 +138,16 @@ const Forecast = () => {
     selectedId && visibleOptions.some((opt) => opt.id === selectedId)
       ? selectedId
       : visibleOptions.length
-      ? visibleOptions[0].id
-      : null;
+        ? visibleOptions[0].id
+        : null;
 
   const current = effectiveSelectedId
     ? visibleOptions.find((opt) => opt.id === effectiveSelectedId) ??
-      visibleOptions[0]
+    visibleOptions[0]
     : null;
   const imageSrc = current ? current.imageSrc : "";
+
+  const [enlargedImage, setEnlargedImage] = useState(null);
 
   return (
     <section className="bg-slate-950 py-12">
@@ -200,7 +202,8 @@ const Forecast = () => {
                 <img
                   src={imageSrc}
                   alt={`Forecast track for ${current.label}`}
-                  className="h-full w-full object-contain"
+                  onClick={() => setEnlargedImage(imageSrc)}
+                  className="h-full w-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
                 />
               ) : (
                 <span className="text-xs md:text-sm text-slate-500">
@@ -222,8 +225,8 @@ const Forecast = () => {
                   <dd className="font-mono text-right text-slate-200">
                     {current
                       ? `${current.modelTime} (${toPhstLabel(
-                          current.modelTime
-                        )} PHST)`
+                        current.modelTime
+                      )} PHST)`
                       : "N/A"}
                   </dd>
                 </div>
@@ -248,6 +251,24 @@ const Forecast = () => {
           </aside>
         </div>
       </div>
+
+      {/* Full Screen Image Modal */}
+      {enlargedImage && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm" onClick={() => setEnlargedImage(null)}>
+          <button
+            onClick={() => setEnlargedImage(null)}
+            className="absolute top-4 right-4 p-2 text-white/70 hover:text-white bg-slate-800/50 hover:bg-slate-800 rounded-full transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+          <img
+            src={enlargedImage}
+            alt="Enlarged forecast"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </section>
   );
 };
