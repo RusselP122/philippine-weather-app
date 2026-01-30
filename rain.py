@@ -14,7 +14,7 @@ import sys
 from matplotlib.colors import ListedColormap, BoundaryNorm
 
 # Output directory
-OUTPUT_DIR = r"C:\Users\Russel\Desktop\philippine-weather-app\public\images\rainfall"
+OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "rainfall")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Philippines Bounds
@@ -350,7 +350,7 @@ def fetch_and_plot_gfs(target_url=None, target_run_time=None):
 
         # Save Metadata
         import json
-        meta_path = os.path.join(r"C:\Users\Russel\Desktop\philippine-weather-app\public\data", "rainfall_meta.json")
+        meta_path = os.path.join(os.getcwd(), "public", "data", "rainfall_meta.json")
         with open(meta_path, "w") as f:
             json.dump(meta_info, f, indent=2)
         print(f"Saved metadata to {meta_path}")
