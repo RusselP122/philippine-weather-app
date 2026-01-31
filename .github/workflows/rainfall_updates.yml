@@ -20,26 +20,29 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Install System Dependencies (Cartopy)
+    - name: Install System Dependencies (Cartopy & Eccodes)
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgeos-dev libproj-dev proj-data proj-bin libgdal-dev
+        sudo apt-get install -y libgeos-dev libproj-dev proj-data proj-bin libgdal-dev libeccodes0 libaec-dev
 
     - name: Install Python Dependencies
       run: |
-        pip install requests numpy matplotlib cartopy pydap netCDF4 scipy Jinja2
+        pip install requests numpy matplotlib cartopy pydap netCDF4 scipy Jinja2 ecmwf-opendata cfgrib ecmwflibs xarray
 
-    - name: Ensure Output Directory Exists
+    - name: Ensure Output Directories Exist
       run: |
         mkdir -p public/images/rainfall
+        mkdir -p public/images/wind
         mkdir -p public/data
 
     - name: Run Rain Generation Script
       run: python rain.py
-      # Note: rain.py default is now single run.
+
+    - name: Run Wind Generation Script (ECMWF AIFS)
+      run: python wind_aifs.py
 
     - name: Commit and Push Changes
       uses: stefanzweifel/git-auto-commit-action@v4
       with:
-        commit_message: "Update GFS Rainfall Forecast Maps [Automated]"
-        file_pattern: 'public/images/rainfall/*.png public/data/rainfall_meta.json'
+        commit_message: "Update Weather Forecast Maps (Rainfall & Wind) [Automated]"
+        file_pattern: 'public/images/rainfall/*.png public/images/wind/*.png public/data/*.json'

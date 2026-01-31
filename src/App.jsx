@@ -14,6 +14,8 @@ import Earthquake from "./components/Earthquake";
 import DailySynoptic from "./components/DailySynoptic";
 import Volcanoes from "./components/Volcanoes";
 import Rainfall from "./components/Rainfall";
+import ForecastModels from "./components/ForecastModels";
+import WindPage from "./components/Wind";
 import Footer from "./components/Footer";
 
 function App() {
@@ -154,12 +156,36 @@ function App() {
     );
   }
 
+  if (path === "/forecast-models") {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <ForecastModels />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   if (path === "/rainfall") {
     return (
       <div className="min-h-screen flex flex-col bg-slate-950">
         <Navbar />
         <main className="flex-grow">
           <Rainfall />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (path === "/wind") {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <WindPage />
         </main>
         <Footer />
       </div>
