@@ -34,6 +34,7 @@ const Rainfall = () => {
     // Animation State
     const [isPlaying, setIsPlaying] = useState(false);
     const [frameIndex, setFrameIndex] = useState(0);
+    const [fps, setFps] = useState(2); // Default 2 FPS for Rainfall (7 frames only)
 
     // Determine current image path
     let imagePath = "";
@@ -69,7 +70,7 @@ const Rainfall = () => {
         if (isPlaying && timePeriod === "animation" && metadata?.animation_frames) {
             interval = setInterval(() => {
                 setFrameIndex(prev => (prev + 1) % metadata.animation_frames.length);
-            }, 800); // 800ms per frame
+            }, 1000 / fps);
         } else {
             // Reset if switched away?
             // Optional: setIsPlaying(false) if period changes?
@@ -159,6 +160,23 @@ const Rainfall = () => {
                                         }}
                                         className="w-24 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                                     />
+
+                                    {/* Speed Control */}
+                                    {/* Use local logic for Rainfall specific state if not already there */}
+                                    <div className="flex items-center gap-1 border-l border-slate-700 pl-2 ml-1">
+                                        <span className="text-[9px] text-slate-500 uppercase font-bold tracking-wider hidden sm:block">SPEED</span>
+                                        <div className="flex gap-0.5">
+                                            {[2, 4, 8].map(s => (
+                                                <button
+                                                    key={s}
+                                                    onClick={() => setFps(s)}
+                                                    className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${fps === s ? 'bg-slate-700 text-white' : 'bg-transparent text-slate-500 hover:text-slate-300'}`}
+                                                >
+                                                    {s === 2 ? '1x' : (s === 4 ? '2x' : '4x')}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
 
                                     <div className="text-xs text-slate-400 px-2 min-w-[60px] text-center font-mono">
                                         Day {frameIndex + 1}/7

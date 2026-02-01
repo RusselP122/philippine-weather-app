@@ -8,6 +8,7 @@ import os
 import sys
 from datetime import datetime
 import json
+import imageio
 
 # Output Directories
 OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "wind")
@@ -21,7 +22,6 @@ def fetch_and_plot_aifs():
         client = Client(source="ecmwf", model="aifs-single", resol="0p25")
         
         # Parameters: 10m U-component of wind, 10m V-component of wind, Mean sea level pressure
-        # ecmwf-opendata uses these names. cfgrib will map them to u10, v10, msl.
         parameters = ['10u', '10v', 'msl']
         # Steps: 0 to 168 hours (Every 6 hours)
         steps = list(range(0, 169, 6)) # 0, 6, 12, ..., 168
@@ -29,77 +29,103 @@ def fetch_and_plot_aifs():
         # Track successfully generated frames for metadata
         valid_frames = []
         
-        # Download all steps in one go if possible, or loop. Loop is safer for memory/stability.
-        # But to be cleaner, let's try downloading all and slicing Xarray.
-        # Although slicing a big GRIB can be slow if only needing few steps.
-        # Let's loop.
-        
         for step in steps:
             print(f"\nProcessing Step {step}h...")
             target_file = f"aifs_{step:03d}.grib2"
             
             try:
-                # 1. Download
+                # 1. Download (Auto-resolves to latest available run)
                 client.retrieve(
-                    date=-1,
-                    time=0,
                     step=step,
                     type="fc",
                     param=parameters,
                     target=target_file
                 )
                 
-                # 2. Open with CFGRIB (Requires libeccodes - Works on Linux/GH Actions)
-                # filter_by_keys={'typeOfLevel': 'surface'} might be needed if multiple levels mixed.
-                # But '10u', '10v' are single levels. 'msl' is single level.
+                # 2. Open with CFGRIB
                 ds = xr.open_dataset(target_file, engine='cfgrib')
                 
-                # Variables: u10, v10, msl
+                # Extract Run Time from the first step (metadata)
+                if step == 0 and "time" in ds:
+                    try:
+                        rt = ds['time'].values
+                        if rt.ndim == 0:
+                            ts = (rt - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
+                            run_time_str = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M UTC")
+                        else:
+                            ts = (rt[-1] - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
+                            run_time_str = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M UTC")
+                    except Exception as e:
+                        print(f"Metadata extraction warning: {e}")
+                        run_time_str = "Latest"
+
+                # Variables
                 u10 = ds['u10']
                 v10 = ds['v10']
                 msl = ds['msl']
                 
-                # 3. Calculate
-                # Wind Speed (kph)
-                ws = np.sqrt(u10**2 + v10**2) * 3.6
+                # Handle multiple times if present (pick latest)
+                if "time" in u10.dims and u10.sizes["time"] > 1:
+                     print(f"Multiple runs found, selecting latest.")
+                     u10 = u10.isel(time=-1)
+                     v10 = v10.isel(time=-1)
+                     msl = msl.isel(time=-1)
                 
-                # MSLP (hPa)
+                # 3. Calculate
+                ws = np.sqrt(u10**2 + v10**2) * 3.6
                 msl_hpa = msl / 100.0
                 
                 # 4. Plot
                 filename_id = f"aifs_wind_{step:03d}"
                 print(f"Plotting {filename_id}...")
-                
                 plot_wind_pressure(ds.latitude, ds.longitude, ws, u10, v10, msl_hpa, filename_id)
                 
                 valid_frames.append(filename_id)
-                
                 ds.close()
                 if os.path.exists(target_file):
                     os.remove(target_file)
                     
             except Exception as e:
                 print(f"Error processing step {step}: {e}")
-                # If cfgrib missing (Local Windows fallback warning)
-                if "cfgrib" in str(e) or "eccodes" in str(e):
-                    print("NOTE: This script requires 'eccodes' and 'cfgrib'. It is designed to run on GitHub Actions.")
+                if "cfgrib" in str(e):
+                     print("NOTE: Requires cfgrib/eccodes (Cloud Only).")
 
         # Save Metadata
         meta_info = {
             "model": "ECMWF AIFS",
             "source": "ECMWF Open Data",
             "generated_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
-            "run_time": datetime.now().strftime("%Y-%m-%d 00:00 UTC"),
+            "run_time": run_time_str if 'run_time_str' in locals() else "Unknown",
             "animation_frames": valid_frames
         }
         
         with open(os.path.join(DATA_DIR, "wind_meta.json"), "w") as f:
             json.dump(meta_info, f, indent=2)
 
+        # Generate GIF
+        if valid_frames:
+            print("Generating GIF...")
+            gif_path = os.path.join(OUTPUT_DIR, "wind_forecast.gif")
+            generate_gif(valid_frames, OUTPUT_DIR, gif_path)
+
     except Exception as e:
         print(f"CRITICAL ERROR: {e}")
         import traceback
         traceback.print_exc()
+
+def generate_gif(frame_names, input_dir, output_path, fps=4):
+    try:
+        images = []
+        for frame in frame_names:
+            file_path = os.path.join(input_dir, f"{frame}.png")
+            if os.path.exists(file_path):
+                images.append(imageio.imread(file_path))
+        
+        if images:
+            imageio.mimsave(output_path, images, fps=fps, loop=0)
+            print(f"Saved GIF: {output_path}")
+    except Exception as e:
+        print(f"GIF Generation Failed: {e}")
 
 def plot_wind_pressure(lats, lons, ws, u, v, msl, filename_id):
     fig = plt.figure(figsize=(16, 10))
@@ -129,12 +155,8 @@ def plot_wind_pressure(lats, lons, ws, u, v, msl, filename_id):
     cb.set_label('Wind Speed (kph)', fontsize=9)
     
     # Streamlines (Quiver)
-    # Downsample
-    skip = 6 # Fine tune for 0.25 deg grid
+    skip = 6 
     
-    # Xarray coords are 1D usually. Meshgrid needed for Quiver if using 1D.
-    # Cartopy handles 1D if matches data shape.
-    # But usually safe to meshgrid.
     if len(lons.shape) == 1:
         X, Y = np.meshgrid(lons, lats)
         U = u.values
@@ -161,6 +183,11 @@ def plot_wind_pressure(lats, lons, ws, u, v, msl, filename_id):
     par_lons = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
     par_lats = [5.0, 15.0, 21.0, 25.0, 25.0, 5.0, 5.0]
     ax.plot(par_lons, par_lats, transform=ccrs.PlateCarree(), color='red', linestyle='-', linewidth=1.5, alpha=0.6)
+
+    # Watermark
+    ax.text(0.99, 0.98, 'Philippine Weather App', transform=ax.transAxes,
+            fontsize=12, color='gray', alpha=0.6,
+            ha='right', va='top', weight='bold')
 
     filepath = os.path.join(OUTPUT_DIR, f"{filename_id}.png")
     plt.savefig(filepath, dpi=120, bbox_inches='tight', facecolor='white')

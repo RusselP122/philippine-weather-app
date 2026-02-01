@@ -27,7 +27,7 @@ jobs:
 
     - name: Install Python Dependencies
       run: |
-        pip install requests numpy matplotlib cartopy pydap netCDF4 scipy Jinja2 ecmwf-opendata cfgrib ecmwflibs xarray
+        pip install requests numpy matplotlib cartopy pydap netCDF4 scipy Jinja2 ecmwf-opendata cfgrib ecmwflibs xarray imageio
 
     - name: Ensure Output Directories Exist
       run: |

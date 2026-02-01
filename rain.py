@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import re
 import time
 import sys
+import imageio
 from matplotlib.colors import ListedColormap, BoundaryNorm
 
 # Output directory
@@ -222,7 +223,7 @@ def fetch_and_plot_gfs(target_url=None, target_run_time=None):
              
         # 6. Forecast Window Logic (Existing)
         now = datetime.now(timezone.utc)
-        end_time = now + timedelta(hours=24)
+        
         # Define Periods to Generate (Cumulative Summaries)
         periods = {
             "24h": 24,
@@ -355,11 +356,32 @@ def fetch_and_plot_gfs(target_url=None, target_run_time=None):
             json.dump(meta_info, f, indent=2)
         print(f"Saved metadata to {meta_path}")
 
+        # Generate GIF
+        animation_frames = meta_info.get("animation_frames", [])
+        if animation_frames:
+            print("Generating GIF...")
+            gif_path = os.path.join(OUTPUT_DIR, "rainfall_forecast.gif")
+            generate_gif(animation_frames, OUTPUT_DIR, gif_path)
+
     except Exception as e:
         print(f"CRITICAL ERROR: {e}")
         import traceback
         traceback.print_exc()
-    
+
+def generate_gif(frame_names, input_dir, output_path, fps=2):
+    try:
+        images = []
+        for frame in frame_names:
+            file_path = os.path.join(input_dir, f"{frame}.png")
+            if os.path.exists(file_path):
+                images.append(imageio.imread(file_path))
+        
+        if images:
+            imageio.mimsave(output_path, images, fps=fps, loop=0)
+            print(f"Saved GIF: {output_path}")
+    except Exception as e:
+        print(f"GIF Generation Failed: {e}")
+
 def plot_rainfall(lons, lats, data, filename_id):
     # Landscape
     fig = plt.figure(figsize=(16, 10))
@@ -389,6 +411,11 @@ def plot_rainfall(lons, lats, data, filename_id):
     gl.right_labels = False
     gl.xlabel_style = {'size': 9, 'color': 'gray'}
     gl.ylabel_style = {'size': 9, 'color': 'gray'}
+
+    # Watermark
+    ax.text(0.99, 0.98, 'Philippine Weather App', transform=ax.transAxes,
+            fontsize=12, color='gray', alpha=0.6,
+            ha='right', va='top', weight='bold')
 
     # Extended Rainfall Levels (Granular scale as requested)
     levels = [0, 5, 10, 15, 20, 25, 30, 35, 40, 50, 70, 100, 125, 150, 175, 200, 250, 300, 400, 500]

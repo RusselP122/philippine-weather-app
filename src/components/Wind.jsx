@@ -7,6 +7,7 @@ const WindPage = () => {
     // Animation State
     const [isPlaying, setIsPlaying] = useState(false);
     const [frameIndex, setFrameIndex] = useState(0);
+    const [fps, setFps] = useState(4); // Default 4 FPS
     const [metadata, setMetadata] = useState(null);
     const [imageTimestamp, setImageTimestamp] = useState(Date.now());
     const [isZoomed, setIsZoomed] = useState(false);
@@ -47,10 +48,10 @@ const WindPage = () => {
         if (isPlaying && frames.length > 0) {
             interval = setInterval(() => {
                 setFrameIndex(prev => (prev + 1) % frames.length);
-            }, 500); // 500ms speed for 6-hourly steps
+            }, 1000 / fps);
         }
         return () => clearInterval(interval);
-    }, [isPlaying, frames]);
+    }, [isPlaying, frames, fps]);
 
     const togglePlay = () => setIsPlaying(!isPlaying);
 
@@ -82,7 +83,7 @@ const WindPage = () => {
 
                     <div className="flex flex-col gap-3">
                         {/* Animation Controls */}
-                        <div className="flex items-center gap-3 bg-slate-900 border border-slate-700 rounded-xl p-2 pr-4 shadow-lg">
+                        <div className="flex flex-col md:flex-row items-center gap-3 bg-slate-900 border border-slate-700 rounded-xl p-2 pr-4 shadow-lg">
                             <button
                                 onClick={togglePlay}
                                 className="flex items-center justify-center h-10 w-12 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors"
@@ -107,7 +108,23 @@ const WindPage = () => {
                                 />
                             </div>
 
-                            <div className="ml-2 text-right">
+                            {/* Speed Control */}
+                            <div className="flex items-center gap-2 border-l border-slate-700 pl-3 ml-1">
+                                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">SPEED</span>
+                                <div className="flex gap-1">
+                                    {[2, 4, 8].map(s => (
+                                        <button
+                                            key={s}
+                                            onClick={() => setFps(s)}
+                                            className={`px-2 py-1 text-xs font-bold rounded ${fps === s ? 'bg-slate-700 text-white' : 'bg-transparent text-slate-500 hover:text-slate-300'}`}
+                                        >
+                                            {s === 2 ? '1x' : (s === 4 ? '2x' : '4x')}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="ml-2 text-right hidden md:block">
                                 <div className="text-xs font-mono text-slate-400">DAY</div>
                                 <div className="text-lg font-bold leading-none text-slate-200">{dayNum}</div>
                             </div>
