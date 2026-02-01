@@ -13,11 +13,11 @@ const WindPage = () => {
     const [isZoomed, setIsZoomed] = useState(false);
 
     // Determines Frames from Metadata or Fallback (0 to 168 step 6)
-    const frames = metadata?.animation_frames || Array.from({ length: 29 }, (_, i) => `aifs_wind_${String(i * 6).padStart(3, '0')} `);
+    const frames = metadata?.animation_frames || Array.from({ length: 29 }, (_, i) => `aifs_wind_${String(i * 6).padStart(3, '0')}`);
 
     // Helpers
     const currentFrameName = frames[frameIndex] || "aifs_wind_000";
-    const imagePath = `/ images / wind / ${currentFrameName}.png`;
+    const imagePath = `/images/wind/${currentFrameName}.png`;
 
     // Calculate Time Label (Step Hours)
     // Extract number from "aifs_wind_006" -> 6
@@ -35,7 +35,7 @@ const WindPage = () => {
                 if (data.animation_frames) {
                     data.animation_frames.forEach(frame => {
                         const img = new Image();
-                        img.src = `/ images / wind / ${frame}.png ? t = ${imageTimestamp} `;
+                        img.src = `/images/wind/${frame}.png?t=${imageTimestamp}`;
                     });
                 }
             })
@@ -116,7 +116,7 @@ const WindPage = () => {
                                         <button
                                             key={s}
                                             onClick={() => setFps(s)}
-                                            className={`px - 2 py - 1 text - xs font - bold rounded ${fps === s ? 'bg-slate-700 text-white' : 'bg-transparent text-slate-500 hover:text-slate-300'} `}
+                                            className={`px-2 py-1 text-xs font-bold rounded ${fps === s ? 'bg-slate-700 text-white' : 'bg-transparent text-slate-500 hover:text-slate-300'}`}
                                         >
                                             {s === 2 ? '1x' : (s === 4 ? '2x' : '4x')}
                                         </button>
@@ -172,8 +172,8 @@ const WindPage = () => {
 
                     {/* Main Map Image */}
                     <img
-                        key={`${imagePath} -${imageTimestamp} `}
-                        src={`${imagePath}?t = ${imageTimestamp} `}
+                        key={`${imagePath}-${imageTimestamp}`}
+                        src={`${imagePath}?t=${imageTimestamp}`}
                         alt={`Wind Forecast T + ${stepHours} h`}
                         className="w-full h-auto object-contain max-h-[800px]"
                         onError={(e) => {
@@ -209,7 +209,7 @@ const WindPage = () => {
 
                         <div className="relative max-w-7xl w-full max-h-screen flex items-center justify-center" onClick={e => e.stopPropagation()}>
                             <img
-                                src={`${imagePath}?t = ${imageTimestamp} `}
+                                src={`${imagePath}?t=${imageTimestamp}`}
                                 alt={`Wind Forecast T + ${stepHours} h(Zoomed)`}
                                 className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
                             />
