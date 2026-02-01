@@ -9,7 +9,7 @@ import {
     Legend,
     ResponsiveContainer,
 } from "recharts";
-import { CloudRain, Calendar, Info, RefreshCw, AlertTriangle } from "lucide-react";
+import { CloudRain, Calendar, Info, RefreshCw, AlertTriangle, Download } from "lucide-react";
 
 // --- Constants ---
 
@@ -177,6 +177,16 @@ const Rainfall = () => {
                                             ))}
                                         </div>
                                     </div>
+
+                                    {/* Download GIF */}
+                                    <a
+                                        href="/images/rainfall/rainfall_forecast.gif"
+                                        download="Rainfall_Forecast_Animation.gif"
+                                        className="hidden sm:flex items-center justify-center h-6 w-6 ml-1 bg-slate-800 hover:bg-slate-700 text-blue-400 rounded-md transition-colors border border-slate-700"
+                                        title="Download Animation (GIF)"
+                                    >
+                                        <Download className="h-3 w-3" />
+                                    </a>
 
                                     <div className="text-xs text-slate-400 px-2 min-w-[60px] text-center font-mono">
                                         Day {frameIndex + 1}/7

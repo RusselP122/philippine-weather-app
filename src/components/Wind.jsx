@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Wind, Info, AlertTriangle, Play, Pause } from "lucide-react";
+import { Wind, Info, AlertTriangle, Play, Pause, Download } from "lucide-react";
 
 const MODAL_NAME = "ECMWF AIFS (Wind)";
 
@@ -13,11 +13,11 @@ const WindPage = () => {
     const [isZoomed, setIsZoomed] = useState(false);
 
     // Determines Frames from Metadata or Fallback (0 to 168 step 6)
-    const frames = metadata?.animation_frames || Array.from({ length: 29 }, (_, i) => `aifs_wind_${String(i * 6).padStart(3, '0')}`);
+    const frames = metadata?.animation_frames || Array.from({ length: 29 }, (_, i) => `aifs_wind_${String(i * 6).padStart(3, '0')} `);
 
     // Helpers
     const currentFrameName = frames[frameIndex] || "aifs_wind_000";
-    const imagePath = `/images/wind/${currentFrameName}.png`;
+    const imagePath = `/ images / wind / ${currentFrameName}.png`;
 
     // Calculate Time Label (Step Hours)
     // Extract number from "aifs_wind_006" -> 6
@@ -35,7 +35,7 @@ const WindPage = () => {
                 if (data.animation_frames) {
                     data.animation_frames.forEach(frame => {
                         const img = new Image();
-                        img.src = `/images/wind/${frame}.png?t=${imageTimestamp}`;
+                        img.src = `/ images / wind / ${frame}.png ? t = ${imageTimestamp} `;
                     });
                 }
             })
@@ -116,13 +116,23 @@ const WindPage = () => {
                                         <button
                                             key={s}
                                             onClick={() => setFps(s)}
-                                            className={`px-2 py-1 text-xs font-bold rounded ${fps === s ? 'bg-slate-700 text-white' : 'bg-transparent text-slate-500 hover:text-slate-300'}`}
+                                            className={`px - 2 py - 1 text - xs font - bold rounded ${fps === s ? 'bg-slate-700 text-white' : 'bg-transparent text-slate-500 hover:text-slate-300'} `}
                                         >
                                             {s === 2 ? '1x' : (s === 4 ? '2x' : '4x')}
                                         </button>
                                     ))}
                                 </div>
                             </div>
+
+                            {/* Download GIF */}
+                            <a
+                                href="/images/wind/wind_forecast.gif"
+                                download="Wind_Forecast_Animation.gif"
+                                className="flex items-center justify-center h-8 w-8 ml-1 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded-lg transition-colors border border-slate-700"
+                                title="Download Animation (GIF)"
+                            >
+                                <Download className="h-4 w-4" />
+                            </a>
 
                             <div className="ml-2 text-right hidden md:block">
                                 <div className="text-xs font-mono text-slate-400">DAY</div>
@@ -141,7 +151,7 @@ const WindPage = () => {
                     {/* Dynamic Text Overlays */}
                     <div className="absolute top-4 left-4 z-10 pointer-events-none">
                         <h3 className="text-xl font-bold text-slate-900 bg-white/90 backdrop-blur px-3 py-1 rounded-md shadow-sm border border-slate-200">
-                            {`T+${stepHours}h WIND FORECAST`}
+                            {`T + ${stepHours}h WIND FORECAST`}
                         </h3>
                     </div>
 
@@ -162,9 +172,9 @@ const WindPage = () => {
 
                     {/* Main Map Image */}
                     <img
-                        key={`${imagePath}-${imageTimestamp}`}
-                        src={`${imagePath}?t=${imageTimestamp}`}
-                        alt={`Wind Forecast T+${stepHours}h`}
+                        key={`${imagePath} -${imageTimestamp} `}
+                        src={`${imagePath}?t = ${imageTimestamp} `}
+                        alt={`Wind Forecast T + ${stepHours} h`}
                         className="w-full h-auto object-contain max-h-[800px]"
                         onError={(e) => {
                             e.target.onerror = null;
@@ -199,12 +209,12 @@ const WindPage = () => {
 
                         <div className="relative max-w-7xl w-full max-h-screen flex items-center justify-center" onClick={e => e.stopPropagation()}>
                             <img
-                                src={`${imagePath}?t=${imageTimestamp}`}
-                                alt={`Wind Forecast T+${stepHours}h (Zoomed)`}
+                                src={`${imagePath}?t = ${imageTimestamp} `}
+                                alt={`Wind Forecast T + ${stepHours} h(Zoomed)`}
                                 className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
                             />
                             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur px-4 py-2 rounded-full text-white text-sm">
-                                {`T+${stepHours}h Forecast`}
+                                {`T + ${stepHours}h Forecast`}
                             </div>
                         </div>
                     </div>
