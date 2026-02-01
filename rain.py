@@ -413,7 +413,7 @@ def plot_rainfall(lons, lats, data, filename_id):
     gl.ylabel_style = {'size': 9, 'color': 'gray'}
 
     # Watermark
-    ax.text(0.99, 0.98, 'Philippine Weather App', transform=ax.transAxes,
+    ax.text(0.99, 0.98, 'Philippine Typhoon/Weather', transform=ax.transAxes,
             fontsize=12, color='gray', alpha=0.6,
             ha='right', va='top', weight='bold')
 

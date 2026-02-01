@@ -185,7 +185,7 @@ def plot_wind_pressure(lats, lons, ws, u, v, msl, filename_id):
     ax.plot(par_lons, par_lats, transform=ccrs.PlateCarree(), color='red', linestyle='-', linewidth=1.5, alpha=0.6)
 
     # Watermark
-    ax.text(0.99, 0.98, 'Philippine Weather App', transform=ax.transAxes,
+    ax.text(0.99, 0.98, 'Philippine Typhoon/Weather', transform=ax.transAxes,
             fontsize=12, color='gray', alpha=0.6,
             ha='right', va='top', weight='bold')
 
