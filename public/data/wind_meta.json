@@ -1,8 +1,8 @@
 {
   "model": "ECMWF AIFS",
   "source": "ECMWF Open Data",
-  "generated_at": "2026-02-14 04:45 AM",
-  "run_time": "2026-02-13 18:00 UTC",
+  "generated_at": "2026-02-14 06:52 AM",
+  "run_time": "2026-02-14 00:00 UTC",
   "animation_frames": [
     "aifs_wind_000",
     "aifs_wind_006",
