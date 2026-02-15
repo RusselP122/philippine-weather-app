@@ -1,7 +1,7 @@
 {
   "model": "GFS Seamless",
   "source": "NOAA NOMADS / THREDDS",
-  "generated_at": "2026-02-15 06:55 AM",
+  "generated_at": "2026-02-15 09:35 AM",
   "run_time": "2026-02-15 03:00 UTC",
   "animation_frames": [
     "gfs_day_1",
