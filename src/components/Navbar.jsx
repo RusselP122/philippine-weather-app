@@ -41,7 +41,8 @@ const Navbar = () => {
       items: [
         { label: "Synoptic Reports", href: "/synoptic-reports" },
         { label: "Forecast Models", href: "/forecast-models" },
-        { label: "Alert", href: "/alert" }
+        { label: "Alert", href: "/alert" },
+        { label: "ENSO Monitor", href: "/enso" }
       ]
     },
     {

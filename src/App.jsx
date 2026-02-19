@@ -17,6 +17,7 @@ import Rainfall from "./components/Rainfall";
 import ForecastModels from "./components/ForecastModels";
 import WindPage from "./components/Wind";
 import Footer from "./components/Footer";
+import EnsoMonitor from "./components/EnsoMonitor";
 
 function App() {
   const path = window.location.pathname;
@@ -186,6 +187,18 @@ function App() {
         <Navbar />
         <main className="flex-grow">
           <WindPage />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (path === "/enso") {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <EnsoMonitor />
         </main>
         <Footer />
       </div>

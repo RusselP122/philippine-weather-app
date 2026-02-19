@@ -1,0 +1,50 @@
+name: Update ENSO Data
+
+on:
+  # Run on push to main branch (deployment trigger)
+  push:
+    branches: [main]
+  
+  # Run on a schedule — every 2nd Thursday of the month at 20:00 UTC (4:00 AM PHT next day)
+  # The ENSO discussion page updates on the 2nd Thursday of each month
+  schedule:
+    - cron: '0 20 8-14 * 4'  # Thursdays between the 8th-14th = 2nd Thursday
+  
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  update-enso-data:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Run ENSO scraper
+        run: python enso_scrape.py
+
+      - name: Check for data changes
+        id: check_changes
+        run: |
+          git diff --quiet src/data/enso_data.json || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push updated data
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/data/enso_data.json
+          git commit -m "chore: auto-update ENSO data [$(date -u '+%Y-%m-%d')]"
+          git push
