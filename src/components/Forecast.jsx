@@ -59,42 +59,51 @@ const toPhstLabel = (modelTime) => {
 const FORECAST_HOURS = ["000000", "060000", "120000", "180000"]; // 00, 06, 12, 18 UTC
 const FORECAST_DATES = [todayDateStr, yesterdayDateStr];
 
-const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
-  FORECAST_HOURS.flatMap((hhmmss) => {
-    const modelTime = `${dateStr}T${hhmmss}`;
-    const hourUtc = hhmmss.slice(0, 2);
+const MODELS = [
+  { id: "GDM-FNV3", name: "GDM-FNV3", prefix: "" },
+  { id: "ECMWF AIFS", name: "ECMWF AIFS", prefix: "aifs_" }
+];
 
-    // For 00:00 UTC, your filenames omit the time part and use just the date,
-    // e.g. tropical_cyclone_15day_forecast_2025-11-16.png
-    const isMidnight = hhmmss === "000000";
-    const fiveDayImageSrc = isMidnight
-      ? `/assets/tropical_cyclone_5day_forecast_${dateStr}.png`
-      : `/assets/tropical_cyclone_5day_forecast_${modelTime}.png`;
-    const fifteenDayImageSrc = isMidnight
-      ? `/assets/tropical_cyclone_15day_forecast_${dateStr}.png`
-      : `/assets/tropical_cyclone_15day_forecast_${modelTime}.png`;
+const FORECAST_OPTIONS = MODELS.flatMap((model) =>
+  FORECAST_DATES.flatMap((dateStr) =>
+    FORECAST_HOURS.flatMap((hhmmss) => {
+      const modelTime = `${dateStr}T${hhmmss}`;
+      const hourUtc = hhmmss.slice(0, 2);
 
-    return [
-      {
-        id: `5day-${modelTime}`,
-        label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
-        modelTime,
-        imageSrc: fiveDayImageSrc,
-      },
-      {
-        id: `15day-${modelTime}`,
-        label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
-        modelTime,
-        imageSrc: fifteenDayImageSrc,
-      },
-    ];
-  })
+      // For 00:00 UTC, your filenames omit the time part and use just the date
+      const isMidnight = hhmmss === "000000";
+      const fiveDayImageSrc = isMidnight
+        ? `/assets/${model.prefix}tropical_cyclone_5day_forecast_${dateStr}.png`
+        : `/assets/${model.prefix}tropical_cyclone_5day_forecast_${modelTime}.png`;
+      const fifteenDayImageSrc = isMidnight
+        ? `/assets/${model.prefix}tropical_cyclone_15day_forecast_${dateStr}.png`
+        : `/assets/${model.prefix}tropical_cyclone_15day_forecast_${modelTime}.png`;
+
+      return [
+        {
+          id: `${model.id}-5day-${modelTime}`,
+          modelId: model.id,
+          label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
+          modelTime,
+          imageSrc: fiveDayImageSrc,
+        },
+        {
+          id: `${model.id}-15day-${modelTime}`,
+          modelId: model.id,
+          label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
+          modelTime,
+          imageSrc: fifteenDayImageSrc,
+        },
+      ];
+    })
+  )
 );
 
 const Forecast = () => {
   // IDs of options whose images have successfully loaded
   const [availableIds, setAvailableIds] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
+  const [selectedModelId, setSelectedModelId] = useState("GDM-FNV3");
 
   // On mount, probe all forecast images and keep only those that exist
   useEffect(() => {
@@ -112,9 +121,9 @@ const Forecast = () => {
     });
   }, []);
 
-  // Start with all options that have a real image
+  // Start with all options that have a real image AND match the selected model
   const availableOptions = FORECAST_OPTIONS.filter((opt) =>
-    availableIds.includes(opt.id)
+    opt.modelId === selectedModelId && availableIds.includes(opt.id)
   );
 
   // Collect distinct modelTime cycles, sort newest->oldest, and keep only the
@@ -164,27 +173,45 @@ const Forecast = () => {
             </p>
           </div>
 
-          <div className="flex flex-col items-start md:items-end gap-2">
-            <span className="text-xs uppercase tracking-wide text-slate-500">
-              Forecast product
-            </span>
-            {visibleOptions.length > 0 ? (
-              <select
-                value={effectiveSelectedId ?? ""}
-                onChange={(e) => setSelectedId(e.target.value)}
-                className="bg-slate-900/80 border border-slate-700 text-slate-100 text-xs md:text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-              >
-                {visibleOptions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className="text-xs text-slate-500">
-                No forecast images available for today.
+          <div className="flex flex-col items-start md:items-end gap-5">
+            {/* Model Selector Tabs */}
+            <div className="flex bg-slate-900/80 p-1 border border-slate-700/50 rounded-lg">
+              {MODELS.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setSelectedModelId(m.id)}
+                  className={`px-4 py-1.5 text-xs md:text-sm font-medium rounded-md transition-colors ${selectedModelId === m.id
+                    ? "bg-sky-600 text-white shadow"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                    }`}
+                >
+                  {m.name}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-col items-start md:items-end gap-1">
+              <span className="text-[10px] md:text-xs uppercase tracking-wide text-slate-500">
+                Forecast product
               </span>
-            )}
+              {visibleOptions.length > 0 ? (
+                <select
+                  value={effectiveSelectedId ?? ""}
+                  onChange={(e) => setSelectedId(e.target.value)}
+                  className="bg-slate-900/80 border border-slate-700 text-slate-100 text-xs md:text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 min-w-[200px]"
+                >
+                  {visibleOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-xs text-slate-500 py-2">
+                  No images available.
+                </span>
+              )}
+            </div>
           </div>
         </header>
 
@@ -232,7 +259,7 @@ const Forecast = () => {
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-slate-500">Model source</dt>
-                  <dd className="text-right">GDM-FNV3</dd>
+                  <dd className="text-right">{current ? current.modelId : selectedModelId}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-slate-500">Processed by</dt>
