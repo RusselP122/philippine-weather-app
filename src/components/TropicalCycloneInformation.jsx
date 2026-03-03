@@ -123,6 +123,20 @@ function classifyTropicalCyclone(wind10MinKmh) {
   return { code: "STY", label: "SUPER TYPHOON", color: "bg-pink-500/20 text-pink-300" };
 }
 
+function threatLevelText(code) {
+  if (["TY", "STY"].includes(code)) return "High";
+  if (["STS", "TS"].includes(code)) return "Medium";
+  if (code === "TD") return "Low";
+  return "Monitoring";
+}
+
+function threatBgColor(code) {
+  if (["TY", "STY"].includes(code)) return "bg-red-600";
+  if (["STS", "TS"].includes(code)) return "bg-orange-600";
+  if (code === "TD") return "bg-yellow-600";
+  return "bg-slate-600";
+}
+
 function formatDataTime(date) {
   if (!date) return "-";
   const d = new Date(date);
@@ -136,6 +150,62 @@ function formatDataTime(date) {
     hour12: false,
   });
   return `${phTime} PHST`;
+}
+
+function generateStormSummary({
+  displayName,
+  classificationCode,
+  windKmh,
+  pressure,
+  movementSpeedKmh,
+  movementWord,
+  distance,
+  direction,
+  threatLevel,
+  insidePar
+}) {
+  const isLpa = classificationCode === "LPA";
+  let summary = `${isLpa ? "A " : "The "}${displayName}`;
+
+  if (distance && direction) {
+    summary += ` located near ${distance} km ${direction} of Manila`;
+  }
+
+  summary += `, `;
+
+  if (movementSpeedKmh !== null) {
+    summary += `moving ${movementWord?.toLowerCase() || "in an unknown direction"} at ${movementSpeedKmh} km/h`;
+  } else {
+    summary += `with unknown movement speed`;
+  }
+
+  summary += `, bringing `;
+
+  if (isLpa) {
+    summary += `light to moderate rains.`;
+  } else {
+    summary += `maximum sustained winds of ${windKmh} km/h`;
+    if (!isNaN(pressure)) {
+      summary += ` and central pressure of ${pressure} hPa.`;
+    } else {
+      summary += `.`;
+    }
+  }
+
+  if (isLpa) {
+    summary += ` The potential for further development into a tropical depression is currently being monitored.`;
+  } else if (classificationCode === "TD") {
+    summary += ` This system poses a potential threat for heavy rainfall and may strengthen into a tropical storm.`;
+  } else if (classificationCode === "TS" || classificationCode === "STS") {
+    summary += ` This storm poses a significant threat of strong winds and heavy to intense rainfall in affected areas.`;
+  } else if (classificationCode === "TY" || classificationCode === "STY") {
+    summary += ` This is a highly dangerous system posing a severe threat of destructive winds, intense rainfall, and potential storm surges in affected areas.`;
+  } else {
+    // Fallback for any other/unrecognized classifications
+    summary += ` ${threatLevel} threat of further development or impacts.`;
+  }
+
+  return summary;
 }
 
 function distanceAndBearingKmFromManila(lat, lon) {
@@ -170,6 +240,7 @@ const TropicalCycloneInformation = () => {
   const [error, setError] = useState(null);
   const [storm, setStorm] = useState(null);
   const [otherStorms, setOtherStorms] = useState([]);
+  const [selectedOtherIndex, setSelectedOtherIndex] = useState(0);
   const [westernPacificStorms, setWesternPacificStorms] = useState([]);
   const [selectedWpIndex, setSelectedWpIndex] = useState(0);
 
@@ -340,6 +411,8 @@ const TropicalCycloneInformation = () => {
       storm.atcf_id
     );
 
+
+
     mainStorm = {
       name: rawName,
       displayName,
@@ -363,6 +436,8 @@ const TropicalCycloneInformation = () => {
       movementDirectionWord,
       directionDeg: isNaN(directionDeg) ? null : Math.round(directionDeg),
       intensityPercent: windIntensityPercent(wind10MinKmh),
+      threatLevel: threatLevelText(classification.code),
+      threatBg: threatBgColor(classification.code),
     };
   }
 
@@ -393,7 +468,7 @@ const TropicalCycloneInformation = () => {
           <button
             onClick={fetchData}
             disabled={loading}
-            className="inline-flex items-center justify-center rounded-full border border-slate-700/80 px-6 py-3 text-sm font-medium text-slate-100 shadow-inner shadow-slate-900/60 transition hover:border-blue-400/60 hover:text-white disabled:opacity-50"
+            className="inline-flex items-center justify-center rounded-full border border-slate-700/80 px-6 py-3 text-sm font-medium text-slate-100 shadow-inner shadow-slate-900/60 transition hover:border-blue-400/60 hover:text-white disabled:opacity-50 cursor-pointer"
           >
             {loading ? "Loading..." : "Refresh"}
           </button>
@@ -419,227 +494,184 @@ const TropicalCycloneInformation = () => {
             )}
 
             {hasWesternPacificStorm && mainStorm && (
-              <>
-                <div
-                  className={`mb-8 rounded-2xl px-6 py-3 text-xs font-semibold tracking-[0.3em] uppercase ${mainStorm.bannerClass}`}
-                >
-                  {mainStorm.bannerText}
-                </div>
+              <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-6 mb-10">
+                {/* Left Column: Stats */}
+                <div className="flex flex-col gap-6 bg-[#2a2c3a] rounded-xl p-5 shadow-lg border border-slate-700/50">
+                  {/* Header Box */}
+                  <div className="bg-[#20212d] rounded-lg p-4 text-center border border-slate-700/50">
+                    <h2 className="text-2xl font-bold text-yellow-400 capitalize whitespace-nowrap overflow-hidden text-ellipsis">
+                      {mainStorm.classification.label.toLowerCase()}
+                    </h2>
+                    <p className="text-[10px] font-bold text-slate-300 tracking-wider mt-1 uppercase">
+                      UPDATE - AS OF {mainStorm.dataTimeStr}
+                    </p>
+                  </div>
 
-                <section className="mb-10 rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-900/70 to-slate-900/40 p-6 shadow-[0_40px_90px_-60px_rgba(45,212,191,0.8)]">
-                  <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-2">
-                      <p className="text-xs uppercase tracking-[0.35em] text-slate-500">System Name</p>
-                      <div className="flex items-center gap-3">
-                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-300">
-                          <Wind className="h-4 w-4" />
-                        </span>
-
-                        <h2 className="text-3xl font-semibold text-slate-50">{mainStorm.displayName || mainStorm.name}</h2>
+                  {/* List of Stats */}
+                  <div className="flex flex-col gap-5 px-2">
+                    {/* Max Wind */}
+                    <div className="flex items-center gap-4">
+                      <div className="flex-shrink-0 w-10 h-10 rounded-full border-2 border-yellow-500/80 flex items-center justify-center text-yellow-500">
+                        <Wind className="w-5 h-5" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-yellow-500 font-bold text-sm tracking-wide">Max Wind (KM/H)</span>
+                        <span className="text-sm text-slate-200 mt-0.5">{mainStorm.wind10MinKmh}km/h near the center</span>
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                      {westernPacificStorms.length > 1 && (
-                        <select
-                          value={selectedWpIndex}
-                          onChange={(e) => {
-                            const idx = Number(e.target.value);
-                            setSelectedWpIndex(idx);
-                            setStorm(westernPacificStorms[idx]);
-                          }}
-                          className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1 text-xs text-slate-200"
-                        >
-                          {westernPacificStorms.map((s, index) => {
-                            const parts = s.interp_sector_file?.split(/\s+/) || [];
-                            const rawName = parts[1] || s.atcf_id || "Tropical Disturbance";
-                            let optionLabel = rawName;
-                            if (optionLabel.toUpperCase().includes("INVEST")) {
-                              optionLabel = "Low Pressure Area";
-                            }
-                            const lat = parseFloat(parts[4]);
-                            const lon = parseFloat(parts[5]);
-                            const inPar = !isNaN(lat) && !isNaN(lon) && isInsidePar(lat, lon);
-                            const suffix = inPar ? " (inside PAR)" : " (outside PAR)";
-                            return (
-                              <option key={s.atcf_id || `${s.last_updated}-${index}`} value={index}>
-                                {optionLabel}
-                                {suffix}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      )}
-                      <span
-                        className={`inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-xs font-semibold tracking-wide backdrop-blur ${mainStorm.classification.color}`}
-                      >
-                        <Wind className="h-4 w-4" />
-                        {mainStorm.classification.label}
-                        <span className="text-slate-200">• {mainStorm.wind10MinKmh} km/h (10-min avg)</span>
+
+                    {/* Pressure */}
+                    <div className="flex items-center gap-4">
+                      <div className="flex-shrink-0 w-10 h-10 rounded-full border-2 border-yellow-500/80 flex items-center justify-center text-yellow-500">
+                        <Gauge className="w-5 h-5" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-yellow-500 font-bold text-sm tracking-wide">Pressure (hPa)</span>
+                        <span className="text-sm text-slate-200 mt-0.5">{isNaN(mainStorm.pressure) ? "N/A" : `${mainStorm.pressure} hPa`}</span>
+                      </div>
+                    </div>
+
+                    {/* Movement */}
+                    <div className="flex items-center gap-4">
+                      <div className="flex-shrink-0 w-10 h-10 rounded-full border-2 border-yellow-500/80 flex items-center justify-center text-yellow-500">
+                        <Navigation className="w-5 h-5" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-yellow-500 font-bold text-sm tracking-wide">Current Movement (KM/H)</span>
+                        <span className="text-sm text-slate-200 mt-0.5">
+                          {mainStorm.movementSpeedKmh !== null
+                            ? `${mainStorm.movementDirectionWord || "Unknown"} at ${mainStorm.movementSpeedKmh}km/h`
+                            : "Movement data unavailable"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Chance of Development / Classification */}
+                    <div className="flex items-center gap-4">
+                      <div className="flex-shrink-0 w-10 h-10 rounded-full border-2 border-yellow-500/80 flex items-center justify-center text-yellow-500">
+                        <Activity className="w-5 h-5" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-yellow-500 font-bold text-sm tracking-wide">Status / Threat Level</span>
+                        <span className="text-sm text-slate-200 mt-0.5">{mainStorm.classification.code === "LPA" ? "Low to Medium Chance of Development" : `${mainStorm.classification.label} - ${mainStorm.threatLevel} Threat`}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Storm Summary */}
+                  <div className="bg-[#20212d] rounded-lg p-5 mt-auto border border-slate-700/50">
+                    <h3 className="text-yellow-500 font-bold text-lg mb-2">Storm Summary</h3>
+                    <p className="text-sm text-slate-200 leading-relaxed text-center">
+                      {generateStormSummary({
+                        displayName: mainStorm.displayName || mainStorm.name,
+                        classificationCode: mainStorm.classification.code,
+                        windKmh: mainStorm.wind10MinKmh,
+                        pressure: mainStorm.pressure,
+                        movementSpeedKmh: mainStorm.movementSpeedKmh,
+                        movementWord: mainStorm.movementDirectionWord,
+                        distance: mainStorm.distance,
+                        direction: mainStorm.direction,
+                        threatLevel: mainStorm.threatLevel,
+                        insidePar: mainStorm.insidePar
+                      })}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right Column: Map & Threat Level */}
+                <div className="flex flex-col h-full bg-[#2a2c3a] rounded-xl p-5 shadow-lg border border-slate-700/50">
+                  <div className="flex-grow w-full rounded-lg overflow-hidden border-2 border-slate-600/50 bg-[#1e1e2d] relative flex items-center justify-center min-h-[400px]">
+                    {!isNaN(mainStorm.lat) && !isNaN(mainStorm.lon) ? (
+                      <div style={{ position: 'absolute', inset: 0 }}>
+                        <iframe
+                          key={mainStorm.last_updated}
+                          title="Interactive Storm Map"
+                          width="100%"
+                          height="100%"
+                          style={{ position: 'absolute', top: 0, left: 0, border: 0 }}
+                          src={`https://embed.windy.com/embed.html?lat=${mainStorm.lat}&lon=${mainStorm.lon}&zoom=6&level=surface&overlay=satellite&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1`}
+                          frameBorder="0"
+                        ></iframe>
+                        {/* Blocks panning/zooming while satellite type is pre-set via URL */}
+                        <div style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'default' }} />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 opacity-80"></div>
+                        <MapPin className="w-16 h-16 text-slate-500 opacity-20 z-10" />
+                        <span className="absolute z-10 text-slate-500 font-medium tracking-widest uppercase text-xs mt-20 text-center px-4">
+                          Location Data Unavailable
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="mt-5 rounded-lg overflow-hidden border border-slate-700/50 flex flex-col">
+                    <div className={`${mainStorm.threatBg} px-4 py-2 flex items-center gap-2`}>
+                      <span className="bg-white/20 rounded-full w-6 h-6 flex items-center justify-center font-bold text-white text-sm">!</span>
+                      <span className="text-white font-bold tracking-wide">Threat Level: {mainStorm.threatLevel}</span>
+                    </div>
+                    <div className="bg-[#20212d] px-4 py-3 text-center">
+                      <span className="text-slate-200 text-sm font-medium">
+                        {mainStorm.insidePar
+                          ? (mainStorm.threatLevel === "High" ? "Destructive winds and intense rainfall expected." : "Scattered rainshowers and isolated thunderstorms possible in affected areas.")
+                          : "System is outside PAR; no direct threat to the country at this time."}
                       </span>
                     </div>
                   </div>
-                  <div className="grid gap-5">
-                    <div className="flex flex-col gap-4 md:grid md:grid-cols-2">
-                      <div className="flex items-start gap-3">
-                        <span className="rounded-full bg-slate-800/80 p-2 text-cyan-300">
-                          <Wind className="h-4 w-4" />
-                        </span>
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-slate-500">Sustained Winds</p>
-                          <p className="text-sm font-semibold text-slate-50">
-                            {mainStorm.wind10MinKmh} km/h (10-minute)
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            Gusts up to {mainStorm.gustKmh} km/h • {describeWindIntensity(mainStorm.wind10MinKmh)}
-                          </p>
-                          <div className="mt-2 h-2 rounded-full bg-slate-800">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500"
-                              style={{ width: `${mainStorm.intensityPercent}%` }}
-                            ></div>
-                          </div>
-                          <p className="mt-1 text-[11px] text-slate-500">Progress toward maximum Super typhoon intensity</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <span className="rounded-full bg-slate-800/80 p-2 text-amber-300">
-                          <Activity className="h-4 w-4" />
-                        </span>
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-slate-500">Gust Potential</p>
-                          <p className="text-sm font-semibold text-slate-50">Gusts up to {mainStorm.gustKmh} km/h</p>
-                          <p className="text-xs text-slate-400">Category {mainStorm.classification.code} winds possible near the center.</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-4 md:grid md:grid-cols-2">
-                      <div className="flex items-start gap-3">
-                        <span className="rounded-full bg-slate-800/80 p-2 text-rose-300">
-                          <Gauge className="h-4 w-4" />
-                        </span>
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-slate-500">Central Pressure</p>
-                          <p className="text-sm font-semibold text-slate-50">
-                            {isNaN(mainStorm.pressure) ? "Not available" : `${mainStorm.pressure} hPa`}
-                          </p>
-                          <p className="text-xs text-slate-400">{describePressure(mainStorm.pressure)}</p>
-                          <p className="text-[11px] text-slate-500">Lower pressure typically indicates a stronger disturbance.</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <span className="rounded-full bg-slate-800/80 p-2 text-emerald-300">
-                          <Navigation className="h-4 w-4" />
-                        </span>
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-slate-500">Movement</p>
-                          <p className="text-sm font-semibold text-slate-50">{mainStorm.movementText}</p>
-                          <p className="text-xs text-slate-400">
-                            {mainStorm.movementSpeedKmh
-                              ? `Direction: ${mainStorm.movementDirectionWord || mainStorm.movementDirectionLabel || "—"} (${mainStorm.directionDeg ?? "—"}°)`
-                              : "Movement trend unavailable"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-4 md:grid md:grid-cols-2">
-                      <div className="flex items-start gap-3">
-                        <span className="rounded-full bg-slate-800/80 p-2 text-indigo-300">
-                          <MapPin className="h-4 w-4" />
-                        </span>
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-slate-500">Position & Reference</p>
-                          <p className="text-sm font-semibold text-slate-50">
-                            {isNaN(mainStorm.lat) || isNaN(mainStorm.lon)
-                              ? "Coordinates unavailable"
-                              : `${Math.abs(mainStorm.lat).toFixed(1)}°${mainStorm.lat >= 0 ? "N" : "S"}, ${Math.abs(mainStorm.lon).toFixed(1)}°${mainStorm.lon >= 0 ? "E" : "W"}`}
-                          </p>
-                          {!isNaN(mainStorm.lat) && !isNaN(mainStorm.lon) && (
-                            <>
-                              <p className="text-xs text-slate-400">
-                                Approx. {mainStorm.distance} km {mainStorm.direction} of Manila
-                              </p>
-                              <p className="text-xs text-slate-400">
-                                {mainStorm.insidePar
-                                  ? "Currently inside the Philippine Area of Responsibility (PAR)."
-                                  : "Currently outside the Philippine Area of Responsibility (PAR)."}
-                              </p>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between rounded-2xl border border-slate-800/60 bg-slate-900/60 px-4 py-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-slate-500">View detailed track</p>
-                          <p className="text-sm font-semibold text-slate-50">Open interactive map</p>
-                        </div>
-                        <a
-                          href="/cyclone"
-                          className="rounded-full border border-slate-700/70 px-4 py-2 text-xs font-semibold text-slate-50 transition hover:border-cyan-300 hover:text-white"
-                        >
-                          View on Map
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="mb-12 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-                  <div className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4 shadow-inner shadow-slate-950/40">
-                    <p className="text-xs uppercase tracking-wide text-slate-400">Classification</p>
-                    <p className="text-base font-semibold text-slate-50">{mainStorm.classification.label}</p>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4 shadow-inner shadow-slate-950/40">
-                    <p className="text-xs uppercase tracking-wide text-slate-400">10-Min Sustained Winds</p>
-                    <p className="text-base font-semibold text-slate-50">{mainStorm.wind10MinKmh} km/h near center</p>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4 shadow-inner shadow-slate-950/40">
-                    <p className="text-xs uppercase tracking-wide text-slate-400">Gustiness</p>
-                    <p className="text-base font-semibold text-slate-50">Up to {mainStorm.gustKmh} km/h</p>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4 shadow-inner shadow-slate-950/40">
-                    <p className="text-xs uppercase tracking-wide text-slate-400">Central Pressure</p>
-                    <p className="text-base font-semibold text-slate-50">
-                      {isNaN(mainStorm.pressure) ? "N/A" : `${mainStorm.pressure} hPa`}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4 shadow-inner shadow-slate-950/40">
-                    <p className="text-xs uppercase tracking-wide text-slate-400">Movement</p>
-                    <p className="text-base font-semibold text-slate-50">{mainStorm.movementText}</p>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4 shadow-inner shadow-slate-950/40">
-                    <p className="text-xs uppercase tracking-wide text-slate-400">Current Location</p>
-                    <p className="text-base font-semibold text-slate-50">
-                      {isNaN(mainStorm.lat) || isNaN(mainStorm.lon)
-                        ? "N/A"
-                        : `${Math.abs(mainStorm.lat).toFixed(1)}°${mainStorm.lat >= 0 ? "N" : "S"}, ${Math.abs(mainStorm.lon).toFixed(1)}°${mainStorm.lon >= 0 ? "E" : "W"}`}
-                    </p>
-                    {!isNaN(mainStorm.lat) && !isNaN(mainStorm.lon) && (
-                      <p className="text-xs text-slate-400">
-                        ~{mainStorm.distance} km {mainStorm.direction} of Manila
-                      </p>
-                    )}
-                  </div>
-                </section>
-              </>
+                </div>
+              </div>
             )}
 
             {otherStorms.length > 0 && (
               <section className="mt-12 border-t border-slate-800/50 pt-8">
-                <h2 className="mb-6 text-lg font-semibold tracking-[0.3em] text-slate-300">
-                  Other Active Tropical Disturbances (Outside PAR)
-                </h2>
-                <p className="mb-6 text-sm text-slate-400">
-                  Tropical systems currently being monitored outside of the Philippine Area of Responsibility.
-                </p>
-                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                  {otherStorms.map((s) => {
+                <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold tracking-[0.3em] text-slate-300">
+                      Other Active Tropical Disturbances (Outside Western Pacific)
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-400">
+                      Tropical systems currently being monitored outside of the Philippine Area of Responsibility.
+                    </p>
+                  </div>
+
+                  {/* Select Storm Dropdown */}
+                  {otherStorms.length > 1 && (
+                    <div className="flex flex-col items-start md:items-end min-w-[280px]">
+                      <span className="text-[10px] md:text-xs uppercase tracking-wide text-slate-500 mb-1">
+                        Select Storm
+                      </span>
+                      <select
+                        value={selectedOtherIndex}
+                        onChange={(e) => setSelectedOtherIndex(Number(e.target.value))}
+                        className="w-full bg-slate-900/80 border border-slate-700 text-slate-100 text-sm rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all font-medium cursor-pointer"
+                      >
+                        {otherStorms.map((s, index) => {
+                          const parts = s.interp_sector_file?.split(/\s+/) || [];
+                          const rawName = parts[1] || s.atcf_id || "Tropical Disturbance";
+                          const wind10 = to10MinWindKmH(parseFloat(parts[8]) || 0);
+                          const cls = classifyTropicalCyclone(wind10);
+                          const lat = parseFloat(parts[4]);
+                          const lon = parseFloat(parts[5]);
+                          const insidePar = isInsidePar(lat, lon);
+                          const refinedName = getStormDisplayName(rawName, cls.code, insidePar, s.atcf_id);
+                          return (
+                            <option key={s.atcf_id || index} value={index}>
+                              {refinedName.displayName} - {cls.label}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1">
+                  {(() => {
+                    // Render ONLY the selected storm
+                    const s = otherStorms[selectedOtherIndex];
+                    if (!s) return null;
+
                     const parts = s.interp_sector_file?.split(/\s+/) || [];
                     const lat = parseFloat(parts[4]);
                     const lon = parseFloat(parts[5]);
@@ -664,53 +696,143 @@ const TropicalCycloneInformation = () => {
                       ? `Moving ${movementWord || movementLabel || "unknown direction"} at ${movementSpeedKmh} km/h`
                       : "Movement data unavailable";
 
+                    const { distance, direction } = distanceAndBearingKmFromManila(lat, lon);
+                    const dataTimeStr = formatDataTime(s.last_updated);
+                    const threatLevel = threatLevelText(cls.code);
+                    const threatBg = threatBgColor(cls.code);
+
                     return (
-                      <a
-                        key={s.atcf_id || s.last_updated}
-                        href="/cyclone"
-                        className="group flex min-h-[220px] flex-col rounded-2xl border border-slate-800/70 bg-slate-900/65 p-5 shadow-[0_25px_60px_-45px_rgba(8,145,178,0.8)] transition hover:border-cyan-300/70"
-                        aria-label={`View detailed track for ${displayName}`}
-                      >
-                        <div className="mb-4 flex items-start justify-between gap-3">
-                          <div className="space-y-1">
-                            <p className="text-xs uppercase tracking-[0.35em] text-slate-500">System</p>
-                            <div className="flex items-center gap-2">
-                              <Wind className="h-4 w-4 text-cyan-300" />
-                              <p className="text-lg font-semibold text-slate-50">{displayName}</p>
+                      <div key={s.atcf_id || s.last_updated} className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-6 mb-8">
+                        {/* Left Column: Stats */}
+                        <div className="flex flex-col gap-6 bg-[#2a2c3a] rounded-xl p-5 shadow-lg border border-slate-700/50">
+                          {/* Header Box */}
+                          <div className="bg-[#20212d] rounded-lg p-4 text-center border border-slate-700/50">
+                            <h2 className="text-2xl font-bold text-yellow-400 capitalize whitespace-nowrap overflow-hidden text-ellipsis">
+                              {cls.label.toLowerCase()}
+                            </h2>
+                            <p className="text-[10px] font-bold text-slate-300 tracking-wider mt-1 uppercase">
+                              UPDATE - AS OF {dataTimeStr}
+                            </p>
+                          </div>
+
+                          {/* List of Stats */}
+                          <div className="flex flex-col gap-5 px-2">
+                            {/* Max Wind */}
+                            <div className="flex items-center gap-4">
+                              <div className="flex-shrink-0 w-10 h-10 rounded-full border-2 border-yellow-500/80 flex items-center justify-center text-yellow-500">
+                                <Wind className="w-5 h-5" />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-yellow-500 font-bold text-sm tracking-wide">Max Wind (KM/H)</span>
+                                <span className="text-sm text-slate-200 mt-0.5">{wind10}km/h near the center</span>
+                              </div>
+                            </div>
+
+                            {/* Pressure */}
+                            <div className="flex items-center gap-4">
+                              <div className="flex-shrink-0 w-10 h-10 rounded-full border-2 border-yellow-500/80 flex items-center justify-center text-yellow-500">
+                                <Gauge className="w-5 h-5" />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-yellow-500 font-bold text-sm tracking-wide">Pressure (hPa)</span>
+                                <span className="text-sm text-slate-200 mt-0.5">{isNaN(pressure) ? "N/A" : `${pressure} hPa`}</span>
+                              </div>
+                            </div>
+
+                            {/* Movement */}
+                            <div className="flex items-center gap-4">
+                              <div className="flex-shrink-0 w-10 h-10 rounded-full border-2 border-yellow-500/80 flex items-center justify-center text-yellow-500">
+                                <Navigation className="w-5 h-5" />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-yellow-500 font-bold text-sm tracking-wide">Current Movement (KM/H)</span>
+                                <span className="text-sm text-slate-200 mt-0.5">
+                                  {movementSpeedKmh !== null
+                                    ? `${movementWord || "Unknown"} at ${movementSpeedKmh}km/h`
+                                    : "Movement data unavailable"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Chance of Development / Classification */}
+                            <div className="flex items-center gap-4">
+                              <div className="flex-shrink-0 w-10 h-10 rounded-full border-2 border-yellow-500/80 flex items-center justify-center text-yellow-500">
+                                <Activity className="w-5 h-5" />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-yellow-500 font-bold text-sm tracking-wide">Status / Threat Level</span>
+                                <span className="text-sm text-slate-200 mt-0.5">
+                                  {cls.code === "LPA"
+                                    ? "Potential for Development (Out of Basin)"
+                                    : `${cls.label} - No Threat (Out of Basin)`}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                          <span
-                            className={`inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-[11px] font-semibold tracking-wide ${cls.color}`}
-                          >
-                            {cls.label}
-                          </span>
-                        </div>
-                        <div className="space-y-2 text-sm text-slate-300">
-                          <p>
-                            <span className="font-semibold text-slate-50">Sustained:</span> {wind10} km/h (10-min avg)
-                          </p>
-                          <p>
-                            <span className="font-semibold text-slate-50">Gusts:</span> up to {gust10} km/h
-                          </p>
-                          <p>
-                            <span className="font-semibold text-slate-50">Pressure:</span> {isNaN(pressure) ? "N/A" : `${pressure} hPa`}
-                          </p>
-                          <p>
-                            <span className="font-semibold text-slate-50">Movement:</span> {movementText}
-                          </p>
-                          {!isNaN(lat) && !isNaN(lon) && (
-                            <p>
-                              <span className="font-semibold text-slate-50">Position:</span> {Math.abs(lat).toFixed(1)}°{lat >= 0 ? "N" : "S"}, {Math.abs(lon).toFixed(1)}°{lon >= 0 ? "E" : "W"}
+
+                          {/* Storm Summary */}
+                          <div className="bg-[#20212d] rounded-lg p-5 mt-auto border border-slate-700/50">
+                            <h3 className="text-yellow-500 font-bold text-lg mb-2">Storm Summary</h3>
+                            <p className="text-sm text-slate-200 leading-relaxed text-center">
+                              {generateStormSummary({
+                                displayName: displayName || rawName,
+                                classificationCode: cls.code,
+                                windKmh: wind10,
+                                pressure: pressure,
+                                movementSpeedKmh: movementSpeedKmh,
+                                movementWord: movementWord,
+                                distance: null,
+                                direction: null,
+                                threatLevel: threatLevel,
+                                insidePar: insidePar
+                              })}
                             </p>
-                          )}
+                          </div>
                         </div>
-                        <div className="mt-auto flex items-center justify-between pt-4 text-[11px] text-slate-500">
-                          <span>Updated: {formatDataTime(s.last_updated)}</span>
-                          <span className="text-cyan-300 opacity-0 transition group-hover:opacity-100">View details →</span>
+
+                        {/* Right Column: Map & Threat Level */}
+                        <div className="flex flex-col h-full bg-[#2a2c3a] rounded-xl p-5 shadow-lg border border-slate-700/50">
+                          <div className="flex-grow w-full rounded-lg overflow-hidden border-2 border-slate-600/50 bg-[#1e1e2d] relative flex items-center justify-center min-h-[400px]">
+                            {!isNaN(lat) && !isNaN(lon) ? (
+                              <div style={{ position: 'absolute', inset: 0 }}>
+                                <iframe
+                                  key={s.last_updated}
+                                  title="Interactive Storm Map"
+                                  width="100%"
+                                  height="100%"
+                                  style={{ position: 'absolute', top: 0, left: 0, border: 0 }}
+                                  src={`https://embed.windy.com/embed.html?lat=${lat}&lon=${lon}&zoom=6&level=surface&overlay=satellite&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1`}
+                                  frameBorder="0"
+                                ></iframe>
+                                {/* Blocks panning/zooming while satellite type is pre-set via URL */}
+                                <div style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'default' }} />
+                              </div>
+                            ) : (
+                              <>
+                                <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 opacity-80"></div>
+                                <MapPin className="w-16 h-16 text-slate-500 opacity-20 z-10" />
+                                <span className="absolute z-10 text-slate-500 font-medium tracking-widest uppercase text-xs mt-20 text-center px-4">
+                                  Location Data Unavailable
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          {/* Threat Level Bar */}
+                          <div className="mt-5 rounded-lg overflow-hidden border border-slate-700/50 flex flex-col">
+                            <div className="bg-slate-600 px-4 py-2 flex items-center gap-2">
+                              <span className="bg-white/20 rounded-full w-6 h-6 flex items-center justify-center font-bold text-white text-sm">i</span>
+                              <span className="text-white font-bold tracking-wide">Threat Level: None (Out of Basin)</span>
+                            </div>
+                            <div className="bg-[#20212d] px-4 py-3 text-center">
+                              <span className="text-slate-200 text-sm font-medium">
+                                System is located outside the Western Pacific basin; no threat to the Philippines.
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                      </a>
+                      </div>
                     );
-                  })}
+                  })()}
                 </div>
               </section>
             )}
