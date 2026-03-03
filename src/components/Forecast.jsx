@@ -141,8 +141,14 @@ const Forecast = () => {
   // Collect distinct model time+type pairs to group them logically
   const latestConfigurations = Array.from(
     new Set(availableOptionsForModel.map((opt) => `${opt.type}-${opt.modelTime}`))
-  )
-    .sort((a, b) => (a < b ? 1 : -1)); // Sort newest->oldest
+  ).sort((a, b) => {
+    const timeA = a.substring(a.indexOf('-') + 1);
+    const timeB = b.substring(b.indexOf('-') + 1);
+
+    if (timeA !== timeB) return timeA < timeB ? 1 : -1;
+    // For the same time, ensure 15day is sorted before 5day
+    return a.startsWith("15day") ? -1 : 1;
+  }); // Sort newest->oldest
 
   const visibleOptions = latestConfigurations.map((configId) => {
     return availableOptionsForModel.find(opt => `${opt.type}-${opt.modelTime}` === configId);
