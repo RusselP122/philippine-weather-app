@@ -59,33 +59,53 @@ const toPhstLabel = (modelTime) => {
 const FORECAST_HOURS = ["000000", "060000", "120000", "180000"]; // 00, 06, 12, 18 UTC
 const FORECAST_DATES = [todayDateStr, yesterdayDateStr];
 
+// Expand FORECAST_OPTIONS to support multiple models
 const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
   FORECAST_HOURS.flatMap((hhmmss) => {
     const modelTime = `${dateStr}T${hhmmss}`;
     const hourUtc = hhmmss.slice(0, 2);
-
-    // For 00:00 UTC, your filenames omit the time part and use just the date,
-    // e.g. tropical_cyclone_15day_forecast_2025-11-16.png
     const isMidnight = hhmmss === "000000";
-    const fiveDayImageSrc = isMidnight
-      ? `/assets/tropical_cyclone_5day_forecast_${dateStr}.png`
-      : `/assets/tropical_cyclone_5day_forecast_${modelTime}.png`;
-    const fifteenDayImageSrc = isMidnight
-      ? `/assets/tropical_cyclone_15day_forecast_${dateStr}.png`
-      : `/assets/tropical_cyclone_15day_forecast_${modelTime}.png`;
+
+    // Google DeepMind FNV3 Base Ensemble (no prefix)
+    const fnv3Base5Day = isMidnight ? `/assets/tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const fnv3Base15Day = isMidnight ? `/assets/tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/tropical_cyclone_15day_forecast_${modelTime}.png`;
+
+    // Google DeepMind FNV3 Large Ensemble (fnv3_ prefix)
+    const fnv3Large5Day = isMidnight ? `/assets/fnv3_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/fnv3_tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const fnv3Large15Day = isMidnight ? `/assets/fnv3_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/fnv3_tropical_cyclone_15day_forecast_${modelTime}.png`;
 
     return [
       {
-        id: `5day-${modelTime}`,
+        id: `fnv3-base-5day-${modelTime}`,
+        type: "5day",
+        model: "fnv3_base",
         label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
         modelTime,
-        imageSrc: fiveDayImageSrc,
+        imageSrc: fnv3Base5Day,
       },
       {
-        id: `15day-${modelTime}`,
+        id: `fnv3-base-15day-${modelTime}`,
+        type: "15day",
+        model: "fnv3_base",
         label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
         modelTime,
-        imageSrc: fifteenDayImageSrc,
+        imageSrc: fnv3Base15Day,
+      },
+      {
+        id: `fnv3-large-5day-${modelTime}`,
+        type: "5day",
+        model: "fnv3_large",
+        label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
+        modelTime,
+        imageSrc: fnv3Large5Day,
+      },
+      {
+        id: `fnv3-large-15day-${modelTime}`,
+        type: "15day",
+        model: "fnv3_large",
+        label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
+        modelTime,
+        imageSrc: fnv3Large15Day,
       },
     ];
   })
@@ -94,7 +114,8 @@ const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
 const Forecast = () => {
   // IDs of options whose images have successfully loaded
   const [availableIds, setAvailableIds] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedModel, setSelectedModel] = useState("fnv3_base");
+  const [selectedTimeId, setSelectedTimeId] = useState(null); // stores the "type-modelTime" part
 
   // On mount, probe all forecast images and keep only those that exist
   useEffect(() => {
@@ -112,38 +133,31 @@ const Forecast = () => {
     });
   }, []);
 
-  // Start with all options that have a real image
-  const availableOptions = FORECAST_OPTIONS.filter((opt) =>
-    availableIds.includes(opt.id)
+  // Start with all options that have a real image, filtered by chosen model
+  const availableOptionsForModel = FORECAST_OPTIONS.filter(
+    (opt) => availableIds.includes(opt.id) && opt.model === selectedModel
   );
 
-  // Collect distinct modelTime cycles, sort newest->oldest, and keep only the
-  // latest four cycles (e.g. 00, 06, 12, 18 UTC). Older cycles are dropped.
-  const latestModelTimes = Array.from(
-    new Set(availableOptions.map((opt) => opt.modelTime))
+  // Collect distinct model time+type pairs to group them logically
+  const latestConfigurations = Array.from(
+    new Set(availableOptionsForModel.map((opt) => `${opt.type}-${opt.modelTime}`))
   )
-    .sort((a, b) => (a < b ? 1 : -1))
-    .slice(0, 4);
+    .sort((a, b) => (a < b ? 1 : -1)); // Sort newest->oldest
 
-  const visibleOptions = latestModelTimes.length
-    ? availableOptions
-      .filter((opt) => latestModelTimes.includes(opt.modelTime))
-      .sort((a, b) => (a.modelTime < b.modelTime ? 1 : -1))
-    : [];
+  const visibleOptions = latestConfigurations.map((configId) => {
+    return availableOptionsForModel.find(opt => `${opt.type}-${opt.modelTime}` === configId);
+  }).filter(Boolean); // Keep unique valid options
 
-  // Determine which option is effectively selected:
-  // - If the user has chosen something and it's still available, keep it.
-  // - Otherwise, default to the latest available option (index 0 after sorting).
+  // Determine which option is effectively selected for the currently active model:
   const effectiveSelectedId =
-    selectedId && visibleOptions.some((opt) => opt.id === selectedId)
-      ? selectedId
+    selectedTimeId && visibleOptions.some((opt) => `${opt.type}-${opt.modelTime}` === selectedTimeId)
+      ? visibleOptions.find(opt => `${opt.type}-${opt.modelTime}` === selectedTimeId)?.id
       : visibleOptions.length
         ? visibleOptions[0].id
         : null;
 
   const current = effectiveSelectedId
-    ? visibleOptions.find((opt) => opt.id === effectiveSelectedId) ??
-    visibleOptions[0]
+    ? visibleOptions.find((opt) => opt.id === effectiveSelectedId)
     : null;
   const imageSrc = current ? current.imageSrc : "";
 
@@ -164,27 +178,48 @@ const Forecast = () => {
             </p>
           </div>
 
-          <div className="flex flex-col items-start md:items-end gap-2">
-            <span className="text-xs uppercase tracking-wide text-slate-500">
-              Forecast product
-            </span>
-            {visibleOptions.length > 0 ? (
-              <select
-                value={effectiveSelectedId ?? ""}
-                onChange={(e) => setSelectedId(e.target.value)}
-                className="bg-slate-900/80 border border-slate-700 text-slate-100 text-xs md:text-sm rounded-lg px-3 py-2 flex-grow focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+          <div className="flex flex-col items-start md:items-end gap-3 flex-shrink-0">
+            {/* Model Toggle */}
+            <div className="flex bg-slate-900/80 rounded-lg p-1 border border-slate-700">
+              <button
+                onClick={() => setSelectedModel("fnv3_base")}
+                className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${selectedModel === "fnv3_base"
+                  ? "bg-slate-700 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                  }`}
               >
-                {visibleOptions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className="text-xs text-slate-500">
-                No forecast images available for today.
-              </span>
-            )}
+                GDM FNV3 (Base)
+              </button>
+              <button
+                onClick={() => setSelectedModel("fnv3_large")}
+                className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${selectedModel === "fnv3_large"
+                  ? "bg-slate-700 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                  }`}
+              >
+                FNV3 Large Ensemble
+              </button>
+            </div>
+
+            <div className="w-full flex flex-col items-start md:items-end">
+              {visibleOptions.length > 0 ? (
+                <select
+                  value={current ? `${current.type}-${current.modelTime}` : ""}
+                  onChange={(e) => setSelectedTimeId(e.target.value)}
+                  className="bg-slate-900/80 border border-slate-700 text-slate-100 text-sm rounded-lg px-3 py-2 w-full max-w-[280px] focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500 transition-all font-medium cursor-pointer"
+                >
+                  {visibleOptions.map((opt) => (
+                    <option key={opt.id} value={`${opt.type}-${opt.modelTime}`}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-xs text-slate-500 py-2">
+                  No images available for {selectedModel === "fnv3_base" ? "GDM-FNV3" : "Large Ensemble"} today.
+                </span>
+              )}
+            </div>
           </div>
         </header>
 
@@ -232,7 +267,9 @@ const Forecast = () => {
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-slate-500">Model source</dt>
-                  <dd className="text-right">GDM-FNV3</dd>
+                  <dd className="text-right">
+                    {selectedModel === "fnv3_base" ? "GDM-FNV3 Ensemble" : "GDM-FNV3 Large Ensemble"}
+                  </dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-slate-500">Processed by</dt>

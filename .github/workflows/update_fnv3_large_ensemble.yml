@@ -1,0 +1,56 @@
+name: Update FNV3 Large Ensemble Forecast Images
+
+on:
+  schedule:
+    # Runs at 00:00, 06:00, 12:00, and 18:00 UTC every day
+    - cron: '0 0,6,12,18 * * *'
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  update-fnv3-large-ensemble:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgeos-dev libproj-dev proj-data proj-bin
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install matplotlib cartopy pandas numpy requests scikit-learn scipy
+          if [ -f requirements_dev.txt ]; then pip install -r requirements_dev.txt; fi
+
+      - name: Run FNV3 Large Ensemble forecast logic
+        run: |
+          # Running FNV3 Large Ensemble forecast scripts
+          python Forcast3.py
+          python forcast4.py
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Add any new fnv3_ images in the public/assets folder
+          git add public/assets/fnv3_*.png
+          
+          # Commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-update FNV3 Large Ensemble forecast images [skip ci]"
+            git push
+          fi
