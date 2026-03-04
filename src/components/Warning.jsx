@@ -373,13 +373,14 @@ const Warning = () => {
 
                 <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:h-[calc(100vh-9rem)]">
                     {/* Map Section */}
-                    <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/50 shadow-2xl shadow-slate-950/50 flex flex-col">
+                    <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/50 shadow-2xl shadow-slate-950/50 flex flex-col" style={{ isolation: "isolate" }}>
                         <MapContainer
                             center={[12.8797, 121.774]}
                             zoom={6}
                             minZoom={4.5}
                             maxZoom={11}
                             scrollWheelZoom
+                            zoomControl={false}
                             className="h-[60vh] lg:h-full w-full"
                             maxBounds={PH_BOUNDS}
                             maxBoundsViscosity={0.8}

@@ -478,6 +478,44 @@ const CycloneMapLogic = () => {
     let loadingTilesCount = 0;
     let loadedTilesCount = 0;
 
+    // --- Zoom Earth helpers ---
+    async function fetchServerTime() {
+      try {
+        const resp = await fetch("https://worldtimeapi.org/api/timezone/Etc/UTC");
+        if (resp.ok) {
+          const data = await resp.json();
+          const parsed = new Date(data.utc_datetime);
+          if (!isNaN(parsed.getTime())) return parsed;
+        }
+      } catch (_) { }
+      return new Date(); // fallback to local time
+    }
+
+    async function fetchZoomEarthTimestamps() {
+      const serverTime = await fetchServerTime();
+      const frames = [];
+      const intervalMinutes = 10;
+      const historyHours = 3;
+      const lagMinutes = 30;
+
+      let current = new Date(serverTime.getTime());
+      const minutes = current.getUTCMinutes();
+      current.setUTCMinutes(minutes - (minutes % intervalMinutes), 0, 0);
+      current.setUTCMinutes(current.getUTCMinutes() - lagMinutes);
+
+      const totalFrames = (historyHours * 60) / intervalMinutes;
+      for (let i = 0; i < totalFrames; i++) {
+        frames.unshift({
+          time: Math.floor(current.getTime() / 1000),
+          path: current.toISOString(),   // used as cache key
+          zoomEarthTime: new Date(current.getTime()),
+          isZoomEarth: true,
+        });
+        current.setUTCMinutes(current.getUTCMinutes() - intervalMinutes);
+      }
+      return frames;
+    }
+
     function startLoadingTile() {
       loadingTilesCount++;
     }
@@ -490,20 +528,40 @@ const CycloneMapLogic = () => {
 
     function addLayer(frame) {
       if (!radarLayers[frame.path]) {
-        // Follow RainViewer docs: satellite uses different color scheme but same extension
-        const colorScheme =
-          optionKind === "satellite"
-            ? optionColorScheme == 255
-              ? 255
-              : 0
-            : optionColorScheme;
-        const smooth = optionKind === "satellite" ? 0 : optionSmoothData;
-        const snow = optionKind === "satellite" ? 0 : optionSnowColors;
+        let source;
 
-        const source = new L.TileLayer(
-          `${apiData.host}${frame.path}/${optionTileSize}/{z}/{x}/{y}/${colorScheme}/${smooth}_${snow}.${optionExtension}`,
-          { tileSize: optionTileSize, opacity: 0.01, zIndex: frame.time }
-        );
+        if (frame.isZoomEarth) {
+          // Build Zoom Earth true-color Himawari tile URL (direct — no CORS proxy needed for img tiles)
+          const d = frame.zoomEarthTime || new Date(frame.time * 1000);
+          const year = d.getUTCFullYear();
+          const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+          const day = String(d.getUTCDate()).padStart(2, "0");
+          const hour = String(d.getUTCHours()).padStart(2, "0");
+          const minute = String(d.getUTCMinutes()).padStart(2, "0");
+          // Zoom Earth uses {z}/{y}/{x} tile order (lat/lon reversed from standard)
+          const zeUrl = `https://tiles.zoom.earth/geocolor/himawari/${year}-${month}-${day}/${hour}${minute}/{z}/{y}/{x}.jpg`;
+          source = new L.TileLayer(zeUrl, {
+            tileSize: 256,
+            opacity: 0.01,
+            zIndex: frame.time,
+            maxNativeZoom: 7,
+            maxZoom: 18,
+            errorTileUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+          });
+        } else {
+          // RainViewer (radar / infrared)
+          const colorScheme =
+            optionKind === "satellite"
+              ? optionColorScheme == 255 ? 255 : 0
+              : optionColorScheme;
+          const smooth = optionKind === "satellite" ? 0 : optionSmoothData;
+          const snow = optionKind === "satellite" ? 0 : optionSnowColors;
+          source = new L.TileLayer(
+            `${apiData.host}${frame.path}/${optionTileSize}/{z}/{x}/{y}/${colorScheme}/${smooth}_${snow}.${optionExtension}`,
+            { tileSize: optionTileSize, opacity: 0.01, zIndex: frame.time }
+          );
+        }
+
         source.on("loading", startLoadingTile);
         source.on("load", finishLoadingTile);
         source.on("remove", finishLoadingTile);
@@ -679,25 +737,17 @@ const CycloneMapLogic = () => {
       if (!api) return;
 
       if (kind === "satellite") {
-        // Satellite / Infrared only
+        // Zoom Earth true-color Himawari satellite tiles
         optionKind = "satellite";
-        if (api.satellite && api.satellite.infrared && api.satellite.infrared.length) {
-          mapFrames = api.satellite.infrared;
-          lastPastFramePosition = api.satellite.infrared.length - 1;
-          latestFrameIndex = mapFrames.length - 1;
-          // Start on the latest available frame as the current frame
+        if (btnPlay) btnPlay.style.display = "block";
+        fetchZoomEarthTimestamps().then((frames) => {
+          mapFrames = frames;
+          lastPastFramePosition = frames.length - 1;
+          latestFrameIndex = frames.length - 1;
           animationPosition = latestFrameIndex;
           showFrame(animationPosition, true);
-        } else if (api.radar && api.radar.past && api.radar.past.length) {
-          console.warn("RainViewer: No satellite infrared frames available, falling back to radar.");
-          optionKind = "radar";
-          mapFrames = api.radar.past;
-          if (api.radar.nowcast) mapFrames = mapFrames.concat(api.radar.nowcast);
-          lastPastFramePosition = api.radar.past.length - 1;
-          latestFrameIndex = mapFrames.length - 1;
-          animationPosition = latestFrameIndex;
-          showFrame(animationPosition, true);
-        }
+        });
+        return; // async – return early, frames will come from promise
       } else if (kind === "radar") {
         // Radar only
         optionKind = "radar";
@@ -773,18 +823,88 @@ const CycloneMapLogic = () => {
       initialize(apiData, kind);
     }
 
+    // Fetch RainViewer API data (only needed for Radar / Both modes)
     const apiRequest = new XMLHttpRequest();
-    apiRequest.open(
-      "GET",
-      "https://api.rainviewer.com/public/weather-maps.json",
-      true
-    );
+    apiRequest.open("GET", "https://api.rainviewer.com/public/weather-maps.json", true);
     apiRequest.onload = () => {
       apiData = JSON.parse(apiRequest.response);
-      // Initialize with default display mode (satellite/Infrared)
-      setKind(displayMode);
+      // Only call setKind if we're not already in satellite mode
+      // (satellite mode is self-contained via Zoom Earth)
+      if (displayMode !== "satellite") {
+        setKind(displayMode);
+      }
     };
     apiRequest.send();
+
+    // Start satellite immediately; RainViewer data loads in background
+    setKind(displayMode);
+
+    // Auto-refresh Zoom Earth satellite frames every 10 minutes.
+    // This picks up newly published Himawari frames and updates the timestamp display.
+    setInterval(async () => {
+      if (displayMode !== "satellite") return; // only refresh in satellite mode
+      if (animationTimer) return;              // don't interrupt a playing animation
+
+      const freshFrames = await fetchZoomEarthTimestamps();
+      if (!freshFrames.length) return;
+
+      // Check if there's actually a new frame available
+      const latestNew = freshFrames[freshFrames.length - 1].time;
+      const latestOld = mapFrames.length ? mapFrames[mapFrames.length - 1].time : 0;
+      if (latestNew <= latestOld) return; // no new data yet
+
+      // Remove tile layers for frames that are no longer in the new list
+      // to avoid stale cached tiles consuming memory
+      const freshPaths = new Set(freshFrames.map(f => f.path));
+      for (const key in radarLayers) {
+        if (!freshPaths.has(key)) {
+          if (map.hasLayer(radarLayers[key])) map.removeLayer(radarLayers[key]);
+          delete radarLayers[key];
+        }
+      }
+
+      // Update frame list and jump to the newest frame (also updates timestamp)
+      mapFrames = freshFrames;
+      lastPastFramePosition = freshFrames.length - 1;
+      latestFrameIndex = freshFrames.length - 1;
+      animationPosition = latestFrameIndex;
+      showFrame(animationPosition, true);
+    }, 600000); // every 10 minutes
+
+    // Also refresh immediately when the user comes back to this browser tab.
+    // Chrome throttles setInterval for background tabs, so this ensures the
+    // satellite tiles and timestamp are always up-to-date when the tab is focused.
+    async function refreshSatelliteIfStale() {
+      if (displayMode !== "satellite") return;
+      if (animationTimer) return;
+
+      const freshFrames = await fetchZoomEarthTimestamps();
+      if (!freshFrames.length) return;
+
+      const latestNew = freshFrames[freshFrames.length - 1].time;
+      const latestOld = mapFrames.length ? mapFrames[mapFrames.length - 1].time : 0;
+      if (latestNew <= latestOld) return;
+
+      const freshPaths = new Set(freshFrames.map(f => f.path));
+      for (const key in radarLayers) {
+        if (!freshPaths.has(key)) {
+          if (map.hasLayer(radarLayers[key])) map.removeLayer(radarLayers[key]);
+          delete radarLayers[key];
+        }
+      }
+
+      mapFrames = freshFrames;
+      lastPastFramePosition = freshFrames.length - 1;
+      latestFrameIndex = freshFrames.length - 1;
+      animationPosition = latestFrameIndex;
+      showFrame(animationPosition, true);
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        refreshSatelliteIfStale();
+      }
+    });
 
     document.onkeydown = (e) => {
       e = e || window.event;
@@ -893,6 +1013,14 @@ const Cyclone = () => {
     setIsFullscreen((prev) => !prev);
   };
 
+  // Hide page scrollbar when in fullscreen so it doesn't show behind the map
+  useEffect(() => {
+    document.body.style.overflow = isFullscreen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isFullscreen]);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <div className="max-w-6xl mx-auto px-4 py-8 w-full">
@@ -910,11 +1038,16 @@ const Cyclone = () => {
               ? "fixed inset-0 z-[9999] bg-black w-screen h-screen m-0 p-0 block"
               : "relative rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-slate-900/60"
           }
+          style={isFullscreen ? {} : { isolation: "isolate" }}
         >
           <MapContainer
             center={center}
             zoom={5}
             scrollWheelZoom={true}
+            worldCopyJump={false}
+            maxBounds={[[-85, -180], [85, 180]]}
+            maxBoundsViscosity={1.0}
+            minZoom={2}
             className={isFullscreen ? "w-full h-full" : "w-full h-[60vh]"}
             style={{ height: isFullscreen ? "100vh" : "60vh", width: "100%" }}
           >
@@ -923,7 +1056,7 @@ const Cyclone = () => {
               isFullscreen={isFullscreen}
               onToggle={toggleFullscreen}
             />
-            <LayersControl position="topright">
+            <LayersControl position="topleft">
               <BaseLayer name="Satellite">
                 <TileLayer
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -954,7 +1087,7 @@ const Cyclone = () => {
                       controls.classList.toggle("hidden");
                     }
                   }}
-                  className="mb-2 flex h-[34px] w-[34px] items-center justify-center rounded-[4px] bg-white text-slate-800 shadow-[0_1px_5px_rgba(0,0,0,0.65)] hover:bg-[#f4f4f4] transition-colors"
+                  className="mb-2 flex h-[34px] w-[34px] items-center justify-center rounded-[4px] bg-white text-slate-800 shadow-[0_1px_5px_rgba(0,0,0,0.65)] hover:bg-[#f4f4f4] transition-colors cursor-pointer"
                   title="Toggle Weather Layers"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -972,38 +1105,38 @@ const Cyclone = () => {
                   </span>
                   <button
                     id="btn-radar"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
                   >
                     Radar
                   </button>
                   <button
                     id="btn-satellite"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
                   >
                     Satellite
                   </button>
                   <button
                     id="btn-both"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
                   >
                     Both
                   </button>
                   <div className="h-px bg-slate-700 my-1"></div>
                   <button
                     id="btn-precip"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left cursor-pointer"
                   >
                     Precip
                   </button>
                   <button
                     id="btn-pressure"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left cursor-pointer"
                   >
                     Pressure
                   </button>
                   <button
                     id="btn-wind"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left cursor-pointer"
                   >
                     Wind
                   </button>
@@ -1026,7 +1159,7 @@ const Cyclone = () => {
           <div className="absolute bottom-4 right-4 z-[500]">
             <button
               id="btn-play"
-              className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-lg transition hover:bg-emerald-500 active:scale-95 border border-emerald-500/50"
+              className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-lg transition hover:bg-emerald-500 active:scale-95 border border-emerald-500/50 cursor-pointer"
             >
               Play
             </button>
