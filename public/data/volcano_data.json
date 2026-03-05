@@ -2,9 +2,9 @@
     "metadata": {
         "api_source": "Philippine Typhoon/Weather",
         "data_source": "Philippine Institute of Volcanology and Seismology",
-        "last_updated": "2026-03-05T00:30:13.671648+08:00",
+        "last_updated": "2026-03-05T18:28:32.270996+08:00",
         "developer_note": "Made by a Filipino, For the Filipino, and For the World. This API is free for non-commercial use, is not affiliated with any government entities, and is solely operated independently by Philippine Typhoon/Weather. We extend our sincere gratitude to all our generous supporters. Proxy or replicate this data before using it in your application to prevent undue stress on our existing infrastructure.",
-        "total_Volcanic_earthquakes": "mvo: 0, bvo: 0, kvo: 0, tvo: 0, hvo: 0, pvo: 0"
+        "total_Volcanic_earthquakes": "mvo: 41, bvo: 4, kvo: 7, tvo: 4, hvo: 0, pvo: 0"
     },
     "records": [
         {
@@ -1839,6 +1839,45 @@
                 "pvo": "0"
             },
             "total_Volcanic_earthquakes": "mvo: 0, bvo: 0, kvo: 0, tvo: 0, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-03-05T06:20:20.555236+08:00",
+            "date": "2026-03-05",
+            "data": {
+                "mvo": "25",
+                "bvo": "0",
+                "kvo": "4",
+                "tvo": "3",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 25, bvo: 0, kvo: 4, tvo: 3, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-03-05T13:09:12.605406+08:00",
+            "date": "2026-03-05",
+            "data": {
+                "mvo": "34",
+                "bvo": "2",
+                "kvo": "5",
+                "tvo": "3",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 34, bvo: 2, kvo: 5, tvo: 3, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-03-05T18:28:32.270996+08:00",
+            "date": "2026-03-05",
+            "data": {
+                "mvo": "41",
+                "bvo": "4",
+                "kvo": "7",
+                "tvo": "4",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 41, bvo: 4, kvo: 7, tvo: 4, hvo: 0, pvo: 0"
         }
     ]
 }
