@@ -113,7 +113,7 @@ const CycloneMapLogic = () => {
 
     // Country borders style
     const countryStyle = {
-      color: "#334155",
+      color: "#FFD700",
       weight: 1,
       opacity: 0.6,
       fillOpacity: 0,
