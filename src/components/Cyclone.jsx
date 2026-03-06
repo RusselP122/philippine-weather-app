@@ -226,6 +226,68 @@ const CycloneMapLogic = () => {
       return directions[index];
     }
 
+    function getIconHtml(abbrev) {
+      switch (abbrev) {
+        case 'LPA':
+          return `
+            <div class="relative w-full h-full flex items-center justify-center">
+              <div class="absolute w-[80%] h-[80%] bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+              <div class="absolute inset-0 bg-slate-500/20 blur-md rounded-full"></div>
+              <div class="absolute w-[80%] h-[80%] border-2 border-slate-400 border-y-transparent rounded-full animate-[spin_8s_linear_infinite]"></div>
+              <div class="absolute w-[50%] h-[50%] rounded-full border border-dashed border-slate-300 animate-[spin_10s_linear_infinite_reverse]"></div>
+              <div class="absolute z-10 text-[0.6rem] font-black text-slate-100">L</div>
+            </div>`;
+        case 'TD':
+          return `
+            <div class="relative w-full h-full flex items-center justify-center">
+              <div class="absolute w-[85%] h-[85%] bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+              <div class="absolute inset-0 bg-blue-500/30 blur-md rounded-full"></div>
+              <div class="absolute w-[85%] h-[85%] border-2 border-blue-400/80 border-y-transparent rounded-full animate-[spin_5s_linear_infinite]"></div>
+              <div class="absolute w-[55%] h-[55%] border-[1.5px] border-blue-300 border-x-transparent rounded-full animate-[spin_3s_linear_infinite_reverse]"></div>
+              <div class="absolute z-10 text-[0.6rem] font-black text-blue-100 drop-shadow-[0_0_5px_rgba(96,165,250,0.8)]">TD</div>
+            </div>`;
+        case 'TS':
+          return `
+            <div class="relative w-full h-full flex items-center justify-center">
+              <div class="absolute w-[85%] h-[85%] bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+              <div class="absolute inset-0 bg-emerald-500/30 blur-md rounded-full"></div>
+              <div class="absolute w-[85%] h-[85%] border-[3px] border-emerald-400/80 border-r-transparent border-l-transparent rounded-full animate-[spin_3s_linear_infinite]"></div>
+              <div class="absolute w-[60%] h-[60%] border-2 border-emerald-300 border-t-transparent border-b-transparent rounded-full animate-[spin_2s_linear_infinite_reverse]"></div>
+              <div class="absolute z-10 text-[0.65rem] font-black text-emerald-100 drop-shadow-[0_0_5px_rgba(52,211,153,0.8)]">TS</div>
+            </div>`;
+        case 'STS':
+          return `
+            <div class="relative w-full h-full flex items-center justify-center">
+              <div class="absolute w-[90%] h-[90%] bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+              <div class="absolute inset-0 bg-amber-500/40 blur-md rounded-full"></div>
+              <div class="absolute w-[90%] h-[90%] border-[4px] border-amber-400/90 border-y-transparent rounded-full animate-[spin_1.5s_linear_infinite]"></div>
+              <div class="absolute w-[65%] h-[65%] border-[3px] border-amber-300 border-x-transparent rounded-full animate-[spin_1s_linear_infinite_reverse]"></div>
+              <div class="absolute z-10 text-[0.7rem] font-black text-amber-100 drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]">STS</div>
+            </div>`;
+        case 'TY':
+          return `
+            <div class="relative w-full h-full flex items-center justify-center">
+              <div class="absolute w-[90%] h-[90%] bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+              <div class="absolute inset-0 bg-orange-500/50 blur-md rounded-full animate-pulse"></div>
+              <div class="absolute w-[90%] h-[90%] border-[4px] border-orange-500/90 border-t-transparent border-b-transparent rounded-full animate-[spin_0.8s_linear_infinite]"></div>
+              <div class="absolute w-[65%] h-[65%] border-[3px] border-orange-400 border-r-transparent border-l-transparent rounded-full animate-[spin_0.5s_linear_infinite_reverse]"></div>
+              <div class="absolute z-10 text-[0.8rem] font-black text-orange-100 drop-shadow-[0_0_10px_rgba(251,146,60,1)]">TY</div>
+            </div>`;
+        case 'STY':
+          return `
+            <div class="relative w-full h-full flex items-center justify-center">
+              <div class="absolute w-[95%] h-[95%] bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+              <div class="absolute inset-0 bg-fuchsia-500/60 blur-lg rounded-full animate-pulse"></div>
+              <div class="absolute w-[110%] h-[110%] border border-fuchsia-500 rounded-full animate-ping opacity-30"></div>
+              <div class="absolute w-[95%] h-[95%] border-[5px] border-fuchsia-500 border-t-transparent border-b-transparent rounded-full animate-[spin_0.4s_linear_infinite]"></div>
+              <div class="absolute w-[70%] h-[70%] border-[4px] border-fuchsia-400 border-r-transparent border-l-transparent rounded-full animate-[spin_0.25s_linear_infinite_reverse]"></div>
+              <div class="absolute z-10 text-[0.9rem] font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,1)]">STY</div>
+            </div>`;
+        default:
+          return `<div class="w-full h-full bg-slate-500 rounded-full"></div>`;
+      }
+    }
+
     function updateStormPositions(overrideTime) {
       // If animating and this is an automatic interval update (no overrideTime), skip it
       if (!overrideTime && animationTimer) return;
@@ -254,10 +316,8 @@ const CycloneMapLogic = () => {
             .getPopup()
             .getContent()
             .replace(
-              /<p><strong>Location:<\/strong> \d+\.\d+°N, \d+\.\d+°E<\/p>/,
-              `<p><strong>Location:<\/strong> ${newLat.toFixed(
-                2
-              )}°N, ${newLon.toFixed(2)}°E<\/p>`
+              /id="popup-location-text">\d+\.\d+°N, \d+\.\d+°E<\/div>/,
+              `id="popup-location-text">${newLat.toFixed(2)}°N, ${newLon.toFixed(2)}°E</div>`
             );
           s.marker.setPopupContent(popupContent);
         }
@@ -269,12 +329,12 @@ const CycloneMapLogic = () => {
       stormMarkers = {};
 
       const sizeMap = {
-        LPA: [28, 28],
-        TD: [28, 28],
-        TS: [32, 32],
-        STS: [36, 36],
-        TY: [40, 40],
-        STY: [46, 46],
+        LPA: [48, 48],
+        TD: [48, 48],
+        TS: [48, 48],
+        STS: [56, 56],
+        TY: [64, 64],
+        STY: [76, 76],
       };
 
       data.forEach((storm) => {
@@ -318,14 +378,7 @@ const CycloneMapLogic = () => {
         const marker = L.marker([latitude, longitude], {
           icon: L.divIcon({
             className: `storm-marker ${categoryClass}`,
-            html: `
-              <div class="relative rounded-full shadow-md ring-2 ring-offset-[2px] ring-offset-slate-900" style="background:${categoryInfo.color
-              };">
-                <div class="flex h-8 w-8 items-center justify-center text-[11px] font-semibold text-slate-900">
-                  ${categoryInfo.abbrev}
-                </div>
-              </div>
-            `,
+            html: getIconHtml(categoryInfo.abbrev),
             iconSize: iconSize,
             iconAnchor: iconAnchor,
           }),
@@ -346,29 +399,60 @@ const CycloneMapLogic = () => {
 
         marker.bindPopup(
           `
-                    <div class="p-4 bg-white/90 dark:bg-gray-800/90 rounded-lg shadow-md">
-                        <h3 style="color: ${categoryInfo.color
-          }; margin-bottom: 0.5rem; font-size: 1.125rem; font-weight: 600;">
-                            ${displayName}
-                        </h3>
-                        <div class="text-sm space-y-1 text-gray-700 dark:text-gray-300">
-                            <p><strong>Category:</strong> ${categoryInfo.category
-          }</p>
-                            <p><strong>10-min Sustained Wind:</strong> ${winds10MinKph} km/h</p>
-                            <p><strong>Estimated Max Gust:</strong> ${gustKph} km/h</p>
-                            <p><strong>Pressure:</strong> ${pressure} hPa</p>
-                            <p><strong>Location:</strong> ${latitude.toFixed(
-            2
-          )}°N, ${longitude.toFixed(2)}°E</p>
-                            ${movementHtml}
+            <div class="popup-tail relative z-20 w-80 bg-slate-900/90 backdrop-blur-md border border-slate-700 shadow-[0_10px_40px_rgba(0,0,0,0.5)] rounded-2xl p-5">
+                
+                <div class="border-b border-slate-700/60 pb-3 flex justify-between items-start">
+                    <div>
+                        <div class="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-800 text-[10px] font-bold uppercase tracking-wider border border-slate-700 mb-2" style="color: ${categoryInfo.color}; border-color: ${categoryInfo.color}40; background: ${categoryInfo.color}10;">
+                            <span class="w-1.5 h-1.5 rounded-full animate-pulse shadow-[0_0_5px_currentColor]" style="background-color: ${categoryInfo.color};"></span>
+                            ${categoryInfo.category}
                         </div>
-                        <hr class="my-2 border-gray-200 dark:border-gray-700">
-                        <p class="text-xs text-gray-500 dark:text-gray-400">Last updated: ${new Date(
-            storm.last_updated
-          ).toLocaleString()}</p>
+                        <h3 class="text-2xl font-black text-white tracking-tight">${displayName}</h3>
                     </div>
-                `,
-          { maxWidth: 300, className: "storm-tooltip" }
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 py-4">
+                    <div class="bg-slate-950/50 rounded-xl p-3 border border-slate-800 hover:border-slate-600 transition-colors">
+                        <div class="text-slate-400 text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1.5 font-medium">
+                            <span class="text-blue-400">💨</span> Wind (10m)
+                        </div>
+                        <div class="text-white font-bold text-lg">${winds10MinKph} <span class="text-xs text-slate-500 font-normal">km/h</span></div>
+                    </div>
+                    
+                    <div class="bg-slate-950/50 rounded-xl p-3 border border-slate-800 hover:border-slate-600 transition-colors">
+                        <div class="text-slate-400 text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1.5 font-medium">
+                            <span class="text-rose-400">🌪️</span> Max Gust
+                        </div>
+                        <div class="text-white font-bold text-lg">${gustKph} <span class="text-xs text-slate-500 font-normal">km/h</span></div>
+                    </div>
+                    
+                    <div class="bg-slate-950/50 rounded-xl p-3 border border-slate-800 hover:border-slate-600 transition-colors">
+                        <div class="text-slate-400 text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1.5 font-medium">
+                            <span class="text-emerald-400">⏲️</span> Pressure
+                        </div>
+                        <div class="text-white font-bold text-lg">${pressure} <span class="text-xs text-slate-500 font-normal">hPa</span></div>
+                    </div>
+                    
+                    <div class="bg-slate-950/50 rounded-xl p-3 border border-slate-800 hover:border-slate-600 transition-colors">
+                        <div class="text-slate-400 text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1.5 font-medium">
+                            <span class="text-amber-400">📍</span> Location
+                        </div>
+                        <div class="text-white font-bold text-sm mt-1 tracking-wide" id="popup-location-text">${latitude.toFixed(2)}°N, ${longitude.toFixed(2)}°E</div>
+                    </div>
+                </div>
+                ${movementHtml ? `<div class="bg-slate-950/50 rounded-xl p-3 border border-slate-800 mb-3 text-sm text-slate-300">
+                  <span class="text-slate-400">🧭</span> ${movementHtml.replace(/<[^>]+>/g, '')}
+                </div>` : ''}
+                <div class="border-t border-slate-700/60 pt-3 flex items-center justify-between">
+                    <div class="flex flex-col">
+                        <span class="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Last Updated</span>
+                        <span class="text-xs text-slate-400">${new Date(storm.last_updated).toLocaleString()}</span>
+                    </div>
+                </div>
+
+            </div>
+          `,
+          { maxWidth: 350, className: "custom-storm-popup" }
         );
 
         marker.addTo(stormLayer);
