@@ -325,6 +325,7 @@ const Weather = () => {
   const [geoLoading, setGeoLoading] = useState(false);
   const [locationError, setLocationError] = useState(null);
   const [recentSearches, setRecentSearches] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   useEffect(() => {
     try {
@@ -669,132 +670,304 @@ const Weather = () => {
 
   const moonPhase = current ? getMoonPhaseInfo(current.time) : null;
 
+  const nowIcon = current && current.precipProb >= 50
+    ? <div className="text-4xl text-sky-400 drop-shadow-lg">🌧️</div>
+    : <div className="text-4xl text-yellow-500 drop-shadow-lg">☀️</div>;
+
   return (
-    <div className={`min-h-screen ${premiumBg} text-slate-50 relative selection:bg-sky-500/30 font-sans`}>
-      {/* Background noise/texture overlay */}
-      <div className="fixed inset-0 z-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='1'/%3E%3C/svg%3E")` }}></div>
+    <div className={`min-h-screen ${premiumBg} p-4 md:p-10 flex justify-center items-center font-sans text-slate-800 transition-colors duration-1000`}>
+      {/* Background noise/texture overlay for added premium aesthetic */}
+      <div className="fixed inset-0 z-0 opacity-[0.03] pointer-events-none mix-blend-overlay" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='1'/%3E%3C/svg%3E")` }}></div>
 
-      <div className="relative z-10 max-w-6xl mx-auto px-4 py-8 md:px-8">
-
-        {/* Header */}
-        <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white mb-1">Philippine Weather</h1>
-            <p className="text-sm text-slate-400">Real-time local forecasts.</p>
-          </div>
-
-          {/* Unified Search & Actions */}
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <div className="relative flex-1 md:w-80 group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-sky-400 transition-colors" />
-              <input
-                type="text"
-                placeholder="Search city..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit(e)}
-                className="w-full rounded-2xl bg-white/5 border border-white/10 py-2.5 pl-10 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:bg-white/10 focus:border-sky-500/50 transition-all"
-              />
-            </div>
-
-            <button
-              onClick={handleUseMyLocation}
-              className="p-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 transition-colors"
-              title="Use my location"
-            >
-              <Navigation className={`h-5 w-5 ${geoLoading ? 'animate-spin' : ''}`} />
-            </button>
-
-            <div className="relative">
-              <select
-                value={selectedId}
-                onChange={(e) => setSelectedId(e.target.value)}
-                className="appearance-none p-2.5 pr-8 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 text-sm focus:outline-none cursor-pointer"
-              >
-                {allLocations.map((loc) => (
-                  <option key={loc.id} value={loc.id} className="bg-slate-900">
-                    {loc.name}
-                  </option>
-                ))}
-              </select>
-              <ArrowRight className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none rotate-90" />
-            </div>
-          </div>
-        </header>
+      <div className="max-w-6xl w-full bg-white/30 backdrop-blur-2xl border border-white/50 shadow-2xl shadow-indigo-500/10 rounded-[2.5rem] overflow-hidden flex flex-col lg:flex-row relative z-10 transition-all duration-500">
 
         {loading ? (
-          <div className="flex h-96 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-700 border-t-sky-400"></div>
+          <div className="flex w-full h-96 items-center justify-center">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-300 border-t-indigo-500 drop-shadow-lg"></div>
           </div>
         ) : error ? (
-          <div className="rounded-3xl bg-red-500/10 p-8 text-center border border-red-500/20">
-            <p className="text-red-300">{error}</p>
+          <div className="w-full flex items-center justify-center p-10 h-96">
+            <div className="rounded-3xl bg-red-500/10 backdrop-blur-md p-8 text-center border border-red-500/20 shadow-xl">
+              <p className="text-red-600 font-semibold">{error}</p>
+            </div>
           </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Hero */}
-            <WeatherHero current={current} locationName={selectedLocation.name} />
-
-            {/* Hourly Scroll */}
-            {hourly.length > 0 && (
-              <div className="w-full overflow-x-auto pb-4 scrollbar-hide">
-                <div className="flex gap-4 min-w-max">
-                  {hourly.map((h, i) => (
-                    <div key={i} className="flex flex-col items-center gap-2 rounded-2xl bg-white/5 p-4 border border-white/5 min-w-[5rem] hover:bg-white/10 transition-colors">
-                      <span className="text-xs text-slate-400">{i === 0 ? 'Now' : formatHourLabel(h.time)}</span>
-                      <div className="text-2xl pt-1">
-                        {h.precipProb >= 50 ? '🌧️' : h.temp >= 30 ? '☀️' : '☁️'}
-                      </div>
-                      <span className="text-lg font-bold">{h.temp}°</span>
-                      <span className="text-[10px] text-sky-300 font-medium">{h.precipProb > 0 ? `${h.precipProb}%` : ''}</span>
-                    </div>
-                  ))}
+        ) : current ? (
+          <>
+            {/* LEFT PANEL - Current Conditions */}
+            <div className="w-full lg:w-1/3 p-8 lg:p-10 flex flex-col justify-between relative overflow-hidden bg-white/40 border-r border-white/50">
+              <div className="z-10">
+                <div className="flex items-center justify-between">
+                  <h1 className="text-3xl font-bold tracking-tight text-slate-900 drop-shadow-sm">{selectedLocation.name.split(',')[0]}</h1>
+                  <button onClick={handleUseMyLocation} className="text-xl cursor-pointer hover:scale-110 transition-transform bg-white/50 p-2 rounded-full shadow-sm border border-white/60" title="Use My Location">
+                    <MapPin className="h-5 w-5 text-indigo-600" />
+                  </button>
                 </div>
-              </div>
-            )}
-
-            {/* Bento Grid */}
-            <BentoGrid current={current} />
-
-            {/* Daily Forecast List & Insight */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10 backdrop-blur-md">
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
-                  <Calendar className="h-4 w-4" /> 5-DAY FORECAST
-                </h3>
-                <div className="space-y-4">
-                  {daily.map((d, i) => (
-                    <div key={i} className="flex items-center justify-between group hover:bg-white/5 p-2 rounded-lg transition-colors">
-                      <span className="w-24 font-medium text-slate-200">{formatDayLabel(d.date, i)}</span>
-                      <div className="flex items-center gap-2 text-xs text-sky-300 bg-sky-500/10 px-2 py-1 rounded-full w-16 justify-center">
-                        <Droplets className="h-3 w-3" /> {d.precipProb}%
-                      </div>
-                      <div className="flex flex-1 items-center justify-end gap-3 px-4">
-                        <span className="text-sm text-slate-400 w-8 text-right">{d.lo}°</span>
-                        <div className="h-1.5 flex-1 rounded-full bg-slate-800 overflow-hidden relative max-w-[8rem]">
-                          <div className="absolute inset-y-0 rounded-full bg-gradient-to-r from-sky-500 to-amber-400 opacity-80" style={{ left: '10%', right: '10%' }}></div>
-                        </div>
-                        <span className="text-sm font-bold text-white w-8 text-right">{d.hi}°</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <p className="text-sm font-medium text-slate-600 mt-2">{selectedLocation.name.includes(',') ? selectedLocation.name.split(',').slice(1).join(',').trim() : "Philippines"}</p>
+                <p className="text-xs text-slate-500 mt-1">{formatLocalDate(current.time)}</p>
               </div>
 
-              <div className="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10 backdrop-blur-md flex flex-col justify-center">
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4">Weekly Insight</h3>
-                <div className="text-slate-300 leading-loose text-lg font-light">
-                  "{generateWeeklyInsight(daily)}"
-                </div>
-                <div className="mt-6 flex items-center gap-3 text-xs text-slate-500">
-                  <div className="h-px flex-1 bg-slate-800"></div>
-                  <span>AI Summary</span>
-                  <div className="h-px flex-1 bg-slate-800"></div>
+              <div className="flex justify-center items-center py-12 z-10 relative h-64">
+                {/* Dynamic Hero Icon based on conditions */}
+                {current.precipProb >= 50 ? (
+                  <>
+                    <div className="absolute w-32 h-32 bg-sky-400 rounded-full blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="relative w-40 h-40 flex justify-center items-center">
+                      <svg className="w-32 h-32 text-slate-400 drop-shadow-xl animate-float" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M6.62 10.79c-.44-.04-.88-.04-1.32.01A4.5 4.5 0 005.25 19.5h12.5a4.001 4.001 0 002.828-6.828 4.001 4.001 0 00-5.803-1.282 5.5 5.5 0 00-8.155-2.602z" />
+                      </svg>
+                      <div className="absolute left-10 top-24 w-1.5 h-3 bg-blue-500/80 rounded-full animate-raindrop"></div>
+                      <div className="absolute left-16 top-26 w-1.5 h-3 bg-blue-500/80 rounded-full animate-raindrop" style={{ animationDelay: "0.4s" }}></div>
+                      <div className="absolute left-22 top-24 w-1.5 h-3 bg-blue-500/80 rounded-full animate-raindrop" style={{ animationDelay: "0.8s" }}></div>
+                      <div className="absolute left-28 top-28 w-1.5 h-3 bg-blue-500/80 rounded-full animate-raindrop" style={{ animationDelay: "0.2s" }}></div>
+                    </div>
+                  </>
+                ) : (current.time && (new Date(current.time).getHours() >= 18 || new Date(current.time).getHours() < 6)) ? (
+                  // Night time clear
+                  <>
+                    <div className="absolute w-32 h-32 bg-indigo-300 rounded-full blur-3xl opacity-40 animate-pulse"></div>
+                    <div className="relative w-40 h-40 flex justify-center items-center">
+                      <svg className="w-32 h-32 text-indigo-200 drop-shadow-[0_0_15px_rgba(199,210,254,0.6)] animate-rock" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path>
+                      </svg>
+                      <div className="absolute top-4 right-4 w-2 h-2 bg-white rounded-full animate-pulse blur-[1px]"></div>
+                      <div className="absolute bottom-8 left-4 w-1.5 h-1.5 bg-white rounded-full animate-pulse blur-[1px]" style={{ animationDelay: "1s" }}></div>
+                    </div>
+                  </>
+                ) : (
+                  // Day time clear/partly cloudy
+                  <>
+                    <div className="absolute w-32 h-32 bg-yellow-300 rounded-full blur-3xl opacity-40 animate-pulse"></div>
+                    <div className="relative w-40 h-40">
+                      <svg className="absolute top-2 right-2 w-28 h-28 text-yellow-400 drop-shadow-lg animate-[spin_20s_linear_infinite]" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18.75a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-1.5a.75.75 0 01.75-.75zM6.166 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM2.25 12a.75.75 0 01.75-.75H5.25a.75.75 0 010 1.5H3a.75.75 0 01-.75-.75zM6.166 5.106a.75.75 0 00-1.06 1.06l1.591 1.59a.75.75 0 101.06-1.061l-1.591-1.59z" />
+                      </svg>
+                      {current.cloudCover >= 20 && (
+                        <svg className="absolute bottom-2 left-0 w-32 h-32 text-white drop-shadow-xl animate-float" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M6.62 10.79c-.44-.04-.88-.04-1.32.01A4.5 4.5 0 005.25 19.5h12.5a4.001 4.001 0 002.828-6.828 4.001 4.001 0 00-5.803-1.282 5.5 5.5 0 00-8.155-2.602z" />
+                        </svg>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="z-10 text-center lg:text-left">
+                <h2 className="text-7xl font-black text-slate-800 tracking-tighter mb-1 drop-shadow-sm">{current.temp}°</h2>
+                <h3 className="text-2xl font-bold text-slate-700/90">{describeConditions(current, current.cloudCover)}</h3>
+                <div className="mt-5 flex flex-wrap justify-center lg:justify-start gap-3">
+                  <span className="px-4 py-1.5 bg-white/50 backdrop-blur-md rounded-full text-xs font-bold text-slate-700 shadow-sm border border-white/60">H: {current.hi}° L: {current.lo}°</span>
+                  <span className="px-4 py-1.5 bg-white/50 backdrop-blur-md rounded-full text-xs font-bold text-slate-700 shadow-sm border border-white/60">Feels like {current.feelsLike}°</span>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+
+            {/* RIGHT PANEL - Details & Forecast */}
+            <div className="w-full lg:w-2/3 p-6 lg:p-10 flex flex-col space-y-8 bg-gradient-to-br from-white/10 to-transparent">
+
+              {/* Top Bar: Search with Autocomplete */}
+              <div className="relative w-full">
+                <div className="relative group">
+                  <input
+                    type="text"
+                    placeholder="Search any Philippine city..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setShowSuggestions(true);
+                      setLocationError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        setShowSuggestions(false);
+                        handleSearchSubmit(e);
+                      }
+                      if (e.key === 'Escape') setShowSuggestions(false);
+                    }}
+                    onFocus={() => searchQuery.length >= 2 && setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                    className="w-full bg-white/60 border border-white/70 text-slate-800 font-medium rounded-2xl py-3 px-5 pl-14 focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder-slate-500 shadow-sm backdrop-blur-md transition-all"
+                  />
+                  <Search className="absolute left-5 top-3.5 h-5 w-5 text-indigo-500 opacity-70 group-focus-within:opacity-100 transition-opacity" />
+                  {searchLoading && <div className="absolute right-5 top-3.5 w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>}
+                </div>
+
+                {/* Autocomplete Dropdown */}
+                {showSuggestions && searchQuery.length >= 2 && (() => {
+                  const q = searchQuery.toLowerCase();
+                  const suggestions = PH_LOCATIONS.filter(loc =>
+                    loc.name.toLowerCase().includes(q)
+                  ).slice(0, 8);
+                  return suggestions.length > 0 ? (
+                    <ul className="absolute z-50 mt-2 w-full bg-white/90 backdrop-blur-xl border border-white/80 shadow-2xl rounded-2xl overflow-hidden">
+                      {suggestions.map((loc) => (
+                        <li
+                          key={loc.id}
+                          onMouseDown={() => {
+                            setSelectedId(loc.id);
+                            setSearchQuery(loc.name);
+                            setShowSuggestions(false);
+                            setLocationError(null);
+                          }}
+                          className="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-indigo-50 transition-colors text-slate-800"
+                        >
+                          <MapPin className="h-4 w-4 text-indigo-400 flex-shrink-0" />
+                          <span className="font-semibold text-sm">{loc.name}</span>
+                        </li>
+                      ))}
+                      {suggestions.length === 0 && (
+                        <li className="px-5 py-3 text-sm text-slate-500 italic">No results. Press Enter to search online.</li>
+                      )}
+                    </ul>
+                  ) : null;
+                })()}
+
+                {locationError && <p className="mt-2 pl-2 text-xs font-semibold text-red-500">{locationError}</p>}
+              </div>
+
+              {/* Air Conditions */}
+              <div>
+                <h4 className="text-xs font-black text-indigo-900/40 uppercase tracking-widest mb-4">Air Conditions</h4>
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-5">
+                  <div className="bg-white/30 backdrop-blur-md border border-white/50 p-5 rounded-3xl shadow-sm hover:shadow-md hover:bg-white/40 transition-all duration-300">
+                    <div className="flex items-center gap-2 text-indigo-500 mb-2 font-semibold">
+                      <Thermometer className="h-4 w-4" /> <span className="text-sm">Real Feel</span>
+                    </div>
+                    <p className="text-3xl font-black text-slate-800">{current.feelsLike}°</p>
+                  </div>
+                  <div className="bg-white/30 backdrop-blur-md border border-white/50 p-5 rounded-3xl shadow-sm hover:shadow-md hover:bg-white/40 transition-all duration-300">
+                    <div className="flex items-center gap-2 text-sky-500 mb-2 font-semibold">
+                      <Wind className="h-4 w-4" /> <span className="text-sm">Wind</span>
+                    </div>
+                    <p className="text-3xl font-black text-slate-800">{current.windSpeed} <span className="text-sm font-bold text-slate-500">km/h</span></p>
+                  </div>
+                  <div className="bg-white/30 backdrop-blur-md border border-white/50 p-5 rounded-3xl shadow-sm hover:shadow-md hover:bg-white/40 transition-all duration-300">
+                    <div className="flex items-center gap-2 text-blue-500 mb-2 font-semibold">
+                      <Droplets className="h-4 w-4" /> <span className="text-sm">Precipitation</span>
+                    </div>
+                    <p className="text-3xl font-black text-slate-800">{current.precipProb}%</p>
+                  </div>
+                  <div className="bg-white/30 backdrop-blur-md border border-white/50 p-5 rounded-3xl shadow-sm hover:shadow-md hover:bg-white/40 transition-all duration-300">
+                    <div className="flex items-center gap-2 text-orange-500 mb-2 font-semibold">
+                      <Sun className="h-4 w-4" /> <span className="text-sm">UV Index</span>
+                    </div>
+                    <p className="text-3xl font-black text-slate-800">{current.uvIndex} <span className={`text-sm font-bold ${getUVLevel(current.uvIndex).color.replace('text-', 'text-opacity-80 text-')}`}>{getUVLevel(current.uvIndex).level}</span></p>
+                  </div>
+                  <div className="bg-white/30 backdrop-blur-md border border-white/50 p-5 rounded-3xl shadow-sm hover:shadow-md hover:bg-white/40 transition-all duration-300">
+                    <div className="flex items-center gap-2 text-emerald-600 mb-2 font-semibold">
+                      <Eye className="h-4 w-4" /> <span className="text-sm">Visibility</span>
+                    </div>
+                    <p className="text-3xl font-black text-slate-800">{current.visibility} <span className="text-sm font-bold text-slate-500">km</span></p>
+                  </div>
+                  <div className="bg-white/30 backdrop-blur-md border border-white/50 p-5 rounded-3xl shadow-sm hover:shadow-md hover:bg-white/40 transition-all duration-300">
+                    <div className="flex items-center gap-2 text-teal-500 mb-2 font-semibold">
+                      <CloudRain className="h-4 w-4" /> <span className="text-sm">Humidity</span>
+                    </div>
+                    <p className="text-3xl font-black text-slate-800">{current.humidity} <span className="text-sm font-bold text-slate-500">%</span></p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sun & Moon */}
+              <div>
+                <h4 className="text-xs font-black text-indigo-900/40 uppercase tracking-widest mb-4">Sun & Moon</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div className="bg-white/30 backdrop-blur-md border border-white/50 p-5 rounded-3xl shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-indigo-500 mb-1">Sunrise</p>
+                      <p className="text-xl font-black text-slate-800">{formatLocalTime(current.sunrise)}</p>
+                    </div>
+                    <div className="w-14 h-14 relative overflow-hidden flex flex-col justify-end border-b-2 border-indigo-200 pb-1">
+                      <svg className="w-10 h-10 text-yellow-500 animate-rise mx-auto drop-shadow-md" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18.75a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-1.5a.75.75 0 01.75-.75zM6.166 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM2.25 12a.75.75 0 01.75-.75H5.25a.75.75 0 010 1.5H3a.75.75 0 01-.75-.75zM6.166 5.106a.75.75 0 00-1.06 1.06l1.591 1.59a.75.75 0 101.06-1.061l-1.591-1.59z" /></svg>
+                    </div>
+                  </div>
+                  <div className="bg-white/30 backdrop-blur-md border border-white/50 p-5 rounded-3xl shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-orange-500 mb-1">Sunset</p>
+                      <p className="text-xl font-black text-slate-800">{formatLocalTime(current.sunset)}</p>
+                    </div>
+                    <div className="w-14 h-14 relative overflow-hidden flex flex-col justify-end border-b-2 border-orange-200 pb-1">
+                      <svg className="w-10 h-10 text-orange-500 animate-set mx-auto drop-shadow-md" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18.75a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-1.5a.75.75 0 01.75-.75zM6.166 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM2.25 12a.75.75 0 01.75-.75H5.25a.75.75 0 010 1.5H3a.75.75 0 01-.75-.75zM6.166 5.106a.75.75 0 00-1.06 1.06l1.591 1.59a.75.75 0 101.06-1.061l-1.591-1.59z" /></svg>
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-slate-800 to-slate-950 border border-slate-700 p-5 rounded-3xl shadow-md flex items-center justify-between overflow-hidden relative group">
+                    <div className="absolute inset-0 opacity-40">
+                      <div className="w-1 h-1 bg-white rounded-full absolute top-3 left-5 animate-pulse"></div>
+                      <div className="w-1.5 h-1.5 bg-white rounded-full absolute bottom-4 right-10 animate-pulse" style={{ animationDelay: "1s" }}></div>
+                      <div className="w-1 h-1 bg-white rounded-full absolute top-8 right-4 animate-pulse" style={{ animationDelay: "0.5s" }}></div>
+                    </div>
+                    <div className="z-10 text-white">
+                      <p className="text-sm text-indigo-300 font-bold mb-1">Moon Phase</p>
+                      <p className="text-lg lg:text-base xl:text-lg font-black text-slate-50 leading-tight">
+                        {moonPhase?.label.split(' ').map((word, i) => <React.Fragment key={i}>{word}<br /></React.Fragment>)}
+                      </p>
+                    </div>
+                    <div className="relative w-14 h-14 flex justify-center items-center z-10">
+                      <div className="absolute inset-0 bg-blue-400 blur-xl opacity-20 rounded-full"></div>
+                      <svg className="w-12 h-12 text-slate-100 drop-shadow-[0_0_10px_rgba(255,255,255,0.8)] animate-rock" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Weekly Insight */}
+              <div>
+                <h4 className="text-xs font-black text-indigo-900/40 uppercase tracking-widest mb-4">Weekly Insight</h4>
+                <div className="bg-gradient-to-r from-white/70 to-white/40 border border-white/80 rounded-3xl p-6 shadow-sm flex items-start space-x-5 backdrop-blur-xl">
+                  <div className="relative w-14 h-14 flex-shrink-0 flex items-center justify-center">
+                    <div className="absolute inset-0 bg-yellow-400 rounded-full blur-md opacity-50 animate-pulse"></div>
+                    <div className="relative w-12 h-12 bg-gradient-to-br from-yellow-300 to-orange-400 rounded-full shadow-md border border-white flex items-center justify-center text-white text-xl">
+                      💡
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h5 className="text-slate-800 font-black text-lg mb-1 leading-tight">Smart Forecast Summary</h5>
+                    <p className="text-sm font-medium text-slate-600 leading-relaxed">
+                      {generateWeeklyInsight(daily)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Today's Forecast (Hourly Scroll) */}
+              <div>
+                <h4 className="text-xs font-black text-indigo-900/40 uppercase tracking-widest mb-4">Today's Forecast</h4>
+                <div className="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide snap-x px-1">
+                  {hourly.map((h, i) => (
+                    <div
+                      key={i}
+                      className={`flex-shrink-0 w-28 py-5 px-2 rounded-full flex flex-col items-center justify-between shadow-sm snap-start border ${i === 0
+                        ? "bg-gradient-to-b from-indigo-500 to-purple-600 text-white border-indigo-400 shadow-indigo-500/30 shadow-lg scale-105 transform origin-bottom"
+                        : "bg-white/50 border-white/70 text-slate-800 hover:bg-white/70 transition-colors"
+                        }`}
+                    >
+                      <span className={`text-sm font-bold ${i === 0 ? "text-indigo-100" : "text-slate-500"}`}>
+                        {i === 0 ? "Now" : formatHourLabel(h.time)}
+                      </span>
+
+                      <div className="relative w-10 h-10 my-4 flex items-center justify-center">
+                        {h.precipProb >= 50 ? (
+                          <>
+                            <svg className={`absolute inset-0 ${i === 0 ? "text-indigo-200" : "text-slate-400"}`} fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c-.44-.04-.88-.04-1.32.01A4.5 4.5 0 005.25 19.5h12.5a4.001 4.001 0 002.828-6.828 4.001 4.001 0 00-5.803-1.282 5.5 5.5 0 00-8.155-2.602z" /></svg>
+                            <div className={`absolute left-3 top-6 w-1 h-2 ${i === 0 ? "bg-white" : "bg-blue-400"} rounded-full animate-raindrop`}></div>
+                            <div className={`absolute left-6 top-5 w-1 h-2 ${i === 0 ? "bg-white" : "bg-blue-400"} rounded-full animate-raindrop`} style={{ animationDelay: "0.5s" }}></div>
+                          </>
+                        ) : (
+                          <svg className={`w-8 h-8 ${i === 0 ? "text-yellow-300" : "text-yellow-500"} ${i === 0 ? "animate-[spin_8s_linear_infinite]" : ""}`} fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18.75a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-1.5a.75.75 0 01.75-.75zM6.166 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM2.25 12a.75.75 0 01.75-.75H5.25a.75.75 0 010 1.5H3a.75.75 0 01-.75-.75zM6.166 5.106a.75.75 0 00-1.06 1.06l1.591 1.59a.75.75 0 101.06-1.061l-1.591-1.59z" /></svg>
+                        )}
+                      </div>
+
+                      <span className="text-2xl font-black">{h.temp}°</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          </>
+        ) : null}
+
       </div>
     </div>
   );
