@@ -415,6 +415,7 @@ const TropicalCycloneInformation = () => {
 
     mainStorm = {
       name: rawName,
+      atcfId: storm.atcf_id,
       displayName,
       intlName,
       pagasaName,
@@ -438,8 +439,113 @@ const TropicalCycloneInformation = () => {
       intensityPercent: windIntensityPercent(wind10MinKmh),
       threatLevel: threatLevelText(classification.code),
       threatBg: threatBgColor(classification.code),
+      last_updated: storm.last_updated
     };
   }
+
+  // Dynamically load Dapiya High-Res Imagery
+  const StormMediaViewer = ({ stormData }) => {
+    const floaterId = stormData.atcfId ? stormData.atcfId.toUpperCase() : null;
+    const [dapiyaImgUrl, setDapiyaImgUrl] = useState(null);
+    const [imgError, setImgError] = useState(false);
+    const [imageType, setImageType] = useState('RGB');
+
+    useEffect(() => {
+      if (floaterId) {
+        let isMounted = true;
+        setDapiyaImgUrl(null); // Reset when switching types
+        setImgError(false);
+
+        const fetchDapiyaImage = async () => {
+          try {
+            const dirUrl = `https://data.dapiya.top/history/${floaterId}/${imageType}/`;
+            const response = await fetch(dirUrl);
+            if (!response.ok) throw new Error(`Dapiya directory not found for ${imageType}`);
+
+            const htmlText = await response.text();
+
+            // Extract all hrefs that look like image files
+            const matches = [...htmlText.matchAll(/href="([^"]+\.(png|jpg|jpeg|gif))"/gi)];
+            if (matches && matches.length > 0 && isMounted) {
+              // Get the last matched file (most recent timestamp)
+              const latestFile = matches[matches.length - 1][1];
+              setDapiyaImgUrl(`${dirUrl}${latestFile}`);
+            } else if (isMounted) {
+              setImgError(true);
+            }
+          } catch (error) {
+            console.error(`Failed to fetch Dapiya URL for ${imageType}:`, error);
+            if (isMounted) setImgError(true);
+          }
+        };
+
+        fetchDapiyaImage();
+        return () => { isMounted = false; };
+      }
+    }, [floaterId, imageType]);
+
+    const WindyMap = () => (
+      <div style={{ position: 'absolute', inset: 0 }}>
+        <iframe
+          key={stormData.last_updated}
+          title="Interactive Storm Map"
+          width="100%"
+          height="100%"
+          style={{ position: 'absolute', top: 0, left: 0, border: 0 }}
+          src={`https://embed.windy.com/embed.html?lat=${stormData.lat}&lon=${stormData.lon}&zoom=6&level=surface&overlay=satellite&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1`}
+          frameBorder="0"
+        ></iframe>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'default' }} />
+      </div>
+    );
+
+    if (!floaterId) {
+      return <WindyMap />;
+    }
+
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-[#1e1e2d] relative group overflow-hidden">
+
+        {/* Type Selector Overlay (Hover to reveal) */}
+        <div className="absolute top-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 focus-within:opacity-100">
+          <select
+            value={imageType}
+            onChange={(e) => setImageType(e.target.value)}
+            className="bg-slate-900/80 backdrop-blur-md text-slate-200 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-medium shadow-[0_4px_20px_rgba(0,0,0,0.5)] outline-none cursor-pointer hover:bg-slate-800 hover:border-blue-500/50 transition focus:ring-2 focus:ring-blue-500/50 appearance-none pr-8 relative"
+            style={{
+              backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' class='lucide lucide-chevron-down'/%3e%3cpolyline points='6 9 12 15 18 9' stroke='%2394a3b8' fill='none'/%3e%3c/svg%3e")`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 0.5rem center',
+              backgroundSize: '1em'
+            }}
+          >
+            <option value="RGB">RGB (Colorized IR)</option>
+            <option value="OTT">OTT (Overshooting Tops)</option>
+            <option value="TRUECOLOR">Truecolor (Daylight)</option>
+            <option value="VIS">Visible (High-Res)</option>
+            <option value="BD">Enhanced IR (BD Array)</option>
+            <option value="WV">Water Vapor</option>
+          </select>
+        </div>
+
+        {imgError ? (
+          <div className="absolute inset-0 z-10"><WindyMap /></div>
+        ) : !dapiyaImgUrl ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#1e1e2d] text-slate-400 z-10">
+            <div className="w-10 h-10 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+            <p className="text-sm font-medium animate-pulse">Fetching {imageType} Satellite Data...</p>
+          </div>
+        ) : (
+          <img
+            src={dapiyaImgUrl}
+            alt={`${imageType} Satellite Imagery for ${stormData.displayName}`}
+            className="w-full h-full object-cover z-10"
+            onError={() => setImgError(true)}
+          />
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
@@ -582,19 +688,7 @@ const TropicalCycloneInformation = () => {
                 <div className="flex flex-col h-full bg-[#2a2c3a] rounded-xl p-5 shadow-lg border border-slate-700/50">
                   <div className="flex-grow w-full rounded-lg overflow-hidden border-2 border-slate-600/50 bg-[#1e1e2d] relative flex items-center justify-center min-h-[400px]">
                     {!isNaN(mainStorm.lat) && !isNaN(mainStorm.lon) ? (
-                      <div style={{ position: 'absolute', inset: 0 }}>
-                        <iframe
-                          key={mainStorm.last_updated}
-                          title="Interactive Storm Map"
-                          width="100%"
-                          height="100%"
-                          style={{ position: 'absolute', top: 0, left: 0, border: 0 }}
-                          src={`https://embed.windy.com/embed.html?lat=${mainStorm.lat}&lon=${mainStorm.lon}&zoom=6&level=surface&overlay=satellite&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1`}
-                          frameBorder="0"
-                        ></iframe>
-                        {/* Blocks panning/zooming while satellite type is pre-set via URL */}
-                        <div style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'default' }} />
-                      </div>
+                      <StormMediaViewer stormData={mainStorm} />
                     ) : (
                       <>
                         <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 opacity-80"></div>
@@ -794,19 +888,13 @@ const TropicalCycloneInformation = () => {
                         <div className="flex flex-col h-full bg-[#2a2c3a] rounded-xl p-5 shadow-lg border border-slate-700/50">
                           <div className="flex-grow w-full rounded-lg overflow-hidden border-2 border-slate-600/50 bg-[#1e1e2d] relative flex items-center justify-center min-h-[400px]">
                             {!isNaN(lat) && !isNaN(lon) ? (
-                              <div style={{ position: 'absolute', inset: 0 }}>
-                                <iframe
-                                  key={s.last_updated}
-                                  title="Interactive Storm Map"
-                                  width="100%"
-                                  height="100%"
-                                  style={{ position: 'absolute', top: 0, left: 0, border: 0 }}
-                                  src={`https://embed.windy.com/embed.html?lat=${lat}&lon=${lon}&zoom=6&level=surface&overlay=satellite&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1`}
-                                  frameBorder="0"
-                                ></iframe>
-                                {/* Blocks panning/zooming while satellite type is pre-set via URL */}
-                                <div style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'default' }} />
-                              </div>
+                              <StormMediaViewer stormData={{
+                                lat,
+                                lon,
+                                last_updated: s.last_updated,
+                                displayName: displayName || rawName,
+                                atcfId: s.atcf_id
+                              }} />
                             ) : (
                               <>
                                 <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 opacity-80"></div>
