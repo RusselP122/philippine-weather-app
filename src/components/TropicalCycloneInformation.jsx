@@ -449,12 +449,14 @@ const TropicalCycloneInformation = () => {
     const [dapiyaImgUrl, setDapiyaImgUrl] = useState(null);
     const [imgError, setImgError] = useState(false);
     const [imageType, setImageType] = useState('RGB');
+    const [isImageDownloading, setIsImageDownloading] = useState(true);
 
     useEffect(() => {
       if (floaterId) {
         let isMounted = true;
         setDapiyaImgUrl(null); // Reset when switching types
         setImgError(false);
+        setIsImageDownloading(true);
 
         const fetchDapiyaImage = async () => {
           try {
@@ -506,8 +508,8 @@ const TropicalCycloneInformation = () => {
     return (
       <div className="absolute inset-0 flex items-center justify-center bg-[#1e1e2d] relative group overflow-hidden">
 
-        {/* Type Selector Overlay (Hover to reveal) */}
-        <div className="absolute top-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 focus-within:opacity-100">
+        {/* Type Selector Overlay (Hover on desktop, always visible on mobile) */}
+        <div className="absolute top-4 right-4 z-20 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity duration-300 focus-within:opacity-100">
           <select
             value={imageType}
             onChange={(e) => setImageType(e.target.value)}
@@ -528,19 +530,25 @@ const TropicalCycloneInformation = () => {
           </select>
         </div>
 
-        {imgError ? (
-          <div className="absolute inset-0 z-10"><WindyMap /></div>
-        ) : !dapiyaImgUrl ? (
+        {imgError && <div className="absolute inset-0 z-10"><WindyMap /></div>}
+
+        {(!dapiyaImgUrl || isImageDownloading) && !imgError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#1e1e2d] text-slate-400 z-10">
             <div className="w-10 h-10 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-4"></div>
-            <p className="text-sm font-medium animate-pulse">Fetching {imageType} Satellite Data...</p>
+            <p className="text-sm font-medium animate-pulse text-center px-4">Establishing link to Dapiya Satellite Network...<br /><span className="text-xs text-slate-500 mt-1 block">(Downloading High-Resolution {imageType} image)</span></p>
           </div>
-        ) : (
+        )}
+
+        {dapiyaImgUrl && (
           <img
             src={dapiyaImgUrl}
             alt={`${imageType} Satellite Imagery for ${stormData.displayName}`}
-            className="w-full h-full object-cover z-10"
-            onError={() => setImgError(true)}
+            className={`w-full h-full object-contain z-0 transition-opacity duration-500 ${isImageDownloading ? 'opacity-0' : 'opacity-100'}`}
+            onLoad={() => setIsImageDownloading(false)}
+            onError={() => {
+              setIsImageDownloading(false);
+              setImgError(true);
+            }}
           />
         )}
       </div>
@@ -686,7 +694,7 @@ const TropicalCycloneInformation = () => {
 
                 {/* Right Column: Map & Threat Level */}
                 <div className="flex flex-col h-full bg-[#2a2c3a] rounded-xl p-5 shadow-lg border border-slate-700/50">
-                  <div className="flex-grow w-full rounded-lg overflow-hidden border-2 border-slate-600/50 bg-[#1e1e2d] relative flex items-center justify-center min-h-[400px]">
+                  <div className="flex-grow w-full rounded-lg overflow-hidden border-2 border-slate-600/50 bg-[#1e1e2d] relative flex items-center justify-center aspect-square md:aspect-auto md:min-h-[400px]">
                     {!isNaN(mainStorm.lat) && !isNaN(mainStorm.lon) ? (
                       <StormMediaViewer stormData={mainStorm} />
                     ) : (
@@ -886,7 +894,7 @@ const TropicalCycloneInformation = () => {
 
                         {/* Right Column: Map & Threat Level */}
                         <div className="flex flex-col h-full bg-[#2a2c3a] rounded-xl p-5 shadow-lg border border-slate-700/50">
-                          <div className="flex-grow w-full rounded-lg overflow-hidden border-2 border-slate-600/50 bg-[#1e1e2d] relative flex items-center justify-center min-h-[400px]">
+                          <div className="flex-grow w-full rounded-lg overflow-hidden border-2 border-slate-600/50 bg-[#1e1e2d] relative flex items-center justify-center aspect-square md:aspect-auto md:min-h-[400px]">
                             {!isNaN(lat) && !isNaN(lon) ? (
                               <StormMediaViewer stormData={{
                                 lat,
