@@ -1,6 +1,6 @@
 // src/components/TropicalCycloneInformation.jsx
 import React, { useEffect, useState } from "react";
-import { Activity, Gauge, MapPin, Navigation, Wind } from "lucide-react";
+import { Activity, Gauge, MapPin, Navigation, Wind, X } from "lucide-react";
 import { getStormDisplayName } from "../utils/stormNaming";
 
 const PAR_POLYGON = [
@@ -450,15 +450,18 @@ const TropicalCycloneInformation = () => {
     const [imgError, setImgError] = useState(false);
     const [imageType, setImageType] = useState('RGB');
     const [isImageDownloading, setIsImageDownloading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
       if (floaterId) {
         let isMounted = true;
-        setDapiyaImgUrl(null); // Reset when switching types
+
+        // Initial load state reset (Only done on first mount or type change)
+        setDapiyaImgUrl(null);
         setImgError(false);
         setIsImageDownloading(true);
 
-        const fetchDapiyaImage = async () => {
+        const fetchDapiyaImage = async (isAutoRefresh = false) => {
           try {
             const dirUrl = `https://data.dapiya.top/history/${floaterId}/${imageType}/`;
             const response = await fetch(dirUrl);
@@ -471,20 +474,55 @@ const TropicalCycloneInformation = () => {
             if (matches && matches.length > 0 && isMounted) {
               // Get the last matched file (most recent timestamp)
               const latestFile = matches[matches.length - 1][1];
-              setDapiyaImgUrl(`${dirUrl}${latestFile}`);
-            } else if (isMounted) {
+              const newUrl = `${dirUrl}${latestFile}`;
+
+              setDapiyaImgUrl(currentUrl => {
+                // If this is a refresh and the exact image is already loaded, do nothing
+                if (isAutoRefresh && currentUrl === newUrl) {
+                  return currentUrl;
+                }
+                // If it's a new frame, trigger the transition and image download event handler
+                if (isAutoRefresh) {
+                  setIsImageDownloading(true);
+                }
+                return newUrl;
+              });
+
+            } else if (isMounted && !isAutoRefresh) {
               setImgError(true);
             }
           } catch (error) {
             console.error(`Failed to fetch Dapiya URL for ${imageType}:`, error);
-            if (isMounted) setImgError(true);
+            if (isMounted && !isAutoRefresh) setImgError(true);
           }
         };
 
-        fetchDapiyaImage();
-        return () => { isMounted = false; };
+        // Initial manual fetch
+        fetchDapiyaImage(false);
+
+        // Setup autonomous background polling (Every 5 minutes)
+        const refreshInterval = setInterval(() => {
+          fetchDapiyaImage(true);
+        }, 5 * 60 * 1000);
+
+        return () => {
+          isMounted = false;
+          clearInterval(refreshInterval);
+        };
       }
     }, [floaterId, imageType]);
+
+    // Lock body scroll when modal is open
+    useEffect(() => {
+      if (isModalOpen) {
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.body.style.overflow = 'auto';
+      }
+      return () => {
+        document.body.style.overflow = 'auto';
+      };
+    }, [isModalOpen]);
 
     const WindyMap = () => (
       <div style={{ position: 'absolute', inset: 0 }}>
@@ -506,52 +544,81 @@ const TropicalCycloneInformation = () => {
     }
 
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-[#1e1e2d] relative group overflow-hidden">
+      <>
+        <div className="absolute inset-0 flex items-center justify-center bg-[#1e1e2d] relative group overflow-hidden">
+          {/* Type Selector Overlay (Hover on desktop, always visible on mobile) */}
+          <div className="absolute top-4 right-4 z-20 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity duration-300 focus-within:opacity-100">
+            <select
+              value={imageType}
+              onChange={(e) => setImageType(e.target.value)}
+              className="bg-slate-900/80 backdrop-blur-md text-slate-200 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-medium shadow-[0_4px_20px_rgba(0,0,0,0.5)] outline-none cursor-pointer hover:bg-slate-800 hover:border-blue-500/50 transition focus:ring-2 focus:ring-blue-500/50 appearance-none pr-8 relative"
+              style={{
+                backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' class='lucide lucide-chevron-down'/%3e%3cpolyline points='6 9 12 15 18 9' stroke='%2394a3b8' fill='none'/%3e%3c/svg%3e")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 0.5rem center',
+                backgroundSize: '1em'
+              }}
+            >
+              <option value="RGB">RGB (Colorized IR)</option>
+              <option value="OTT">OTT (Overshooting Tops)</option>
+              <option value="TRUECOLOR">Truecolor (Daylight)</option>
+              <option value="VIS">Visible (High-Res)</option>
+              <option value="BD">Enhanced IR (BD Array)</option>
+              <option value="WV">Water Vapor</option>
+            </select>
+          </div>
 
-        {/* Type Selector Overlay (Hover on desktop, always visible on mobile) */}
-        <div className="absolute top-4 right-4 z-20 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity duration-300 focus-within:opacity-100">
-          <select
-            value={imageType}
-            onChange={(e) => setImageType(e.target.value)}
-            className="bg-slate-900/80 backdrop-blur-md text-slate-200 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-medium shadow-[0_4px_20px_rgba(0,0,0,0.5)] outline-none cursor-pointer hover:bg-slate-800 hover:border-blue-500/50 transition focus:ring-2 focus:ring-blue-500/50 appearance-none pr-8 relative"
-            style={{
-              backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' class='lucide lucide-chevron-down'/%3e%3cpolyline points='6 9 12 15 18 9' stroke='%2394a3b8' fill='none'/%3e%3c/svg%3e")`,
-              backgroundRepeat: 'no-repeat',
-              backgroundPosition: 'right 0.5rem center',
-              backgroundSize: '1em'
-            }}
-          >
-            <option value="RGB">RGB (Colorized IR)</option>
-            <option value="OTT">OTT (Overshooting Tops)</option>
-            <option value="TRUECOLOR">Truecolor (Daylight)</option>
-            <option value="VIS">Visible (High-Res)</option>
-            <option value="BD">Enhanced IR (BD Array)</option>
-            <option value="WV">Water Vapor</option>
-          </select>
+          {imgError && <div className="absolute inset-0 z-10"><WindyMap /></div>}
+
+          {(!dapiyaImgUrl || isImageDownloading) && !imgError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#1e1e2d] text-slate-400 z-10">
+              <div className="w-10 h-10 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+              <p className="text-sm font-medium animate-pulse text-center px-4">Establishing link to Dapiya Satellite Network...<br /><span className="text-xs text-slate-500 mt-1 block">(Downloading High-Resolution {imageType} image)</span></p>
+            </div>
+          )}
+
+          {dapiyaImgUrl && (
+            <img
+              src={dapiyaImgUrl}
+              alt={`${imageType} Satellite Imagery for ${stormData.displayName}`}
+              className={`w-full h-full object-contain z-0 transition-opacity duration-500 cursor-pointer hover:scale-[1.02] ${isImageDownloading ? 'opacity-0' : 'opacity-100'}`}
+              onLoad={() => setIsImageDownloading(false)}
+              onClick={() => setIsModalOpen(true)}
+              onError={() => {
+                setIsImageDownloading(false);
+                setImgError(true);
+              }}
+            />
+          )}
         </div>
 
-        {imgError && <div className="absolute inset-0 z-10"><WindyMap /></div>}
+        {/* Fullscreen Image Modal Overlay */}
+        {isModalOpen && dapiyaImgUrl && !imgError && (
+          <div className="fixed inset-0 z-[2000] flex flex-col items-center justify-center bg-black/95 backdrop-blur-md p-4 md:p-8 animate-in fade-in duration-300">
+            <button
+              onClick={() => setIsModalOpen(false)}
+              className="absolute top-6 right-6 md:top-8 md:right-8 bg-slate-800/80 hover:bg-slate-700 hover:scale-110 text-white rounded-full p-2.5 transition-all z-[2010] shadow-lg border border-slate-600/50"
+              aria-label="Close Fullscreen View"
+            >
+              <X className="w-6 h-6" />
+            </button>
 
-        {(!dapiyaImgUrl || isImageDownloading) && !imgError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#1e1e2d] text-slate-400 z-10">
-            <div className="w-10 h-10 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-4"></div>
-            <p className="text-sm font-medium animate-pulse text-center px-4">Establishing link to Dapiya Satellite Network...<br /><span className="text-xs text-slate-500 mt-1 block">(Downloading High-Resolution {imageType} image)</span></p>
+            <div className="relative w-full h-[85vh] flex items-center justify-center">
+              <img
+                src={dapiyaImgUrl}
+                alt={`${imageType} Satellite Imagery Fullscreen`}
+                className="max-w-full max-h-full object-contain rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-slate-800/50"
+              />
+            </div>
+
+            <div className="absolute bottom-6 md:bottom-8 left-0 right-0 text-center px-6">
+              <p className="text-xs md:text-sm text-slate-400 font-medium tracking-wide">
+                Satellite Imagery elegantly provided by <span className="text-blue-400">data.dapiya.top</span>
+              </p>
+            </div>
           </div>
         )}
-
-        {dapiyaImgUrl && (
-          <img
-            src={dapiyaImgUrl}
-            alt={`${imageType} Satellite Imagery for ${stormData.displayName}`}
-            className={`w-full h-full object-contain z-0 transition-opacity duration-500 ${isImageDownloading ? 'opacity-0' : 'opacity-100'}`}
-            onLoad={() => setIsImageDownloading(false)}
-            onError={() => {
-              setIsImageDownloading(false);
-              setImgError(true);
-            }}
-          />
-        )}
-      </div>
+      </>
     );
   };
 
