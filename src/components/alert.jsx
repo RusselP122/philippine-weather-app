@@ -576,332 +576,503 @@ const Alert = () => {
     [thunderAlerts]
   );
 
+
+  // Extract dynamic weather system name from active alerts
+  const getCurrentWeatherSystem = (alertList) => {
+    if (mode === "thunderstorm") return "Localized Thunderstorms";
+    if (!alertList || alertList.length === 0) return "No Active Weather System";
+
+    // Attempt to extract the primary weather system directly from the API property
+    const firstAlert = alertList[0];
+    if (firstAlert.weather_systems) {
+      if (Array.isArray(firstAlert.weather_systems)) {
+        // Many alerts provide this as an array (e.g., ["Southwest Monsoon", "LPA"])
+        return firstAlert.weather_systems.join(" / ");
+      }
+      return firstAlert.weather_systems;
+    }
+
+    // Fallback if the PAGASA payload omitted it for this specific warning
+    return "Waiting to Fix";
+  };
+
+  const dynamicWeatherSystem = mode === "rainfall" ? getCurrentWeatherSystem(rainfallAlerts) : getCurrentWeatherSystem(thunderAlerts);
+
   const activePolygons = mode === "rainfall" ? rainfallPolygons : thunderPolygons;
+
   const hasThunder = thunderAlerts.length > 0;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
-      <div className="max-w-6xl mx-auto w-full px-6 py-12 md:px-8">
-        <header className="mb-10 flex flex-col gap-6 rounded-2xl border border-slate-800/70 bg-slate-900/50 px-6 py-6 shadow-[0_20px_70px_-40px_rgba(234,179,8,0.5)] md:flex-row md:items-center md:justify-between">
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10 text-amber-300">
-                <AlertTriangle className="h-5 w-5" />
-              </span>
+    <div className="bg-slate-950 text-slate-200 font-sans min-h-screen relative overflow-x-hidden p-4 md:p-8 flex justify-center items-start">
+      <style>{`
+        .bg-grid-pattern {
+            background-image: linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        @keyframes flash {
+            0%, 50%, 100% { opacity: 1; }
+            25%, 75% { opacity: 0.4; }
+        }
+        .animate-flash {
+            animation: flash 2s infinite;
+        }
+      `}</style>
 
+      <div className="absolute inset-0 bg-grid-pattern pointer-events-none z-0"></div>
+
+      <div className="relative z-10 max-w-7xl w-full flex flex-col gap-8">
+
+        {/* Unified Header */}
+        <header className="bg-slate-900/60 backdrop-blur-md border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div className="flex flex-col md:flex-row md:items-center gap-6 w-full md:w-auto">
+            <div className="flex items-center gap-4">
+              <div className="relative flex h-14 w-14 items-center justify-center">
+                {mode === "rainfall" ? (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-20"></span>
+                    <div className="relative h-12 w-12 bg-slate-800 border-2 border-red-500 rounded-full flex items-center justify-center text-2xl">
+                      🌧️
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-30"></span>
+                    <div className="relative h-12 w-12 bg-slate-800 border-2 border-amber-500 rounded-full flex items-center justify-center text-2xl shadow-[0_0_15px_rgba(245,158,11,0.6)]">
+                      ⚡
+                    </div>
+                  </>
+                )}
+              </div>
               <div>
-                <p className="text-[10px] uppercase tracking-[0.35em] text-slate-500">Hazard Monitoring</p>
-                <h1 className="text-2xl font-semibold tracking-tight text-slate-50 md:text-3xl">
-                  Rainfall & Thunderstorm
+                <h1 className="text-3xl font-black text-white tracking-tight">
+                  {mode === "rainfall" ? "Heavy Rainfall Warning" : "Thunderstorm Advisory"}
                 </h1>
+                <p className="text-slate-400 font-medium mt-1">
+                  Weather System: {dynamicWeatherSystem}
+                </p>
               </div>
             </div>
-            <div>
-              <p className="text-sm leading-relaxed text-slate-400">
-                Real-time official advisory polygons from official monitoring agencies.
-              </p>
-              <div className="mt-3 h-px w-28 bg-gradient-to-r from-amber-400/70 via-orange-300/60 to-transparent" />
+
+            {/* Toggle Buttons */}
+            <div className="flex rounded-full border border-slate-700/80 bg-slate-900/80 p-1.5 shadow-inner shadow-slate-950 mt-4 md:mt-0 md:ml-4">
+              <button
+                type="button"
+                onClick={() => setMode("rainfall")}
+                className={`flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-xs font-bold transition-all ${mode === "rainfall"
+                  ? "bg-slate-800 text-sky-400 shadow-md shadow-slate-950 ring-1 ring-slate-600"
+                  : "text-slate-400 hover:text-slate-200"
+                  }`}
+              >
+                <CloudRain className="h-4 w-4" />
+                <span>Rainfall</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("thunderstorm")}
+                className={`flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-xs font-bold transition-all ${mode === "thunderstorm"
+                  ? "bg-slate-800 text-amber-400 shadow-md shadow-slate-950 ring-1 ring-slate-600"
+                  : "text-slate-400 hover:text-slate-200"
+                  }`}
+              >
+                <Zap className="h-4 w-4" />
+                <span>Thunderstorm</span>
+              </button>
             </div>
           </div>
 
-          <div className="flex rounded-full border border-slate-700/80 bg-slate-900/40 p-1.5 shadow-inner shadow-slate-950">
-            <button
-              type="button"
-              onClick={() => setMode("rainfall")}
-              className={`flex items-center gap-2 rounded-full px-5 py-2 text-xs font-medium transition-all ${mode === "rainfall"
-                ? "bg-slate-800 text-sky-400 shadow-sm shadow-slate-950 ring-1 ring-slate-700"
-                : "text-slate-400 hover:text-slate-200"
-                }`}
-            >
-              <CloudRain className="h-3.5 w-3.5" />
-              <span>Rainfall</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("thunderstorm")}
-              className={`flex items-center gap-2 rounded-full px-5 py-2 text-xs font-medium transition-all ${mode === "thunderstorm"
-                ? "bg-slate-800 text-amber-400 shadow-sm shadow-slate-950 ring-1 ring-slate-700"
-                : "text-slate-400 hover:text-slate-200"
-                }`}
-            >
-              <Zap className="h-3.5 w-3.5" />
-              <span>Thunderstorm</span>
-            </button>
+          <div className="bg-slate-950/80 border border-slate-700 p-3 rounded-xl text-right min-w-[200px]">
+            <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-1">Issued At</p>
+            <p className="text-sm font-bold text-slate-200">
+              {lastUpdated ? lastUpdated.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "---"}
+            </p>
+            <p className="text-sm text-slate-400">
+              {lastUpdated ? lastUpdated.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" }) + " PST" : "---"}
+            </p>
           </div>
         </header>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:h-[calc(100vh-9rem)]">
-          {/* Map Section */}
-          <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/50 shadow-2xl shadow-slate-950/50 flex flex-col" style={{ isolation: "isolate" }}>
-            <MapContainer
-              center={[12.8797, 121.774]}
-              zoom={6}
-              minZoom={4.5}
-              maxZoom={11}
-              scrollWheelZoom
-              zoomControl={false}
-              className="h-[60vh] lg:h-full w-full"
-              maxBounds={PH_BOUNDS}
-              maxBoundsViscosity={0.8}
-            >
-              {/* CartoDB Dark Matter - Free, cleaner dark theme */}
-              <TileLayer
-                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-              />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left Column (Map & Legend) */}
+          <div className="lg:col-span-7 flex flex-col gap-6">
+            <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800 rounded-3xl p-4 shadow-2xl relative group h-[500px]">
+              <div className="absolute top-8 left-8 z-[1000] bg-slate-950/80 backdrop-blur-sm border border-slate-700 px-4 py-2 rounded-lg shadow-lg pointer-events-none">
+                <h2 className="font-bold text-white flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${mode === 'rainfall' ? 'bg-blue-400' : 'bg-amber-400'} animate-pulse`}></span>
+                  {mode === "rainfall" ? "Philippine  Satellite" : "Lightning & Storm Radar"}
+                </h2>
+              </div>
 
-              {activePolygons
-                .filter((prov) => {
-                  if (mode !== "rainfall") return true;
-                  const areaType = String(prov.areaType || "").toLowerCase();
-                  const levelKey =
-                    areaType === "yellow" || areaType === "orange" || areaType === "red"
-                      ? areaType
-                      : prov.warningLevel;
+              <div className="w-full h-full rounded-2xl overflow-hidden relative border border-slate-700/50" style={{ isolation: "isolate" }}>
+                <MapContainer
+                  center={[12.8797, 121.774]}
+                  zoom={6}
+                  minZoom={4.5}
+                  maxZoom={11}
+                  scrollWheelZoom
+                  zoomControl={false}
+                  className="w-full h-full bg-[#0f172a]"
+                  maxBounds={PH_BOUNDS}
+                  maxBoundsViscosity={0.8}
+                >
+                  <TileLayer
+                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    attribution='&copy; OpenStreetMap contributors &copy; CARTO'
+                  />
+                  {activePolygons
+                    .filter((prov) => {
+                      if (mode !== "rainfall") return true;
+                      const areaType = String(prov.areaType || "").toLowerCase();
+                      const levelKey =
+                        areaType === "yellow" || areaType === "orange" || areaType === "red"
+                          ? areaType
+                          : prov.warningLevel;
+                      if (!areaType && !levelKey) return true;
+                      return (
+                        areaType === "affecting" ||
+                        areaType === "expecting" ||
+                        (levelKey && WARNING_LEVEL_COLORS[levelKey])
+                      );
+                    })
+                    .map((prov) => {
+                      let fillColor;
+                      let borderColor;
 
-                  if (!areaType && !levelKey) {
-                    return true;
-                  }
+                      const areaType = String(prov.areaType || "").toLowerCase();
+                      const levelKey =
+                        areaType === "yellow" || areaType === "orange" || areaType === "red"
+                          ? areaType
+                          : prov.warningLevel;
 
-                  return (
-                    areaType === "affecting" ||
-                    areaType === "expecting" ||
-                    (levelKey && WARNING_LEVEL_COLORS[levelKey])
-                  );
-                })
-                .map((prov) => {
-                  let fillColor;
-                  let borderColor;
+                      if (mode === "rainfall") {
+                        if (areaType === "affecting") {
+                          fillColor = ADVISORY_AFFECTING_COLOR;
+                          borderColor = ADVISORY_AFFECTING_EDGE;
+                        } else if (areaType === "expecting") {
+                          fillColor = ADVISORY_EXPECTING_COLOR;
+                          borderColor = ADVISORY_EXPECTING_EDGE;
+                        } else if (levelKey && WARNING_LEVEL_COLORS[levelKey]) {
+                          fillColor = WARNING_LEVEL_COLORS[levelKey].fill;
+                          borderColor = WARNING_LEVEL_COLORS[levelKey].edge;
+                        } else {
+                          fillColor = "rgba(56, 189, 248, 0.5)";
+                          borderColor = "#38bdf8";
+                        }
+                      } else {
+                        if (areaType === "affecting") {
+                          fillColor = THUNDER_AFFECTING_COLOR;
+                          borderColor = THUNDER_AFFECTING_EDGE;
+                        } else if (areaType === "expecting") {
+                          fillColor = THUNDER_EXPECTING_COLOR;
+                          borderColor = THUNDER_EXPECTING_EDGE;
+                        } else if (levelKey && WARNING_LEVEL_COLORS[levelKey]) {
+                          fillColor = WARNING_LEVEL_COLORS[levelKey].fill;
+                          borderColor = WARNING_LEVEL_COLORS[levelKey].edge;
+                        } else {
+                          fillColor = "rgba(251, 191, 36, 0.5)";
+                          borderColor = "#fbbf24";
+                        }
+                      }
 
-                  const areaType = String(prov.areaType || "").toLowerCase();
-                  const levelKey =
-                    areaType === "yellow" || areaType === "orange" || areaType === "red"
-                      ? areaType
-                      : prov.warningLevel;
+                      const baseStyle = {
+                        weight: 1,
+                        color: borderColor,
+                        fillColor,
+                        fillOpacity: 0.5,
+                      };
+                      const highlightStyle = {
+                        ...baseStyle,
+                        weight: 2,
+                        fillOpacity: 0.7,
+                      };
 
-                  if (mode === "rainfall") {
-                    if (areaType === "affecting") {
-                      fillColor = ADVISORY_AFFECTING_COLOR;
-                      borderColor = ADVISORY_AFFECTING_EDGE;
-                    } else if (areaType === "expecting") {
-                      fillColor = ADVISORY_EXPECTING_COLOR;
-                      borderColor = ADVISORY_EXPECTING_EDGE;
-                    } else if (levelKey && WARNING_LEVEL_COLORS[levelKey]) {
-                      fillColor = WARNING_LEVEL_COLORS[levelKey].fill;
-                      borderColor = WARNING_LEVEL_COLORS[levelKey].edge;
-                    } else {
-                      fillColor = "rgba(56, 189, 248, 0.5)";
-                      borderColor = "#38bdf8";
-                    }
-                  } else {
-                    if (areaType === "affecting") {
-                      fillColor = THUNDER_AFFECTING_COLOR;
-                      borderColor = THUNDER_AFFECTING_EDGE;
-                    } else if (areaType === "expecting") {
-                      fillColor = THUNDER_EXPECTING_COLOR;
-                      borderColor = THUNDER_EXPECTING_EDGE;
-                    } else if (levelKey && WARNING_LEVEL_COLORS[levelKey]) {
-                      fillColor = WARNING_LEVEL_COLORS[levelKey].fill;
-                      borderColor = WARNING_LEVEL_COLORS[levelKey].edge;
-                    } else {
-                      // Fallback for thunderstorm areas without explicit level
-                      fillColor = "rgba(251, 191, 36, 0.5)";
-                      borderColor = "#fbbf24";
-                    }
-                  }
+                      return (
+                        <Polygon
+                          key={`${prov.id}-${mode}`}
+                          positions={prov.latlngs}
+                          pathOptions={baseStyle}
+                          eventHandlers={{
+                            mouseover: (e) => e.target.setStyle(highlightStyle),
+                            mouseout: (e) => e.target.setStyle(baseStyle),
+                          }}
+                        >
+                          <Tooltip sticky className="custom-leaflet-tooltip">
+                            <div className="text-xs">
+                              <p className="font-semibold text-slate-800">{prov.name}</p>
+                              <p className="text-[10px] text-slate-600">
+                                {prov.alert.headline || prov.alert.subtype || prov.alert.event}
+                              </p>
+                            </div>
+                          </Tooltip>
+                        </Polygon>
+                      );
+                    })}
+                </MapContainer>
+                {mode === 'rainfall' ? (
+                  <>
+                    <div className="absolute top-1/3 left-1/2 w-32 h-32 bg-red-500/30 blur-2xl rounded-full pointer-events-none z-10"></div>
+                    <div className="absolute top-1/2 left-1/3 w-40 h-24 bg-orange-500/20 blur-xl rounded-full pointer-events-none z-10"></div>
+                    <div className="absolute bottom-1/3 right-1/3 w-48 h-32 bg-yellow-500/20 blur-xl rounded-full pointer-events-none z-10"></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="absolute top-1/3 left-1/2 w-24 h-24 bg-amber-500/30 blur-xl rounded-full pointer-events-none z-10"></div>
+                    <div className="absolute top-[35%] left-[52%] text-amber-400 text-lg drop-shadow-[0_0_5px_rgba(245,158,11,1)] animate-flash pointer-events-none z-10" style={{ animationDelay: '0s' }}>⚡</div>
 
-                  const baseStyle = {
-                    weight: 1,
-                    color: borderColor,
-                    fillColor,
-                    fillOpacity: 0.5,
-                  };
-                  const highlightStyle = {
-                    ...baseStyle,
-                    weight: 2,
-                    fillOpacity: 0.7,
-                  };
+                    <div className="absolute bottom-1/3 left-1/3 w-32 h-32 bg-amber-500/20 blur-xl rounded-full pointer-events-none z-10"></div>
+                    <div className="absolute bottom-[35%] left-[36%] text-amber-400 text-lg drop-shadow-[0_0_5px_rgba(245,158,11,1)] animate-flash pointer-events-none z-10" style={{ animationDelay: '0.5s' }}>⚡</div>
 
-                  return (
-                    <Polygon
-                      key={`${prov.id}-${mode}`}
-                      positions={prov.latlngs}
-                      pathOptions={baseStyle}
-                      eventHandlers={{
-                        mouseover: (e) => {
-                          e.target.setStyle(highlightStyle);
-                        },
-                        mouseout: (e) => {
-                          e.target.setStyle(baseStyle);
-                        },
-                      }}
-                    >
-                      <Tooltip sticky className="custom-leaflet-tooltip">
-                        <div className="text-xs">
-                          <p className="font-semibold text-slate-800">{prov.name}</p>
-                          <p className="text-[10px] text-slate-600">
-                            {prov.alert.headline ||
-                              prov.alert.subtype ||
-                              prov.alert.event}
-                          </p>
-                        </div>
-                      </Tooltip>
-                    </Polygon>
-                  );
-                })}
-            </MapContainer>
+                    <div className="absolute top-1/3 left-[60%] w-40 h-32 border border-dashed border-cyan-400/50 bg-cyan-500/10 rounded-full animate-pulse pointer-events-none z-10"></div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Legend Section */}
+            {mode === "rainfall" ? (
+              <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800 rounded-3xl p-6 shadow-xl">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Warning Levels & Impacts</h3>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="flex flex-col items-center text-center gap-2">
+                    <div className="w-full h-2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]"></div>
+                    <span className="text-xs font-bold text-slate-200 mt-1">RED</span>
+                    <span className="text-[10px] text-slate-400 leading-tight">Serious Flooding<br />Expected</span>
+                  </div>
+                  <div className="flex flex-col items-center text-center gap-2">
+                    <div className="w-full h-2 rounded-full bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]"></div>
+                    <span className="text-xs font-bold text-slate-200 mt-1">ORANGE</span>
+                    <span className="text-[10px] text-slate-400 leading-tight">Flooding is<br />Threatening</span>
+                  </div>
+                  <div className="flex flex-col items-center text-center gap-2">
+                    <div className="w-full h-2 rounded-full bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.8)]"></div>
+                    <span className="text-xs font-bold text-slate-200 mt-1">YELLOW</span>
+                    <span className="text-[10px] text-slate-400 leading-tight">Flooding is<br />Possible</span>
+                  </div>
+                  <div className="flex flex-col items-center text-center gap-2">
+                    <div className="w-full h-2 rounded-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.8)]"></div>
+                    <span className="text-xs font-bold text-slate-200 mt-1">LIGHT-MOD</span>
+                    <span className="text-[10px] text-slate-400 leading-tight">Monitor Weather<br />Conditions</span>
+                  </div>
+                  <div className="flex flex-col items-center text-center gap-2">
+                    <div className="w-full h-2 rounded-full bg-slate-500 border border-slate-400"></div>
+                    <span className="text-xs font-bold text-slate-200 mt-1">EXPECTING</span>
+                    <span className="text-[10px] text-slate-400 leading-tight">Rain Likely<br />Within 2 Hrs</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800 rounded-3xl p-6 shadow-xl">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Advisory Status Guide</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="flex items-start gap-3 bg-slate-950/50 p-4 rounded-xl border border-slate-800">
+                    <div className="mt-1 w-4 h-4 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.8)] flex-shrink-0 animate-pulse"></div>
+                    <div>
+                      <span className="text-sm font-black text-amber-400 tracking-wide">AFFECTING</span>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">Moderate to heavy rain showers with lightning and strong winds are currently being experienced in this area.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 bg-slate-950/50 p-4 rounded-xl border border-slate-800">
+                    <div className="mt-1 w-4 h-4 rounded-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.8)] border-2 border-cyan-300 flex-shrink-0"></div>
+                    <div>
+                      <span className="text-sm font-black text-cyan-400 tracking-wide">EXPECTING</span>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">Thunderstorm conditions are likely to develop or move into this area within the next 1 to 2 hours.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Sidebar Summary */}
-          <aside className="rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-900/70 to-slate-900/40 p-6 shadow-xl lg:h-full lg:overflow-y-auto custom-scrollbar">
-            <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                {mode === "rainfall" ? "Rainfall Summary" : "Thunderstorm Status"}
-              </h2>
-              {lastUpdated && (
-                <span className="text-[10px] text-slate-600">
-                  {lastUpdated.toLocaleTimeString("en-PH", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
+          {/* Right Column (Affected Areas / Summaries) */}
+          <div className="lg:col-span-5 flex flex-col gap-4">
+            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+              {loading && <span className="w-4 h-4 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></span>}
+              {!loading && (
+                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
               )}
-            </div>
+              {mode === "rainfall" ? "Affected Areas" : "Locations Monitored"}
+            </h3>
 
-            <div className="space-y-6">
-              {loading && (
-                <div className="flex items-center gap-3 rounded-lg border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-sky-300">
-                  <span className="h-2 w-2 rounded-full bg-sky-400 animate-pulse" />
-                  <span className="text-xs font-medium">Fetching active alerts...</span>
-                </div>
-              )}
+            {error && (
+              <div className="flex items-start gap-3 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
+                <AlertTriangle className="h-4 w-4 mt-0.5" />
+                <p className="text-xs">{error}</p>
+              </div>
+            )}
 
-              {error && (
-                <div className="flex items-start gap-3 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
-                  <AlertTriangle className="h-4 w-4 mt-0.5" />
-                  <p className="text-xs">{error}</p>
-                </div>
-              )}
-
-              {!loading && !error && mode === "rainfall" && (
-                <div className="divide-y divide-slate-800/50">
-                  <div className="pb-4">
-                    {/* Red / Heavy */}
-                    {Object.keys(rainfallSummary.red).length > 0 && (
-                      <div className="mb-4">
-                        <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-red-400">
-                          <span className="h-2 w-2 rounded-full bg-red-600 animate-pulse"></span>
-                          Red Warning (Torrential)
-                        </p>
-                        {renderAlertList(rainfallSummary.red)}
-                      </div>
-                    )}
-
-                    {/* Severe (Uncolored Heavy) */}
-                    {Object.keys(rainfallSummary.severe).length > 0 && (
-                      <div className="mb-4">
-                        <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-red-400">
-                          <AlertTriangle className="h-3 w-3 text-red-500" />
-                          Severe Rainfall
-                        </p>
-                        {renderAlertList(rainfallSummary.severe)}
-                      </div>
-                    )}
-
-                    {/* Orange */}
-                    {Object.keys(rainfallSummary.orange).length > 0 && (
-                      <div className="mb-4">
-                        <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-orange-400">
-                          <span className="h-2 w-2 rounded-full bg-orange-500"></span>
-                          Orange Warning (Intense)
-                        </p>
-                        {renderAlertList(rainfallSummary.orange)}
-                      </div>
-                    )}
-
-                    {/* Yellow */}
-                    {Object.keys(rainfallSummary.yellow).length > 0 && (
-                      <div>
-                        <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-yellow-400">
-                          <span className="h-2 w-2 rounded-full bg-yellow-500"></span>
-                          Yellow Warning (Heavy)
-                        </p>
-                        {renderAlertList(rainfallSummary.yellow)}
-                      </div>
-                    )}
-
-                    {/* Fallback */}
-                    {Object.keys(rainfallSummary.red).length === 0 &&
-                      Object.keys(rainfallSummary.severe).length === 0 &&
-                      Object.keys(rainfallSummary.orange).length === 0 &&
-                      Object.keys(rainfallSummary.yellow).length === 0 && (
-                        <p className="text-[11px] text-slate-500 italic pl-3.5">No heavy rainfall warnings active.</p>
-                      )}
-                  </div>
-                  <div className="py-4">
-                    <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-sky-200">
-                      <span className="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
-                      Light-Moderate Rain
-                    </p>
-                    {renderAlertList(rainfallSummary.moderate)}
-                  </div>
-                  <div className="pt-4">
-                    <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-300">
-                      <span className="h-1.5 w-1.5 rounded-full bg-slate-500"></span>
-                      Expecting Rain
-                    </p>
-                    {renderAlertList(rainfallSummary.expected)}
-                  </div>
-                </div>
-              )}
-
-              {!loading && !error && mode === "thunderstorm" && (
-                <div className="divide-y divide-slate-800/50">
-                  {hasThunder ? (
-                    <>
-                      <div className="pb-4">
-                        <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-amber-200">
-                          <Zap className="h-3 w-3 text-amber-400" />
-                          Currently Affecting
-                        </p>
-                        <p className="text-[11px] leading-relaxed text-slate-400 pl-3.5">
-                          {formatList(thunderSummary.affecting)}
-                        </p>
-                      </div>
-                      <div className="pt-4">
-                        <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-amber-200">
-                          <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
-                          Thunderstorms Expected
-                        </p>
-                        <p className="text-[11px] leading-relaxed text-slate-400 pl-3.5">
-                          {formatList(thunderSummary.expected)}
-                        </p>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center">
-                      <div className="mb-3 rounded-full bg-slate-800/50 p-3">
-                        <Zap className="h-5 w-5 text-slate-600" />
-                      </div>
-                      <p className="text-xs font-medium text-slate-400">No Active Thunderstorms</p>
-                      <p className="text-[10px] text-slate-600 mt-1">None of the monitored areas are currently under advisory.</p>
+            {!loading && !error && mode === "rainfall" && (
+              <>
+                {Object.keys(rainfallSummary.red).length > 0 && (
+                  <div className="bg-red-950/20 backdrop-blur-sm border border-red-500/50 rounded-2xl p-5 shadow-[0_0_20px_rgba(239,68,68,0.1)] relative overflow-hidden group">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,1)]"></div>
+                    <div className="flex items-center gap-3 mb-3 pl-3">
+                      <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
+                      <h4 className="text-lg font-black text-red-400 tracking-wide uppercase">Red Warning</h4>
                     </div>
-                  )}
-                </div>
-              )}
+                    <p className="text-sm text-red-200/70 mb-4 pl-3">Take Action: Severe flooding expected in low-lying areas and near river channels.</p>
+                    <div className="pl-3 flex flex-wrap gap-2">
+                      {Object.keys(rainfallSummary.red).map((prov) => (
+                        <span key={prov} className="px-3 py-1 bg-red-500/10 border border-red-500/30 text-red-300 text-sm font-semibold rounded-lg">
+                          {prov} {rainfallSummary.red[prov].size > 0 ? `(${Array.from(rainfallSummary.red[prov]).join(", ")})` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {Object.keys(rainfallSummary.orange).length > 0 && (
+                  <div className="bg-orange-950/20 backdrop-blur-sm border border-orange-500/50 rounded-2xl p-5 shadow-[0_0_20px_rgba(249,115,22,0.05)] relative overflow-hidden mt-2">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]"></div>
+                    <div className="flex items-center gap-3 mb-3 pl-3">
+                      <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                      <h4 className="text-lg font-black text-orange-400 tracking-wide uppercase">Orange Warning</h4>
+                    </div>
+                    <p className="text-sm text-orange-200/70 mb-4 pl-3">Be Prepared: Flooding is threatening in low-lying areas.</p>
+                    <div className="pl-3 flex flex-wrap gap-2">
+                      {Object.keys(rainfallSummary.orange).map((prov) => (
+                        <span key={prov} className="px-3 py-1 bg-orange-500/10 border border-orange-500/30 text-orange-300 text-sm font-semibold rounded-lg">
+                          {prov} {rainfallSummary.orange[prov].size > 0 ? `(${Array.from(rainfallSummary.orange[prov]).join(", ")})` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {Object.keys(rainfallSummary.yellow).length > 0 && (
+                  <div className="bg-yellow-950/20 backdrop-blur-sm border border-yellow-500/40 rounded-2xl p-5 relative overflow-hidden mt-2">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]"></div>
+                    <div className="flex items-center gap-3 mb-3 pl-3">
+                      <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                      <h4 className="text-lg font-black text-yellow-400 tracking-wide uppercase">Yellow Warning</h4>
+                    </div>
+                    <p className="text-sm text-yellow-200/70 mb-4 pl-3">Be Aware: Flooding is possible in low-lying areas.</p>
+                    <div className="pl-3 flex flex-wrap gap-2">
+                      {Object.keys(rainfallSummary.yellow).map((prov) => (
+                        <span key={prov} className="px-3 py-1 bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-sm font-semibold rounded-lg">
+                          {prov} {rainfallSummary.yellow[prov].size > 0 ? `(${Array.from(rainfallSummary.yellow[prov]).join(", ")})` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(Object.keys(rainfallSummary.moderate).length > 0 || Object.keys(rainfallSummary.severe).length > 0) && (
+                  <div className="bg-cyan-950/20 backdrop-blur-sm border border-cyan-500/30 rounded-2xl p-5 relative overflow-hidden mt-2">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-cyan-500"></div>
+                    <div className="flex items-center gap-3 mb-3 pl-3">
+                      <div className="w-3 h-3 rounded-full bg-cyan-500"></div>
+                      <h4 className="text-lg font-black text-cyan-400 tracking-wide uppercase">Light-Moderate Rain</h4>
+                    </div>
+                    <div className="pl-3 flex flex-wrap gap-2">
+                      {Object.keys(rainfallSummary.severe).map((prov) => (
+                        <span key={`sev-${prov}`} className="px-3 py-1 bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-sm font-semibold rounded-lg">
+                          {prov} {rainfallSummary.severe[prov].size > 0 ? `(${Array.from(rainfallSummary.severe[prov]).join(", ")})` : ""}
+                        </span>
+                      ))}
+                      {Object.keys(rainfallSummary.moderate).map((prov) => (
+                        <span key={`mod-${prov}`} className="px-3 py-1 bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-sm font-semibold rounded-lg">
+                          {prov} {rainfallSummary.moderate[prov].size > 0 ? `(${Array.from(rainfallSummary.moderate[prov]).join(", ")})` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {Object.keys(rainfallSummary.expected).length > 0 && (
+                  <div className="bg-slate-900/40 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-5 relative overflow-hidden mt-2">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-500"></div>
+                    <div className="flex items-center gap-3 mb-3 pl-3">
+                      <div className="w-3 h-3 rounded-full bg-slate-500"></div>
+                      <h4 className="text-lg font-black text-slate-300 tracking-wide uppercase">Expecting</h4>
+                    </div>
+                    <p className="text-xs text-slate-500 mb-3 pl-3">Precipitation likely within 1-2 hours.</p>
+                    <div className="pl-3 flex flex-wrap gap-2">
+                      {Object.keys(rainfallSummary.expected).map((prov) => (
+                        <span key={prov} className="px-3 py-1 bg-slate-800 border border-slate-700 text-slate-400 text-sm font-semibold rounded-lg">
+                          {prov} {rainfallSummary.expected[prov].size > 0 ? `(${Array.from(rainfallSummary.expected[prov]).join(", ")})` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {Object.keys(rainfallSummary.red).length === 0 && Object.keys(rainfallSummary.orange).length === 0 && Object.keys(rainfallSummary.yellow).length === 0 && Object.keys(rainfallSummary.moderate).length === 0 && Object.keys(rainfallSummary.severe).length === 0 && Object.keys(rainfallSummary.expected).length === 0 && (
+                  <p className="text-slate-500 italic mt-4 pl-2">No active rainfall warnings at this time.</p>
+                )}
+              </>
+            )}
+
+            {!loading && !error && mode === "thunderstorm" && (
+              <>
+                {thunderSummary.affecting.length > 0 && (
+                  <div className="bg-amber-950/20 backdrop-blur-sm border border-amber-500/50 rounded-2xl p-6 shadow-[0_0_20px_rgba(245,158,11,0.1)] relative overflow-hidden group">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500 shadow-[0_0_15px_rgba(245,158,11,1)]"></div>
+
+                    <div className="flex justify-between items-start mb-4 pl-3">
+                      <div className="flex items-center gap-3">
+                        <div className="relative flex h-4 w-4">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500"></span>
+                        </div>
+                        <h4 className="text-xl font-black text-amber-400 tracking-wide uppercase">Affecting</h4>
+                      </div>
+                      <span className="bg-red-500/20 text-red-400 text-[10px] font-bold px-2 py-1 rounded border border-red-500/30 uppercase tracking-widest animate-pulse">Live</span>
+                    </div>
+
+                    <p className="text-sm text-amber-200/70 mb-5 pl-3">
+                      Heavy rain showers with lightning and strong winds are currently occurring.
+                      <strong>Impact:</strong> Possible flash floods and landslides.
+                    </p>
+
+                    <div className="pl-3 flex flex-wrap gap-2.5">
+                      {thunderSummary.affecting.map((loc) => (
+                        <span key={loc} className="px-3 py-1.5 bg-amber-500/10 border border-amber-500/40 text-amber-300 text-sm font-semibold rounded-lg shadow-sm">{loc}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {thunderSummary.expected.length > 0 && (
+                  <div className="bg-cyan-950/20 backdrop-blur-sm border border-cyan-500/40 rounded-2xl p-6 shadow-[0_0_20px_rgba(6,182,212,0.05)] relative overflow-hidden mt-2">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]"></div>
+
+                    <div className="flex justify-between items-start mb-4 pl-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-4 w-4 rounded-full bg-cyan-500 border-2 border-cyan-300"></div>
+                        <h4 className="text-xl font-black text-cyan-400 tracking-wide uppercase">Expecting</h4>
+                      </div>
+                      <span className="bg-slate-800 text-slate-400 text-[10px] font-bold px-2 py-1 rounded border border-slate-700 uppercase tracking-widest">Within 2 Hrs</span>
+                    </div>
+
+                    <p className="text-sm text-cyan-200/70 mb-5 pl-3">
+                      Conditions are favorable for thunderstorm development or nearby storms may drift into these areas shortly.
+                    </p>
+
+                    <div className="pl-3 flex flex-wrap gap-2.5">
+                      {thunderSummary.expected.map((loc) => (
+                        <span key={loc} className="px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-sm font-semibold rounded-lg">{loc}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {thunderSummary.affecting.length === 0 && thunderSummary.expected.length === 0 && (
+                  <p className="text-slate-500 italic mt-4 pl-2">No active thunderstorm advisories at this time.</p>
+                )}
+              </>
+            )}
+
+            <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 mt-auto flex items-start gap-4">
+              <div className="text-slate-400 text-2xl mt-1">⚠️</div>
+              <div>
+                <h5 className="text-slate-200 font-bold text-sm mb-1">Public Safety Precaution</h5>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  All are advised to take precautionary measures against the impacts associated with these hazards which include flash floods and landslides. Keep monitoring for updates.
+                </p>
+              </div>
             </div>
 
-            <div className="mt-8 rounded-xl bg-slate-900/40 p-3 text-[10px] text-slate-500 border border-slate-800/50">
-              <p>
-                <strong>Note:</strong> Polygons are approximate representations of covered areas.
-                Always rely on official text advisories from PAGASA and your local DRRMO for critical decision making.
-              </p>
-            </div>
-          </aside>
+          </div>
         </div>
       </div>
     </div>
   );
+
 };
 
 export default Alert;

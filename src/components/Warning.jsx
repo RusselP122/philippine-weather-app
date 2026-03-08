@@ -346,34 +346,61 @@ const Warning = () => {
     const cycloneName = useMemo(() => getCycloneName(alerts), [alerts]);
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
-            <div className="max-w-6xl mx-auto w-full px-6 py-12 md:px-8">
-                <header className="mb-10 flex flex-col gap-6 rounded-2xl border border-slate-800/70 bg-slate-900/50 px-6 py-6 shadow-[0_20px_70px_-40px_rgba(234,179,8,0.5)] md:flex-row md:items-center md:justify-between">
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-4">
-                            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-orange-500/10 text-orange-400">
-                                <Wind className="h-6 w-6" />
-                            </span>
+    <div className="bg-slate-950 text-slate-200 font-sans min-h-screen relative overflow-x-hidden p-4 md:p-8 flex justify-center items-start">
+      <style>{`
+        .bg-grid-pattern {
+            background-image: linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        @keyframes swirl {
+            0% { transform: rotate(0deg) scale(1); }
+            50% { transform: rotate(180deg) scale(1.1); }
+            100% { transform: rotate(360deg) scale(1); }
+        }
+        .animate-swirl {
+            animation: swirl 4s linear infinite;
+        }
+      `}</style>
 
-                            <div>
-                                <p className="text-[10px] uppercase tracking-[0.35em] text-slate-500">Hazard Monitoring</p>
-                                <h1 className="text-2xl font-semibold tracking-tight text-slate-50 md:text-3xl">
-                                    Tropical Cyclone Warning Signals
-                                </h1>
-                            </div>
-                        </div>
-                        <div>
-                            <p className="text-sm leading-relaxed text-slate-400">
-                                Real-time active Wind Signals (TCWS) raised by PAGASA.
-                            </p>
-                            <div className="mt-3 h-px w-28 bg-gradient-to-r from-orange-400/70 via-red-300/60 to-transparent" />
-                        </div>
+      <div className="absolute inset-0 bg-grid-pattern pointer-events-none z-0"></div>
+
+      <div className="relative z-10 max-w-7xl w-full flex flex-col gap-8">
+        <header className="bg-slate-900/60 backdrop-blur-md border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div className="flex items-center gap-4">
+                <div className="relative flex h-14 w-14 items-center justify-center">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-500 opacity-20"></span>
+                    <div className="relative h-12 w-12 bg-slate-800 border-2 border-orange-500 rounded-full flex items-center justify-center text-orange-400 overflow-hidden shadow-[0_0_15px_rgba(249,115,22,0.4)]">
+                        <svg className="w-8 h-8 animate-swirl" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"></path></svg>
                     </div>
-                </header>
+                </div>
+                <div>
+                    <h1 className="text-3xl font-black text-white tracking-tight">Tropical Cyclone Wind Signal (TCWS)</h1>
+                    <p className="text-slate-400 font-medium mt-1">{cycloneName || "Active Tropical Cyclone"}</p>
+                </div>
+            </div>
+            <div className="bg-slate-950/80 border border-slate-700 p-3 rounded-xl text-right min-w-[200px]">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-1">LATEST BULLETIN</p>
+                <p className="text-sm font-bold text-slate-200">
+                    {lastUpdated ? lastUpdated.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "---"}
+                </p>
+                <p className="text-sm text-slate-400">
+                    {lastUpdated ? lastUpdated.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" }) + " PST" : "---"}
+                </p>
+            </div>
+        </header>
 
-                <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:h-[calc(100vh-9rem)]">
-                    {/* Map Section */}
-                    <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/50 shadow-2xl shadow-slate-950/50 flex flex-col" style={{ isolation: "isolate" }}>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="lg:col-span-7 flex flex-col gap-6">
+                <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800 rounded-3xl p-4 shadow-2xl relative group h-[650px]">
+                    <div className="absolute top-8 left-8 z-[1000] bg-slate-950/80 backdrop-blur-sm border border-slate-700 px-4 py-2 rounded-lg shadow-lg pointer-events-none">
+                        <h2 className="font-bold text-white flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                            Live TCWS Map
+                        </h2>
+                    </div>
+
+                    <div className="w-full h-full rounded-2xl overflow-hidden relative border border-slate-700/50 bg-slate-800" style={{ isolation: "isolate" }}>
                         <MapContainer
                             center={[12.8797, 121.774]}
                             zoom={6}
@@ -381,16 +408,14 @@ const Warning = () => {
                             maxZoom={11}
                             scrollWheelZoom
                             zoomControl={false}
-                            className="h-[60vh] lg:h-full w-full"
+                            className="w-full h-full bg-[#0f172a] relative z-10"
                             maxBounds={PH_BOUNDS}
                             maxBoundsViscosity={0.8}
-                            style={{ background: '#0f172a' }}
                         >
                             <TileLayer
                                 url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                                attribution='&copy; OpenStreetMap contributors &copy; CARTO'
                             />
-
                             {signalPolygons.map((prov) => {
                                 const colors = SIGNAL_COLORS[prov.signal] || SIGNAL_COLORS[1];
                                 const baseStyle = {
@@ -431,89 +456,155 @@ const Warning = () => {
                                 );
                             })}
                         </MapContainer>
+                        
+                        {hasSignals && (
+                           <>
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 border-2 border-dashed border-cyan-500/50 bg-cyan-500/10 rounded-full animate-[spin_20s_linear_infinite] pointer-events-none z-0"></div>
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 border-2 border-dashed border-yellow-500/50 bg-yellow-500/10 rounded-full animate-[spin_15s_linear_infinite_reverse] pointer-events-none z-0"></div>
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 border-2 border-dashed border-orange-500/60 bg-orange-500/20 rounded-full animate-[spin_10s_linear_infinite] pointer-events-none z-0"></div>
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-red-500/80 bg-red-500/30 rounded-full animate-[spin_5s_linear_infinite_reverse] pointer-events-none z-0"></div>
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-fuchsia-500/60 blur-md rounded-full animate-pulse shadow-[0_0_30px_rgba(217,70,239,1)] pointer-events-none z-0"></div>
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,1)] pointer-events-none z-0"></div>
+                           </>
+                        )}
                     </div>
-
-                    {/* Sidebar Summary */}
-                    <aside className="rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-900/70 to-slate-900/40 p-6 shadow-xl lg:h-full lg:overflow-y-auto custom-scrollbar">
-                        <div className="mb-6 flex items-center justify-between">
-                            <div>
-                                <h2 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                                    Active Signals
-                                </h2>
-                                {hasSignals && cycloneName && (
-                                    <p className="mt-1 text-sm font-bold text-orange-400">
-                                        {cycloneName}
-                                    </p>
-                                )}
-                            </div>
-                            {lastUpdated && (
-                                <span className="text-[10px] text-slate-600">
-                                    {lastUpdated.toLocaleTimeString("en-PH", {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                    })}
-                                </span>
-                            )}
-                        </div>
-
-                        <div className="space-y-6">
-                            {loading && (
-                                <div className="flex items-center gap-3 rounded-lg border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-sky-300">
-                                    <span className="h-2 w-2 rounded-full bg-sky-400 animate-pulse" />
-                                    <span className="text-xs font-medium">Checking for signals...</span>
-                                </div>
-                            )}
-
-                            {error && (
-                                <div className="flex items-start gap-3 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
-                                    <AlertTriangle className="h-4 w-4 mt-0.5" />
-                                    <p className="text-xs">{error}</p>
-                                </div>
-                            )}
-
-                            {!loading && !error && (
-                                <div className="divide-y divide-slate-800/50">
-                                    {hasSignals ? (
-                                        <>
-                                            {[5, 4, 3, 2, 1].map(num => {
-                                                const data = signalSummary[num];
-                                                if (Object.keys(data).length === 0) return null;
-                                                const color = SIGNAL_COLORS[num];
-
-                                                return (
-                                                    <div key={num} className="py-4 first:pt-0 last:pb-0">
-                                                        <p className="mb-2 flex items-center gap-2 text-xs font-bold" style={{ color: color.fill }}>
-                                                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color.fill }}></span>
-                                                            Signal No. {num}
-                                                        </p>
-                                                        {renderSignalList(data)}
-                                                    </div>
-                                                );
-                                            })}
-                                        </>
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center py-8 text-center">
-                                            <div className="mb-3 rounded-full bg-slate-800/50 p-3">
-                                                <AlertCircle className="h-5 w-5 text-slate-600" />
-                                            </div>
-                                            <p className="text-xs font-medium text-slate-400">No Active Wind Signals</p>
-                                            <p className="text-[10px] text-slate-600 mt-1">There are no areas currently under TCWS.</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="mt-8 rounded-xl bg-slate-900/40 p-3 text-[10px] text-slate-500 border border-slate-800/50">
-                            <p>
-                                <strong>Note:</strong> Data is sourced from PAGASA Severe Weather Bulletins. Always verify with local authorities.
-                            </p>
-                        </div>
-                    </aside>
                 </div>
             </div>
+
+            <div className="lg:col-span-5 flex flex-col gap-4">
+                <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                    {loading && <span className="w-4 h-4 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></span>}
+                    {!loading && (
+                        <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    )}
+                    Active Signals & Areas
+                </h3>
+
+                {error && (
+                    <div className="flex items-start gap-3 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
+                        <svg className="h-4 w-4 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                        <p className="text-xs">{error}</p>
+                    </div>
+                )}
+
+                {!loading && !error && Object.keys(signalSummary[5]).length > 0 && (
+                    <div className="bg-fuchsia-950/20 backdrop-blur-sm border border-fuchsia-500/50 rounded-2xl p-5 shadow-[0_0_20px_rgba(217,70,239,0.15)] relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1.5 h-full bg-fuchsia-500 shadow-[0_0_15px_rgba(217,70,239,1)]"></div>
+                        <div className="flex justify-between items-start mb-3 pl-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-6 h-6 rounded-full bg-fuchsia-500 flex items-center justify-center text-white font-black text-sm shadow-[0_0_10px_rgba(217,70,239,0.8)] animate-pulse">5</div>
+                                <h4 className="text-lg font-black text-fuchsia-400 tracking-wide uppercase">Signal No. 5</h4>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 mb-3 pl-3 text-xs border-b border-fuchsia-500/20 pb-3">
+                            <div><span className="text-fuchsia-200/50 uppercase tracking-widest">Winds:</span> <span className="font-bold text-fuchsia-100">{">"} 185 km/h</span></div>
+                            <div><span className="text-fuchsia-200/50 uppercase tracking-widest">Lead Time:</span> <span className="font-bold text-fuchsia-100">12 hours</span></div>
+                        </div>
+                        <div className="pl-3 flex flex-wrap gap-2">
+                            {Object.keys(signalSummary[5]).sort().map(prov => (
+                                <span key={prov} className="px-3 py-1 bg-fuchsia-500/20 border border-fuchsia-500/40 text-fuchsia-200 text-sm font-bold rounded-lg shadow-[0_0_10px_rgba(217,70,239,0.3)]">
+                                    {prov} {signalSummary[5][prov].size > 0 ? `(${Array.from(signalSummary[5][prov]).sort().join(", ")})` : ""}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {!loading && !error && Object.keys(signalSummary[4]).length > 0 && (
+                    <div className="bg-red-950/20 backdrop-blur-sm border border-red-500/50 rounded-2xl p-4 relative overflow-hidden mt-1">
+                        <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]"></div>
+                        <div className="flex justify-between items-start mb-2 pl-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center text-white font-black text-xs">4</div>
+                                <h4 className="text-base font-black text-red-400 tracking-wide uppercase">Signal No. 4</h4>
+                            </div>
+                            <div className="text-[10px] text-red-300 font-bold bg-red-500/20 px-2 py-0.5 rounded border border-red-500/30">118-184 km/h</div>
+                        </div>
+                        <div className="pl-3 flex flex-wrap gap-2 mt-2">
+                            {Object.keys(signalSummary[4]).sort().map(prov => (
+                                <span key={prov} className="px-2.5 py-1 bg-red-500/10 border border-red-500/30 text-red-200 text-xs font-semibold rounded-md">
+                                    {prov} {signalSummary[4][prov].size > 0 ? `(${Array.from(signalSummary[4][prov]).sort().join(", ")})` : ""}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {!loading && !error && Object.keys(signalSummary[3]).length > 0 && (
+                    <div className="bg-orange-950/20 backdrop-blur-sm border border-orange-500/50 rounded-2xl p-4 relative overflow-hidden mt-1">
+                        <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]"></div>
+                        <div className="flex justify-between items-start mb-2 pl-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-5 h-5 rounded-full bg-orange-500 flex items-center justify-center text-white font-black text-xs">3</div>
+                                <h4 className="text-base font-black text-orange-400 tracking-wide uppercase">Signal No. 3</h4>
+                            </div>
+                            <div className="text-[10px] text-orange-300 font-bold bg-orange-500/20 px-2 py-0.5 rounded border border-orange-500/30">89-117 km/h</div>
+                        </div>
+                        <div className="pl-3 flex flex-wrap gap-2 mt-2">
+                            {Object.keys(signalSummary[3]).sort().map(prov => (
+                                <span key={prov} className="px-2.5 py-1 bg-orange-500/10 border border-orange-500/30 text-orange-200 text-xs font-semibold rounded-md">
+                                    {prov} {signalSummary[3][prov].size > 0 ? `(${Array.from(signalSummary[3][prov]).sort().join(", ")})` : ""}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {!loading && !error && Object.keys(signalSummary[2]).length > 0 && (
+                    <div className="bg-yellow-950/20 backdrop-blur-sm border border-yellow-500/40 rounded-2xl p-4 relative overflow-hidden mt-1">
+                        <div className="absolute top-0 left-0 w-1.5 h-full bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]"></div>
+                        <div className="flex justify-between items-start mb-2 pl-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-slate-900 font-black text-xs">2</div>
+                                <h4 className="text-base font-black text-yellow-400 tracking-wide uppercase">Signal No. 2</h4>
+                            </div>
+                            <div className="text-[10px] text-yellow-300 font-bold bg-yellow-500/20 px-2 py-0.5 rounded border border-yellow-500/30">62-88 km/h</div>
+                        </div>
+                        <div className="pl-3 flex flex-wrap gap-2 mt-2">
+                            {Object.keys(signalSummary[2]).sort().map(prov => (
+                                <span key={prov} className="px-2.5 py-1 bg-yellow-500/10 border border-yellow-500/30 text-yellow-200 text-xs font-semibold rounded-md">
+                                    {prov} {signalSummary[2][prov].size > 0 ? `(${Array.from(signalSummary[2][prov]).sort().join(", ")})` : ""}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {!loading && !error && Object.keys(signalSummary[1]).length > 0 && (
+                    <div className="bg-cyan-950/20 backdrop-blur-sm border border-cyan-500/30 rounded-2xl p-4 relative overflow-hidden mt-1">
+                        <div className="absolute top-0 left-0 w-1.5 h-full bg-cyan-500"></div>
+                        <div className="flex justify-between items-start mb-2 pl-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-slate-900 font-black text-xs">1</div>
+                                <h4 className="text-base font-black text-cyan-400 tracking-wide uppercase">Signal No. 1</h4>
+                            </div>
+                            <div className="text-[10px] text-cyan-300 font-bold bg-cyan-500/20 px-2 py-0.5 rounded border border-cyan-500/30">39-61 km/h</div>
+                        </div>
+                        <div className="pl-3 flex flex-wrap gap-2 mt-2">
+                            {Object.keys(signalSummary[1]).sort().map(prov => (
+                                <span key={prov} className="px-2.5 py-1 bg-cyan-500/10 border border-cyan-500/30 text-cyan-200 text-xs font-semibold rounded-md">
+                                    {prov} {signalSummary[1][prov].size > 0 ? `(${Array.from(signalSummary[1][prov]).sort().join(", ")})` : ""}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {!loading && !error && !hasSignals && (
+                    <div className="flex flex-col items-center justify-center py-10 text-center bg-slate-900/40 border border-slate-800 rounded-2xl h-full">
+                        <div className="mb-4 rounded-full bg-slate-800/80 p-4 shadow-inner shadow-slate-950">
+                            <span className="text-3xl">🍃</span>
+                        </div>
+                        <p className="text-sm font-bold text-slate-300">No Active Wind Signals</p>
+                        <p className="text-[11px] text-slate-500 mt-2 max-w-xs leading-relaxed">There are currently no areas under Tropical Cyclone Wind Signals. The weather map is clear of major wind disturbances.</p>
+                    </div>
+                )}
+            </div>
         </div>
-    );
+      </div>
+    </div>
+  );
+
 };
 
 export default Warning;
