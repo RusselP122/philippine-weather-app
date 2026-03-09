@@ -674,6 +674,39 @@ const TropicalCycloneInformation = () => {
               </section>
             )}
 
+            {westernPacificStorms.length > 1 && (
+              <div className="flex flex-col items-start lg:items-end mb-6 w-full lg:w-auto">
+                <span className="text-[10px] md:text-xs uppercase tracking-wide text-slate-500 mb-1">
+                  Select Active Storm
+                </span>
+                <select
+                  value={selectedWpIndex}
+                  onChange={(e) => {
+                    const idx = Number(e.target.value);
+                    setSelectedWpIndex(idx);
+                    setStorm(westernPacificStorms[idx]);
+                  }}
+                  className="w-full lg:w-[320px] bg-slate-900/80 border border-slate-700 text-slate-100 text-sm rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all font-medium cursor-pointer"
+                >
+                  {westernPacificStorms.map((s, index) => {
+                    const parts = s.interp_sector_file?.split(/\s+/) || [];
+                    const rawName = parts[1] || s.atcf_id || "Tropical Disturbance";
+                    const wind10 = to10MinWindKmH(parseFloat(parts[8]) || 0);
+                    const cls = classifyTropicalCyclone(wind10);
+                    const lat = parseFloat(parts[4]);
+                    const lon = parseFloat(parts[5]);
+                    const insidePar = isInsidePar(lat, lon);
+                    const refinedName = getStormDisplayName(rawName, cls.code, insidePar, s.atcf_id);
+                    return (
+                      <option key={s.atcf_id || index} value={index} className="bg-slate-800">
+                        {refinedName.displayName} - {cls.label}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+
             {hasWesternPacificStorm && mainStorm && (
               <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-6 mb-10">
                 {/* Left Column: Stats */}

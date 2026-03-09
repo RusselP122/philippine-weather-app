@@ -297,6 +297,36 @@ const Features = () => {
               </a>
             </div>
           </div>
+          {/* Lightning Detection Feature */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col h-full gap-4 hover:border-amber-500/60 hover:shadow-lg hover:shadow-amber-900/30 transition-all md:col-span-3 lg:col-span-1">
+            <h2 className="text-xl font-semibold text-slate-50 flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400 text-sm font-bold">
+                ⚡
+              </span>
+              Lightning Detection
+            </h2>
+            <p className="text-sm text-slate-300">
+              Simulation of real-time lightning detections over the Philippine Area of Responsibility (PAR). Monitor strike intensity and live counts.
+            </p>
+            <div className="bg-slate-900 border border-amber-500/40 h-44 md:h-48 rounded-xl overflow-hidden flex items-center justify-center relative">
+              <div className="absolute inset-0 bg-[#0f172a] opacity-80" />
+              <div className="z-10 flex flex-col items-center gap-3">
+                <div className="w-12 h-12 rounded-full border border-dashed border-amber-500/50 flex flex-col items-center justify-center bg-amber-500/10 animate-pulse">
+                  <span className="text-amber-400 text-xl drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]">⚡</span>
+                </div>
+                <span className="text-amber-200 text-xs font-bold tracking-wider uppercase">Live Scan</span>
+              </div>
+            </div>
+            <div className="flex justify-end mt-2">
+              <a
+                href="/lightning"
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-500 text-slate-950 text-xs font-medium tracking-wide hover:bg-amber-400 transition-colors"
+              >
+                View Lightning Map
+                <span className="text-[10px]">→</span>
+              </a>
+            </div>
+          </div>
 
         </div>
 

@@ -18,6 +18,7 @@ import ForecastModels from "./components/ForecastModels";
 import WindPage from "./components/Wind";
 import Footer from "./components/Footer";
 import EnsoMonitor from "./components/EnsoMonitor";
+import LightningDetection from "./components/LightningDetection";
 
 function App() {
   const path = window.location.pathname;
@@ -199,6 +200,18 @@ function App() {
         <Navbar />
         <main className="flex-grow">
           <EnsoMonitor />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (path === "/lightning") {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <LightningDetection />
         </main>
         <Footer />
       </div>
