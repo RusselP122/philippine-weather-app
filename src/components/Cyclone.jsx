@@ -231,56 +231,56 @@ const CycloneMapLogic = () => {
         case 'LPA':
           return `
             <div class="relative w-full h-full flex items-center justify-center">
-              <div class="absolute w-[80%] h-[80%] bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
-              <div class="absolute inset-0 bg-slate-500/20 blur-md rounded-full"></div>
-              <div class="absolute w-[80%] h-[80%] border-2 border-slate-400 border-y-transparent rounded-full animate-[spin_8s_linear_infinite]"></div>
-              <div class="absolute w-[50%] h-[50%] rounded-full border border-dashed border-slate-300 animate-[spin_10s_linear_infinite_reverse]"></div>
+              <div class="absolute w-[80%] h-[80%] bg-slate-900/90 border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+              <div class="absolute inset-0 rounded-full" style="background: radial-gradient(circle, rgba(100,116,139,0.4) 0%, transparent 70%);"></div>
+              <div class="absolute w-[80%] h-[80%] border-2 border-slate-400 border-y-transparent rounded-full" style="animation: cy-cw 8s linear infinite;"></div>
+              <div class="absolute w-[50%] h-[50%] rounded-full border border-dashed border-slate-300" style="animation: cy-ccw 10s linear infinite;"></div>
               <div class="absolute z-10 text-[0.6rem] font-black text-slate-100">L</div>
             </div>`;
         case 'TD':
           return `
             <div class="relative w-full h-full flex items-center justify-center">
-              <div class="absolute w-[85%] h-[85%] bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
-              <div class="absolute inset-0 bg-blue-500/30 blur-md rounded-full"></div>
-              <div class="absolute w-[85%] h-[85%] border-2 border-blue-400/80 border-y-transparent rounded-full animate-[spin_5s_linear_infinite]"></div>
-              <div class="absolute w-[55%] h-[55%] border-[1.5px] border-blue-300 border-x-transparent rounded-full animate-[spin_3s_linear_infinite_reverse]"></div>
+              <div class="absolute w-[85%] h-[85%] bg-slate-900/90 border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+              <div class="absolute inset-0 rounded-full" style="background: radial-gradient(circle, rgba(59,130,246,0.4) 0%, transparent 70%);"></div>
+              <div class="absolute w-[85%] h-[85%] border-2 border-blue-400/80 border-y-transparent rounded-full" style="animation: cy-cw 5s linear infinite;"></div>
+              <div class="absolute w-[55%] h-[55%] border-[1.5px] border-blue-300 border-x-transparent rounded-full" style="animation: cy-ccw 3s linear infinite;"></div>
               <div class="absolute z-10 text-[0.6rem] font-black text-blue-100 drop-shadow-[0_0_5px_rgba(96,165,250,0.8)]">TD</div>
             </div>`;
         case 'TS':
           return `
             <div class="relative w-full h-full flex items-center justify-center">
-              <div class="absolute w-[85%] h-[85%] bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
-              <div class="absolute inset-0 bg-emerald-500/30 blur-md rounded-full"></div>
-              <div class="absolute w-[85%] h-[85%] border-[3px] border-emerald-400/80 border-r-transparent border-l-transparent rounded-full animate-[spin_3s_linear_infinite]"></div>
-              <div class="absolute w-[60%] h-[60%] border-2 border-emerald-300 border-t-transparent border-b-transparent rounded-full animate-[spin_2s_linear_infinite_reverse]"></div>
+              <div class="absolute w-[85%] h-[85%] bg-slate-900/90 border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+              <div class="absolute inset-0 rounded-full" style="background: radial-gradient(circle, rgba(16,185,129,0.4) 0%, transparent 70%);"></div>
+              <div class="absolute w-[85%] h-[85%] border-[3px] border-emerald-400/80 border-r-transparent border-l-transparent rounded-full" style="animation: cy-cw 3s linear infinite;"></div>
+              <div class="absolute w-[60%] h-[60%] border-2 border-emerald-300 border-t-transparent border-b-transparent rounded-full" style="animation: cy-ccw 2s linear infinite;"></div>
               <div class="absolute z-10 text-[0.65rem] font-black text-emerald-100 drop-shadow-[0_0_5px_rgba(52,211,153,0.8)]">TS</div>
             </div>`;
         case 'STS':
           return `
             <div class="relative w-full h-full flex items-center justify-center">
-              <div class="absolute w-[90%] h-[90%] bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
-              <div class="absolute inset-0 bg-amber-500/40 blur-md rounded-full"></div>
-              <div class="absolute w-[90%] h-[90%] border-[4px] border-amber-400/90 border-y-transparent rounded-full animate-[spin_1.5s_linear_infinite]"></div>
-              <div class="absolute w-[65%] h-[65%] border-[3px] border-amber-300 border-x-transparent rounded-full animate-[spin_1s_linear_infinite_reverse]"></div>
+              <div class="absolute w-[90%] h-[90%] bg-slate-900/90 border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+              <div class="absolute inset-0 rounded-full" style="background: radial-gradient(circle, rgba(245,158,11,0.4) 0%, transparent 70%);"></div>
+              <div class="absolute w-[90%] h-[90%] border-[4px] border-amber-400/90 border-y-transparent rounded-full" style="animation: cy-cw 1.5s linear infinite;"></div>
+              <div class="absolute w-[65%] h-[65%] border-[3px] border-amber-300 border-x-transparent rounded-full" style="animation: cy-ccw 1s linear infinite;"></div>
               <div class="absolute z-10 text-[0.7rem] font-black text-amber-100 drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]">STS</div>
             </div>`;
         case 'TY':
           return `
             <div class="relative w-full h-full flex items-center justify-center">
-              <div class="absolute w-[90%] h-[90%] bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
-              <div class="absolute inset-0 bg-orange-500/50 blur-md rounded-full animate-pulse"></div>
-              <div class="absolute w-[90%] h-[90%] border-[4px] border-orange-500/90 border-t-transparent border-b-transparent rounded-full animate-[spin_0.8s_linear_infinite]"></div>
-              <div class="absolute w-[65%] h-[65%] border-[3px] border-orange-400 border-r-transparent border-l-transparent rounded-full animate-[spin_0.5s_linear_infinite_reverse]"></div>
+              <div class="absolute w-[90%] h-[90%] bg-slate-900/90 border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+              <div class="absolute inset-0 rounded-full animate-pulse" style="background: radial-gradient(circle, rgba(249,115,22,0.5) 0%, transparent 70%);"></div>
+              <div class="absolute w-[90%] h-[90%] border-[4px] border-orange-500/90 border-t-transparent border-b-transparent rounded-full" style="animation: cy-cw 0.8s linear infinite;"></div>
+              <div class="absolute w-[65%] h-[65%] border-[3px] border-orange-400 border-r-transparent border-l-transparent rounded-full" style="animation: cy-ccw 0.5s linear infinite;"></div>
               <div class="absolute z-10 text-[0.8rem] font-black text-orange-100 drop-shadow-[0_0_10px_rgba(251,146,60,1)]">TY</div>
             </div>`;
         case 'STY':
           return `
             <div class="relative w-full h-full flex items-center justify-center">
-              <div class="absolute w-[95%] h-[95%] bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
-              <div class="absolute inset-0 bg-fuchsia-500/60 blur-lg rounded-full animate-pulse"></div>
-              <div class="absolute w-[110%] h-[110%] border border-fuchsia-500 rounded-full animate-ping opacity-30"></div>
-              <div class="absolute w-[95%] h-[95%] border-[5px] border-fuchsia-500 border-t-transparent border-b-transparent rounded-full animate-[spin_0.4s_linear_infinite]"></div>
-              <div class="absolute w-[70%] h-[70%] border-[4px] border-fuchsia-400 border-r-transparent border-l-transparent rounded-full animate-[spin_0.25s_linear_infinite_reverse]"></div>
+              <div class="absolute w-[95%] h-[95%] bg-slate-900/90 border border-slate-700/50 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+              <div class="absolute inset-0 rounded-full animate-pulse" style="background: radial-gradient(circle, rgba(217,70,239,0.6) 0%, transparent 70%);"></div>
+              <div class="absolute w-[110%] h-[110%] border border-fuchsia-500 rounded-full opacity-30" style="animation: cy-ping 1.5s ease-out infinite;"></div>
+              <div class="absolute w-[95%] h-[95%] border-[5px] border-fuchsia-500 border-t-transparent border-b-transparent rounded-full" style="animation: cy-cw 0.4s linear infinite;"></div>
+              <div class="absolute w-[70%] h-[70%] border-[4px] border-fuchsia-400 border-r-transparent border-l-transparent rounded-full" style="animation: cy-ccw 0.25s linear infinite;"></div>
               <div class="absolute z-10 text-[0.9rem] font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,1)]">STY</div>
             </div>`;
         default:
