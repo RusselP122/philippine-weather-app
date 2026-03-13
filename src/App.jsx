@@ -1,5 +1,6 @@
 // src/App.js
 import React from "react";
+import { Analytics } from "@vercel/analytics/react";
 import Navbar from "./components/Navbar";
 import Features from "./components/Features";
 import About from "./components/About";
@@ -20,7 +21,7 @@ import Footer from "./components/Footer";
 import EnsoMonitor from "./components/EnsoMonitor";
 import LightningDetection from "./components/LightningDetection";
 
-function App() {
+function AppContent() {
   const path = window.location.pathname;
 
   if (path === "/about") {
@@ -226,6 +227,15 @@ function App() {
       </main>
       <Footer />
     </div>
+  );
+}
+
+function App() {
+  return (
+    <>
+      <AppContent />
+      <Analytics />
+    </>
   );
 }
 
