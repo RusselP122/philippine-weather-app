@@ -2416,7 +2416,7 @@
             "timestamp": "2026-03-15T18:18:48.525423+08:00",
             "date": "2026-03-15",
             "data": {
-                "mvo": "539",
+                "mvo": "72",
                 "bvo": "55",
                 "kvo": "2",
                 "tvo": "0",
@@ -2429,14 +2429,14 @@
             "timestamp": "2026-03-15T22:58:15.304653+08:00",
             "date": "2026-03-15",
             "data": {
-                "mvo": "72",
+                "mvo": "539",
                 "bvo": "65",
                 "kvo": "8",
                 "tvo": "2",
                 "hvo": "1",
                 "pvo": "0"
             },
-            "total_Volcanic_earthquakes": "mvo: 72, bvo: 65, kvo: 8, tvo: 2, hvo: 1, pvo: 0"
+            "total_Volcanic_earthquakes": "mvo: 539, bvo: 65, kvo: 8, tvo: 2, hvo: 1, pvo: 0"
         },
         {
             "timestamp": "2026-03-16T00:18:36.260435+08:00",
