@@ -235,7 +235,7 @@ const CycloneMapLogic = () => {
               <div class="absolute inset-0 rounded-full" style="background: radial-gradient(circle, rgba(100,116,139,0.4) 0%, transparent 70%);"></div>
               <div class="absolute w-[80%] h-[80%] border-2 border-slate-400 border-y-transparent rounded-full" style="animation: cy-cw 8s linear infinite;"></div>
               <div class="absolute w-[50%] h-[50%] rounded-full border border-dashed border-slate-300" style="animation: cy-ccw 10s linear infinite;"></div>
-              <div class="absolute z-10 text-[0.6rem] font-black text-slate-100">L</div>
+              <div class="absolute z-10 text-[0.65rem] font-black text-slate-100">L</div>
             </div>`;
         case 'TD':
           return `
@@ -244,7 +244,7 @@ const CycloneMapLogic = () => {
               <div class="absolute inset-0 rounded-full" style="background: radial-gradient(circle, rgba(59,130,246,0.4) 0%, transparent 70%);"></div>
               <div class="absolute w-[85%] h-[85%] border-2 border-blue-400/80 border-y-transparent rounded-full" style="animation: cy-cw 5s linear infinite;"></div>
               <div class="absolute w-[55%] h-[55%] border-[1.5px] border-blue-300 border-x-transparent rounded-full" style="animation: cy-ccw 3s linear infinite;"></div>
-              <div class="absolute z-10 text-[0.6rem] font-black text-blue-100 drop-shadow-[0_0_5px_rgba(96,165,250,0.8)]">TD</div>
+              <div class="absolute z-10 text-[0.65rem] font-black text-blue-100 drop-shadow-[0_0_5px_rgba(96,165,250,0.8)]">TD</div>
             </div>`;
         case 'TS':
           return `
@@ -262,7 +262,7 @@ const CycloneMapLogic = () => {
               <div class="absolute inset-0 rounded-full" style="background: radial-gradient(circle, rgba(245,158,11,0.4) 0%, transparent 70%);"></div>
               <div class="absolute w-[90%] h-[90%] border-[4px] border-amber-400/90 border-y-transparent rounded-full" style="animation: cy-cw 1.5s linear infinite;"></div>
               <div class="absolute w-[65%] h-[65%] border-[3px] border-amber-300 border-x-transparent rounded-full" style="animation: cy-ccw 1s linear infinite;"></div>
-              <div class="absolute z-10 text-[0.7rem] font-black text-amber-100 drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]">STS</div>
+              <div class="absolute z-10 text-[0.55rem] font-black text-amber-100 drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]">STS</div>
             </div>`;
         case 'TY':
           return `
@@ -271,7 +271,7 @@ const CycloneMapLogic = () => {
               <div class="absolute inset-0 rounded-full animate-pulse" style="background: radial-gradient(circle, rgba(249,115,22,0.5) 0%, transparent 70%);"></div>
               <div class="absolute w-[90%] h-[90%] border-[4px] border-orange-500/90 border-t-transparent border-b-transparent rounded-full" style="animation: cy-cw 0.8s linear infinite;"></div>
               <div class="absolute w-[65%] h-[65%] border-[3px] border-orange-400 border-r-transparent border-l-transparent rounded-full" style="animation: cy-ccw 0.5s linear infinite;"></div>
-              <div class="absolute z-10 text-[0.8rem] font-black text-orange-100 drop-shadow-[0_0_10px_rgba(251,146,60,1)]">TY</div>
+              <div class="absolute z-10 text-[0.65rem] font-black text-orange-100 drop-shadow-[0_0_10px_rgba(251,146,60,1)]">TY</div>
             </div>`;
         case 'STY':
           return `
@@ -281,7 +281,7 @@ const CycloneMapLogic = () => {
               <div class="absolute w-[110%] h-[110%] border border-fuchsia-500 rounded-full opacity-30" style="animation: cy-ping 1.5s ease-out infinite;"></div>
               <div class="absolute w-[95%] h-[95%] border-[5px] border-fuchsia-500 border-t-transparent border-b-transparent rounded-full" style="animation: cy-cw 0.4s linear infinite;"></div>
               <div class="absolute w-[70%] h-[70%] border-[4px] border-fuchsia-400 border-r-transparent border-l-transparent rounded-full" style="animation: cy-ccw 0.25s linear infinite;"></div>
-              <div class="absolute z-10 text-[0.9rem] font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,1)]">STY</div>
+              <div class="absolute z-10 text-[0.55rem] font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,1)]">STY</div>
             </div>`;
         default:
           return `<div class="w-full h-full bg-slate-500 rounded-full"></div>`;
@@ -332,9 +332,9 @@ const CycloneMapLogic = () => {
         LPA: [48, 48],
         TD: [48, 48],
         TS: [48, 48],
-        STS: [56, 56],
-        TY: [64, 64],
-        STY: [76, 76],
+        STS: [48, 48],
+        TY: [48, 48],
+        STY: [48, 48],
       };
 
       data.forEach((storm) => {
@@ -630,6 +630,8 @@ const CycloneMapLogic = () => {
             zIndex: frame.time,
             maxNativeZoom: 7,
             maxZoom: 18,
+            minZoom: 2, // Prevent fetching global map at lowest zooms to stop 404 flooding
+            noWrap: true, // Prevent continuous horizontal clone wrapping outside the satellite view
             errorTileUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
           });
         } else {
