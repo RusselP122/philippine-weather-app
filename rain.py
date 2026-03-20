@@ -347,7 +347,16 @@ def fetch_and_plot_gfs(target_url=None, target_run_time=None):
             print(f"Max Precip ({period_name}): {max_val} mm")
             
             # Plot
-            plot_rainfall(subset_lons, subset_lats, total_precip, f"gfs_{period_name}")
+            plot_rainfall(
+                subset_lons, 
+                subset_lats, 
+                total_precip, 
+                f"gfs_{period_name}",
+                init_time=all_dates[0] if all_dates else now,
+                valid_time_start=start_time_period,
+                valid_time_end=end_time_period,
+                forecast_hour=end_hour_offset
+            )
 
         # Save Metadata
         import json
@@ -382,93 +391,128 @@ def generate_gif(frame_names, input_dir, output_path, fps=2):
     except Exception as e:
         print(f"GIF Generation Failed: {e}")
 
-def plot_rainfall(lons, lats, data, filename_id):
-    # Landscape
-    fig = plt.figure(figsize=(16, 10))
+def plot_rainfall(lons, lats, data, filename_id, init_time=None, valid_time_start=None, valid_time_end=None, forecast_hour=None):
+    # Set up figure with a ratio closer to the classic weather map style
+    fig = plt.figure(figsize=(14, 11))
+    
+    # Push the map down slightly to make room for the header text
+    fig.subplots_adjust(top=0.88)
+    
     ax = plt.axes(projection=ccrs.PlateCarree())
     
-    # Extent: Includes PAR (115-135), Palau (134), Excludes mostly Vietnam (<109)
-    # [LonMin, LonMax, LatMin, LatMax]
-    ax.set_extent([114, 138, 3, 27], crs=ccrs.PlateCarree())
+    # Extent: Includes PAR (115-135)
+    ax.set_extent([112, 138, 4, 26], crs=ccrs.PlateCarree())
 
-    # Features
-    ax.add_feature(cfeature.LAND, facecolor='#f0f0f0') # Lighter land
-    ax.add_feature(cfeature.COASTLINE, linewidth=1.0, edgecolor='#555')
-    ax.add_feature(cfeature.BORDERS, linestyle=':', linewidth=0.8, edgecolor='#777')
-    ax.add_feature(cfeature.OCEAN, facecolor='#e0f7fa') # Light cyan ocean
+    # --- 1. Tropicaltidbits Map Features ---
+    LAND_COLOR = '#eaeaea'
+    OCEAN_COLOR = '#d4e5ed'
+    
+    ax.add_feature(cfeature.LAND, facecolor=LAND_COLOR, zorder=0)
+    ax.add_feature(cfeature.OCEAN, facecolor=OCEAN_COLOR, zorder=0)
+    ax.add_feature(cfeature.COASTLINE, linewidth=1.0, edgecolor='#222222', zorder=3)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.6, edgecolor='#555555', zorder=3)
     
     # Plot PAR (Philippine Area of Responsibility)
-    # Polygon Logic: [Lon, Lat]
     par_lons = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
     par_lats = [5.0, 15.0, 21.0, 25.0, 25.0, 5.0, 5.0]
-    
     ax.plot(par_lons, par_lats, transform=ccrs.PlateCarree(), 
-            color='red', linestyle='-', linewidth=2, label='PAR', alpha=0.7)
+            color='#d62728', linestyle='-', linewidth=2.5, label='PAR', zorder=4)
     
     # Gridlines
-    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.3, linestyle='--')
+    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.4, linestyle=':', zorder=5)
     gl.top_labels = False
     gl.right_labels = False
-    gl.xlabel_style = {'size': 9, 'color': 'gray'}
-    gl.ylabel_style = {'size': 9, 'color': 'gray'}
+    gl.xlabel_style = {'size': 10, 'color': '#333'}
+    gl.ylabel_style = {'size': 10, 'color': '#333'}
 
-    # Watermark
-    ax.text(0.99, 0.98, 'Philippine Typhoon/Weather', transform=ax.transAxes,
-            fontsize=12, color='gray', alpha=0.6,
-            ha='right', va='top', weight='bold')
-
-    # Extended Rainfall Levels (Granular scale as requested)
-    levels = [0, 5, 10, 15, 20, 25, 30, 35, 40, 50, 70, 100, 125, 150, 175, 200, 250, 300, 400, 500]
+    # --- 2. The Tropicaltidbits Colormap ---
+    levels = [0, 5, 10, 20, 30, 40, 50, 75, 100, 125, 150, 175, 200, 250, 300, 400]
     
-    # Custom Distinct Colors corresponding to intervals (19 colors needed for 20 levels)
     colors = [
         '#ffffff00', # 0-5 (Transparent)
-        '#e0f2fe',   # 5-10
-        '#bae6fd',   # 10-15
-        '#7dd3fc',   # 15-20
-        '#38bdf8',   # 20-25
-        '#0ea5e9',   # 25-30
-        '#0284c7',   # 30-35
-        '#0369a1',   # 35-40
-        '#4ade80',   # 40-50
-        '#22c55e',   # 50-70
-        '#16a34a',   # 70-100
-        '#facc15',   # 100-125
-        '#eab308',   # 125-150
-        '#fb923c',   # 150-175
-        '#f97316',   # 175-200
-        '#ef4444',   # 200-250
-        '#dc2626',   # 250-300
-        '#d946ef',   # 300-400
-        '#a21caf',   # 400-500
-        '#581c87'    # > 500
+        '#dbe9f6',   # 5-10
+        '#a6cbe3',   # 10-20
+        '#5ba3d0',   # 20-30
+        '#227abb',   # 30-40
+        '#4ac15e',   # 40-50
+        '#2ea946',   # 50-75
+        '#1a862f',   # 75-100
+        '#ffdb00',   # 100-125
+        '#f7a800',   # 125-150
+        '#ea7200',   # 150-175
+        '#df4000',   # 175-200
+        '#d41c00',   # 200-250
+        '#b40047',   # 250-300
+        '#c432b4',   # 300-400
     ]
     
-    cmap_cols = colors[:-1] 
-    cmap = ListedColormap(cmap_cols)
-    cmap.set_over(colors[-1])
-    
-    norm = BoundaryNorm(levels, ncolors=len(cmap_cols), clip=False)
+    cmap = ListedColormap(colors)
+    cmap.set_over('#4b0082') # > 400
+    norm = BoundaryNorm(levels, ncolors=len(colors), clip=False)
 
-    # Meshgrid
     if len(lons.shape) == 1:
         LONS, LATS = np.meshgrid(lons, lats)
     else:
         LONS, LATS = lons, lats
 
     if np.nanmax(data) > 0:
-        contour = ax.contourf(LONS, LATS, data, levels=levels, cmap=cmap, norm=norm, extend='max', transform=ccrs.PlateCarree())
+        contour = ax.contourf(LONS, LATS, data, levels=levels, cmap=cmap, norm=norm, 
+                              extend='max', transform=ccrs.PlateCarree(), zorder=2)
         
-        # Colorbar (Horizontal for landscape?)
-        # Vertical usually saves space on side for landscape if ratio is wide.
-        # But let's stick to vertical right.
-        cb = fig.colorbar(contour, ax=ax, orientation='vertical', pad=0.01, shrink=0.7, aspect=35)
-        cb.ax.tick_params(labelsize=9)
+        cb = fig.colorbar(contour, ax=ax, orientation='vertical', pad=0.02, shrink=0.85, aspect=25)
+        cb.set_ticks(levels)
+        cb.ax.tick_params(labelsize=10)
+        cb.outline.set_edgecolor('black')
+        cb.outline.set_linewidth(1)
+
+    # --- 3. Header & Banner Styling (Fixed Placement) ---
+    time_fmt_init = "%Hz %a, %b %d, %Y"
+    time_fmt_val = "%Hz %a, %b %d, %Y"
     
+    init_str = init_time.strftime(time_fmt_init) if init_time else "Unknown"
+    valid_str = valid_time_end.strftime(time_fmt_val) if valid_time_end else "Unknown"
+    fh_str = f"f{forecast_hour:03d}" if forecast_hour is not None else "f---"
+    
+    period_lbl = "Accumulated"
+    if "24h" in filename_id: period_lbl = "24-hr Accumulated"
+    elif "3d" in filename_id: period_lbl = "72-hr Accumulated"
+    elif "7d" in filename_id: period_lbl = "168-hr Accumulated"
+    elif "day" in filename_id: period_lbl = "24-hr (Daily) Accumulated"
+
+    title_center = f"GFS {period_lbl} Precipitation (mm)"
+    sub_left = "Model: GFS (0.25°)"
+    sub_center = f"Forecast Hour: {fh_str}"
+    sub_right = f"Init: {init_str} / Valid: {valid_str}"
+
+    # Force a draw so we can get the exact pixel/figure coordinates of the map area
+    fig.canvas.draw()
+    pos = ax.get_position()
+    left = pos.x0
+    right = pos.x1
+    
+    # Adjust Y coordinates for the text above the map
+    y_top = pos.y1 + 0.045
+    y_bottom = pos.y1 + 0.015
+    y_line = pos.y1 + 0.005
+
+    # Top line
+    fig.text(left, y_top, "Philippine T/W", ha='left', va='bottom', fontsize=14, weight='bold', color='#888')
+    fig.text(left + 0.22, y_top, title_center, ha='left', va='bottom', fontsize=14, weight='bold', color='black')
+    
+    # Bottom line
+    fig.text(left, y_bottom, sub_left, ha='left', va='bottom', fontsize=11, color='black')
+    fig.text(left + 0.22, y_bottom, sub_center, ha='left', va='bottom', fontsize=11, color='black')
+    fig.text(right, y_bottom, sub_right, ha='right', va='bottom', fontsize=11, color='black')
+    
+    # Separator Line drawn perfectly from the left edge of the map to the right edge
+    import matplotlib.lines as lines
+    line = lines.Line2D((left, right), (y_line, y_line), color='black', linewidth=1, transform=fig.transFigure)
+    fig.add_artist(line)
+
     # Save
     filename = f"{filename_id}.png"
     filepath = os.path.join(OUTPUT_DIR, filename)
-    plt.savefig(filepath, dpi=100, bbox_inches='tight', facecolor='white', transparent=False)
+    plt.savefig(filepath, dpi=120, bbox_inches='tight', facecolor='white', transparent=False)
     print(f"Saved {filepath}")
     plt.close()
 
