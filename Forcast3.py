@@ -59,12 +59,6 @@ try:
     ], check=True)
     data = pd.read_csv(local_csv, comment="#")
 
-    # Copy CSV to public/data/ so the browser can fetch it without CORS
-    import shutil
-    os.makedirs("public/data", exist_ok=True)
-    shutil.copy(local_csv, "public/data/fnv3_large_latest.csv")
-    print("Copied CSV to public/data/fnv3_large_latest.csv")
-
     latest_utc = datetime.strptime(f"{date_str} {hour_str}", "%Y_%m_%d %H").replace(tzinfo=timezone.utc)
     ph_zone = timezone(timedelta(hours=8))
     latest_ph = latest_utc.astimezone(ph_zone)
@@ -285,7 +279,7 @@ try:
     import os
     os.makedirs(output_dir, exist_ok=True)
     output_file = f"{output_dir}/fnv3_tropical_cyclone_5day_forecast_{init_time_str}.png"
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Plot saved to {output_file}")
 except Exception as e:
     print(f"Error saving plot: {str(e)}")

@@ -30,16 +30,23 @@ function pressureColor(p) {
     return "#3498DB";                  // Low Pressure Area
 }
 
-// ── CSV parser ────────────────────────────────────────────────────────────
+// ── CSV parser (robust: handles \r\n, returns cols for diagnostics) ────────
 function parseCSV(text) {
-    const lines = text.split("\n").filter(l => l.trim() && !l.startsWith("#"));
-    const header = lines[0].split(",").map(h => h.trim());
-    return lines.slice(1).map(line => {
+    // Normalize line endings, strip comments
+    const lines = text
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .split("\n")
+        .filter(l => l.trim() && !l.startsWith("#"));
+    if (lines.length < 2) return { rows: [], cols: [] };
+    const cols = lines[0].split(",").map(h => h.trim().toLowerCase());
+    const rows = lines.slice(1).map(line => {
         const vals = line.split(",");
         const row = {};
-        header.forEach((h, i) => { row[h] = vals[i]?.trim(); });
+        cols.forEach((h, i) => { row[h] = vals[i]?.trim(); });
         return row;
     });
+    return { rows, cols };
 }
 
 // ── Local CSV paths served as static assets (committed by GitHub Actions) ──
@@ -71,10 +78,11 @@ export default function SpaghettiPlot() {
 
     const [horizon, setHorizon] = useState("5day");     // '5day' | '15day'
     const [dataset, setDataset] = useState("base");      // 'base' | 'large'
-    const [status, setStatus] = useState("idle");        // idle | loading | ok | error
+    const [status, setStatus] = useState("idle");        // idle | loading | ok | none | error
     const [statusMsg, setStatusMsg] = useState("");
     const [runLabel, setRunLabel] = useState("");
     const [trackCount, setTrackCount] = useState(0);
+    const [rawRowCount, setRawRowCount] = useState(0);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [leafletReady, setLeafletReady] = useState(false);
 
@@ -150,19 +158,20 @@ export default function SpaghettiPlot() {
         setRunLabel(isLarge ? "FNV3 Large Ensemble · latest" : "FNV3 Base · latest");
         setStatusMsg("Parsing tracks…");
 
-        const rows = parseCSV(csvText);
+        const { rows, cols } = parseCSV(csvText);
+        const rawRows = rows.filter(r => r.lead_time_hours !== undefined && r.lat !== undefined);
+        setRawRowCount(rawRows.length);
         const maxHours = horizon === "5day" ? 120 : 360;
 
-        // Group by track_id → sample
+        // Group by track_id → sample (use rawRows to skip header-less rows)
         const grouped = {};
-        for (const row of rows) {
+        for (const row of rawRows) {
             const leadH = parseFloat(row.lead_time_hours);
             if (isNaN(leadH) || leadH > maxHours) continue;
             const lat = parseFloat(row.lat);
             const lon = parseFloat(row.lon);
             const pres = parseFloat(row.minimum_sea_level_pressure_hpa);
             if (isNaN(lat) || isNaN(lon)) continue;
-            // Wrap longitude
             const llon = lon > 180 ? lon - 360 : lon;
             const key = `${row.track_id}__${row.sample}`;
             if (!grouped[key]) grouped[key] = [];
@@ -170,16 +179,13 @@ export default function SpaghettiPlot() {
         }
 
         let drawn = 0;
-        // Track unique origins to place storm markers
         const originSet = {};
 
         for (const [, points] of Object.entries(grouped)) {
             if (points.length < 2) continue;
-            // Sort by lead time
             points.sort((a, b) => a.h - b.h);
             const latlngs = points.map(pt => [pt.lat, pt.lon]);
 
-            // Validate – skip jumps > 10°
             let bad = false;
             for (let i = 1; i < latlngs.length; i++) {
                 if (Math.abs(latlngs[i][0] - latlngs[i-1][0]) > 10 ||
@@ -187,22 +193,18 @@ export default function SpaghettiPlot() {
             }
             if (bad) continue;
 
-            // Gray track line
             L.polyline(latlngs, {
                 color: "#606060", weight: 2, opacity: 0.55,
                 lineCap: "round", lineJoin: "round",
             }).addTo(layerGroupRef.current);
 
-            // Pressure-coloured dot markers
             for (const pt of points) {
-                const col = pressureColor(pt.p);
                 L.circleMarker([pt.lat, pt.lon], {
                     radius: 3.5, color: "white", weight: 0.8,
-                    fillColor: col, fillOpacity: 0.9,
+                    fillColor: pressureColor(pt.p), fillOpacity: 0.9,
                 }).addTo(layerGroupRef.current);
             }
 
-            // Collect unique origins (lead_time_hours === 0)
             const origin = points.find(pt => pt.h === 0);
             if (origin) {
                 const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
@@ -214,13 +216,28 @@ export default function SpaghettiPlot() {
                         .bindTooltip(`Origin: ${origin.lat.toFixed(1)}°N ${origin.lon.toFixed(1)}°E`, { direction: "top" });
                 }
             }
-
             drawn++;
         }
 
         setTrackCount(drawn);
-        setStatus(drawn > 0 ? "ok" : "error");
-        setStatusMsg(drawn > 0 ? "" : "CSV parsed but no valid tracks found.");
+        if (drawn > 0) {
+            setStatus("ok");
+            setStatusMsg("");
+        } else if (rawRows.length > 0) {
+            setStatus("none");
+            setStatusMsg(
+                `${rawRows.length} rows parsed, 0 valid tracks. ` +
+                `Columns detected: [${cols.join(", ")}]. ` +
+                "No active disturbances in current FNV3 run."
+            );
+        } else {
+            setStatus("none");
+            setStatusMsg(
+                `CSV loaded (${rows.length} rows) but columns not matched. ` +
+                `Detected: [${cols.join(", ")}]`
+            );
+        }
+
     }, [leafletReady, horizon, dataset]);
 
     useEffect(() => { loadData(); }, [loadData]);
@@ -236,18 +253,20 @@ export default function SpaghettiPlot() {
                         GDM FNV3 Spaghetti
                     </h1>
                     <span className={`flex-shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border ${
-                        status === "ok" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                        status === "ok"      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
                         status === "loading" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
-                        status === "error" ? "bg-red-500/20 text-red-400 border-red-500/30" :
+                        status === "none"    ? "bg-sky-500/20 text-sky-400 border-sky-500/30" :
+                        status === "error"   ? "bg-red-500/20 text-red-400 border-red-500/30" :
                         "bg-slate-700 text-slate-400 border-slate-600"
                     }`}>
-                        {status === "ok" ? "Live" : status === "loading" ? "…" : status === "error" ? "Err" : "–"}
+                        {status === "ok" ? "Live" : status === "loading" ? "…" : status === "none" ? "Quiet" : status === "error" ? "Err" : "–"}
                     </span>
                 </div>
                 <p className="text-[10px] text-slate-400 font-mono leading-relaxed">
                     {status === "loading" ? statusMsg :
                      status === "error"   ? statusMsg :
-                     status === "ok"      ? `Run: ${runLabel} · ${trackCount} tracks plotted` :
+                     status === "none"    ? statusMsg :
+                     status === "ok"      ? `Run: ${runLabel} · ${trackCount} tracks · ${rawRowCount} rows` :
                      "Select a horizon to load."}
                 </p>
             </div>

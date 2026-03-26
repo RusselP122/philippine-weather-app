@@ -46,7 +46,9 @@ def get_latest_run_url():
 # Load the CSV file, skipping comment lines
 try:
     date_str, hour_str, latest_url = get_latest_run_url()
-    local_csv = fr"C:\Users\Russel\Desktop\Weather alert\FNV3_LARGE_ENSEMBLE_{date_str}T{hour_str}_00_cyclogenesis.csv"
+    import os
+    os.makedirs("temp_data", exist_ok=True)
+    local_csv = f"temp_data/FNV3_LARGE_ENSEMBLE_{date_str}T{hour_str}_00_cyclogenesis.csv"
     print(f"Downloading latest run with curl to: {local_csv}")
     subprocess.run([
         "curl",
@@ -56,6 +58,12 @@ try:
         latest_url,
     ], check=True)
     data = pd.read_csv(local_csv, comment="#")
+
+    # Copy CSV to public/data/ so the browser can fetch it without CORS
+    import shutil
+    os.makedirs("public/data", exist_ok=True)
+    shutil.copy(local_csv, "public/data/fnv3_large_latest.csv")
+    print("Copied CSV to public/data/fnv3_large_latest.csv")
 
     latest_utc = datetime.strptime(f"{date_str} {hour_str}", "%Y_%m_%d %H").replace(tzinfo=timezone.utc)
     ph_zone = timezone(timedelta(hours=8))
