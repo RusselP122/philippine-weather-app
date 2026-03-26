@@ -22,10 +22,10 @@ const loadLeaflet = () =>
 // ── Pressure → colour (matches Forcast3/4.py exactly) ────────────────────
 function pressureColor(p) {
     if (isNaN(p)) return "#3498DB";
-    if (p < 920)   return "#5B0E2D";   // Super Typhoon
-    if (p <= 945)  return "#A83232";   // Typhoon
-    if (p <= 970)  return "#E67E22";   // Severe Tropical Storm
-    if (p <= 990)  return "#F1C40F";   // Tropical Storm
+    if (p < 920) return "#5B0E2D";   // Super Typhoon
+    if (p <= 945) return "#A83232";   // Typhoon
+    if (p <= 970) return "#E67E22";   // Severe Tropical Storm
+    if (p <= 990) return "#F1C40F";   // Tropical Storm
     if (p <= 1005) return "#2ECC71";   // Tropical Depression
     return "#3498DB";                  // Low Pressure Area
 }
@@ -53,21 +53,32 @@ function parseCSV(text) {
 // Forcast.py  → public/data/fnv3_base_latest.csv
 // Forcast3.py → public/data/fnv3_large_latest.csv
 const LOCAL_CSV = {
-    base:  "/data/fnv3_base_latest.csv",
+    base: "/data/fnv3_base_latest.csv",
     large: "/data/fnv3_large_latest.csv",
 };
 
 // ── PAR boundary ──────────────────────────────────────────────────────────
 const PAR = [[5, 115], [15, 115], [21, 120], [25, 120], [25, 135], [5, 135], [5, 115]];
 
+// ── Basin definitions ─────────────────────────────────────────────────────
+const BASINS = [
+    { id: "wpac",  label: "Western Pacific",    center: [18, 130], zoom: 4,  latMin: -5,  latMax: 45,  lonMin: 100,  lonMax: 180  },
+    { id: "spac",  label: "South Pacific",       center: [-15,170], zoom: 4,  latMin: -50, latMax: 0,   lonMin: 130,  lonMax: 230  },
+    { id: "cpac",  label: "Central Pacific",     center: [20,-155], zoom: 4,  latMin: 0,   latMax: 45,  lonMin: -180, lonMax: -120 },
+    { id: "epac",  label: "Eastern Pacific",     center: [15,-100], zoom: 4,  latMin: 0,   latMax: 45,  lonMin: -140, lonMax: -60  },
+    { id: "nio",   label: "North Indian Ocean",  center: [14, 75],  zoom: 4,  latMin: 0,   latMax: 35,  lonMin: 40,   lonMax: 100  },
+    { id: "sio",   label: "Southern Indian",     center: [-20, 75], zoom: 4,  latMin: -50, latMax: 0,   lonMin: 30,   lonMax: 115  },
+    { id: "natl",  label: "North Atlantic",      center: [25,-60],  zoom: 4,  latMin: 0,   latMax: 60,  lonMin: -100, lonMax: -10  },
+];
+
 // ── Pressure legend entries ───────────────────────────────────────────────
 const PRESSURE_LEGEND = [
-    { label: "< 920 hPa · Super Typhoon",        color: "#5B0E2D" },
-    { label: "920–945 hPa · Typhoon",             color: "#A83232" },
+    { label: "< 920 hPa · Super Typhoon", color: "#5B0E2D" },
+    { label: "920–945 hPa · Typhoon", color: "#A83232" },
     { label: "945–970 hPa · Sev. Tropical Storm", color: "#E67E22" },
-    { label: "970–990 hPa · Tropical Storm",      color: "#F1C40F" },
-    { label: "990–1005 hPa · Tropical Dep.",      color: "#2ECC71" },
-    { label: "> 1005 hPa · LPA",                  color: "#3498DB" },
+    { label: "970–990 hPa · Tropical Storm", color: "#F1C40F" },
+    { label: "990–1005 hPa · Tropical Dep.", color: "#2ECC71" },
+    { label: "> 1005 hPa · LPA", color: "#3498DB" },
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────
@@ -76,9 +87,10 @@ export default function SpaghettiPlot() {
     const mapInstanceRef = useRef(null);
     const layerGroupRef = useRef(null);
 
-    const [horizon, setHorizon] = useState("5day");     // '5day' | '15day'
-    const [dataset, setDataset] = useState("base");      // 'base' | 'large'
-    const [status, setStatus] = useState("idle");        // idle | loading | ok | none | error
+    const [horizon, setHorizon] = useState("5day");
+    const [dataset, setDataset] = useState("base");
+    const [basin, setBasin] = useState("wpac");          // default Western Pacific
+    const [status, setStatus] = useState("idle");
     const [statusMsg, setStatusMsg] = useState("");
     const [runLabel, setRunLabel] = useState("");
     const [trackCount, setTrackCount] = useState(0);
@@ -120,6 +132,9 @@ export default function SpaghettiPlot() {
 
             layerGroupRef.current = L.layerGroup().addTo(map);
             mapInstanceRef.current = map;
+            // Fly to default basin
+            const def = BASINS.find(b => b.id === "wpac");
+            map.setView(def.center, def.zoom);
             setLeafletReady(true);
         });
         return () => {
@@ -163,6 +178,9 @@ export default function SpaghettiPlot() {
         setRawRowCount(rawRows.length);
         const maxHours = horizon === "5day" ? 120 : 360;
 
+        // Basin bounds filter
+        const b = BASINS.find(b => b.id === basin);
+
         // Group by track_id → sample (use rawRows to skip header-less rows)
         const grouped = {};
         for (const row of rawRows) {
@@ -178,18 +196,26 @@ export default function SpaghettiPlot() {
             grouped[key].push({ lat, lon: llon, p: pres, h: leadH });
         }
 
+        // Keep only tracks whose origin point falls inside the selected basin
+        const basinFiltered = Object.values(grouped).filter(points => {
+            const origin = points.find(p => p.h === 0) || points[0];
+            if (!origin) return false;
+            return origin.lat >= b.latMin && origin.lat <= b.latMax &&
+                   origin.lon >= b.lonMin && origin.lon <= b.lonMax;
+        });
+
         let drawn = 0;
         const originSet = {};
 
-        for (const [, points] of Object.entries(grouped)) {
+        for (const points of basinFiltered) {
             if (points.length < 2) continue;
             points.sort((a, b) => a.h - b.h);
             const latlngs = points.map(pt => [pt.lat, pt.lon]);
 
             let bad = false;
             for (let i = 1; i < latlngs.length; i++) {
-                if (Math.abs(latlngs[i][0] - latlngs[i-1][0]) > 10 ||
-                    Math.abs(latlngs[i][1] - latlngs[i-1][1]) > 10) { bad = true; break; }
+                if (Math.abs(latlngs[i][0] - latlngs[i - 1][0]) > 10 ||
+                    Math.abs(latlngs[i][1] - latlngs[i - 1][1]) > 10) { bad = true; break; }
             }
             if (bad) continue;
 
@@ -238,7 +264,14 @@ export default function SpaghettiPlot() {
             );
         }
 
-    }, [leafletReady, horizon, dataset]);
+    }, [leafletReady, horizon, dataset, basin]);
+
+    // Fly map to basin when basin selection changes
+    useEffect(() => {
+        if (!mapInstanceRef.current) return;
+        const b = BASINS.find(b => b.id === basin);
+        if (b) mapInstanceRef.current.flyTo(b.center, b.zoom, { duration: 1 });
+    }, [basin]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -252,22 +285,21 @@ export default function SpaghettiPlot() {
                     <h1 className="text-base font-bold text-white leading-tight">
                         GDM FNV3 Spaghetti
                     </h1>
-                    <span className={`flex-shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border ${
-                        status === "ok"      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
-                        status === "loading" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
-                        status === "none"    ? "bg-sky-500/20 text-sky-400 border-sky-500/30" :
-                        status === "error"   ? "bg-red-500/20 text-red-400 border-red-500/30" :
-                        "bg-slate-700 text-slate-400 border-slate-600"
-                    }`}>
+                    <span className={`flex-shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border ${status === "ok" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                            status === "loading" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
+                                status === "none" ? "bg-sky-500/20 text-sky-400 border-sky-500/30" :
+                                    status === "error" ? "bg-red-500/20 text-red-400 border-red-500/30" :
+                                        "bg-slate-700 text-slate-400 border-slate-600"
+                        }`}>
                         {status === "ok" ? "Live" : status === "loading" ? "…" : status === "none" ? "Quiet" : status === "error" ? "Err" : "–"}
                     </span>
                 </div>
                 <p className="text-[10px] text-slate-400 font-mono leading-relaxed">
                     {status === "loading" ? statusMsg :
-                     status === "error"   ? statusMsg :
-                     status === "none"    ? statusMsg :
-                     status === "ok"      ? `Run: ${runLabel} · ${trackCount} tracks · ${rawRowCount} rows` :
-                     "Select a horizon to load."}
+                        status === "error" ? statusMsg :
+                            status === "none" ? statusMsg :
+                                status === "ok" ? `Run: ${runLabel} · ${trackCount} tracks · ${rawRowCount} rows` :
+                                    "Select a horizon to load."}
                 </p>
             </div>
 
@@ -276,23 +308,22 @@ export default function SpaghettiPlot() {
                 <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Dataset</h2>
                 <div className="flex rounded-lg overflow-hidden border border-slate-700 mb-3">
                     {[{ id: "base", label: "FNV3 Base", sub: "Forcast.py" },
-                      { id: "large", label: "Large Ensemble", sub: "Forcast3.py" }]
+                    { id: "large", label: "Large Ensemble", sub: "Forcast3.py" }]
                         .map(opt => (
-                        <button
-                            key={opt.id}
-                            onClick={() => setDataset(opt.id)}
-                            className={`flex-1 py-2 px-2 text-left transition-colors cursor-pointer ${
-                                dataset === opt.id
-                                    ? "bg-cyan-700 text-white"
-                                    : "bg-slate-900 text-slate-400 hover:bg-slate-800"
-                            }`}
-                        >
-                            <span className="block text-xs font-bold">{opt.label}</span>
-                            <span className={`block text-[9px] font-mono mt-0.5 ${dataset === opt.id ? "text-cyan-200" : "text-slate-600"}`}>
-                                {opt.sub}
-                            </span>
-                        </button>
-                    ))}
+                            <button
+                                key={opt.id}
+                                onClick={() => setDataset(opt.id)}
+                                className={`flex-1 py-2 px-2 text-left transition-colors cursor-pointer ${dataset === opt.id
+                                        ? "bg-cyan-700 text-white"
+                                        : "bg-slate-900 text-slate-400 hover:bg-slate-800"
+                                    }`}
+                            >
+                                <span className="block text-xs font-bold">{opt.label}</span>
+                                <span className={`block text-[9px] font-mono mt-0.5 ${dataset === opt.id ? "text-cyan-200" : "text-slate-600"}`}>
+                                    {opt.sub}
+                                </span>
+                            </button>
+                        ))}
                 </div>
             </div>
 
@@ -301,23 +332,22 @@ export default function SpaghettiPlot() {
                 <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Forecast Horizon</h2>
                 <div className="flex rounded-lg overflow-hidden border border-slate-700">
                     {[{ id: "5day", label: "5-Day (≤ 120 h)", sub: "Forcast3 equivalent" },
-                      { id: "15day", label: "15-Day (≤ 360 h)", sub: "forcast4 equivalent" }]
+                    { id: "15day", label: "15-Day (≤ 360 h)", sub: "forcast4 equivalent" }]
                         .map(opt => (
-                        <button
-                            key={opt.id}
-                            onClick={() => setHorizon(opt.id)}
-                            className={`flex-1 py-2.5 px-2 text-left transition-colors cursor-pointer ${
-                                horizon === opt.id
-                                    ? "bg-cyan-600 text-white"
-                                    : "bg-slate-900 text-slate-400 hover:bg-slate-800"
-                            }`}
-                        >
-                            <span className="block text-xs font-bold">{opt.label}</span>
-                            <span className={`block text-[9px] font-mono mt-0.5 ${horizon === opt.id ? "text-cyan-200" : "text-slate-600"}`}>
-                                {opt.sub}
-                            </span>
-                        </button>
-                    ))}
+                            <button
+                                key={opt.id}
+                                onClick={() => setHorizon(opt.id)}
+                                className={`flex-1 py-2.5 px-2 text-left transition-colors cursor-pointer ${horizon === opt.id
+                                        ? "bg-cyan-600 text-white"
+                                        : "bg-slate-900 text-slate-400 hover:bg-slate-800"
+                                    }`}
+                            >
+                                <span className="block text-xs font-bold">{opt.label}</span>
+                                <span className={`block text-[9px] font-mono mt-0.5 ${horizon === opt.id ? "text-cyan-200" : "text-slate-600"}`}>
+                                    {opt.sub}
+                                </span>
+                            </button>
+                        ))}
                 </div>
             </div>
 
@@ -325,11 +355,10 @@ export default function SpaghettiPlot() {
             <button
                 onClick={loadData}
                 disabled={status === "loading"}
-                className={`w-full py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-                    status === "loading"
+                className={`w-full py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${status === "loading"
                         ? "bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed"
                         : "bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
-                }`}
+                    }`}
             >
                 {status === "loading" ? "Loading…" : "↻ Refresh Data"}
             </button>
