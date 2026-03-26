@@ -60,6 +60,12 @@ try:
     ], check=True)
     data = pd.read_csv(local_csv, comment="#")
 
+    # Copy CSV to public/data/ so the browser can fetch it without CORS
+    import shutil
+    os.makedirs("public/data", exist_ok=True)
+    shutil.copy(local_csv, "public/data/fnv3_base_latest.csv")
+    print("Copied CSV to public/data/fnv3_base_latest.csv")
+
     latest_utc = datetime.strptime(f"{date_str} {hour_str}", "%Y_%m_%d %H").replace(tzinfo=timezone.utc)
     ph_zone = timezone(timedelta(hours=8))
     latest_ph = latest_utc.astimezone(ph_zone)

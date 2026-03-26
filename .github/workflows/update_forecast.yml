@@ -44,8 +44,9 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Add any new images in the public/assets folder
+          # Add forecast PNGs and the proxied CSV for browser use
           git add public/assets/*.png
+          git add public/data/fnv3_base_latest.csv || true
           
           # Commit if there are changes
           if git diff --staged --quiet; then

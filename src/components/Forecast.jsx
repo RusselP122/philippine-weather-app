@@ -185,6 +185,17 @@ const Forecast = () => {
           </div>
 
           <div className="flex flex-col items-start md:items-end gap-3 flex-shrink-0">
+            {/* Interactive Spaghetti Map button */}
+            <a
+              href="/spaghetti"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-slate-500 text-slate-200 text-xs font-semibold rounded-lg transition-colors shadow-sm cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+              Interactive Map
+            </a>
+
             {/* Model Toggle */}
             <div className="flex bg-slate-900/80 rounded-lg p-1 border border-slate-700">
               <button

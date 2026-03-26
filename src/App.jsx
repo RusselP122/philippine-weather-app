@@ -15,6 +15,7 @@ import Earthquake from "./components/Earthquake";
 import DailySynoptic from "./components/DailySynoptic";
 import Volcanoes from "./components/Volcanoes";
 import ForecastModels from "./components/ForecastModels";
+import SpaghettiPlot from "./components/SpaghettiPlot";
 import Footer from "./components/Footer";
 import EnsoMonitor from "./components/EnsoMonitor";
 import LightningDetection from "./components/LightningDetection";
@@ -163,6 +164,18 @@ function AppContent() {
         <Navbar />
         <main className="flex-grow">
           <ForecastModels />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (path === "/spaghetti") {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <SpaghettiPlot />
         </main>
         <Footer />
       </div>
