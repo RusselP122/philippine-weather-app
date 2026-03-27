@@ -62,13 +62,13 @@ const PAR = [[5, 115], [15, 115], [21, 120], [25, 120], [25, 135], [5, 135], [5,
 
 // ── Basin definitions ─────────────────────────────────────────────────────
 const BASINS = [
-    { id: "wpac",  label: "Western Pacific",    center: [18, 130], zoom: 4,  latMin: -5,  latMax: 45,  lonMin: 100,  lonMax: 180  },
-    { id: "spac",  label: "South Pacific",       center: [-15,170], zoom: 4,  latMin: -50, latMax: 0,   lonMin: 130,  lonMax: 230  },
-    { id: "cpac",  label: "Central Pacific",     center: [20,-155], zoom: 4,  latMin: 0,   latMax: 45,  lonMin: -180, lonMax: -120 },
-    { id: "epac",  label: "Eastern Pacific",     center: [15,-100], zoom: 4,  latMin: 0,   latMax: 45,  lonMin: -140, lonMax: -60  },
-    { id: "nio",   label: "North Indian Ocean",  center: [14, 75],  zoom: 4,  latMin: 0,   latMax: 35,  lonMin: 40,   lonMax: 100  },
-    { id: "sio",   label: "Southern Indian",     center: [-20, 75], zoom: 4,  latMin: -50, latMax: 0,   lonMin: 30,   lonMax: 115  },
-    { id: "natl",  label: "North Atlantic",      center: [25,-60],  zoom: 4,  latMin: 0,   latMax: 60,  lonMin: -100, lonMax: -10  },
+    { id: "wpac", label: "Western Pacific", center: [18, 130], zoom: 4, latMin: -5, latMax: 45, lonMin: 100, lonMax: 180 },
+    { id: "spac", label: "South Pacific", center: [-15, 170], zoom: 4, latMin: -50, latMax: 0, lonMin: 130, lonMax: 230 },
+    { id: "cpac", label: "Central Pacific", center: [20, -155], zoom: 4, latMin: 0, latMax: 45, lonMin: -180, lonMax: -120 },
+    { id: "epac", label: "Eastern Pacific", center: [15, -100], zoom: 4, latMin: 0, latMax: 45, lonMin: -140, lonMax: -60 },
+    { id: "nio", label: "North Indian Ocean", center: [14, 75], zoom: 4, latMin: 0, latMax: 35, lonMin: 40, lonMax: 100 },
+    { id: "sio", label: "Southern Indian", center: [-20, 75], zoom: 4, latMin: -50, latMax: 0, lonMin: 30, lonMax: 115 },
+    { id: "natl", label: "North Atlantic", center: [25, -60], zoom: 4, latMin: 0, latMax: 60, lonMin: -100, lonMax: -10 },
 ];
 
 // ── Pressure legend entries ───────────────────────────────────────────────
@@ -104,18 +104,39 @@ export default function SpaghettiPlot() {
         loadLeaflet().then((L) => {
             if (mapInstanceRef.current || !mapRef.current) return;
 
-            const map = L.map(mapRef.current, { zoomControl: false }).setView([18, 130], 4);
+            const map = L.map(mapRef.current, {
+                zoomControl: false,
+                worldCopyJump: false,
+                maxBounds: [[-85, -180], [85, 180]],
+                maxBoundsViscosity: 1.0,
+                minZoom: 3
+            }).setView([18, 130], 4);
             L.control.zoom({ position: "bottomright" }).addTo(map);
 
             L.tileLayer(
                 "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
-                { attribution: "© CARTO", subdomains: "abcd", maxZoom: 19 }
+                { attribution: "© CARTO", subdomains: "abcd", maxZoom: 19, noWrap: true }
             ).addTo(map);
 
-            // PAR boundary
-            L.polyline(PAR, { color: "#3b82f6", weight: 1.8, dashArray: "5,7", opacity: 0.85 }).addTo(map);
+            // Fetch and add countries GeoJSON
+            fetch('/assets/country.0.1.json')
+                .then(res => res.json())
+                .then(data => {
+                    L.geoJSON(data, {
+                        style: {
+                            color: "#FFD700",
+                            weight: 1,
+                            opacity: 0.6,
+                            fillOpacity: 0,
+                        }
+                    }).addTo(map);
+                })
+                .catch(err => console.error("Error loading countries topojson:", err));
 
-            // Inject pulse CSS
+            // PAR boundary (solid red)
+            L.polyline(PAR, { color: "#ef4444", weight: 2 }).addTo(map);
+
+            // Inject pulse CSS and map background
             if (!document.getElementById("fnv3-pulse-css")) {
                 const s = document.createElement("style");
                 s.id = "fnv3-pulse-css";
@@ -126,6 +147,7 @@ export default function SpaghettiPlot() {
                     0%{transform:scale(.9);box-shadow:0 0 0 0 rgba(239,68,68,.7)}
                     70%{transform:scale(1);box-shadow:0 0 0 8px rgba(239,68,68,0)}
                     100%{transform:scale(.9);box-shadow:0 0 0 0 rgba(239,68,68,0)}}
+                  .leaflet-container { background: #0f172a !important; }
                 `;
                 document.head.appendChild(s);
             }
@@ -170,10 +192,16 @@ export default function SpaghettiPlot() {
             return;
         }
 
-        setRunLabel(isLarge ? "FNV3 Large Ensemble · latest" : "FNV3 Base · latest");
-        setStatusMsg("Parsing tracks…");
-
         const { rows, cols } = parseCSV(csvText);
+
+        // Determine init time from first available row
+        let runInitTime = "latest";
+        if (rows.length > 0 && rows[0].init_time) {
+            runInitTime = rows[0].init_time;
+        }
+
+        setRunLabel(isLarge ? `FNV3 Large Ensemble · ${runInitTime}` : `FNV3 Base · ${runInitTime}`);
+        setStatusMsg("Parsing tracks…");
         const rawRows = rows.filter(r => r.lead_time_hours !== undefined && r.lat !== undefined);
         setRawRowCount(rawRows.length);
         const maxHours = horizon === "5day" ? 120 : 360;
@@ -201,7 +229,7 @@ export default function SpaghettiPlot() {
             const origin = points.find(p => p.h === 0) || points[0];
             if (!origin) return false;
             return origin.lat >= b.latMin && origin.lat <= b.latMax &&
-                   origin.lon >= b.lonMin && origin.lon <= b.lonMax;
+                origin.lon >= b.lonMin && origin.lon <= b.lonMax;
         });
 
         let drawn = 0;
@@ -251,17 +279,10 @@ export default function SpaghettiPlot() {
             setStatusMsg("");
         } else if (rawRows.length > 0) {
             setStatus("none");
-            setStatusMsg(
-                `${rawRows.length} rows parsed, 0 valid tracks. ` +
-                `Columns detected: [${cols.join(", ")}]. ` +
-                "No active disturbances in current FNV3 run."
-            );
+            setStatusMsg("No active tropical disturbances are being tracked in the current FNV3 run.");
         } else {
             setStatus("none");
-            setStatusMsg(
-                `CSV loaded (${rows.length} rows) but columns not matched. ` +
-                `Detected: [${cols.join(", ")}]`
-            );
+            setStatusMsg("No tracks found in the current FNV3 run data.");
         }
 
     }, [leafletReady, horizon, dataset, basin]);
@@ -286,21 +307,40 @@ export default function SpaghettiPlot() {
                         GDM FNV3 Spaghetti
                     </h1>
                     <span className={`flex-shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border ${status === "ok" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
-                            status === "loading" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
-                                status === "none" ? "bg-sky-500/20 text-sky-400 border-sky-500/30" :
-                                    status === "error" ? "bg-red-500/20 text-red-400 border-red-500/30" :
-                                        "bg-slate-700 text-slate-400 border-slate-600"
+                        status === "loading" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
+                            status === "none" ? "bg-sky-500/20 text-sky-400 border-sky-500/30" :
+                                status === "error" ? "bg-red-500/20 text-red-400 border-red-500/30" :
+                                    "bg-slate-700 text-slate-400 border-slate-600"
                         }`}>
                         {status === "ok" ? "Live" : status === "loading" ? "…" : status === "none" ? "Quiet" : status === "error" ? "Err" : "–"}
                     </span>
                 </div>
-                <p className="text-[10px] text-slate-400 font-mono leading-relaxed">
+                <p className="text-[10px] text-slate-400 font-mono leading-relaxed mt-2">
                     {status === "loading" ? statusMsg :
                         status === "error" ? statusMsg :
                             status === "none" ? statusMsg :
-                                status === "ok" ? `Run: ${runLabel} · ${trackCount} tracks · ${rawRowCount} rows` :
+                                status === "ok" ? `Run: ${runLabel}` :
                                     "Select a horizon to load."}
                 </p>
+            </div>
+
+            {/* Basin selector */}
+            <div>
+                <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Basin</h2>
+                <div className="flex flex-col gap-1">
+                    {BASINS.map(opt => (
+                        <button
+                            key={opt.id}
+                            onClick={() => setBasin(opt.id)}
+                            className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${basin === opt.id
+                                    ? "bg-cyan-600 text-white"
+                                    : "bg-slate-900 text-slate-400 hover:bg-slate-700 hover:text-white"
+                                }`}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {/* Dataset selector */}
@@ -314,8 +354,8 @@ export default function SpaghettiPlot() {
                                 key={opt.id}
                                 onClick={() => setDataset(opt.id)}
                                 className={`flex-1 py-2 px-2 text-left transition-colors cursor-pointer ${dataset === opt.id
-                                        ? "bg-cyan-700 text-white"
-                                        : "bg-slate-900 text-slate-400 hover:bg-slate-800"
+                                    ? "bg-cyan-700 text-white"
+                                    : "bg-slate-900 text-slate-400 hover:bg-slate-800"
                                     }`}
                             >
                                 <span className="block text-xs font-bold">{opt.label}</span>
@@ -338,8 +378,8 @@ export default function SpaghettiPlot() {
                                 key={opt.id}
                                 onClick={() => setHorizon(opt.id)}
                                 className={`flex-1 py-2.5 px-2 text-left transition-colors cursor-pointer ${horizon === opt.id
-                                        ? "bg-cyan-600 text-white"
-                                        : "bg-slate-900 text-slate-400 hover:bg-slate-800"
+                                    ? "bg-cyan-600 text-white"
+                                    : "bg-slate-900 text-slate-400 hover:bg-slate-800"
                                     }`}
                             >
                                 <span className="block text-xs font-bold">{opt.label}</span>
@@ -356,8 +396,8 @@ export default function SpaghettiPlot() {
                 onClick={loadData}
                 disabled={status === "loading"}
                 className={`w-full py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${status === "loading"
-                        ? "bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed"
-                        : "bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                    ? "bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed"
+                    : "bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
                     }`}
             >
                 {status === "loading" ? "Loading…" : "↻ Refresh Data"}
