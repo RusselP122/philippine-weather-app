@@ -3,6 +3,7 @@ import { Play, Pause, X, SlidersHorizontal } from "lucide-react";
 
 const ForecastModels = () => {
     const [activeParam, setActiveParam] = useState("rainfall");
+    const [activeModel, setActiveModel] = useState("gfs"); // "gfs" | "aifs"
     const [rainfallView, setRainfallView] = useState("daily"); // 'daily' | '24h' | '3d' | '7d'
     const [metadata, setMetadata] = useState(null);
     const [frameIndex, setFrameIndex] = useState(0);
@@ -11,7 +12,15 @@ const ForecastModels = () => {
     const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile drawer state
 
     useEffect(() => {
-        const url = activeParam === "rainfall" ? "/data/rainfall_meta.json" : "/data/wind_meta.json";
+        let url = "";
+        if (activeParam === "rainfall") {
+            url = "/data/rainfall_meta.json";
+        } else if (activeParam === "wind") {
+            url = "/data/wind_meta.json";
+        } else if (activeParam === "precip_mslp") {
+            url = activeModel === "aifs" ? "/data/precip_mslp_aifs_meta.json" : "/data/precip_mslp_meta.json";
+        }
+
         fetch(url)
             .then(res => res.json())
             .then(data => {
@@ -19,7 +28,7 @@ const ForecastModels = () => {
                 if (data.animation_frames) {
                     data.animation_frames.forEach(frame => {
                         const img = new Image();
-                        const folder = activeParam === "rainfall" ? "rainfall" : "wind";
+                        const folder = activeParam === "rainfall" ? "rainfall" : activeParam === "wind" ? "wind" : (activeModel === "aifs" ? "precip_mslp_aifs" : "precip_mslp");
                         img.src = `/images/${folder}/${frame}.png?t=${imageTimestamp}`;
                     });
                 }
@@ -27,7 +36,7 @@ const ForecastModels = () => {
             .catch(err => console.error("Failed to load metadata", err));
         setFrameIndex(0);
         setIsPlaying(false);
-    }, [activeParam, imageTimestamp]);
+    }, [activeParam, activeModel, imageTimestamp]);
 
     const frames = metadata?.animation_frames || [];
     const currentFrameName = frames[frameIndex] || "";
@@ -41,11 +50,17 @@ const ForecastModels = () => {
         imagePath = `/images/rainfall/${currentFrameName}.png`;
     } else if (activeParam === "wind" && currentFrameName) {
         imagePath = `/images/wind/${currentFrameName}.png`;
+    } else if (activeParam === "precip_mslp" && currentFrameName) {
+        const folder = activeModel === "aifs" ? "precip_mslp_aifs" : "precip_mslp";
+        imagePath = `/images/${folder}/${currentFrameName}.png`;
     }
 
     let stepHours = 0;
     let dayNum = 1;
     if (activeParam === "wind" && currentFrameName) {
+        stepHours = parseInt(currentFrameName.split('_').pop(), 10) || 0;
+        dayNum = Math.floor(stepHours / 24) + 1;
+    } else if (activeParam === "precip_mslp" && currentFrameName) {
         stepHours = parseInt(currentFrameName.split('_').pop(), 10) || 0;
         dayNum = Math.floor(stepHours / 24) + 1;
     } else if (activeParam === "rainfall" && currentFrameName) {
@@ -80,7 +95,7 @@ const ForecastModels = () => {
                 <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Weather Parameters</h2>
                 <div className="space-y-2">
 
-                    <button onClick={() => { setActiveParam("rainfall"); setRainfallView("daily"); setSidebarOpen(false); }} className={btnClass("rainfall")}>
+                    <button onClick={() => { setActiveParam("rainfall"); setActiveModel("gfs"); setRainfallView("daily"); setSidebarOpen(false); }} className={btnClass("rainfall")}>
                         {activeParam === "rainfall" && <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-500"></div>}
                         <div className="flex items-center gap-3 pl-2">
                             <div className="w-3 h-3 rounded-full bg-blue-500 flex-shrink-0"></div>
@@ -107,7 +122,7 @@ const ForecastModels = () => {
                         </div>
                     )}
 
-                    <button onClick={() => { setActiveParam("wind"); setSidebarOpen(false); }} className={btnClass("wind")}>
+                    <button onClick={() => { setActiveParam("wind"); setActiveModel("aifs"); setSidebarOpen(false); }} className={btnClass("wind")}>
                         {activeParam === "wind" && <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-500"></div>}
                         <div className="flex items-center gap-3 pl-2">
                             <div className="relative w-4 h-4 flex-shrink-0">
@@ -121,10 +136,14 @@ const ForecastModels = () => {
                         </div>
                     </button>
 
-                    <button className={btnClass("temp") + " opacity-50 cursor-not-allowed"}>
+                    <button onClick={() => { setActiveParam("precip_mslp"); setSidebarOpen(false); }} className={btnClass("precip_mslp")}>
+                        {activeParam === "precip_mslp" && <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-500"></div>}
                         <div className="flex items-center gap-3 pl-2">
-                            <div className="w-3 h-3 rounded-full bg-gradient-to-t from-orange-500 to-red-500 flex-shrink-0"></div>
-                            <span className="text-sm font-medium text-slate-300">Temperature</span>
+                            <div className="w-3 h-3 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex-shrink-0"></div>
+                            <div>
+                                <span className={`block text-sm ${activeParam === "precip_mslp" ? "font-bold text-white" : "font-medium text-slate-300"}`}>Precip + MSLP</span>
+                                {activeParam === "precip_mslp" && <span className="block text-[10px] text-cyan-300 font-mono mt-0.5">6h Rate + Thickness</span>}
+                            </div>
                         </div>
                     </button>
 
@@ -145,10 +164,22 @@ const ForecastModels = () => {
                 <div className="mb-4">
                     <label className="block text-xs text-slate-500 mb-2 font-mono">Select Forecast Model</label>
                     <div className="grid grid-cols-2 gap-2">
-                        <button className={`px-3 py-2 text-xs font-bold font-mono rounded border transition ${activeParam === "wind" ? "bg-cyan-600 text-white border-cyan-500 hover:bg-cyan-500" : "bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500"}`}>
+                        <button 
+                            onClick={() => {
+                                setActiveModel("aifs");
+                                if (activeParam === "rainfall") setActiveParam("wind"); // Fallback if param doesn't support AIFS
+                            }}
+                            className={`px-3 py-2 text-xs font-bold font-mono rounded border transition ${activeModel === "aifs" ? "bg-cyan-600 text-white border-cyan-500 hover:bg-cyan-500" : "bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white"}`}
+                        >
                             ECMWF AIFS
                         </button>
-                        <button className={`px-3 py-2 text-xs font-bold font-mono rounded border transition ${activeParam === "rainfall" ? "bg-cyan-600 text-white border-cyan-500 hover:bg-cyan-500" : "bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500"}`}>
+                        <button 
+                            onClick={() => {
+                                setActiveModel("gfs");
+                                if (activeParam === "wind") setActiveParam("rainfall"); // Fallback
+                            }}
+                            className={`px-3 py-2 text-xs font-bold font-mono rounded border transition ${activeModel === "gfs" ? "bg-cyan-600 text-white border-cyan-500 hover:bg-cyan-500" : "bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white"}`}
+                        >
                             GFS 0.25°
                         </button>
                         <button className="px-3 py-2 text-xs font-medium font-mono rounded bg-slate-900 text-slate-400 border border-slate-700 opacity-50 cursor-not-allowed">
@@ -212,7 +243,9 @@ const ForecastModels = () => {
                     <span className="text-xs font-semibold text-slate-300 truncate">
                         {activeParam === "rainfall"
                             ? `Precipitation · ${rainfallView === "daily" ? "Daily Animation" : rainfallView === "24h" ? "1-Day Total" : rainfallView === "3d" ? "3-Day Total" : "7-Day Total"}`
-                            : "Wind & MSLP · ECMWF AIFS"}
+                            : activeParam === "precip_mslp"
+                                ? `6h Precip Rate + MSLP + Thickness · ${activeModel === "aifs" ? "ECMWF AIFS" : "GFS"}`
+                                : "Wind & MSLP · ECMWF AIFS"}
                     </span>
                 </div>
 
@@ -262,7 +295,7 @@ const ForecastModels = () => {
                                 : "Loading"}
                         </div>
                         <div className="text-[9px] lg:text-[10px] text-cyan-400 font-mono uppercase tracking-wider">
-                            T {activeParam === "wind" ? `+${stepHours}h` : `day ${dayNum}`}
+                            T {activeParam === "wind" ? `+${stepHours}h` : activeParam === "precip_mslp" ? `+${stepHours}h` : `day ${dayNum}`}
                         </div>
                     </div>
 

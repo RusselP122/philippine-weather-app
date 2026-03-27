@@ -33,6 +33,8 @@ jobs:
       run: |
         mkdir -p public/images/rainfall
         mkdir -p public/images/wind
+        mkdir -p public/images/precip_mslp
+        mkdir -p public/images/precip_mslp_aifs
         mkdir -p public/data
 
     - name: Run Rain Generation Script
@@ -41,8 +43,14 @@ jobs:
     - name: Run Wind Generation Script (ECMWF AIFS)
       run: python wind_aifs.py
 
+    - name: Run Precip + MSLP + Thickness Script (GFS)
+      run: python precip_mslp_thickness.py
+
+    - name: Run Precip + MSLP + Thickness Script (AIFS)
+      run: python precip_mslp_aifs.py
+
     - name: Commit and Push Changes
       uses: stefanzweifel/git-auto-commit-action@v4
       with:
-        commit_message: "Update Weather Forecast Maps (Rainfall & Wind) [Automated]"
-        file_pattern: 'public/images/rainfall/*.png public/images/wind/*.png public/images/rainfall/*.gif public/images/wind/*.gif public/data/*.json'
+        commit_message: "Update Weather Forecast Maps (Rainfall, Wind, Precip+MSLP) [Automated]"
+        file_pattern: 'public/images/rainfall/*.png public/images/wind/*.png public/images/precip_mslp/*.png public/images/precip_mslp_aifs/*.png public/images/rainfall/*.gif public/images/wind/*.gif public/data/*.json'
