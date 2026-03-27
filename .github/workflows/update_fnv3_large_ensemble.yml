@@ -46,7 +46,7 @@ jobs:
           
           # Add forecast PNGs and the proxied CSV for browser use
           git add public/assets/fnv3_*.png
-          git add public/data/fnv3_large_latest.csv || true
+          git add -f public/data/fnv3_large_latest.csv || true
           
           # Commit if there are changes
           if git diff --staged --quiet; then
