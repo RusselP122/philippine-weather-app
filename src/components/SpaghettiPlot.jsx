@@ -347,21 +347,18 @@ export default function SpaghettiPlot() {
             <div>
                 <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Dataset</h2>
                 <div className="flex rounded-lg overflow-hidden border border-slate-700 mb-3">
-                    {[{ id: "base", label: "FNV3 Base", sub: "Forcast.py" },
-                    { id: "large", label: "Large Ensemble", sub: "Forcast3.py" }]
+                    {[{ id: "base", label: "FNV3 Base" },
+                    { id: "large", label: "Large Ensemble" }]
                         .map(opt => (
                             <button
                                 key={opt.id}
                                 onClick={() => setDataset(opt.id)}
-                                className={`flex-1 py-2 px-2 text-left transition-colors cursor-pointer ${dataset === opt.id
+                                className={`flex-1 py-2 px-2 text-left transition-colors cursor-pointer flex items-center justify-center ${dataset === opt.id
                                     ? "bg-cyan-700 text-white"
                                     : "bg-slate-900 text-slate-400 hover:bg-slate-800"
                                     }`}
                             >
-                                <span className="block text-xs font-bold">{opt.label}</span>
-                                <span className={`block text-[9px] font-mono mt-0.5 ${dataset === opt.id ? "text-cyan-200" : "text-slate-600"}`}>
-                                    {opt.sub}
-                                </span>
+                                <span className="block text-xs font-bold text-center">{opt.label}</span>
                             </button>
                         ))}
                 </div>
@@ -371,21 +368,18 @@ export default function SpaghettiPlot() {
             <div>
                 <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Forecast Horizon</h2>
                 <div className="flex rounded-lg overflow-hidden border border-slate-700">
-                    {[{ id: "5day", label: "5-Day (≤ 120 h)", sub: "Forcast3 equivalent" },
-                    { id: "15day", label: "15-Day (≤ 360 h)", sub: "forcast4 equivalent" }]
+                    {[{ id: "5day", label: "5-Day (≤ 120 h)" },
+                    { id: "15day", label: "15-Day (≤ 360 h)" }]
                         .map(opt => (
                             <button
                                 key={opt.id}
                                 onClick={() => setHorizon(opt.id)}
-                                className={`flex-1 py-2.5 px-2 text-left transition-colors cursor-pointer ${horizon === opt.id
+                                className={`flex-1 py-3 px-2 text-left transition-colors cursor-pointer flex items-center justify-center ${horizon === opt.id
                                     ? "bg-cyan-600 text-white"
                                     : "bg-slate-900 text-slate-400 hover:bg-slate-800"
                                     }`}
                             >
-                                <span className="block text-xs font-bold">{opt.label}</span>
-                                <span className={`block text-[9px] font-mono mt-0.5 ${horizon === opt.id ? "text-cyan-200" : "text-slate-600"}`}>
-                                    {opt.sub}
-                                </span>
+                                <span className="block text-xs font-bold text-center">{opt.label}</span>
                             </button>
                         ))}
                 </div>

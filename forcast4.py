@@ -58,6 +58,7 @@ try:
         latest_url,
     ], check=True)
     data = pd.read_csv(local_csv, comment="#")
+    data.columns = data.columns.str.strip()
 
     # Copy CSV to public/data/ so the browser can fetch it without CORS
     import shutil

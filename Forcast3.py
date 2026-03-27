@@ -58,6 +58,7 @@ try:
         latest_url,
     ], check=True)
     data = pd.read_csv(local_csv, comment="#")
+    data.columns = data.columns.str.strip()
 
     latest_utc = datetime.strptime(f"{date_str} {hour_str}", "%Y_%m_%d %H").replace(tzinfo=timezone.utc)
     ph_zone = timezone(timedelta(hours=8))
