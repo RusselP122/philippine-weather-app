@@ -202,7 +202,7 @@ export default function SpaghettiPlot() {
 
         setRunLabel(isLarge ? `FNV3 Large Ensemble · ${runInitTime}` : `FNV3 Base · ${runInitTime}`);
         setStatusMsg("Parsing tracks…");
-        const rawRows = rows.filter(r => r.lead_time_hours !== undefined && r.lat !== undefined);
+        const rawRows = rows.filter(r => (r.lead_time_hours !== undefined || r.lead_time !== undefined) && r.lat !== undefined);
         setRawRowCount(rawRows.length);
         const maxHours = horizon === "5day" ? 120 : 360;
 
@@ -212,7 +212,16 @@ export default function SpaghettiPlot() {
         // Group by track_id → sample (use rawRows to skip header-less rows)
         const grouped = {};
         for (const row of rawRows) {
-            const leadH = parseFloat(row.lead_time_hours);
+            let leadH = parseFloat(row.lead_time_hours);
+            if (isNaN(leadH) || row.lead_time_hours === undefined) {
+                const str = row.lead_time || "";
+                const parts = str.match(/(?:(\d+)\s+days\s+)?(\d+):(\d+):(\d+)/);
+                if (parts) {
+                    const d = parseInt(parts[1] || 0);
+                    const h = parseInt(parts[2] || 0);
+                    leadH = d * 24 + h;
+                }
+            }
             if (isNaN(leadH) || leadH > maxHours) continue;
             const lat = parseFloat(row.lat);
             const lon = parseFloat(row.lon);

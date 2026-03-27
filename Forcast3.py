@@ -59,6 +59,8 @@ try:
     ], check=True)
     data = pd.read_csv(local_csv, comment="#")
     data.columns = data.columns.str.strip()
+    if 'lead_time' in data.columns and 'lead_time_hours' not in data.columns:
+        data['lead_time_hours'] = pd.to_timedelta(data['lead_time']).dt.total_seconds() / 3600
 
     latest_utc = datetime.strptime(f"{date_str} {hour_str}", "%Y_%m_%d %H").replace(tzinfo=timezone.utc)
     ph_zone = timezone(timedelta(hours=8))
