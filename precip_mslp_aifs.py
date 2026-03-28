@@ -71,23 +71,24 @@ def plot_frame(
         X, Y = lons, lats
 
     # ── 1. Precipitation fill ────────────────────────────────────────────
-    pr_levels = [0, 5, 10, 20, 30, 40, 50, 75, 100, 125, 150, 175, 200, 250, 300, 400]
+    # Levels scaled for 6-hour accumulation (typical tropical: 0-100mm)
+    pr_levels = [0, 0.5, 1, 2, 5, 8, 12, 18, 25, 35, 45, 55, 70, 85, 100, 150]
     pr_colors = [
-        '#ffffff00',  # 0-5 (Transparent)
-        '#dbe9f6',    # 5-10
-        '#a6cbe3',    # 10-20
-        '#5ba3d0',    # 20-30
-        '#227abb',    # 30-40
-        '#4ac15e',    # 40-50
-        '#2ea946',    # 50-75
-        '#1a862f',    # 75-100
-        '#ffdb00',    # 100-125
-        '#f7a800',    # 125-150
-        '#ea7200',    # 150-175
-        '#df4000',    # 175-200
-        '#d41c00',    # 200-250
-        '#b40047',    # 250-300
-        '#c432b4',    # 300-400
+        '#ffffff00',  # 0-0.5 (Transparent)
+        '#dbe9f6',    # 0.5-1
+        '#a6cbe3',    # 1-2
+        '#5ba3d0',    # 2-5
+        '#227abb',    # 5-8
+        '#4ac15e',    # 8-12
+        '#2ea946',    # 12-18
+        '#1a862f',    # 18-25
+        '#ffdb00',    # 25-35
+        '#f7a800',    # 35-45
+        '#ea7200',    # 45-55
+        '#df4000',    # 55-70
+        '#d41c00',    # 70-85
+        '#b40047',    # 85-100
+        '#c432b4',    # 100-150
     ]
     pr_cmap = ListedColormap(pr_colors)
     pr_cmap.set_over('#4b0082')
@@ -101,7 +102,7 @@ def plot_frame(
         cb = fig.colorbar(cf, ax=ax, orientation="vertical", pad=0.02, shrink=0.85, aspect=25)
         cb.set_ticks(pr_levels)
         cb.ax.tick_params(labelsize=9)
-        cb.set_label("6-hr Accumulated Precipitation (mm)", fontsize=10)
+        cb.set_label("6-hr Precipitation (mm)", fontsize=10)
         cb.outline.set_edgecolor("black")
         cb.outline.set_linewidth(1)
 
@@ -305,12 +306,23 @@ def main():
                 continue
 
             if prev_tp is not None:
-                # TP is in metres, convert to mm (× 1000) → 6h accumulation
-                delta_tp_mm = (tp_grid - prev_tp) * 1000.0
-                delta_tp_mm = np.maximum(delta_tp_mm, 0)
-                precip_rate = delta_tp_mm  # 6h accumulated mm
+                delta_tp = tp_grid - prev_tp
+                delta_tp = np.maximum(delta_tp, 0)
+
+                # Auto-detect units: if max accumulated tp < 1, it's in metres → convert to mm
+                # If > 1, it's already in mm (or kg/m²)
+                if np.nanmax(tp_grid) < 1.0:
+                    delta_tp_mm = delta_tp * 1000.0  # metres → mm
+                else:
+                    delta_tp_mm = delta_tp  # already mm
+
+                precip_rate = delta_tp_mm
+                print(f"  Precip 6h: max={np.nanmax(precip_rate):.1f} mm")
             else:
-                precip_rate = tp_grid * 1000.0
+                if np.nanmax(tp_grid) < 1.0:
+                    precip_rate = tp_grid * 1000.0
+                else:
+                    precip_rate = tp_grid
 
             prev_tp = tp_grid.copy()
             prev_step = step
