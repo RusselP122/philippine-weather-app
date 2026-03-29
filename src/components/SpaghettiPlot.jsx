@@ -507,7 +507,10 @@ export default function SpaghettiPlot() {
                     {BASINS.map(opt => (
                         <button
                             key={opt.id}
-                            onClick={() => setBasin(opt.id)}
+                            onClick={() => {
+                                setBasin(opt.id);
+                                setSidebarOpen(false);
+                            }}
                             className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${basin === opt.id
                                     ? "bg-cyan-600 text-white"
                                     : "bg-slate-900 text-slate-400 hover:bg-slate-700 hover:text-white"
@@ -583,7 +586,10 @@ export default function SpaghettiPlot() {
                         {disturbances.map(d => (
                             <div 
                                 key={d.id} 
-                                onClick={() => setActiveDisturbanceId(activeDisturbanceId === d.id ? null : d.id)}
+                                onClick={() => {
+                                    setActiveDisturbanceId(activeDisturbanceId === d.id ? null : d.id);
+                                    setSidebarOpen(false);
+                                }}
                                 className={`rounded-lg p-2.5 border cursor-pointer transition-all ${activeDisturbanceId === d.id ? 'bg-slate-800 border-cyan-500 shadow-md shadow-cyan-900/20' : 'bg-slate-900/80 border-slate-700 hover:border-slate-500 hover:bg-slate-800/80'}`}
                             >
                                 <div className="flex items-center gap-2 mb-1.5">
