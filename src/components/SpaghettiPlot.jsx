@@ -73,13 +73,64 @@ const BASINS = [
 
 // ── Pressure legend entries ───────────────────────────────────────────────
 const PRESSURE_LEGEND = [
-    { label: "< 920 hPa · Super Typhoon", color: "#5B0E2D" },
-    { label: "920–945 hPa · Typhoon", color: "#A83232" },
-    { label: "945–970 hPa · Sev. Tropical Storm", color: "#E67E22" },
-    { label: "970–990 hPa · Tropical Storm", color: "#F1C40F" },
-    { label: "990–1005 hPa · Tropical Dep.", color: "#2ECC71" },
-    { label: "> 1005 hPa · LPA", color: "#3498DB" },
+    { label: "< 920 hPa", color: "#5B0E2D" },
+    { label: "920–945 hPa", color: "#A83232" },
+    { label: "945–970 hPa", color: "#E67E22" },
+    { label: "970–990 hPa", color: "#F1C40F" },
+    { label: "990–1005 hPa", color: "#2ECC71" },
+    { label: "> 1005 hPa", color: "#3498DB" },
 ];
+
+// ── Pressure → category name ──────────────────────────────────────────────
+function pressureCategory(p) {
+    if (isNaN(p)) return "Unknown";
+    if (p < 920) return "Super Typhoon";
+    if (p <= 945) return "Typhoon";
+    if (p <= 970) return "Sev. Tropical Storm";
+    if (p <= 990) return "Tropical Storm";
+    if (p <= 1005) return "Tropical Depression";
+    return "LPA";
+}
+
+// ── Haversine-ish fast distance (degrees, not km — good enough for clustering)
+function degreeDist(a, b) {
+    return Math.sqrt((a.lat - b.lat) ** 2 + (a.lon - b.lon) ** 2);
+}
+
+// ── Cluster origins into distinct disturbances (5° threshold) ─────────────
+function clusterOrigins(origins, threshold = 5) {
+    const clusters = [];
+    for (const o of origins) {
+        let merged = false;
+        for (const c of clusters) {
+            if (degreeDist(c.center, o) < threshold) {
+                // Update running average center
+                const n = c.origins.length;
+                c.center = {
+                    lat: (c.center.lat * n + o.lat) / (n + 1),
+                    lon: (c.center.lon * n + o.lon) / (n + 1),
+                };
+                c.origins.push(o);
+                merged = true;
+                break;
+            }
+        }
+        if (!merged) {
+            clusters.push({ center: { lat: o.lat, lon: o.lon }, origins: [o] });
+        }
+    }
+    return clusters;
+}
+
+// ── Region name from lat/lon ──────────────────────────────────────────────
+function regionName(lat, lon) {
+    if (lon >= 100 && lon <= 120 && lat >= 5 && lat <= 25) return "South China Sea";
+    if (lon > 120 && lon <= 135 && lat >= 5 && lat <= 25) return "Philippine Sea";
+    if (lon > 135 && lon <= 180 && lat >= 0 && lat <= 25) return "W. Pacific / Marshalls";
+    if (lon > 120 && lon <= 145 && lat > 25 && lat <= 45) return "NW Pacific";
+    if (lat < 0) return "Southern Hemisphere";
+    return "Open Pacific";
+}
 
 // ── Component ─────────────────────────────────────────────────────────────
 export default function SpaghettiPlot() {
@@ -95,6 +146,8 @@ export default function SpaghettiPlot() {
     const [runLabel, setRunLabel] = useState("");
     const [trackCount, setTrackCount] = useState(0);
     const [rawRowCount, setRawRowCount] = useState(0);
+    const [disturbances, setDisturbances] = useState([]);
+    const [activeDisturbanceId, setActiveDisturbanceId] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [leafletReady, setLeafletReady] = useState(false);
 
@@ -242,8 +295,36 @@ export default function SpaghettiPlot() {
         });
 
         let drawn = 0;
-        const originSet = {};
+        const tracksByOriginKey = {};  // oKey → array of tracks
 
+        // Pass 1: Gather all valid origins for clustering
+        const allOrigins = [];
+        const uniqueOrigins = new Set();
+        for (const points of basinFiltered) {
+            if (points.length < 2) continue;
+            let bad = false;
+            for (let i = 1; i < points.length; i++) {
+                if (Math.abs(points[i].lat - points[i - 1].lat) > 10 ||
+                    Math.abs(points[i].lon - points[i - 1].lon) > 10) { bad = true; break; }
+            }
+            if (bad) continue;
+            
+            const origin = points.find(pt => pt.h === 0) || points[0];
+            if (!origin) continue;
+            const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
+            if (!uniqueOrigins.has(oKey)) {
+                uniqueOrigins.add(oKey);
+                allOrigins.push({ lat: origin.lat, lon: origin.lon, oKey });
+            }
+        }
+
+        // Cluster origins into distinct disturbances
+        const clusters = clusterOrigins(allOrigins, 5);
+        clusters.forEach((c, idx) => c.distId = idx + 1);
+
+        const originSetDone = new Set();
+
+        // Pass 2: Draw tracks and attach cluster IDs
         for (const points of basinFiltered) {
             if (points.length < 2) continue;
             points.sort((a, b) => a.h - b.h);
@@ -256,31 +337,83 @@ export default function SpaghettiPlot() {
             }
             if (bad) continue;
 
-            L.polyline(latlngs, {
+            const origin = points.find(pt => pt.h === 0) || points[0];
+            const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
+            const myCluster = clusters.find(c => c.origins.some(o => o.oKey === oKey));
+            const distId = myCluster ? myCluster.distId : null;
+
+            const line = L.polyline(latlngs, {
                 color: "#606060", weight: 2, opacity: 0.55,
                 lineCap: "round", lineJoin: "round",
-            }).addTo(layerGroupRef.current);
+            });
+            line.distId = distId;
+            line.defaultOpacity = 0.55;
+            line.addTo(layerGroupRef.current);
 
             for (const pt of points) {
-                L.circleMarker([pt.lat, pt.lon], {
+                const mark = L.circleMarker([pt.lat, pt.lon], {
                     radius: 3.5, color: "white", weight: 0.8,
                     fillColor: pressureColor(pt.p), fillOpacity: 0.9,
-                }).addTo(layerGroupRef.current);
+                    opacity: 1
+                });
+                mark.distId = distId;
+                mark.defaultFillOpacity = 0.9;
+                mark.defaultStrokeOpacity = 1;
+                mark.addTo(layerGroupRef.current);
             }
 
-            const origin = points.find(pt => pt.h === 0);
-            if (origin) {
-                const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
-                if (!originSet[oKey]) {
-                    originSet[oKey] = true;
-                    const icon = L.divIcon({ className: "storm-dot", iconSize: [10, 10] });
-                    L.marker([origin.lat, origin.lon], { icon })
-                        .addTo(layerGroupRef.current)
-                        .bindTooltip(`Origin: ${origin.lat.toFixed(1)}°N ${origin.lon.toFixed(1)}°E`, { direction: "top" });
-                }
+            if (!originSetDone.has(oKey)) {
+                originSetDone.add(oKey);
+                tracksByOriginKey[oKey] = [];
+                const icon = L.divIcon({ className: "storm-dot", iconSize: [10, 10] });
+                const marker = L.marker([origin.lat, origin.lon], { icon })
+                    .bindTooltip(`Origin: ${origin.lat.toFixed(1)}°N ${origin.lon.toFixed(1)}°E`, { direction: "top" });
+                marker.distId = distId;
+                marker.isOrigin = true;
+                marker.addTo(layerGroupRef.current);
+            }
+            // Store the min pressure across all points in this track
+            const minP = Math.min(...points.map(pt => isNaN(pt.p) ? 9999 : pt.p));
+            if (tracksByOriginKey[oKey]) {
+                tracksByOriginKey[oKey].push(minP);
             }
             drawn++;
         }
+
+        // Build disturbance metadata
+        const disturbanceList = clusters.map(cluster => {
+            const allMinP = [];
+            for (const o of cluster.origins) {
+                const trks = tracksByOriginKey[o.oKey] || [];
+                allMinP.push(...trks);
+            }
+            const peakP = allMinP.length > 0 ? Math.min(...allMinP) : 9999;
+            const peakCat = pressureCategory(peakP);
+            const peakColor = pressureColor(peakP);
+            const region = regionName(cluster.center.lat, cluster.center.lon);
+
+            // Count tracks by category
+            const catCounts = {};
+            for (const p of allMinP) {
+                const cat = pressureCategory(p);
+                catCounts[cat] = (catCounts[cat] || 0) + 1;
+            }
+
+            return {
+                id: cluster.distId,
+                lat: cluster.center.lat,
+                lon: cluster.center.lon,
+                region,
+                trackCount: allMinP.length,
+                peakP,
+                peakCat,
+                peakColor,
+                catCounts,
+            };
+        });
+
+        setDisturbances(disturbanceList);
+        setActiveDisturbanceId(null);
 
         setTrackCount(drawn);
         if (drawn > 0) {
@@ -304,6 +437,40 @@ export default function SpaghettiPlot() {
     }, [basin]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    // Update map layer visibilities when active disturbance changes
+    useEffect(() => {
+        if (!layerGroupRef.current) return;
+        const L = window.L;
+        
+        layerGroupRef.current.eachLayer(layer => {
+            if (layer.isOrigin) {
+                // Dim other origins slightly, or keep them all opaque?
+                const isSelected = activeDisturbanceId === null || layer.distId === activeDisturbanceId;
+                layer.setOpacity(isSelected ? 1 : 0.2);
+                return;
+            }
+
+            const isSelected = activeDisturbanceId === null || layer.distId === activeDisturbanceId;
+            
+            if (layer instanceof L.Polyline && !(layer instanceof L.CircleMarker)) {
+                layer.setStyle({ opacity: isSelected ? layer.defaultOpacity : 0.05 });
+            } else if (layer instanceof L.CircleMarker) {
+                layer.setStyle({
+                    fillOpacity: isSelected ? layer.defaultFillOpacity : 0.05,
+                    opacity: isSelected ? layer.defaultStrokeOpacity : 0.05
+                });
+            }
+        });
+
+        // Fly to disturbance center if selected
+        if (activeDisturbanceId !== null && mapInstanceRef.current) {
+            const dist = disturbances.find(d => d.id === activeDisturbanceId);
+            if (dist) {
+                mapInstanceRef.current.flyTo([dist.lat, dist.lon], 5, { duration: 1.5 });
+            }
+        }
+    }, [activeDisturbanceId, disturbances]);
 
     // ── Sidebar panel ─────────────────────────────────────────────────────
     const Panel = () => (
@@ -405,6 +572,41 @@ export default function SpaghettiPlot() {
             >
                 {status === "loading" ? "Loading…" : "↻ Refresh Data"}
             </button>
+
+            {/* Detected disturbances */}
+            {disturbances.length > 0 && (
+                <div>
+                    <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                        Detected Disturbances ({disturbances.length})
+                    </h2>
+                    <div className="space-y-2">
+                        {disturbances.map(d => (
+                            <div 
+                                key={d.id} 
+                                onClick={() => setActiveDisturbanceId(activeDisturbanceId === d.id ? null : d.id)}
+                                className={`rounded-lg p-2.5 border cursor-pointer transition-all ${activeDisturbanceId === d.id ? 'bg-slate-800 border-cyan-500 shadow-md shadow-cyan-900/20' : 'bg-slate-900/80 border-slate-700 hover:border-slate-500 hover:bg-slate-800/80'}`}
+                            >
+                                <div className="flex items-center gap-2 mb-1.5">
+                                    <span className="w-3 h-3 rounded-full flex-shrink-0 border border-slate-600" style={{ background: d.peakColor }} />
+                                    <span className="text-[11px] font-bold text-white">Disturbance #{d.id}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-mono space-y-0.5 pl-5">
+                                    <p>{d.region}</p>
+                                    <p>{d.lat.toFixed(1)}°N, {d.lon.toFixed(1)}°E</p>
+                                    <p>Peak: <span className="font-bold" style={{ color: d.peakColor }}>{d.peakP < 9999 ? `${d.peakP.toFixed(0)} hPa` : "N/A"}</span></p>
+                                    <p>{d.trackCount} ensemble tracks</p>
+                                    {Object.entries(d.catCounts).map(([cat, count]) => (
+                                        <p key={cat} className="text-slate-500">
+                                            <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: pressureColor(cat === "Super Typhoon" ? 900 : cat === "Typhoon" ? 930 : cat === "Sev. Tropical Storm" ? 960 : cat === "Tropical Storm" ? 980 : cat === "Tropical Depression" ? 1000 : 1010) }} />
+                                            {cat}: {count}
+                                        </p>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Pressure legend */}
             <div>
