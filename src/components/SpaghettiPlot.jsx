@@ -189,17 +189,11 @@ export default function SpaghettiPlot() {
             // PAR boundary (solid red)
             L.polyline(PAR, { color: "#ef4444", weight: 2 }).addTo(map);
 
-            // Inject pulse CSS and map background
-            if (!document.getElementById("fnv3-pulse-css")) {
+            // Inject map background
+            if (!document.getElementById("fnv3-bg-css")) {
                 const s = document.createElement("style");
-                s.id = "fnv3-pulse-css";
+                s.id = "fnv3-bg-css";
                 s.textContent = `
-                  .storm-dot{border-radius:50%;background:rgba(239,68,68,.85);
-                    animation:fnvPulse 2s infinite}
-                  @keyframes fnvPulse{
-                    0%{transform:scale(.9);box-shadow:0 0 0 0 rgba(239,68,68,.7)}
-                    70%{transform:scale(1);box-shadow:0 0 0 8px rgba(239,68,68,0)}
-                    100%{transform:scale(.9);box-shadow:0 0 0 0 rgba(239,68,68,0)}}
                   .leaflet-container { background: #0f172a !important; }
                 `;
                 document.head.appendChild(s);
@@ -365,12 +359,6 @@ export default function SpaghettiPlot() {
             if (!originSetDone.has(oKey)) {
                 originSetDone.add(oKey);
                 tracksByOriginKey[oKey] = [];
-                const icon = L.divIcon({ className: "storm-dot", iconSize: [10, 10] });
-                const marker = L.marker([origin.lat, origin.lon], { icon })
-                    .bindTooltip(`Origin: ${origin.lat.toFixed(1)}°N ${origin.lon.toFixed(1)}°E`, { direction: "top" });
-                marker.distId = distId;
-                marker.isOrigin = true;
-                marker.addTo(layerGroupRef.current);
             }
             // Store the min pressure across all points in this track
             const minP = Math.min(...points.map(pt => isNaN(pt.p) ? 9999 : pt.p));
@@ -444,13 +432,6 @@ export default function SpaghettiPlot() {
         const L = window.L;
         
         layerGroupRef.current.eachLayer(layer => {
-            if (layer.isOrigin) {
-                // Dim other origins slightly, or keep them all opaque?
-                const isSelected = activeDisturbanceId === null || layer.distId === activeDisturbanceId;
-                layer.setOpacity(isSelected ? 1 : 0.2);
-                return;
-            }
-
             const isSelected = activeDisturbanceId === null || layer.distId === activeDisturbanceId;
             
             if (layer instanceof L.Polyline && !(layer instanceof L.CircleMarker)) {
@@ -627,24 +608,6 @@ export default function SpaghettiPlot() {
                 </ul>
             </div>
 
-            {/* Map legend */}
-            <div>
-                <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Map Legend</h2>
-                <ul className="space-y-1.5 text-[10px] text-slate-400 font-mono">
-                    <li className="flex items-center gap-2.5">
-                        <span className="w-3.5 h-3.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
-                        Disturbance Origin
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                        <span className="w-5 border-b-2 border-[#606060] flex-shrink-0" />
-                        Ensemble Track Line
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                        <span className="w-5 border-b-2 border-dashed border-blue-500 flex-shrink-0" />
-                        PAR Boundary
-                    </li>
-                </ul>
-            </div>
 
             <p className="text-[9px] text-slate-600 border-t border-slate-800 pt-3 leading-relaxed">
                 Data: GDM FNV3_LARGE_ENSEMBLE via Google DeepMind WeatherLab.
