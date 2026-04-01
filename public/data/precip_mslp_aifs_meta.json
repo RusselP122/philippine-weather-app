@@ -1,7 +1,7 @@
 {
   "model": "ECMWF AIFS",
   "source": "ECMWF Open Data",
-  "generated_at": "2026-04-01 07:13 PM",
+  "generated_at": "2026-04-01 09:58 PM",
   "run_time": "2026-04-01 12:00 UTC",
   "animation_frames": [
     "aifs_precip_mslp_006",
