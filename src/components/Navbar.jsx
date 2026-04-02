@@ -43,7 +43,8 @@ const Navbar = () => {
         { label: "Forecast Models", href: "/forecast-models" },
         { label: "Alert", href: "/alert" },
         { label: "ENSO Monitor", href: "/enso" },
-        { label: "Lightning Detection", href: "/lightning" }
+        { label: "Lightning Detection", href: "/lightning" },
+        { label: "Strike Probability", href: "/strike-probability" }
       ]
     },
     {
@@ -62,7 +63,8 @@ const Navbar = () => {
       items: [
         { label: "Tropical Cyclone Track", href: "/cyclone" },
         { label: "Tropical Cyclone Info", href: "/tc-info" },
-        { label: "Warning", href: "/warning" }
+        { label: "Warning", href: "/warning" },
+        { label: "Strike Probability", href: "/strike-probability" }
       ]
     },
     {
