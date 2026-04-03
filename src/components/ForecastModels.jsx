@@ -302,11 +302,11 @@ const ForecastModels = () => {
                     {/* Timeline Slider */}
                     <div className="flex-1 relative flex items-center group">
                         <div className="absolute w-full flex justify-between px-1 -top-4 text-[9px] lg:text-[10px] text-slate-500 font-mono">
-                            <span>0h</span>
-                            <span className="hidden sm:inline">+48h</span>
-                            <span className="hidden sm:inline">+96h</span>
-                            <span className="hidden sm:inline">+144h</span>
-                            <span>+168h</span>
+                            <span>Init</span>
+                            <span className="hidden sm:inline">Day {Math.floor((activeParam === "precip_mslp" ? (activeModel === "aifs" ? 15 : 16) : (activeParam === "wind" ? 15 : 7)) * 0.25)}</span>
+                            <span className="hidden sm:inline">Day {Math.floor((activeParam === "precip_mslp" ? (activeModel === "aifs" ? 15 : 16) : (activeParam === "wind" ? 15 : 7)) * 0.5)}</span>
+                            <span className="hidden sm:inline">Day {Math.floor((activeParam === "precip_mslp" ? (activeModel === "aifs" ? 15 : 16) : (activeParam === "wind" ? 15 : 7)) * 0.75)}</span>
+                            <span>Day {(activeParam === "precip_mslp" ? (activeModel === "aifs" ? 15 : 16) : (activeParam === "wind" ? 15 : 7))}</span>
                         </div>
                         <input
                             type="range"
