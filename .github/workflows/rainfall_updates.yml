@@ -50,7 +50,29 @@ jobs:
       run: python precip_mslp_aifs.py
 
     - name: Commit and Push Changes
-      uses: stefanzweifel/git-auto-commit-action@v4
-      with:
-        commit_message: "Update Weather Forecast Maps (Rainfall, Wind, Precip+MSLP) [Automated]"
-        file_pattern: 'public/images/rainfall/*.png public/images/wind/*.png public/images/precip_mslp/*.png public/images/precip_mslp_aifs/*.png public/images/rainfall/*.gif public/images/wind/*.gif public/data/*.json'
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+        git add -f \
+          'public/images/rainfall/*.png' \
+          'public/images/wind/*.png' \
+          'public/images/precip_mslp/*.png' \
+          'public/images/precip_mslp_aifs/*.png' \
+          'public/images/rainfall/*.gif' \
+          'public/images/wind/*.gif' \
+          'public/data/*.json' 2>/dev/null || true
+
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Update Weather Forecast Maps (Rainfall, Wind, Precip+MSLP) [Automated]"
+
+          # Retry push up to 5 times to handle concurrent workflow conflicts
+          for i in 1 2 3 4 5; do
+            echo "Push attempt $i..."
+            git pull --rebase origin main && git push && echo "Push successful!" && break
+            echo "Push failed (attempt $i). Waiting before retry..."
+            sleep $((15 * i))
+          done
+        fi
