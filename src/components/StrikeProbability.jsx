@@ -183,9 +183,9 @@ export default function StrikeProbability() {
 
                         return {
                             fillColor: fillCol,
-                            fillOpacity: 1.0,  // Stacked completely opaque
-                            color: fillCol, // border
-                            weight: 0,      // No borders, pure contours
+                            fillOpacity: 0.65,
+                            color: "rgba(0,0,0,0.15)", // subtle border between bands
+                            weight: 0.5,
                             opacity: 1.0
                         };
                     }
