@@ -338,7 +338,7 @@ def main():
     # ── Generate frames ───────────────────────────────────────────────────
     now = datetime.now(timezone.utc)
     valid_frames = []
-    steps_6h = list(range(6, 169, 6))  # T+6 through T+168
+    steps_6h = list(range(6, 385, 6))  # T+6 through T+384 (16 days)
 
     for step in steps_6h:
         print(f"\nStep T+{step}h ...")

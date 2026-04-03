@@ -21,7 +21,7 @@ def fetch_and_plot_aifs():
         client = Client(source="ecmwf", model="aifs-single", resol="0p25")
 
         parameters = ['10u', '10v', 'msl']
-        steps = list(range(0, 169, 6))  # 0, 6, 12, ..., 168
+        steps = list(range(0, 361, 6))  # 0, 6, 12, ..., 360 (15 days)
 
         valid_frames = []
         run_time_dt = None

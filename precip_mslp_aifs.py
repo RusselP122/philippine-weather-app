@@ -183,7 +183,8 @@ def main():
 
     client = Client(source="ecmwf", model="aifs-single", resol="0p25")
 
-    steps = list(range(0, 169, 6))  # 0 … 168
+    steps = list(range(0, 361, 6))  # 0 … 360 (15 days)
+
     run_time_dt = None
     run_time_str = "Latest"
     valid_frames = []
