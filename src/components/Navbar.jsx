@@ -44,7 +44,6 @@ const Navbar = () => {
         { label: "Alert", href: "/alert" },
         { label: "ENSO Monitor", href: "/enso" },
         { label: "Lightning Detection", href: "/lightning" },
-        { label: "Strike Probability", href: "/strike-probability" }
       ]
     },
     {
@@ -64,7 +63,7 @@ const Navbar = () => {
         { label: "Tropical Cyclone Track", href: "/cyclone" },
         { label: "Tropical Cyclone Info", href: "/tc-info" },
         { label: "Warning", href: "/warning" },
-        { label: "Strike Probability", href: "/strike-probability" }
+        { label: "Tropical Cyclone Strike Probability", href: "/strike-probability" }
       ]
     },
     {
