@@ -87,7 +87,9 @@ else:
     os.remove(local_b64)
 
 # 3. Process with xarray
-levels = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+# Non-linear levels anchored to operational thresholds (matches frontend color logic):
+# 5%=low signal, 15%=emerging, 30%=watch ▲, 50%=high ▲, 70%=dominant ▲, cap at 80%
+levels = [0.05, 0.15, 0.30, 0.50, 0.70, 0.80]
 
 print("Processing NetCDF with xarray...")
 ds = xr.open_dataset(local_nc)
