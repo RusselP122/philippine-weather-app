@@ -88,8 +88,9 @@ else:
 
 # 3. Process with xarray
 # Non-linear levels anchored to operational thresholds (matches frontend color logic):
-# 5%=low signal, 15%=emerging, 30%=watch ▲, 50%=high ▲, 70%=dominant ▲, cap at 80%
-levels = [0.05, 0.15, 0.30, 0.50, 0.70, 0.80]
+# 5%=low signal, 10%=baseline, 20%=emerging, 30%=watch, 50%=high, 70%=dominant
+# Top level must be 1.01 (not 0.80) otherwise Matplotlib leaves >80% regions blank!
+levels = [0.05, 0.10, 0.20, 0.30, 0.50, 0.70, 1.01]
 
 print("Processing NetCDF with xarray...")
 ds = xr.open_dataset(local_nc)
