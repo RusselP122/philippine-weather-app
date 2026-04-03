@@ -49,6 +49,13 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Auto-update FNV3 Strike Probability GeoJSON files [skip ci]"
-            git pull --rebase origin main
-            git push
+            
+            # Retry push up to 5 times to handle transient GitHub server errors
+            for i in 1 2 3 4 5; do
+              echo "Push attempt $i..."
+              git pull --rebase origin main
+              git push && echo "Push successful!" && break
+              echo "Push failed (attempt $i). Waiting before retry..."
+              sleep $((15 * i))
+            done
           fi
