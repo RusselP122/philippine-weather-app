@@ -128,20 +128,25 @@ def fetch_and_plot_gfs(target_url=None, target_run_time=None):
         ds = open_url(dataset_url, session=session)
         
         # 2. Variable Selection
-        # Note: In single run files, accumulation variable often same name
-        var_name = "Total_precipitation_surface_Mixed_intervals_Accumulation"
-        if var_name not in ds:
-            # Try alternates
-            print(f"Variable {var_name} not found. checking keys...")
+        # Prefer rate variable to avoid accumulation bucket resets after hour 120
+        pref_names = [
+            "Precipitation_rate_surface_Mixed_intervals_Average",
+            "Precipitation_rate_surface",
+            "Total_precipitation_surface_Mixed_intervals_Accumulation",
+        ]
+        var_name = None
+        for pref in pref_names:
+            if pref in ds:
+                var_name = pref
+                break
+        if var_name is None:
             candidates = [k for k in ds.keys() if "precipitation" in k.lower()]
-            print(f"Candidates: {candidates}")
-            # Fallback to rate? No, want accumulation.
-            # Usually it exists.
             if not candidates:
-                 raise ValueError("No precipitation variable found")
-            var_name = candidates[0] # taking first guess if exact mismatch
-            
-        print(f"Variable found: {var_name}")
+                raise ValueError("No precipitation variable found")
+            var_name = candidates[0]
+
+        is_rate_var = "rate" in var_name.lower()
+        print(f"Variable found: {var_name} ({'rate' if is_rate_var else 'accumulation'})")
         precip_var = ds[var_name]
         
         # 3. Coordinates
@@ -219,8 +224,8 @@ def fetch_and_plot_gfs(target_url=None, target_run_time=None):
              print("Time units not standard, defaulting to Best logic or failure.")
              # Fallback logic if needed
              
-        # 6. Forecast Window Logic (Existing)
-        now = datetime.now(timezone.utc)
+        # 6. Forecast Window Logic
+        init_time = all_dates[0] if all_dates else datetime.now(timezone.utc)
         
         # Define Periods to Generate (Cumulative Summaries)
         periods = {
@@ -248,10 +253,10 @@ def fetch_and_plot_gfs(target_url=None, target_run_time=None):
             })
 
         meta_info = {
-            "model": "GFS Seamless",
+            "model": "GFS 0.25°",
             "source": "NOAA NOMADS / THREDDS",
             "generated_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
-            "run_time": all_dates[0].strftime("%Y-%m-%d %H:%M UTC") if all_dates else "Unknown",
+            "run_time": init_time.strftime("%Y-%m-%d %H:%M UTC"),
             "animation_frames": [f"gfs_day_{i}" for i in range(1, 8)]
         }
 
@@ -270,8 +275,8 @@ def fetch_and_plot_gfs(target_url=None, target_run_time=None):
                 
             print(f"\nGenerating {period_name} ({start_hour_offset}h - {end_hour_offset}h)...")
             
-            end_time_period = now + timedelta(hours=end_hour_offset)
-            start_time_period = now + timedelta(hours=start_hour_offset)
+            end_time_period = init_time + timedelta(hours=end_hour_offset)
+            start_time_period = init_time + timedelta(hours=start_hour_offset)
             
             # Find indices
             # Need to span from Start Time to End Time
@@ -319,21 +324,22 @@ def fetch_and_plot_gfs(target_url=None, target_run_time=None):
                 # Fetch End Grid
                 grid_end = precip_var[idx_end, lat_min_idx:lat_max_idx+1, lon_min_idx:lon_max_idx+1].data
                 grid_end = np.array(grid_end).astype(float).squeeze()
-                
-                # Fetch Start Grid
-                grid_start = precip_var[idx_start, lat_min_idx:lat_max_idx+1, lon_min_idx:lon_max_idx+1].data
-                grid_start = np.array(grid_start).astype(float).squeeze()
-                
-                # Mask artifacts
-                grid_end[grid_end > 3000] = 0
-                grid_end[grid_end < 0] = 0
-                grid_start[grid_start > 3000] = 0 
-                grid_start[grid_start < 0] = 0
-                
-                # Calculate Difference
-                total_precip = grid_end - grid_start
-                total_precip = np.maximum(total_precip, 0)
-                
+
+                if is_rate_var:
+                    # Rate variable (kg/m²/s): multiply by the window duration in seconds
+                    window_seconds = (end_hour_offset - start_hour_offset) * 3600
+                    grid_end[grid_end < 0] = 0
+                    total_precip = grid_end * window_seconds
+                else:
+                    # Accumulation variable: difference end - start
+                    grid_start = precip_var[idx_start, lat_min_idx:lat_max_idx+1, lon_min_idx:lon_max_idx+1].data
+                    grid_start = np.array(grid_start).astype(float).squeeze()
+                    grid_end[grid_end > 3000] = 0
+                    grid_end[grid_end < 0] = 0
+                    grid_start[grid_start > 3000] = 0
+                    grid_start[grid_start < 0] = 0
+                    total_precip = np.maximum(grid_end - grid_start, 0)
+
             except Exception as slice_err:
                 print(f"Data fetch error for {period_name}: {slice_err}")
                 continue

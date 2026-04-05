@@ -249,11 +249,16 @@ def main():
     # ── Discover variable names ────────────────────────────────────────────
     all_keys = list(ds.keys())
 
-    # Precipitation accumulation
+    # Precipitation rate/accumulation
     precip_name = None
-    for k in all_keys:
-        if "precipitation" in k.lower() and "accumulation" in k.lower():
-            precip_name = k
+    pref_names = [
+        "Precipitation_rate_surface_Mixed_intervals_Average",
+        "Precipitation_rate_surface",
+        "Total_precipitation_surface_Mixed_intervals_Accumulation"
+    ]
+    for pref in pref_names:
+        if pref in all_keys:
+            precip_name = pref
             break
     if precip_name is None:
         candidates = [k for k in all_keys if "precip" in k.lower()]
@@ -311,6 +316,20 @@ def main():
     print(f"Init time: {init_time}")
     print(f"Total time steps: {len(all_dates)}")
 
+    # Pre-load separate time arrays for MSLP and geopotential (they use different dims)
+    def get_var_dates(var_name):
+        if var_name is None:
+            return []
+        try:
+            var = ds[var_name]
+            tdim = var.dimensions[0]
+            return parse_time_units(ds[tdim])
+        except:
+            return []
+
+    msl_dates = get_var_dates(msl_name)
+    ghgt_dates = get_var_dates(ghgt_name)
+
     # ── Isobaric levels for geopotential ──────────────────────────────────
     iso_dim = None
     iso_data = None
@@ -335,43 +354,53 @@ def main():
                   f"1000hPa → idx {idx_1000} ({iso_hpa[idx_1000]:.0f})")
 
     # ── Generate frames ───────────────────────────────────────────────────
-    now = datetime.now(timezone.utc)
     valid_frames = []
     steps_6h = list(range(6, 385, 6))  # T+6 through T+384 (16 days)
 
     for step in steps_6h:
         print(f"\nStep T+{step}h ...")
-        target_end = now + timedelta(hours=step)
-        target_start = now + timedelta(hours=step - 6)
+        target_end = init_time + timedelta(hours=step)
+        target_start = init_time + timedelta(hours=step - 6)
         idx_end = find_nearest_idx(all_dates, target_end)
         idx_start = find_nearest_idx(all_dates, target_start)
         valid_time = all_dates[idx_end]
 
-        # ── Precip rate ────────────────────────────────────────────────────
+        # ── Precip ─────────────────────────────────────────────────────────
         try:
+            is_rate_var = "rate" in precip_name.lower()
             grid_end = np.array(
                 precip_var[idx_end, li0:li1 + 1, lo0:lo1 + 1].data
             ).astype(float).squeeze()
-            grid_start = np.array(
-                precip_var[idx_start, li0:li1 + 1, lo0:lo1 + 1].data
-            ).astype(float).squeeze()
-            grid_end[grid_end > 3000] = 0
-            grid_end[grid_end < 0] = 0
-            grid_start[grid_start > 3000] = 0
-            grid_start[grid_start < 0] = 0
-            precip_6h = np.maximum(grid_end - grid_start, 0)
-            precip_rate = precip_6h  # 6h accumulated mm
+
+            if is_rate_var:
+                # Rate variable: kg/m²/s → multiply by 6h * 3600s → mm
+                grid_end[grid_end < 0] = 0
+                precip_rate = grid_end * 6 * 3600  # convert to mm per 6h window
+            else:
+                # Accumulation variable: difference consecutive snapshots
+                grid_start = np.array(
+                    precip_var[idx_start, li0:li1 + 1, lo0:lo1 + 1].data
+                ).astype(float).squeeze()
+                grid_end[grid_end > 3000] = 0
+                grid_end[grid_end < 0] = 0
+                grid_start[grid_start > 3000] = 0
+                grid_start[grid_start < 0] = 0
+                precip_rate = np.maximum(grid_end - grid_start, 0)
+
+            print(f"  Precip 6h max: {np.nanmax(precip_rate):.2f} mm")
         except Exception as e:
             print(f"  Precip fetch error: {e}")
             continue
 
         # ── MSLP ──────────────────────────────────────────────────────────
         msl_grid = None
-        if msl_name:
+        if msl_name and msl_dates:
             try:
                 msl_var = ds[msl_name]
+                msl_idx = find_nearest_idx(msl_dates, valid_time)
+                msl_idx = min(msl_idx, len(msl_dates) - 1)  # clamp to bounds
                 raw = np.array(
-                    msl_var[idx_end, li0:li1 + 1, lo0:lo1 + 1].data
+                    msl_var[msl_idx, li0:li1 + 1, lo0:lo1 + 1].data
                 ).astype(float).squeeze()
                 # Convert Pa → hPa if needed
                 if np.nanmean(raw) > 50000:
@@ -387,14 +416,16 @@ def main():
                 ghgt_var = ds[ghgt_name]
                 # Determine dimension order for the isobaric slice
                 ghgt_dims = ghgt_var.dimensions
-                iso_pos = list(ghgt_dims).index(iso_dim)
+                ghgt_time_dim = ghgt_dims[0]
+                ghgt_idx = find_nearest_idx(ghgt_dates, valid_time) if ghgt_dates else idx_end
+                ghgt_idx = min(ghgt_idx, len(ghgt_dates) - 1) if ghgt_dates else ghgt_idx
 
                 # Build slices dynamically
                 def build_slice(iso_idx):
                     slices = []
                     for i, d in enumerate(ghgt_dims):
-                        if d == time_dim:
-                            slices.append(idx_end)
+                        if d == ghgt_time_dim:
+                            slices.append(ghgt_idx)
                         elif d == iso_dim:
                             slices.append(iso_idx)
                         elif d == lat_dim:
