@@ -63,8 +63,7 @@ def get_latest_run_url(session):
                     return url, run_time
             except Exception:
                 continue
-    print("Warning: falling back to Best time series")
-    return f"{base_url}/Best", None
+    raise Exception("Critical: Could not find any recent 00z, 06z, 12z, or 18z GFS run after 30 hours of checking.")
 
 
 def parse_time_units(time_var):

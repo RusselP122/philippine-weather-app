@@ -107,9 +107,7 @@ def get_latest_run_url(session):
         except:
             continue
             
-    # Fallback
-    print("Warning: Could not find specific run, falling back to Best Time Series")
-    return f"{base_url}/Best", None
+    raise Exception("Critical: Could not find any recent 00z, 06z, 12z, or 18z GFS run after 30 hours of checking.")
 
 def fetch_and_plot_gfs(target_url=None, target_run_time=None):
     print("\n--- Starting GFS Rainfall Generation ---")
