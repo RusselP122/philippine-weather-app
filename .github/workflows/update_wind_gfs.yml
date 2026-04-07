@@ -1,0 +1,67 @@
+name: Update GFS Wind + MSLP Maps
+
+on:
+  schedule:
+    # Runs at 03:30, 09:30, 15:30, 21:30 UTC
+    # GFS 00z ready ~3h after init, 06z ready ~9h, 12z ready ~15h, 18z ready ~21h
+    - cron: '30 3,9,15,21 * * *'
+  workflow_dispatch:
+
+jobs:
+  update-gfs-wind:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libgeos-dev libproj-dev proj-data proj-bin
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            matplotlib \
+            cartopy \
+            numpy \
+            scipy \
+            requests \
+            pydap
+
+      - name: Run GFS Wind + MSLP generator
+        run: python wind_gfs.py
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Stage output images and metadata
+          git add -f public/images/wind_gfs/*.png || true
+          git add -f public/data/wind_gfs_meta.json || true
+
+          # Commit only if something changed
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Auto-update GFS Wind + MSLP maps [skip ci]"
+
+            # Retry push up to 5 times to handle transient GitHub errors
+            for i in 1 2 3 4 5; do
+              echo "Push attempt $i..."
+              git pull --rebase origin main
+              git push && echo "Push successful!" && break
+              echo "Push failed (attempt $i). Retrying..."
+              sleep $((15 * i))
+            done
+          fi
