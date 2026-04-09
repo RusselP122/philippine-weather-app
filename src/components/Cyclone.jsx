@@ -1090,6 +1090,130 @@ const FullscreenControl = ({ isFullscreen, onToggle }) => {
   return null;
 };
 
+// Map overlay layer for Ensemble Forecast
+const EnsembleLayerLogic = ({ data }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (!map || !data) return;
+
+    const layerGroup = L.layerGroup().addTo(map);
+
+    // Cone Polygon
+    if (data.cone_polygon && data.cone_polygon.length > 0) {
+      // Leaflet uses [lat, lon], while data is [lon, lat]
+      const latLngs = data.cone_polygon.map(p => [p[1], p[0]]);
+      L.polygon(latLngs, {
+        color: '#ffffff',
+        weight: 1.5,
+        opacity: 0.6,
+        fillColor: '#ffffff',
+        fillOpacity: 0.15
+      }).addTo(layerGroup);
+    }
+
+    // Past Track
+    if (data.history && data.history.length > 1) {
+      const pts = data.history.map(p => [p.lat, p.lon]);
+      L.polyline(pts, {
+        color: '#ffffff',
+        weight: 4,
+        opacity: 0.9,
+        lineJoin: 'round'
+      }).addTo(layerGroup);
+      L.polyline(pts, {
+        color: '#000000',
+        weight: 2.5,
+        opacity: 0.9,
+        lineJoin: 'round'
+      }).addTo(layerGroup);
+    }
+
+    // Forecast Track
+    if (data.forecast && data.forecast.length > 1) {
+      const pts = data.forecast.map(p => [p.lat, p.lon]);
+      L.polyline(pts, {
+        color: '#ffffff',
+        weight: 3.5,
+        opacity: 0.8,
+        lineJoin: 'round',
+        dashArray: '6, 6'
+      }).addTo(layerGroup);
+      L.polyline(pts, {
+        color: '#404040',
+        weight: 2,
+        opacity: 0.9,
+        lineJoin: 'round',
+        dashArray: '6, 6'
+      }).addTo(layerGroup);
+    }
+
+    // Connecting line (history to forecast)
+    if (data.history?.length && data.forecast?.length) {
+      const pt1 = [data.history[data.history.length - 1].lat, data.history[data.history.length - 1].lon];
+      const pt2 = [data.forecast[0].lat, data.forecast[0].lon];
+      L.polyline([pt1, pt2], {
+        color: '#888888',
+        weight: 2,
+        opacity: 0.8,
+        dashArray: '4, 4'
+      }).addTo(layerGroup);
+    }
+
+    // Wind kt -> color mapping
+    const windColor = (kt) => {
+      if (kt < 25) return "#3498DB";
+      if (kt < 34) return "#2ECC71";
+      if (kt < 48) return "#F1C40F";
+      if (kt < 64) return "#E67E22";
+      if (kt < 100) return "#A83232";
+      return "#5B0E2D";
+    };
+
+    // Past track dots
+    if (data.history) {
+      data.history.forEach(p => {
+        L.circleMarker([p.lat, p.lon], {
+          radius: 3.5,
+          color: '#ffffff',
+          weight: 1,
+          fillColor: '#000000',
+          fillOpacity: 1
+        }).addTo(layerGroup);
+      });
+    }
+
+    // Forecast track dots
+    if (data.forecast) {
+      data.forecast.forEach(p => {
+        const marker = L.circleMarker([p.lat, p.lon], {
+          radius: 5,
+          color: '#ffffff',
+          weight: 1,
+          fillColor: windColor(p.wind_kt),
+          fillOpacity: 1
+        }).addTo(layerGroup);
+
+        marker.bindTooltip(
+          `<div style="font-family: monospace; font-weight: bold; font-size: 11px;">T+${p.lead_time_hours}h</div>
+           <div style="font-size: 10px;">Wind: ${p.wind_kt}kt</div>`,
+          { direction: 'right', offset: [5, 0], opacity: 0.9 }
+        );
+      });
+    }
+
+    if (data.cone_polygon && data.cone_polygon.length > 0) {
+      const bounds = L.latLngBounds(data.cone_polygon.map(p => [p[1], p[0]]));
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 6 });
+    }
+
+    return () => {
+      layerGroup.remove();
+    };
+  }, [map, data]);
+
+  return null;
+};
+
 const Cyclone = () => {
   const center = [12.8797, 121.774]; // Approx center of the Philippines
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -1099,7 +1223,28 @@ const Cyclone = () => {
     setIsFullscreen((prev) => !prev);
   };
 
-  // Hide page scrollbar when in fullscreen so it doesn't show behind the map
+  const [showEnsemble, setShowEnsemble] = useState(true);
+
+  // ── Ensemble Track JSON ──────────────────────────────────────────────────────
+  const [ensembleData, setEnsembleData] = useState(null);
+  useEffect(() => {
+    fetch("/data/ensemble_tracks.json")
+      .then(r => r.json())
+      .then(d => setEnsembleData(d))
+      .catch(() => setEnsembleData(null));
+  }, []);
+
+  // Wind kt → category color (matches enemble.py palette)
+  const windColor = (kt) => {
+    if (kt < 25)  return "#3498DB";
+    if (kt < 34)  return "#2ECC71";
+    if (kt < 48)  return "#F1C40F";
+    if (kt < 64)  return "#E67E22";
+    if (kt < 100) return "#A83232";
+    return "#5B0E2D";
+  };
+
+
   useEffect(() => {
     document.body.style.overflow = isFullscreen ? "hidden" : "";
     return () => {
@@ -1226,12 +1371,26 @@ const Cyclone = () => {
                   >
                     Wind
                   </button>
+                  <div className="h-px bg-slate-700 my-1"></div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowEnsemble(!showEnsemble);
+                    }}
+                    className={`rounded px-2 py-1 text-xs font-medium text-left cursor-pointer transition ${
+                      showEnsemble ? "bg-cyan-900/60 text-cyan-100 outline outline-1 outline-cyan-500/50" : "text-slate-100 hover:bg-slate-700"
+                    }`}
+                  >
+                    Forecast Track
+                  </button>
                 </div>
                 {/* Hidden div to maintain id reference logic */}
                 <div id="radar-controls" className="hidden"></div>
               </div>
               <CycloneMapLogic />
             </LeafletCustomControl>
+            
+            <EnsembleLayerLogic data={showEnsemble ? ensembleData : null} />
           </MapContainer>
 
           <div className="absolute bottom-4 left-4 z-[500] rounded-lg bg-slate-900/80 p-2 text-xs text-slate-200 backdrop-blur-sm shadow-xl border border-slate-700 font-mono" id="radar-timestamp"></div>
@@ -1251,10 +1410,52 @@ const Cyclone = () => {
             </button>
           </div>
         </div>
+
+        {/* ── Ensemble Forecast Legend ── */}
+        {(ensembleData && showEnsemble) && (() => {
+          const legend = [
+            { label:"Super Typhoon",         color:"#5B0E2D" },
+            { label:"Typhoon",               color:"#A83232" },
+            { label:"Severe Tropical Storm", color:"#E67E22" },
+            { label:"Tropical Storm",        color:"#F1C40F" },
+            { label:"Tropical Depression",   color:"#2ECC71" },
+            { label:"Low Pressure Area",     color:"#3498DB" },
+            { label:"Past Track",            color:"#000000" },
+          ];
+
+          return (
+            <div className="mt-4 rounded-xl border border-slate-700/60 bg-[#0f172a] shadow-xl overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-slate-700/50 bg-slate-900/70">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                  <span className="text-sm font-semibold text-slate-100">Forecast Track &amp; Cone of Uncertainty</span>
+                  <span className="text-[10px] font-mono text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full border border-slate-700">{ensembleData.storm_name}</span>
+                </div>
+                <span className="text-[10px] text-slate-500 font-mono">{ensembleData.current_time_ph}</span>
+              </div>
+              <div className="px-5 py-3 bg-slate-900/40">
+                <div className="flex flex-wrap gap-x-5 gap-y-1.5 mb-2">
+                  {legend.map(c => (
+                    <div key={c.label} className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded-full flex-shrink-0 border border-white/20" style={{ background: c.color }} />
+                      <span className="text-[10px] text-slate-400 font-mono">{c.label}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-8 h-3 rounded flex-shrink-0 bg-white/15 border border-white/25" />
+                    <span className="text-[10px] text-slate-400 font-mono">Cone of Uncertainty</span>
+                  </div>
+                </div>
+                <p className="text-[9px] text-slate-600 font-mono">Cone based on NHC 5-yr historical track errors · For reference only — refer to official advisories.</p>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
 };
-
 
 export default Cyclone;
