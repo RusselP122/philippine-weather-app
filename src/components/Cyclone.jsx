@@ -1236,10 +1236,10 @@ const Cyclone = () => {
 
   // Wind kt → category color (matches enemble.py palette)
   const windColor = (kt) => {
-    if (kt < 25)  return "#3498DB";
-    if (kt < 34)  return "#2ECC71";
-    if (kt < 48)  return "#F1C40F";
-    if (kt < 64)  return "#E67E22";
+    if (kt < 25) return "#3498DB";
+    if (kt < 34) return "#2ECC71";
+    if (kt < 48) return "#F1C40F";
+    if (kt < 64) return "#E67E22";
     if (kt < 100) return "#A83232";
     return "#5B0E2D";
   };
@@ -1377,9 +1377,8 @@ const Cyclone = () => {
                       e.stopPropagation();
                       setShowEnsemble(!showEnsemble);
                     }}
-                    className={`rounded px-2 py-1 text-xs font-medium text-left cursor-pointer transition ${
-                      showEnsemble ? "bg-cyan-900/60 text-cyan-100 outline outline-1 outline-cyan-500/50" : "text-slate-100 hover:bg-slate-700"
-                    }`}
+                    className={`rounded px-2 py-1 text-xs font-medium text-left cursor-pointer transition ${showEnsemble ? "bg-cyan-900/60 text-cyan-100 outline outline-1 outline-cyan-500/50" : "text-slate-100 hover:bg-slate-700"
+                      }`}
                   >
                     Forecast Track
                   </button>
@@ -1389,7 +1388,7 @@ const Cyclone = () => {
               </div>
               <CycloneMapLogic />
             </LeafletCustomControl>
-            
+
             <EnsembleLayerLogic data={showEnsemble ? ensembleData : null} />
           </MapContainer>
 
@@ -1414,13 +1413,13 @@ const Cyclone = () => {
         {/* ── Ensemble Forecast Legend ── */}
         {(ensembleData && showEnsemble) && (() => {
           const legend = [
-            { label:"Super Typhoon",         color:"#5B0E2D" },
-            { label:"Typhoon",               color:"#A83232" },
-            { label:"Severe Tropical Storm", color:"#E67E22" },
-            { label:"Tropical Storm",        color:"#F1C40F" },
-            { label:"Tropical Depression",   color:"#2ECC71" },
-            { label:"Low Pressure Area",     color:"#3498DB" },
-            { label:"Past Track",            color:"#000000" },
+            { label: "Super Typhoon", color: "#5B0E2D" },
+            { label: "Typhoon", color: "#A83232" },
+            { label: "Severe Tropical Storm", color: "#E67E22" },
+            { label: "Tropical Storm", color: "#F1C40F" },
+            { label: "Tropical Depression", color: "#2ECC71" },
+            { label: "Low Pressure Area", color: "#3498DB" },
+            { label: "Past Track", color: "#000000" },
           ];
 
           return (
@@ -1448,7 +1447,7 @@ const Cyclone = () => {
                     <span className="text-[10px] text-slate-400 font-mono">Cone of Uncertainty</span>
                   </div>
                 </div>
-                <p className="text-[9px] text-slate-600 font-mono">Cone based on NHC 5-yr historical track errors · For reference only — refer to official advisories.</p>
+                <p className="text-[9px] text-slate-600 font-mono text-center uppercase tracking-wider">Philippine Typhoon/Weather Track · For reference only — refer to official advisories.</p>
               </div>
             </div>
           );
