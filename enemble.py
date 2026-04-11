@@ -34,6 +34,8 @@ import os
 import numpy as np
 import pandas as pd
 from datetime import datetime, timezone
+from shapely.geometry import Polygon
+from shapely.ops import unary_union
 
 # ── Output path ────────────────────────────────────────────────────────────────
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "public", "data")
@@ -156,22 +158,54 @@ def convex_hull_2d(points):
 
 def build_cone_polygon(lats, lons, lead_times):
     """
-    Build the cone-of-uncertainty outer envelope as a convex hull of all
-    circle perimeter points at each forecast step.
+    Build the cone-of-uncertainty outer envelope using a continuous swept tangent union.
     Returns list of [lon, lat] pairs (closed polygon).
     """
     radii_nm_interp = np.interp(lead_times, LEAD_STANDARD, RADII_NM)
     radii_km = radii_nm_interp * 1.852
 
-    all_pts = []
-    for i, (lat, lon, r_km) in enumerate(zip(lats, lons, radii_km)):
-        r = max(r_km, 0.5)          # always at least 0.5 km so current pos has a dot
-        circle = build_circle_points(lat, lon, r, n=36)
-        all_pts.extend(circle[:-1]) # exclude closing duplicate
+    if len(lats) <= 1:
+        circ = []
+        radius = max(radii_km[0], 0.1)
+        for ang in range(0, 360, 10):
+            clat, clon = offset_point(lats[0], lons[0], radius, ang)
+            circ.append([round(clon, 4), round(clat, 4)])
+        return circ
 
-    hull = convex_hull_2d(all_pts)
-    hull.append(hull[0])  # close polygon
-    return hull
+    circles = []
+    for i in range(len(lats)):
+        circ_lons = []
+        circ_lats = []
+        radius = max(radii_km[i], 0.1)
+        for ang in range(0, 360, 10):
+            clat, clon = offset_point(lats[i], lons[i], radius, ang)
+            circ_lons.append(clon)
+            circ_lats.append(clat)
+        circles.append(Polygon(np.column_stack((circ_lons, circ_lats))))
+        
+    # Connect consecutive circles with a convex hull tangent
+    segments = []
+    for i in range(len(circles) - 1):
+        segment = circles[i].union(circles[i+1]).convex_hull
+        segments.append(segment)
+        
+    # Merge all segments into one continuous blob
+    cone_geom = unary_union(segments)
+    
+    if cone_geom.geom_type == 'Polygon':
+        geoms = [cone_geom]
+    elif cone_geom.geom_type == 'MultiPolygon':
+        geoms = list(cone_geom.geoms)
+    else:
+        geoms = []
+        
+    if not geoms:
+        return []
+
+    # Get the outline of the main contiguous polygon
+    largest_geom = max(geoms, key=lambda g: g.area)
+    coords = list(largest_geom.exterior.coords)
+    return [[round(p[0], 4), round(p[1], 4)] for p in coords]
 
 
 # ── Main  ──────────────────────────────────────────────────────────────────────
