@@ -43,10 +43,10 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # ── Forecast data (mean track)  ────────────────────────────────────────────────
 data_dict = {
     'lead_time_hours': [6.0, 30.0, 54.0, 78.0, 102.0, 126.0, 150.0],
-    'lat': [8.50    , 9.89, 11.91, 13.97, 15.49, 17.15, 19.21],
-    'lon': [151.50, 150.61, 147.93, 144.98, 143.40, 142.41, 142.89],
-    'minimum_sea_level_pressure_hpa': [963.3, 949.9, 928.6, 929.7, 942.4, 944.4, 957.5],
-    'maximum_sustained_wind_speed_knots': [89.4, 105.7, 128.7, 126.9, 109.2, 105.9, 91.4]
+    'lat': [8.80, 10.27, 12.50, 14.68, 16.35, 18.41, 21.02],
+    'lon': [151.40, 150.57, 148.15, 146.34, 145.39, 145.22, 146.93],
+    'minimum_sea_level_pressure_hpa': [962.9, 950.6, 928.0, 931.5, 943.1, 951.6, 965.5],
+    'maximum_sustained_wind_speed_knots': [87.6, 102.5, 126.0, 120.9, 107.6, 96.3, 78.9]
 }
 
 # ── Historical (past-track) data  ──────────────────────────────────────────────
@@ -81,15 +81,18 @@ history_dict = [
     {'init_time': '2026-4-10 06:00:00', 'lead_time': '0 days 00:00:00',
      'lat': 8.10, 'lon': 150.90, 'minimum_sea_level_pressure_hpa': 1006.9,
      'maximum_sustained_wind_speed_knots': 16.1},
-    {'init_time': '2026-4-10 06:00:00', 'lead_time': '0 days 00:00:00',
+    {'init_time': '2026-4-10 12:00:00', 'lead_time': '0 days 00:00:00',
      'lat': 8.10, 'lon': 150.90, 'minimum_sea_level_pressure_hpa': 1006.9,
+     'maximum_sustained_wind_speed_knots': 16.1},
+    {'init_time': '2026-4-10 18:00:00', 'lead_time': '0 days 00:00:00',
+     'lat': 8.50, 'lon': 150.50, 'minimum_sea_level_pressure_hpa': 1006.9,
      'maximum_sustained_wind_speed_knots': 16.1},
 
 ]
 
-STORM_NAME    = "Severe Tropical Storm Sinlaku"
-INIT_TIME_STR = "2026-04-10 12:00:00"
-CURRENT_TIME_PH = "8:00 AM PhST, April 11, 2026"
+STORM_NAME    = "Typhoon Sinlaku"
+INIT_TIME_STR = "2026-04-10 18:00:00"
+CURRENT_TIME_PH = "4:00 PM PhST, April 11, 2026"
 
 # ── NHC standard cone radii (nautical miles) by lead time (hours)  ─────────────
 LEAD_STANDARD = [0,  12,  24,  36,  48,   60,   72,   96,  120,  144]
