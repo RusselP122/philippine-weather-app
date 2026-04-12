@@ -103,7 +103,7 @@ history_dict = [
 
 STORM_NAME    = "Typhoon Sinlaku"
 INIT_TIME_STR = "2026-04-11 12:00:00"
-CURRENT_TIME_PH = "8:00 PM PhST, April 11, 2026"
+CURRENT_TIME_PH = "8:00 AM PhST, April 12, 2026"
 
 # ── NHC standard cone radii (nautical miles) by lead time (hours)  ─────────────
 LEAD_STANDARD = [0,  12,  24,  36,  48,   60,   72,   96,  120,  144]
