@@ -45,10 +45,10 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # ── Forecast data (mean track)  ────────────────────────────────────────────────
 data_dict = {
     'lead_time_hours': [6.0, 30.0, 54.0, 78.0, 102.0, 126.0, 150.0],
-    'lat': [10.30, 12.56, 14.76, 16.56, 18.99, 22.22, 25.13],
-    'lon': [150.60, 148.23, 146.45, 145.80, 145.98, 148.87, 153.41],
-    'minimum_sea_level_pressure_hpa': [943.5, 928.1, 932.6, 944.3, 949.1, 967.6, 980.9],
-    'maximum_sustained_wind_speed_knots': [110.4, 125.7, 118.1, 105.7, 99.0, 76.4, 57.6]
+    'lat': [11.10, 13.09, 15.09, 16.95, 18.87, 21.79, 24.85],
+    'lon': [150.20, 147.71, 146.20, 145.63, 145.67, 147.96, 151.19],
+    'minimum_sea_level_pressure_hpa': [935.5, 929.5, 941.1, 950.5, 950.9, 969.7, 982.1],
+    'maximum_sustained_wind_speed_knots': [120.5, 125.8, 111.1, 99.7, 97.8, 73.4, 56.9]
 }
 
 # ── Historical (past-track) data  ──────────────────────────────────────────────
@@ -101,12 +101,15 @@ history_dict = [
      {'init_time': '2026-4-11 18:00:00', 'lead_time': '0 days 00:00:00',
      'lat': 9.90, 'lon': 151.20, 'minimum_sea_level_pressure_hpa': 1006.9,
      'maximum_sustained_wind_speed_knots': 16.1},
+     {'init_time': '2026-4-12 00:00:00', 'lead_time': '0 days 00:00:00',
+     'lat': 10.30, 'lon': 150.60, 'minimum_sea_level_pressure_hpa': 1006.9,
+     'maximum_sustained_wind_speed_knots': 16.1},
 
 ]
 
 STORM_NAME    = "Typhoon Sinlaku"
-INIT_TIME_STR = "2026-04-12 18:00:00"
-CURRENT_TIME_PH = "4:00 PM PhST, April 12, 2026"
+INIT_TIME_STR = "2026-04-12 06:00:00"
+CURRENT_TIME_PH = "8:00 PM PhST, April 12, 2026"
 
 # ── NHC standard cone radii (nautical miles) by lead time (hours)  ─────────────
 LEAD_STANDARD = [0,  12,  24,  36,  48,   60,   72,   96,  120,  144]
