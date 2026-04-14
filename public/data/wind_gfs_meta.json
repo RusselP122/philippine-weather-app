@@ -1,8 +1,8 @@
 {
   "model": "GFS (0.25\u00b0)",
   "source": "NOAA / UCAR THREDDS",
-  "generated_at": "2026-04-14 10:49 AM",
-  "run_time": "2026-04-14 00:00 UTC",
+  "generated_at": "2026-04-14 04:43 PM",
+  "run_time": "2026-04-14 06:00 UTC",
   "animation_frames": [
     "gfs_wind_006",
     "gfs_wind_012",
