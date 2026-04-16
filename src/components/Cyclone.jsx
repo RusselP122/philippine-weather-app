@@ -551,7 +551,7 @@ const CycloneMapLogic = () => {
     let radarLayers = {};
     let satOverlayLayer = null; // for Radar + Satellite combined mode
     let optionKind = "satellite"; // dataset driving animation: "radar" or "satellite"
-    let displayMode = "satellite"; // UI mode: "radar" | "satellite" | "both" | "precip" | "pressure" | "wind"
+    let displayMode = "satellite"; // UI mode: "radar" | "satellite" | "satellite_ir" | "both" | "precip" | "pressure" | "wind"
     const optionTileSize = 256;
     let optionColorScheme = 2;
     const optionSmoothData = 1;
@@ -600,6 +600,31 @@ const CycloneMapLogic = () => {
       return frames;
     }
 
+    async function fetchInfraredTimestamps() {
+      const serverTime = await fetchServerTime();
+      const frames = [];
+      const intervalMinutes = 10;
+      const historyHours = 3;
+      const lagMinutes = 40;
+
+      let current = new Date(serverTime.getTime());
+      const minutes = current.getUTCMinutes();
+      current.setUTCMinutes(minutes - (minutes % intervalMinutes), 0, 0);
+      current.setUTCMinutes(current.getUTCMinutes() - lagMinutes);
+
+      const totalFrames = (historyHours * 60) / intervalMinutes;
+      for (let i = 0; i < totalFrames; i++) {
+        frames.unshift({
+          time: Math.floor(current.getTime() / 1000),
+          path: `ir_${current.toISOString()}`,
+          irTime: new Date(current.getTime()),
+          isInfrared: true,
+        });
+        current.setUTCMinutes(current.getUTCMinutes() - intervalMinutes);
+      }
+      return frames;
+    }
+
     function startLoadingTile() {
       loadingTilesCount++;
     }
@@ -630,8 +655,22 @@ const CycloneMapLogic = () => {
             zIndex: frame.time,
             maxNativeZoom: 7,
             maxZoom: 18,
-            minZoom: 2, // Prevent fetching global map at lowest zooms to stop 404 flooding
-            noWrap: true, // Prevent continuous horizontal clone wrapping outside the satellite view
+            minZoom: 2,
+            noWrap: true,
+            errorTileUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+          });
+        } else if (frame.isInfrared) {
+          // Meteored IR satellite tiles via wsrv.nl proxy
+          const irUrl = `https://wsrv.nl/?url=services-c.meteored.com/img/tiles/viewer/satellite/{z}/{x}/{y}/${frame.time}_ir@2x.jpg`;
+          source = new L.TileLayer(irUrl, {
+            tileSize: 512,
+            zoomOffset: -1,
+            opacity: 0.01,
+            zIndex: frame.time,
+            maxNativeZoom: 7,
+            maxZoom: 18,
+            minZoom: 2,
+            noWrap: true,
             errorTileUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
           });
         } else {
@@ -834,6 +873,18 @@ const CycloneMapLogic = () => {
           showFrame(animationPosition, true);
         });
         return; // async – return early, frames will come from promise
+      } else if (kind === "satellite_ir") {
+        // Meteored Infrared satellite tiles
+        optionKind = "satellite";
+        if (btnPlay) btnPlay.style.display = "block";
+        fetchInfraredTimestamps().then((frames) => {
+          mapFrames = frames;
+          lastPastFramePosition = frames.length - 1;
+          latestFrameIndex = frames.length - 1;
+          animationPosition = latestFrameIndex;
+          showFrame(animationPosition, true);
+        });
+        return;
       } else if (kind === "radar") {
         // Radar only
         optionKind = "radar";
@@ -893,6 +944,9 @@ const CycloneMapLogic = () => {
       setActive(btnPressure, mode === "pressure");
       setActive(btnWind, mode === "wind");
 
+      const btnIR = document.getElementById("btn-infrared");
+      setActive(btnIR, mode === "satellite_ir");
+
     }
 
     function setKind(kind) {
@@ -928,10 +982,10 @@ const CycloneMapLogic = () => {
     // Auto-refresh Zoom Earth satellite frames every 10 minutes.
     // This picks up newly published Himawari frames and updates the timestamp display.
     setInterval(async () => {
-      if (displayMode !== "satellite") return; // only refresh in satellite mode
+      if (displayMode !== "satellite" && displayMode !== "satellite_ir") return; // only refresh in satellite/IR mode
       if (animationTimer) return;              // don't interrupt a playing animation
 
-      const freshFrames = await fetchZoomEarthTimestamps();
+      const freshFrames = displayMode === "satellite_ir" ? await fetchInfraredTimestamps() : await fetchZoomEarthTimestamps();
       if (!freshFrames.length) return;
 
       // Check if there's actually a new frame available
@@ -961,10 +1015,10 @@ const CycloneMapLogic = () => {
     // Chrome throttles setInterval for background tabs, so this ensures the
     // satellite tiles and timestamp are always up-to-date when the tab is focused.
     async function refreshSatelliteIfStale() {
-      if (displayMode !== "satellite") return;
+      if (displayMode !== "satellite" && displayMode !== "satellite_ir") return;
       if (animationTimer) return;
 
-      const freshFrames = await fetchZoomEarthTimestamps();
+      const freshFrames = displayMode === "satellite_ir" ? await fetchInfraredTimestamps() : await fetchZoomEarthTimestamps();
       if (!freshFrames.length) return;
 
       const latestNew = freshFrames[freshFrames.length - 1].time;
@@ -1028,6 +1082,10 @@ const CycloneMapLogic = () => {
     if (btnWind) {
       btnWind.addEventListener("click", () => setKind("wind"));
     }
+    const btnInfrared = document.getElementById("btn-infrared");
+    if (btnInfrared) {
+      btnInfrared.addEventListener("click", () => setKind("satellite_ir"));
+    }
 
     if (btnPlay) {
       btnPlay.addEventListener("click", () => playStop());
@@ -1046,6 +1104,8 @@ const CycloneMapLogic = () => {
       if (btnPrecip) btnPrecip.replaceWith(btnPrecip.cloneNode(true));
       if (btnPressure) btnPressure.replaceWith(btnPressure.cloneNode(true));
       if (btnWind) btnWind.replaceWith(btnWind.cloneNode(true));
+      const btnIRCleanup = document.getElementById("btn-infrared");
+      if (btnIRCleanup) btnIRCleanup.replaceWith(btnIRCleanup.cloneNode(true));
 
       if (btnPlay) btnPlay.replaceWith(btnPlay.cloneNode(true));
     };
@@ -1351,6 +1411,12 @@ const Cyclone = () => {
                     className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
                   >
                     Both
+                  </button>
+                  <button
+                    id="btn-infrared"
+                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
+                  >
+                    Infrared
                   </button>
                   <div className="h-px bg-slate-700 my-1"></div>
                   <button
