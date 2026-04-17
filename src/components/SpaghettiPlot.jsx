@@ -129,7 +129,7 @@ function regionName(lat, lon) {
     if (lon > 135 && lon <= 180 && lat >= 0 && lat <= 25) return "W. Pacific";
     if (lon > 120 && lon <= 145 && lat > 25 && lat <= 45) return "NW Pacific";
     if (lat < 0) return "Southern Hemisphere";
-    return "Open Pacific";label na, me
+    return "Open Pacific";
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
