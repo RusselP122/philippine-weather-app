@@ -126,10 +126,10 @@ function clusterOrigins(origins, threshold = 5) {
 function regionName(lat, lon) {
     if (lon >= 100 && lon <= 120 && lat >= 5 && lat <= 25) return "South China Sea";
     if (lon > 120 && lon <= 135 && lat >= 5 && lat <= 25) return "Philippine Sea";
-    if (lon > 135 && lon <= 180 && lat >= 0 && lat <= 25) return "W. Pacific / Marshalls";
+    if (lon > 135 && lon <= 180 && lat >= 0 && lat <= 25) return "W. Pacific";
     if (lon > 120 && lon <= 145 && lat > 25 && lat <= 45) return "NW Pacific";
     if (lat < 0) return "Southern Hemisphere";
-    return "Open Pacific";
+    return "Open Pacific";label na, me
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
@@ -302,7 +302,7 @@ export default function SpaghettiPlot() {
                     Math.abs(points[i].lon - points[i - 1].lon) > 10) { bad = true; break; }
             }
             if (bad) continue;
-            
+
             const origin = points.find(pt => pt.h === 0) || points[0];
             if (!origin) continue;
             const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
@@ -430,10 +430,10 @@ export default function SpaghettiPlot() {
     useEffect(() => {
         if (!layerGroupRef.current) return;
         const L = window.L;
-        
+
         layerGroupRef.current.eachLayer(layer => {
             const isSelected = activeDisturbanceId === null || layer.distId === activeDisturbanceId;
-            
+
             if (layer instanceof L.Polyline && !(layer instanceof L.CircleMarker)) {
                 layer.setStyle({ opacity: isSelected ? layer.defaultOpacity : 0.05 });
             } else if (layer instanceof L.CircleMarker) {
@@ -493,8 +493,8 @@ export default function SpaghettiPlot() {
                                 setSidebarOpen(false);
                             }}
                             className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${basin === opt.id
-                                    ? "bg-cyan-600 text-white"
-                                    : "bg-slate-900 text-slate-400 hover:bg-slate-700 hover:text-white"
+                                ? "bg-cyan-600 text-white"
+                                : "bg-slate-900 text-slate-400 hover:bg-slate-700 hover:text-white"
                                 }`}
                         >
                             {opt.label}
@@ -565,8 +565,8 @@ export default function SpaghettiPlot() {
                     </h2>
                     <div className="space-y-2">
                         {disturbances.map(d => (
-                            <div 
-                                key={d.id} 
+                            <div
+                                key={d.id}
                                 onClick={() => {
                                     setActiveDisturbanceId(activeDisturbanceId === d.id ? null : d.id);
                                     setSidebarOpen(false);
