@@ -22,7 +22,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Large NetCDF data files (never commit these - too large for GitHub)
+# Large NetCDF and CSV data files (never commit these - too large for GitHub)
 *.nc
 *.nc.gz
 *.nc.gz.base64
+*.csv
