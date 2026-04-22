@@ -20,6 +20,7 @@ import Footer from "./components/Footer";
 import EnsoMonitor from "./components/EnsoMonitor";
 import LightningDetection from "./components/LightningDetection";
 import StrikeProbability from "./components/StrikeProbability";
+import TropicalCyclonePrediction from "./components/TropicalCyclonePrediction";
 
 function AppContent() {
   const path = window.location.pathname;
@@ -123,6 +124,18 @@ function AppContent() {
     );
   }
 
+  if (path === "/tc-prediction") {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <TropicalCyclonePrediction />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   if (path === "/earthquake") {
     return (
       <div className="min-h-screen flex flex-col bg-slate-950">
@@ -209,7 +222,7 @@ function AppContent() {
 
   if (path === "/strike-probability") {
     return (
-      <div className="min-h-screen flex flex-col bg-slate-950">
+      <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
         <Navbar />
         <main className="flex-grow">
           <StrikeProbability />
@@ -218,6 +231,7 @@ function AppContent() {
       </div>
     );
   }
+
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950">

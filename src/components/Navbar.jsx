@@ -61,6 +61,7 @@ const Navbar = () => {
       id: "cyclone",
       items: [
         { label: "Tropical Cyclone Track", href: "/cyclone" },
+        { label: "Tropical Cyclone Prediction", href: "/tc-prediction" },
         { label: "Tropical Cyclone Info", href: "/tc-info" },
         { label: "Warning", href: "/warning" },
         { label: "Tropical Cyclone Strike Probability", href: "/strike-probability" }
@@ -89,7 +90,7 @@ const Navbar = () => {
   return (
     <nav
       ref={navRef}
-      className="bg-gradient-to-r from-sky-100 via-sky-50 to-white text-slate-900 shadow-md z-[1000] backdrop-blur sticky top-0"
+      className="bg-gradient-to-r from-sky-100 via-sky-50 to-white text-slate-900 shadow-md z-[2000] backdrop-blur sticky top-0"
     >
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
         {/* Logo */}
