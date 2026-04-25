@@ -1,8 +1,8 @@
 {
   "model": "GFS 0.25\u00b0",
   "source": "NOAA NOMADS / THREDDS",
-  "generated_at": "2026-04-25 05:21 AM",
-  "run_time": "2026-04-24 21:00 UTC",
+  "generated_at": "2026-04-25 07:28 AM",
+  "run_time": "2026-04-25 03:00 UTC",
   "animation_frames": [
     "precip_mslp_006",
     "precip_mslp_012",
