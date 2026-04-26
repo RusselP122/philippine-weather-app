@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import "./SpaghettiPlot.css";
 
 // ── Leaflet asset injection ───────────────────────────────────────────────
 const injectLeafletCSS = () => {
@@ -32,8 +33,9 @@ function pressureColor(p) {
 
 // ── CSV parser (robust: handles \r\n, returns cols for diagnostics) ────────
 function parseCSV(text) {
-    // Normalize line endings, strip comments
+    // Normalize line endings, strip BOM, strip comments
     const lines = text
+        .replace(/^\uFEFF/, "")
         .replace(/\r\n/g, "\n")
         .replace(/\r/g, "\n")
         .split("\n")
@@ -153,60 +155,85 @@ export default function SpaghettiPlot() {
 
     // ── Init map once ─────────────────────────────────────────────────────
     useEffect(() => {
+        let cancelled = false;
         injectLeafletCSS();
-        loadLeaflet().then((L) => {
-            if (mapInstanceRef.current || !mapRef.current) return;
 
+        // Wait for Leaflet CSS to actually load before creating the map
+        const waitForCSS = () => new Promise((resolve) => {
+            const link = document.getElementById("leaflet-css");
+            if (!link) return resolve();
+            if (link.sheet) return resolve();  // already loaded
+            link.onload = resolve;
+            link.onerror = resolve;
+            // Safety timeout
+            setTimeout(resolve, 3000);
+        });
+
+        waitForCSS().then(() => loadLeaflet()).then((L) => {
+            if (cancelled || mapInstanceRef.current || !mapRef.current) return;
+
+            // Inject map background BEFORE creating the map
+            if (!document.getElementById("fnv3-bg-css")) {
+                const s = document.createElement("style");
+                s.id = "fnv3-bg-css";
+                s.textContent = `.leaflet-container { background: #0f172a !important; }`;
+                document.head.appendChild(s);
+            }
+
+            // Use Canvas renderer — far more resilient to the SVG _clipPoints
+            // 'reading x' crash and handles thousands of polylines better
             const map = L.map(mapRef.current, {
                 zoomControl: false,
                 worldCopyJump: false,
                 maxBounds: [[-85, -180], [85, 180]],
                 maxBoundsViscosity: 1.0,
-                minZoom: 3
+                minZoom: 3,
+                preferCanvas: true,
+                renderer: L.canvas({ padding: 0.5 }),
             }).setView([18, 130], 4);
+
             L.control.zoom({ position: "bottomright" }).addTo(map);
 
             L.tileLayer(
-                "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+                "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png",
                 { attribution: "© CARTO", subdomains: "abcd", maxZoom: 19, noWrap: true }
             ).addTo(map);
-
-            // Fetch and add countries GeoJSON
-            fetch('/assets/country.0.1.json')
-                .then(res => res.json())
-                .then(data => {
-                    L.geoJSON(data, {
-                        style: {
-                            color: "#FFD700",
-                            weight: 1,
-                            opacity: 0.6,
-                            fillOpacity: 0,
-                        }
-                    }).addTo(map);
-                })
-                .catch(err => console.error("Error loading countries topojson:", err));
 
             // PAR boundary (solid red)
             L.polyline(PAR, { color: "#ef4444", weight: 2 }).addTo(map);
 
-            // Inject map background
-            if (!document.getElementById("fnv3-bg-css")) {
-                const s = document.createElement("style");
-                s.id = "fnv3-bg-css";
-                s.textContent = `
-                  .leaflet-container { background: #0f172a !important; }
-                `;
-                document.head.appendChild(s);
-            }
+            // Country boundaries (matches Python BORDERS styling)
+            fetch("/data/country.0.1.json")
+                .then(r => r.ok ? r.json() : null)
+                .then(geo => {
+                    if (geo && map) {
+                        L.geoJSON(geo, {
+                            style: { color: "#facc15", weight: 1, opacity: 0.7, dashArray: "4 4", fillOpacity: 0 }
+                        }).addTo(map);
+                    }
+                })
+                .catch(() => { /* silently skip if unavailable */ });
 
             layerGroupRef.current = L.layerGroup().addTo(map);
             mapInstanceRef.current = map;
+
             // Fly to default basin
             const def = BASINS.find(b => b.id === "wpac");
             map.setView(def.center, def.zoom);
-            setLeafletReady(true);
+
+            // Force Leaflet to recalculate its internal pixel bounds from the
+            // now-guaranteed-visible container, then mark ready on next frame
+            map.invalidateSize({ animate: false });
+            requestAnimationFrame(() => {
+                if (!cancelled) {
+                    map.invalidateSize({ animate: false });
+                    setLeafletReady(true);
+                }
+            });
         });
+
         return () => {
+            cancelled = true;
             mapInstanceRef.current?.remove();
             mapInstanceRef.current = null;
         };
@@ -216,6 +243,12 @@ export default function SpaghettiPlot() {
     const loadData = useCallback(async () => {
         if (!leafletReady) return;
         const L = window.L;
+        const map = mapInstanceRef.current;
+        // Detach layer group from the map during bulk operations
+        // to prevent per-layer re-render crashes in the canvas renderer
+        if (map && layerGroupRef.current) {
+            map.removeLayer(layerGroupRef.current);
+        }
         layerGroupRef.current.clearLayers();
         setStatus("loading");
         setStatusMsg("Loading latest FNV3 CSV…");
@@ -236,6 +269,8 @@ export default function SpaghettiPlot() {
                 `CSV not found at ${csvUrl}. ` +
                 "Run the GitHub Action workflow first to generate it."
             );
+            // Re-attach the layer group before returning
+            if (map && layerGroupRef.current) layerGroupRef.current.addTo(map);
             return;
         }
 
@@ -253,166 +288,179 @@ export default function SpaghettiPlot() {
         setRawRowCount(rawRows.length);
         const maxHours = horizon === "5day" ? 120 : 360;
 
-        // Basin bounds filter
-        const b = BASINS.find(b => b.id === basin);
+        try {
+            // Basin bounds filter
+            const b = BASINS.find(b => b.id === basin);
 
-        // Group by track_id → sample (use rawRows to skip header-less rows)
-        const grouped = {};
-        for (const row of rawRows) {
-            let leadH = parseFloat(row.lead_time_hours);
-            if (isNaN(leadH) || row.lead_time_hours === undefined) {
-                const str = row.lead_time || "";
-                const parts = str.match(/(?:(\d+)\s+days\s+)?(\d+):(\d+):(\d+)/);
-                if (parts) {
-                    const d = parseInt(parts[1] || 0);
-                    const h = parseInt(parts[2] || 0);
-                    leadH = d * 24 + h;
+            // Group by track_id → sample (use rawRows to skip header-less rows)
+            const grouped = {};
+            for (const row of rawRows) {
+                let leadH = parseFloat(row.lead_time_hours);
+                if (isNaN(leadH) || row.lead_time_hours === undefined) {
+                    const str = row.lead_time || "";
+                    const parts = str.match(/(?:(\d+)\s+days\s+)?(\d+):(\d+):(\d+)/);
+                    if (parts) {
+                        const d = parseInt(parts[1] || 0);
+                        const h = parseInt(parts[2] || 0);
+                        leadH = d * 24 + h;
+                    }
+                }
+                if (isNaN(leadH) || leadH > maxHours) continue;
+                const lat = parseFloat(row.lat);
+                const lon = parseFloat(row.lon);
+                const pres = parseFloat(row.minimum_sea_level_pressure_hpa);
+                if (isNaN(lat) || isNaN(lon)) continue;
+                const llon = lon > 180 ? lon - 360 : lon;
+                const key = `${row.track_id}__${row.sample}`;
+                if (!grouped[key]) grouped[key] = [];
+                grouped[key].push({ lat, lon: llon, p: pres, h: leadH });
+            }
+
+            // Keep only tracks whose origin point falls inside the selected basin
+            const basinFiltered = Object.values(grouped).filter(points => {
+                const origin = points.find(p => p.h === 0) || points[0];
+                if (!origin) return false;
+                return origin.lat >= b.latMin && origin.lat <= b.latMax &&
+                    origin.lon >= b.lonMin && origin.lon <= b.lonMax;
+            });
+
+            let drawn = 0;
+            const tracksByOriginKey = {};  // oKey → array of tracks
+
+            // Pass 1: Gather all valid origins for clustering
+            const allOrigins = [];
+            const uniqueOrigins = new Set();
+            for (const points of basinFiltered) {
+                if (points.length < 2) continue;
+                let bad = false;
+                for (let i = 1; i < points.length; i++) {
+                    if (Math.abs(points[i].lat - points[i - 1].lat) > 10 ||
+                        Math.abs(points[i].lon - points[i - 1].lon) > 10) { bad = true; break; }
+                }
+                if (bad) continue;
+
+                const origin = points.find(pt => pt.h === 0) || points[0];
+                if (!origin) continue;
+                const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
+                if (!uniqueOrigins.has(oKey)) {
+                    uniqueOrigins.add(oKey);
+                    allOrigins.push({ lat: origin.lat, lon: origin.lon, oKey });
                 }
             }
-            if (isNaN(leadH) || leadH > maxHours) continue;
-            const lat = parseFloat(row.lat);
-            const lon = parseFloat(row.lon);
-            const pres = parseFloat(row.minimum_sea_level_pressure_hpa);
-            if (isNaN(lat) || isNaN(lon)) continue;
-            const llon = lon > 180 ? lon - 360 : lon;
-            const key = `${row.track_id}__${row.sample}`;
-            if (!grouped[key]) grouped[key] = [];
-            grouped[key].push({ lat, lon: llon, p: pres, h: leadH });
-        }
 
-        // Keep only tracks whose origin point falls inside the selected basin
-        const basinFiltered = Object.values(grouped).filter(points => {
-            const origin = points.find(p => p.h === 0) || points[0];
-            if (!origin) return false;
-            return origin.lat >= b.latMin && origin.lat <= b.latMax &&
-                origin.lon >= b.lonMin && origin.lon <= b.lonMax;
-        });
+            // Cluster origins into distinct disturbances
+            const clusters = clusterOrigins(allOrigins, 5);
+            clusters.forEach((c, idx) => c.distId = idx + 1);
 
-        let drawn = 0;
-        const tracksByOriginKey = {};  // oKey → array of tracks
+            const originSetDone = new Set();
 
-        // Pass 1: Gather all valid origins for clustering
-        const allOrigins = [];
-        const uniqueOrigins = new Set();
-        for (const points of basinFiltered) {
-            if (points.length < 2) continue;
-            let bad = false;
-            for (let i = 1; i < points.length; i++) {
-                if (Math.abs(points[i].lat - points[i - 1].lat) > 10 ||
-                    Math.abs(points[i].lon - points[i - 1].lon) > 10) { bad = true; break; }
-            }
-            if (bad) continue;
+            // Pass 2: Draw tracks and attach cluster IDs
+            for (const points of basinFiltered) {
+                if (points.length < 2) continue;
+                points.sort((a, b) => a.h - b.h);
+                const latlngs = points.map(pt => [pt.lat, pt.lon]);
 
-            const origin = points.find(pt => pt.h === 0) || points[0];
-            if (!origin) continue;
-            const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
-            if (!uniqueOrigins.has(oKey)) {
-                uniqueOrigins.add(oKey);
-                allOrigins.push({ lat: origin.lat, lon: origin.lon, oKey });
-            }
-        }
+                let bad = false;
+                for (let i = 1; i < latlngs.length; i++) {
+                    if (Math.abs(latlngs[i][0] - latlngs[i - 1][0]) > 10 ||
+                        Math.abs(latlngs[i][1] - latlngs[i - 1][1]) > 10) { bad = true; break; }
+                }
+                if (bad) continue;
 
-        // Cluster origins into distinct disturbances
-        const clusters = clusterOrigins(allOrigins, 5);
-        clusters.forEach((c, idx) => c.distId = idx + 1);
+                const origin = points.find(pt => pt.h === 0) || points[0];
+                const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
+                const myCluster = clusters.find(c => c.origins.some(o => o.oKey === oKey));
+                const distId = myCluster ? myCluster.distId : null;
 
-        const originSetDone = new Set();
-
-        // Pass 2: Draw tracks and attach cluster IDs
-        for (const points of basinFiltered) {
-            if (points.length < 2) continue;
-            points.sort((a, b) => a.h - b.h);
-            const latlngs = points.map(pt => [pt.lat, pt.lon]);
-
-            let bad = false;
-            for (let i = 1; i < latlngs.length; i++) {
-                if (Math.abs(latlngs[i][0] - latlngs[i - 1][0]) > 10 ||
-                    Math.abs(latlngs[i][1] - latlngs[i - 1][1]) > 10) { bad = true; break; }
-            }
-            if (bad) continue;
-
-            const origin = points.find(pt => pt.h === 0) || points[0];
-            const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
-            const myCluster = clusters.find(c => c.origins.some(o => o.oKey === oKey));
-            const distId = myCluster ? myCluster.distId : null;
-
-            const line = L.polyline(latlngs, {
-                color: "#606060", weight: 2, opacity: 0.55,
-                lineCap: "round", lineJoin: "round",
-            });
-            line.distId = distId;
-            line.defaultOpacity = 0.55;
-            line.addTo(layerGroupRef.current);
-
-            for (const pt of points) {
-                const mark = L.circleMarker([pt.lat, pt.lon], {
-                    radius: 3.5, color: "white", weight: 0.8,
-                    fillColor: pressureColor(pt.p), fillOpacity: 0.9,
-                    opacity: 1
+                const line = L.polyline(latlngs, {
+                    color: "#00d4ff", weight: 2.5, opacity: 0.5,
+                    lineCap: "round", lineJoin: "round",
+                    noClip: true,
                 });
-                mark.distId = distId;
-                mark.defaultFillOpacity = 0.9;
-                mark.defaultStrokeOpacity = 1;
-                mark.addTo(layerGroupRef.current);
+                line.distId = distId;
+                line.defaultOpacity = 0.5;
+                line.addTo(layerGroupRef.current);
+
+                for (const pt of points) {
+                    const mark = L.circleMarker([pt.lat, pt.lon], {
+                        radius: 3.5, color: "white", weight: 0.8,
+                        fillColor: pressureColor(pt.p), fillOpacity: 0.9,
+                        opacity: 1
+                    });
+                    mark.distId = distId;
+                    mark.defaultFillOpacity = 0.9;
+                    mark.defaultStrokeOpacity = 1;
+                    mark.addTo(layerGroupRef.current);
+                }
+
+                if (!originSetDone.has(oKey)) {
+                    originSetDone.add(oKey);
+                    tracksByOriginKey[oKey] = [];
+                }
+                // Store the min pressure across all points in this track
+                const minP = Math.min(...points.map(pt => isNaN(pt.p) ? 9999 : pt.p));
+                if (tracksByOriginKey[oKey]) {
+                    tracksByOriginKey[oKey].push(minP);
+                }
+                drawn++;
             }
 
-            if (!originSetDone.has(oKey)) {
-                originSetDone.add(oKey);
-                tracksByOriginKey[oKey] = [];
+            // Build disturbance metadata
+            const disturbanceList = clusters.map(cluster => {
+                const allMinP = [];
+                for (const o of cluster.origins) {
+                    const trks = tracksByOriginKey[o.oKey] || [];
+                    allMinP.push(...trks);
+                }
+                const peakP = allMinP.length > 0 ? Math.min(...allMinP) : 9999;
+                const peakCat = pressureCategory(peakP);
+                const peakColor = pressureColor(peakP);
+                const region = regionName(cluster.center.lat, cluster.center.lon);
+
+                // Count tracks by category
+                const catCounts = {};
+                for (const p of allMinP) {
+                    const cat = pressureCategory(p);
+                    catCounts[cat] = (catCounts[cat] || 0) + 1;
+                }
+
+                return {
+                    id: cluster.distId,
+                    lat: cluster.center.lat,
+                    lon: cluster.center.lon,
+                    region,
+                    trackCount: allMinP.length,
+                    peakP,
+                    peakCat,
+                    peakColor,
+                    catCounts,
+                };
+            });
+
+            setDisturbances(disturbanceList);
+            setActiveDisturbanceId(null);
+
+            setTrackCount(drawn);
+            if (drawn > 0) {
+                setStatus("ok");
+                setStatusMsg("");
+            } else if (rawRows.length > 0) {
+                setStatus("none");
+                setStatusMsg("No active tropical disturbances are being tracked in the current FNV3 run.");
+            } else {
+                setStatus("none");
+                setStatusMsg("No tracks found in the current FNV3 run data.");
             }
-            // Store the min pressure across all points in this track
-            const minP = Math.min(...points.map(pt => isNaN(pt.p) ? 9999 : pt.p));
-            if (tracksByOriginKey[oKey]) {
-                tracksByOriginKey[oKey].push(minP);
+
+        } catch (err) {
+            setStatus("error");
+            setStatusMsg(`Processing error: ${err.message}`);
+            console.error(err);
+        } finally {
+            // Re-attach the layer group to the map now that bulk adds are done
+            if (map && layerGroupRef.current) {
+                layerGroupRef.current.addTo(map);
             }
-            drawn++;
-        }
-
-        // Build disturbance metadata
-        const disturbanceList = clusters.map(cluster => {
-            const allMinP = [];
-            for (const o of cluster.origins) {
-                const trks = tracksByOriginKey[o.oKey] || [];
-                allMinP.push(...trks);
-            }
-            const peakP = allMinP.length > 0 ? Math.min(...allMinP) : 9999;
-            const peakCat = pressureCategory(peakP);
-            const peakColor = pressureColor(peakP);
-            const region = regionName(cluster.center.lat, cluster.center.lon);
-
-            // Count tracks by category
-            const catCounts = {};
-            for (const p of allMinP) {
-                const cat = pressureCategory(p);
-                catCounts[cat] = (catCounts[cat] || 0) + 1;
-            }
-
-            return {
-                id: cluster.distId,
-                lat: cluster.center.lat,
-                lon: cluster.center.lon,
-                region,
-                trackCount: allMinP.length,
-                peakP,
-                peakCat,
-                peakColor,
-                catCounts,
-            };
-        });
-
-        setDisturbances(disturbanceList);
-        setActiveDisturbanceId(null);
-
-        setTrackCount(drawn);
-        if (drawn > 0) {
-            setStatus("ok");
-            setStatusMsg("");
-        } else if (rawRows.length > 0) {
-            setStatus("none");
-            setStatusMsg("No active tropical disturbances are being tracked in the current FNV3 run.");
-        } else {
-            setStatus("none");
-            setStatusMsg("No tracks found in the current FNV3 run data.");
         }
 
     }, [leafletReady, horizon, dataset, basin]);
@@ -455,36 +503,45 @@ export default function SpaghettiPlot() {
 
     // ── Sidebar panel ─────────────────────────────────────────────────────
     const Panel = () => (
-        <div className="flex-1 overflow-y-auto p-4 space-y-5 text-sm">
+        <div className="spaghetti-sidebar">
+
+            {/* Back to Forecast */}
+            <a href="/" className="back-to-forecast">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                Back to Forecast
+            </a>
 
             {/* Header */}
-            <div className="border-b border-slate-700 pb-4">
-                <div className="flex items-start justify-between gap-2 mb-1">
-                    <h1 className="text-base font-bold text-white leading-tight">
-                        GDM FNV3 Spaghetti
+            <div className="spaghetti-header">
+                <div className="spaghetti-header-top">
+                    <h1 className="spaghetti-title">
+                        Ensemble Tracker
                     </h1>
-                    <span className={`flex-shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border ${status === "ok" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
-                        status === "loading" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
-                            status === "none" ? "bg-sky-500/20 text-sky-400 border-sky-500/30" :
-                                status === "error" ? "bg-red-500/20 text-red-400 border-red-500/30" :
-                                    "bg-slate-700 text-slate-400 border-slate-600"
+                    <span className={`spaghetti-status-badge ${status === "ok" ? "status-ok" :
+                        status === "loading" ? "status-loading" :
+                            status === "none" ? "status-none" :
+                                status === "error" ? "status-error" :
+                                    "status-none"
                         }`}>
                         {status === "ok" ? "Live" : status === "loading" ? "…" : status === "none" ? "Quiet" : status === "error" ? "Err" : "–"}
                     </span>
                 </div>
-                <p className="text-[10px] text-slate-400 font-mono leading-relaxed mt-2">
+                <p className="spaghetti-subtitle">
                     {status === "loading" ? statusMsg :
                         status === "error" ? statusMsg :
                             status === "none" ? statusMsg :
-                                status === "ok" ? `Run: ${runLabel}` :
+                                status === "ok" ? `Init: ${runLabel.split('·')[1]?.trim() || runLabel}` :
                                     "Select a horizon to load."}
                 </p>
             </div>
 
             {/* Basin selector */}
             <div>
-                <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Basin</h2>
-                <div className="flex flex-col gap-1">
+                <h2 className="spaghetti-section-title">
+                    <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Region
+                </h2>
+                <div className="spaghetti-region-grid">
                     {BASINS.map(opt => (
                         <button
                             key={opt.id}
@@ -492,10 +549,7 @@ export default function SpaghettiPlot() {
                                 setBasin(opt.id);
                                 setSidebarOpen(false);
                             }}
-                            className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${basin === opt.id
-                                ? "bg-cyan-600 text-white"
-                                : "bg-slate-900 text-slate-400 hover:bg-slate-700 hover:text-white"
-                                }`}
+                            className={`region-btn ${basin === opt.id ? "active" : ""}`}
                         >
                             {opt.label}
                         </button>
@@ -505,20 +559,20 @@ export default function SpaghettiPlot() {
 
             {/* Dataset selector */}
             <div>
-                <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Dataset</h2>
-                <div className="flex rounded-lg overflow-hidden border border-slate-700 mb-3">
-                    {[{ id: "base", label: "FNV3 Base" },
-                    { id: "large", label: "Large Ensemble" }]
+                <h2 className="spaghetti-section-title">
+                    <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
+                    Dataset
+                </h2>
+                <div className="segmented-control">
+                    {[{ id: "base", label: "Base" },
+                    { id: "large", label: "Large Ens" }]
                         .map(opt => (
                             <button
                                 key={opt.id}
                                 onClick={() => setDataset(opt.id)}
-                                className={`flex-1 py-2 px-2 text-left transition-colors cursor-pointer flex items-center justify-center ${dataset === opt.id
-                                    ? "bg-cyan-700 text-white"
-                                    : "bg-slate-900 text-slate-400 hover:bg-slate-800"
-                                    }`}
+                                className={`segment-btn ${dataset === opt.id ? "active" : ""}`}
                             >
-                                <span className="block text-xs font-bold text-center">{opt.label}</span>
+                                <span className="segment-label">{opt.label}</span>
                             </button>
                         ))}
                 </div>
@@ -526,20 +580,20 @@ export default function SpaghettiPlot() {
 
             {/* Horizon selector */}
             <div>
-                <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Forecast Horizon</h2>
-                <div className="flex rounded-lg overflow-hidden border border-slate-700">
-                    {[{ id: "5day", label: "5-Day (≤ 120 h)" },
-                    { id: "15day", label: "15-Day (≤ 360 h)" }]
+                <h2 className="spaghetti-section-title">
+                    <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Forecast Horizon
+                </h2>
+                <div className="segmented-control">
+                    {[{ id: "5day", label: "5-Day" },
+                    { id: "15day", label: "15-Day" }]
                         .map(opt => (
                             <button
                                 key={opt.id}
                                 onClick={() => setHorizon(opt.id)}
-                                className={`flex-1 py-3 px-2 text-left transition-colors cursor-pointer flex items-center justify-center ${horizon === opt.id
-                                    ? "bg-cyan-600 text-white"
-                                    : "bg-slate-900 text-slate-400 hover:bg-slate-800"
-                                    }`}
+                                className={`segment-btn ${horizon === opt.id ? "active primary" : ""}`}
                             >
-                                <span className="block text-xs font-bold text-center">{opt.label}</span>
+                                <span className="segment-label">{opt.label}</span>
                             </button>
                         ))}
                 </div>
@@ -549,21 +603,24 @@ export default function SpaghettiPlot() {
             <button
                 onClick={loadData}
                 disabled={status === "loading"}
-                className={`w-full py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${status === "loading"
-                    ? "bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed"
-                    : "bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
-                    }`}
+                className="refresh-btn"
             >
-                {status === "loading" ? "Loading…" : "↻ Refresh Data"}
+                {status === "loading" ? (
+                    <div className="spinner" />
+                ) : (
+                    <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                )}
+                {status === "loading" ? "Fetching..." : "Refresh Data"}
             </button>
 
             {/* Detected disturbances */}
             {disturbances.length > 0 && (
                 <div>
-                    <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                        Detected Disturbances ({disturbances.length})
+                    <h2 className="spaghetti-section-title">
+                        <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                        Systems ({disturbances.length})
                     </h2>
-                    <div className="space-y-2">
+                    <div className="systems-list">
                         {disturbances.map(d => (
                             <div
                                 key={d.id}
@@ -571,23 +628,53 @@ export default function SpaghettiPlot() {
                                     setActiveDisturbanceId(activeDisturbanceId === d.id ? null : d.id);
                                     setSidebarOpen(false);
                                 }}
-                                className={`rounded-lg p-2.5 border cursor-pointer transition-all ${activeDisturbanceId === d.id ? 'bg-slate-800 border-cyan-500 shadow-md shadow-cyan-900/20' : 'bg-slate-900/80 border-slate-700 hover:border-slate-500 hover:bg-slate-800/80'}`}
+                                className={`system-card ${activeDisturbanceId === d.id ? 'active' : ''}`}
                             >
-                                <div className="flex items-center gap-2 mb-1.5">
-                                    <span className="w-3 h-3 rounded-full flex-shrink-0 border border-slate-600" style={{ background: d.peakColor }} />
-                                    <span className="text-[11px] font-bold text-white">Disturbance #{d.id}</span>
+                                <div className="system-card-header">
+                                    <div className="system-card-title-wrap">
+                                        <div className="system-dot-wrap">
+                                            <span className="system-dot-ping" style={{ background: d.peakColor }} />
+                                            <span className="system-dot" style={{ background: d.peakColor }} />
+                                        </div>
+                                        <span className="system-title">Disturbance {d.id}</span>
+                                    </div>
+                                    <span className="system-track-count">{d.trackCount} trks</span>
                                 </div>
-                                <div className="text-[10px] text-slate-400 font-mono space-y-0.5 pl-5">
-                                    <p>{d.region}</p>
-                                    <p>{d.lat.toFixed(1)}°N, {d.lon.toFixed(1)}°E</p>
-                                    <p>Peak: <span className="font-bold" style={{ color: d.peakColor }}>{d.peakP < 9999 ? `${d.peakP.toFixed(0)} hPa` : "N/A"}</span></p>
-                                    <p>{d.trackCount} ensemble tracks</p>
-                                    {Object.entries(d.catCounts).map(([cat, count]) => (
-                                        <p key={cat} className="text-slate-500">
-                                            <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: pressureColor(cat === "Super Typhoon" ? 900 : cat === "Typhoon" ? 930 : cat === "Sev. Tropical Storm" ? 960 : cat === "Tropical Storm" ? 980 : cat === "Tropical Depression" ? 1000 : 1010) }} />
-                                            {cat}: {count}
-                                        </p>
-                                    ))}
+                                <div className="system-details">
+                                    <div className="system-detail-row">
+                                        <span>{d.region}</span>
+                                        <span className="system-detail-value">{d.lat.toFixed(1)}°N, {d.lon.toFixed(1)}°E</span>
+                                    </div>
+                                    <div className="system-detail-row system-detail-divider">
+                                        <span>Peak Intensity:</span>
+                                        <span className="system-peak-value" style={{ color: d.peakColor }}>{d.peakP < 9999 ? `${d.peakP.toFixed(0)} hPa` : "N/A"}</span>
+                                    </div>
+                                    {/* Intensity breakdown per category */}
+                                    {Object.keys(d.catCounts).length > 0 && (
+                                        <div className="system-intensity-breakdown">
+                                            {PRESSURE_LEGEND.map(({ label, color }) => {
+                                                const cat = pressureCategory(
+                                                    label.includes("<") ? 910 :
+                                                        label.includes("920") ? 930 :
+                                                            label.includes("945") ? 960 :
+                                                                label.includes("970") ? 980 :
+                                                                    label.includes("990") ? 1000 : 1010
+                                                );
+                                                const count = d.catCounts[cat] || 0;
+                                                if (count === 0) return null;
+                                                return (
+                                                    <div key={label} className="intensity-row">
+                                                        <span className="intensity-dot" style={{ background: color, boxShadow: `0 0 6px ${color}60` }} />
+                                                        <span className="intensity-cat">{cat}</span>
+                                                        <span className="intensity-bar-wrap">
+                                                            <span className="intensity-bar" style={{ width: `${Math.min(100, (count / d.trackCount) * 100)}%`, background: color }} />
+                                                        </span>
+                                                        <span className="intensity-count">{count}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))}
@@ -597,45 +684,43 @@ export default function SpaghettiPlot() {
 
             {/* Pressure legend */}
             <div>
-                <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Intensity (by MSLP)</h2>
-                <ul className="space-y-1.5">
-                    {PRESSURE_LEGEND.map(({ label, color }) => (
-                        <li key={label} className="flex items-center gap-2.5 text-[10px] text-slate-300 font-mono">
-                            <span className="w-3.5 h-3.5 rounded-full flex-shrink-0 border border-slate-600" style={{ background: color }} />
-                            {label}
-                        </li>
-                    ))}
-                </ul>
+                <h2 className="spaghetti-section-title">
+                    <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
+                    Intensity Legend
+                </h2>
+                <div className="legend-box">
+                    <ul className="legend-list">
+                        {PRESSURE_LEGEND.map(({ label, color }) => (
+                            <li key={label} className="legend-item">
+                                <span className="legend-color" style={{ background: color, boxShadow: `0 0 8px ${color}80` }} />
+                                {label}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
             </div>
 
-
-            <p className="text-[9px] text-slate-600 border-t border-slate-800 pt-3 leading-relaxed">
-                Data: GDM FNV3_LARGE_ENSEMBLE via Google DeepMind WeatherLab.
-                For official guidance consult PAGASA, JTWC & JMA bulletins.
-            </p>
+            <div className="spaghetti-footer">
+                <p className="spaghetti-footer-text">
+                    Powered by <strong className="spaghetti-footer-highlight">Calauan Weather</strong><br />
+                    Data: GDM FNV3 Ensemble<br />
+                    Consult official agencies for guidance.
+                </p>
+            </div>
         </div>
     );
 
     return (
-        <div className="bg-slate-900 text-slate-200 font-sans flex overflow-hidden" style={{ height: "calc(100vh - 64px)" }}>
-
+        <div className="spaghetti-layout">
             {/* Mobile overlay */}
-            {sidebarOpen && (
-                <div className="fixed inset-0 bg-black/60 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />
-            )}
+            <div className={`mobile-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
 
             {/* Sidebar */}
-            <aside className={`
-                fixed lg:relative top-0 left-0 h-full z-40
-                w-72 lg:w-76 flex-shrink-0
-                bg-slate-800 border-r border-slate-700 flex flex-col shadow-2xl
-                transition-transform duration-300 ease-in-out
-                ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
-            `}>
-                <div className="flex items-center justify-between p-3 border-b border-slate-700 lg:hidden">
-                    <span className="text-sm font-bold text-white">FNV3 Controls</span>
-                    <button onClick={() => setSidebarOpen(false)} className="p-1.5 rounded-lg bg-slate-700 text-slate-300 hover:text-white cursor-pointer">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <aside className={`spaghetti-sidebar-container ${sidebarOpen ? 'open' : ''}`}>
+                <div className="mobile-close-header">
+                    <span className="mobile-close-title">Controls</span>
+                    <button onClick={() => setSidebarOpen(false)} className="mobile-close-btn">
+                        <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
@@ -644,28 +729,28 @@ export default function SpaghettiPlot() {
             </aside>
 
             {/* Map */}
-            <main className="flex-1 relative z-10 overflow-hidden">
+            <main className="spaghetti-main">
                 {/* Mobile top bar */}
-                <div className="flex lg:hidden items-center gap-3 px-3 py-2 bg-slate-900/90 border-b border-slate-700 absolute top-0 left-0 right-0 z-20">
-                    <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg bg-slate-700 text-slate-300 hover:text-white cursor-pointer flex-shrink-0">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="mobile-topbar">
+                    <button onClick={() => setSidebarOpen(true)} className="mobile-menu-btn">
+                        <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                         </svg>
                     </button>
-                    <span className="text-xs font-semibold text-slate-300 truncate">
+                    <span className="mobile-title">
                         GDM FNV3 · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
                     </span>
                 </div>
 
                 {/* Loading overlay on the map */}
                 {status === "loading" && (
-                    <div className="absolute inset-0 top-[44px] lg:top-0 z-10 bg-slate-950/70 flex flex-col items-center justify-center gap-3 pointer-events-none">
-                        <div className="w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
-                        <span className="text-xs text-slate-300 font-mono">{statusMsg}</span>
+                    <div className="map-loading-overlay">
+                        <div className="map-spinner" />
+                        <span className="map-loading-text">{statusMsg}</span>
                     </div>
                 )}
 
-                <div ref={mapRef} className="absolute inset-0 top-[44px] lg:top-0" />
+                <div ref={mapRef} className="map-container" style={{ width: '100%', height: '100%', minHeight: '400px' }} />
             </main>
         </div>
     );
