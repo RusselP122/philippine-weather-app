@@ -203,7 +203,7 @@ export default function SpaghettiPlot() {
             L.polyline(PAR, { color: "#ef4444", weight: 2 }).addTo(map);
 
             // Country boundaries (matches Python BORDERS styling)
-            fetch("/data/country.0.1.json")
+            fetch("/assets/country.0.1.json")
                 .then(r => r.ok ? r.json() : null)
                 .then(geo => {
                     if (geo && map) {
