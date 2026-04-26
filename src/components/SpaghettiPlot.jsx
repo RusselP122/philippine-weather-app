@@ -139,6 +139,7 @@ export default function SpaghettiPlot() {
     const mapRef = useRef(null);
     const mapInstanceRef = useRef(null);
     const layerGroupRef = useRef(null);
+    const meanLayerGroupRef = useRef(null);
 
     const [horizon, setHorizon] = useState("5day");
     const [dataset, setDataset] = useState("base");
@@ -152,6 +153,8 @@ export default function SpaghettiPlot() {
     const [activeDisturbanceId, setActiveDisturbanceId] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [leafletReady, setLeafletReady] = useState(false);
+    const [showEnsembleMean, setShowEnsembleMean] = useState(false);
+    const [meanOnlyIds, setMeanOnlyIds] = useState(new Set());
 
     // ── Init map once ─────────────────────────────────────────────────────
     useEffect(() => {
@@ -203,18 +206,19 @@ export default function SpaghettiPlot() {
             L.polyline(PAR, { color: "#ef4444", weight: 2 }).addTo(map);
 
             // Country boundaries (matches Python BORDERS styling)
-            fetch("/assets/country.0.1.json")
+            fetch("/assets/country.0.1_small.json")
                 .then(r => r.ok ? r.json() : null)
                 .then(geo => {
                     if (geo && map) {
                         L.geoJSON(geo, {
-                            style: { color: "#facc15", weight: 1, opacity: 0.7, dashArray: "4 4", fillOpacity: 0 }
+                            style: { color: "#facc15", weight: 1, opacity: 0.7, fillOpacity: 0 }
                         }).addTo(map);
                     }
                 })
                 .catch(() => { /* silently skip if unavailable */ });
 
             layerGroupRef.current = L.layerGroup().addTo(map);
+            meanLayerGroupRef.current = L.layerGroup(); // not added to map — default OFF
             mapInstanceRef.current = map;
 
             // Fly to default basin
@@ -250,6 +254,12 @@ export default function SpaghettiPlot() {
             map.removeLayer(layerGroupRef.current);
         }
         layerGroupRef.current.clearLayers();
+        if (meanLayerGroupRef.current) {
+            meanLayerGroupRef.current.clearLayers();
+            map?.removeLayer(meanLayerGroupRef.current);
+        }
+        setShowEnsembleMean(false);
+        setMeanOnlyIds(new Set());
         setStatus("loading");
         setStatusMsg("Loading latest FNV3 CSV…");
         setTrackCount(0);
@@ -353,6 +363,7 @@ export default function SpaghettiPlot() {
             clusters.forEach((c, idx) => c.distId = idx + 1);
 
             const originSetDone = new Set();
+            const tracksByDisturbance = {};
 
             // Pass 2: Draw tracks and attach cluster IDs
             for (const points of basinFiltered) {
@@ -371,6 +382,12 @@ export default function SpaghettiPlot() {
                 const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
                 const myCluster = clusters.find(c => c.origins.some(o => o.oKey === oKey));
                 const distId = myCluster ? myCluster.distId : null;
+
+                // Collect tracks for ensemble mean computation
+                if (distId !== null) {
+                    if (!tracksByDisturbance[distId]) tracksByDisturbance[distId] = [];
+                    tracksByDisturbance[distId].push(points);
+                }
 
                 const line = L.polyline(latlngs, {
                     color: "#00d4ff", weight: 2.5, opacity: 0.5,
@@ -437,6 +454,102 @@ export default function SpaghettiPlot() {
                 };
             });
 
+            // ── Ensemble analysis: mean, spread, agreement ──────────────
+            // 1) Mean: always from 100% of members (no threshold)
+            // 2) Spread: std-dev envelope at each time step
+            // 3) Agreement: % of members within 2° of mean
+            const AGREEMENT_RADIUS = 2; // degrees
+            if (meanLayerGroupRef.current) {
+                for (const dist of disturbanceList) {
+                    const tracks = tracksByDisturbance[dist.id] || [];
+                    if (tracks.length < 2) {
+                        dist.hasEnsembleMean = false;
+                        dist.agreement = 0;
+                        dist.spreadKm = 0;
+                        continue;
+                    }
+                    dist.hasEnsembleMean = true;
+
+                    // Group all points by lead time hour
+                    const byHour = {};
+                    for (const track of tracks) {
+                        for (const pt of track) {
+                            if (!byHour[pt.h]) byHour[pt.h] = { lats: [], lons: [], ps: [] };
+                            byHour[pt.h].lats.push(pt.lat);
+                            byHour[pt.h].lons.push(pt.lon);
+                            if (!isNaN(pt.p)) byHour[pt.h].ps.push(pt.p);
+                        }
+                    }
+
+                    const hours = Object.keys(byHour).map(Number).sort((a, b) => a - b);
+
+                    // Compute mean, std-dev, agreement at each hour
+                    const meanPts = [];
+                    const upperEnv = [];
+                    const lowerEnv = [];
+                    let totalAgreement = 0;
+                    let agreementSteps = 0;
+
+                    for (const h of hours) {
+                        const d = byHour[h];
+                        const n = d.lats.length;
+                        const mLat = d.lats.reduce((s, v) => s + v, 0) / n;
+                        const mLon = d.lons.reduce((s, v) => s + v, 0) / n;
+                        const mP = d.ps.length > 0 ? d.ps.reduce((s, v) => s + v, 0) / d.ps.length : NaN;
+
+                        // Std dev
+                        const sdLat = Math.sqrt(d.lats.reduce((s, v) => s + (v - mLat) ** 2, 0) / n);
+                        const sdLon = Math.sqrt(d.lons.reduce((s, v) => s + (v - mLon) ** 2, 0) / n);
+
+                        // Agreement: fraction within AGREEMENT_RADIUS degrees of mean
+                        let inside = 0;
+                        for (let i = 0; i < n; i++) {
+                            const dd = Math.sqrt((d.lats[i] - mLat) ** 2 + (d.lons[i] - mLon) ** 2);
+                            if (dd <= AGREEMENT_RADIUS) inside++;
+                        }
+                        totalAgreement += inside / n;
+                        agreementSteps++;
+
+                        meanPts.push({ lat: mLat, lon: mLon, p: mP, h, sdLat, sdLon });
+                        upperEnv.push([mLat + sdLat, mLon + sdLon]);
+                        lowerEnv.push([mLat - sdLat, mLon - sdLon]);
+                    }
+
+                    dist.agreement = agreementSteps > 0 ? Math.round((totalAgreement / agreementSteps) * 100) : 0;
+                    const avgSd = meanPts.reduce((s, p) => s + (p.sdLat + p.sdLon) / 2, 0) / (meanPts.length || 1);
+                    dist.spreadKm = Math.round(avgSd * 111);
+
+                    if (meanPts.length < 2) continue;
+                    const meanLL = meanPts.map(pt => [pt.lat, pt.lon]);
+
+                    // White outline for contrast
+                    const outline = L.polyline(meanLL, {
+                        color: "#ffffff", weight: 6, opacity: 0.3,
+                        lineCap: "round", lineJoin: "round", noClip: true,
+                    });
+                    outline.distId = dist.id;
+                    outline.addTo(meanLayerGroupRef.current);
+
+                    // Black mean track line
+                    const meanLine = L.polyline(meanLL, {
+                        color: "#000000", weight: 4, opacity: 0.95,
+                        lineCap: "round", lineJoin: "round", noClip: true,
+                    });
+                    meanLine.distId = dist.id;
+                    meanLine.addTo(meanLayerGroupRef.current);
+
+                    // Mean position dots colored by pressure
+                    for (const pt of meanPts) {
+                        const mk = L.circleMarker([pt.lat, pt.lon], {
+                            radius: 5, color: "#000000", weight: 2,
+                            fillColor: pressureColor(pt.p), fillOpacity: 1, opacity: 1
+                        });
+                        mk.distId = dist.id;
+                        mk.addTo(meanLayerGroupRef.current);
+                    }
+                }
+            }
+
             setDisturbances(disturbanceList);
             setActiveDisturbanceId(null);
 
@@ -481,16 +594,32 @@ export default function SpaghettiPlot() {
 
         layerGroupRef.current.eachLayer(layer => {
             const isSelected = activeDisturbanceId === null || layer.distId === activeDisturbanceId;
+            const isMeanOnly = layer.distId != null && meanOnlyIds.has(layer.distId);
 
             if (layer instanceof L.Polyline && !(layer instanceof L.CircleMarker)) {
-                layer.setStyle({ opacity: isSelected ? layer.defaultOpacity : 0.05 });
+                layer.setStyle({ opacity: isMeanOnly ? 0.03 : (isSelected ? layer.defaultOpacity : 0.05) });
             } else if (layer instanceof L.CircleMarker) {
                 layer.setStyle({
-                    fillOpacity: isSelected ? layer.defaultFillOpacity : 0.05,
-                    opacity: isSelected ? layer.defaultStrokeOpacity : 0.05
+                    fillOpacity: isMeanOnly ? 0.03 : (isSelected ? layer.defaultFillOpacity : 0.05),
+                    opacity: isMeanOnly ? 0.03 : (isSelected ? layer.defaultStrokeOpacity : 0.05)
                 });
             }
         });
+
+        // Also filter ensemble mean layer (lines, dots, envelopes)
+        if (meanLayerGroupRef.current) {
+            meanLayerGroupRef.current.eachLayer(layer => {
+                const isSelected = activeDisturbanceId === null || layer.distId === activeDisturbanceId;
+                if (layer.isEnvelope) {
+                    // Polygon envelope
+                    layer.setStyle({ fillOpacity: isSelected ? 1 : 0, opacity: isSelected ? 1 : 0 });
+                } else if (layer instanceof L.Polyline && !(layer instanceof L.CircleMarker)) {
+                    layer.setStyle({ opacity: isSelected ? 0.95 : 0.05 });
+                } else if (layer instanceof L.CircleMarker) {
+                    layer.setStyle({ fillOpacity: isSelected ? 1 : 0.05, opacity: isSelected ? 1 : 0.05 });
+                }
+            });
+        }
 
         // Fly to disturbance center if selected
         if (activeDisturbanceId !== null && mapInstanceRef.current) {
@@ -499,7 +628,18 @@ export default function SpaghettiPlot() {
                 mapInstanceRef.current.flyTo([dist.lat, dist.lon], 5, { duration: 1.5 });
             }
         }
-    }, [activeDisturbanceId, disturbances]);
+    }, [activeDisturbanceId, disturbances, meanOnlyIds]);
+
+    // Toggle ensemble mean layer visibility
+    useEffect(() => {
+        if (!meanLayerGroupRef.current || !mapInstanceRef.current) return;
+        const map = mapInstanceRef.current;
+        if (showEnsembleMean) {
+            meanLayerGroupRef.current.addTo(map);
+        } else {
+            map.removeLayer(meanLayerGroupRef.current);
+        }
+    }, [showEnsembleMean]);
 
     // ── Sidebar panel ─────────────────────────────────────────────────────
     const Panel = () => (
@@ -613,6 +753,28 @@ export default function SpaghettiPlot() {
                 {status === "loading" ? "Fetching..." : "Refresh Data"}
             </button>
 
+            {/* Ensemble Mean Toggle */}
+            {disturbances.some(d => d.hasEnsembleMean) && (
+                <div>
+                    <h2 className="spaghetti-section-title">
+                        <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        Ensemble Mean
+                    </h2>
+                    <button
+                        onClick={() => setShowEnsembleMean(!showEnsembleMean)}
+                        className={`ensemble-mean-toggle ${showEnsembleMean ? 'active' : ''}`}
+                    >
+                        <span className="ensemble-mean-indicator" />
+                        <span className="ensemble-mean-label">
+                            {showEnsembleMean ? "Mean Track Visible" : "Mean Track Hidden"}
+                        </span>
+                        <span className="ensemble-mean-status">
+                            {showEnsembleMean ? "ON" : "OFF"}
+                        </span>
+                    </button>
+                </div>
+            )}
+
             {/* Detected disturbances */}
             {disturbances.length > 0 && (
                 <div>
@@ -639,6 +801,22 @@ export default function SpaghettiPlot() {
                                         <span className="system-title">Disturbance {d.id}</span>
                                     </div>
                                     <span className="system-track-count">{d.trackCount} trks</span>
+                                    {d.hasEnsembleMean && (
+                                        <button
+                                            className={`system-view-toggle ${meanOnlyIds.has(d.id) ? 'mean-only' : ''}`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setMeanOnlyIds(prev => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(d.id)) { next.delete(d.id); } else { next.add(d.id); }
+                                                    return next;
+                                                });
+                                            }}
+                                            title={meanOnlyIds.has(d.id) ? 'Show spaghetti tracks' : 'Show mean only'}
+                                        >
+                                            {meanOnlyIds.has(d.id) ? 'MEAN' : 'ALL'}
+                                        </button>
+                                    )}
                                 </div>
                                 <div className="system-details">
                                     <div className="system-detail-row">
@@ -649,6 +827,20 @@ export default function SpaghettiPlot() {
                                         <span>Peak Intensity:</span>
                                         <span className="system-peak-value" style={{ color: d.peakColor }}>{d.peakP < 9999 ? `${d.peakP.toFixed(0)} hPa` : "N/A"}</span>
                                     </div>
+                                    {d.hasEnsembleMean && (
+                                        <>
+                                            <div className="system-detail-row">
+                                                <span>Agreement:</span>
+                                                <span className="system-detail-value" style={{
+                                                    color: d.agreement >= 70 ? '#10b981' : d.agreement >= 40 ? '#f59e0b' : '#ef4444'
+                                                }}>{d.agreement}%</span>
+                                            </div>
+                                            <div className="system-detail-row">
+                                                <span>Spread (1σ):</span>
+                                                <span className="system-detail-value">{d.spreadKm} km</span>
+                                            </div>
+                                        </>
+                                    )}
                                     {/* Intensity breakdown per category */}
                                     {Object.keys(d.catCounts).length > 0 && (
                                         <div className="system-intensity-breakdown">

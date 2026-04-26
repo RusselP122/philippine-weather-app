@@ -306,6 +306,73 @@
   to { transform: rotate(360deg); }
 }
 
+/* Ensemble Mean Toggle */
+.ensemble-mean-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.ensemble-mean-toggle:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-highlight);
+  transform: translateY(-1px);
+}
+
+.ensemble-mean-toggle.active {
+  background: rgba(0, 0, 0, 0.35);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ensemble-mean-indicator {
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+  background: #555;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.ensemble-mean-toggle.active .ensemble-mean-indicator {
+  background: #000000;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(255, 255, 255, 0.3);
+  height: 4px;
+}
+
+.ensemble-mean-label {
+  flex: 1;
+  text-align: left;
+}
+
+.ensemble-mean-toggle.active .ensemble-mean-label {
+  color: var(--text-main);
+}
+
+.ensemble-mean-status {
+  font-size: 0.625rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  transition: all 0.2s ease;
+}
+
+.ensemble-mean-toggle.active .ensemble-mean-status {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
 /* Systems / Disturbances */
 .systems-list {
   display: flex;
@@ -348,6 +415,34 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+/* Per-system view toggle (ALL / MEAN) */
+.system-view-toggle {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  letter-spacing: 0.05em;
+}
+
+.system-view-toggle:hover {
+  border-color: var(--border-highlight);
+  color: var(--text-main);
+}
+
+.system-view-toggle.mean-only {
+  background: rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
 }
 
 .system-dot-wrap {
