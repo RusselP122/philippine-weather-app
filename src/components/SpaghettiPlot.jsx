@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import * as turf from "@turf/turf";
 import "./SpaghettiPlot.css";
 
 // ── Leaflet asset injection ───────────────────────────────────────────────
@@ -522,73 +523,67 @@ export default function SpaghettiPlot() {
                     if (meanPts.length < 2) continue;
                     const meanLL = meanPts.map(pt => [pt.lat, pt.lon]);
 
-                    // Generate a proper Cone of Uncertainty polygon using orthogonal vectors
-                    const leftEnv = [];
-                    const rightEnv = [];
-                    const startCap = [];
-                    const endCap = [];
-
+                    // Generate a proper Cone of Uncertainty polygon using Turf.js
+                    const circles = [];
                     for (let i = 0; i < meanPts.length; i++) {
                         const pt = meanPts[i];
-                        const R = Math.max(0.1, (pt.sdLat + pt.sdLon) / 2); // radius in degrees
+                        const R_deg = Math.max(0.1, (pt.sdLat + pt.sdLon) / 2);
+                        const R_km = R_deg * 111.32; // Convert degrees to km
+                        // turf.circle takes [lon, lat]
+                        const c = turf.circle([pt.lon, pt.lat], R_km, { steps: 36, units: 'kilometers' });
+                        circles.push(c);
+                    }
 
-                        // Smooth path direction (dx, dy) over a wider baseline to prevent sharp twists
-                        const step = 2;
-                        const startIdx = Math.max(0, i - step);
-                        const endIdx = Math.min(meanPts.length - 1, i + step);
-                        let dx = meanPts[endIdx].lon - meanPts[startIdx].lon;
-                        let dy = meanPts[endIdx].lat - meanPts[startIdx].lat;
-
-                        if (dx === 0 && dy === 0) { dx = 1; dy = 0; } // Fallback
-
-                        const len = Math.sqrt(dx * dx + dy * dy);
-                        // Normal vector (left perpendicular)
-                        const nx = -dy / len;
-                        const ny = dx / len;
-
-                        leftEnv.push([pt.lat + R * ny, pt.lon + R * nx]);
-                        rightEnv.push([pt.lat - R * ny, pt.lon - R * nx]);
-
-                        // Add rounded caps to the ends to prevent flat cutoffs
-                        if (i === 0) {
-                            const baseAngle = Math.atan2(dy, dx);
-                            // Connect from right side (-90 deg) around the back to left side (+90 deg or -270 deg)
-                            for (let a = -Math.PI/2 - 0.2; a > -3*Math.PI/2 + 0.2; a -= Math.PI/8) {
-                                startCap.push([
-                                    pt.lat + R * Math.sin(baseAngle + a),
-                                    pt.lon + R * Math.cos(baseAngle + a)
-                                ]);
+                    let coneGeom = null;
+                    if (circles.length > 0) {
+                        const capsules = [];
+                        if (circles.length === 1) {
+                            capsules.push(circles[0]);
+                        } else {
+                            // Convex hull of adjacent circles to form smooth capsule segments
+                            for (let i = 0; i < circles.length - 1; i++) {
+                                const fc = turf.featureCollection([circles[i], circles[i+1]]);
+                                const capsule = turf.convex(fc);
+                                if (capsule) capsules.push(capsule);
                             }
                         }
-                        if (i === meanPts.length - 1) {
-                            const baseAngle = Math.atan2(dy, dx);
-                            // Connect from left side (+90 deg) around the front to right side (-90 deg)
-                            for (let a = Math.PI/2 - 0.2; a > -Math.PI/2 + 0.2; a -= Math.PI/8) {
-                                endCap.push([
-                                    pt.lat + R * Math.sin(baseAngle + a),
-                                    pt.lon + R * Math.cos(baseAngle + a)
-                                ]);
+                        
+                        // Union all capsules together into a single continuous polygon
+                        try {
+                            // For modern Turf.js (v7+), union takes a FeatureCollection
+                            coneGeom = turf.union(turf.featureCollection(capsules));
+                        } catch (e) {
+                            try {
+                                // Fallback for older Turf.js (v6)
+                                coneGeom = capsules.reduce((acc, curr) => turf.union(acc, curr));
+                            } catch (e2) {
+                                console.warn("Turf union failed", e2);
+                                coneGeom = capsules[0];
                             }
                         }
                     }
 
-                    const envelopePoly = [...leftEnv, ...endCap, ...rightEnv.slice().reverse(), ...startCap];
-
-                    if (envelopePoly.length >= 3) {
-                        // Draw the single, continuous polygon
-                        const env = L.polygon(envelopePoly, {
-                            color: "rgba(255, 255, 255, 0.6)",
-                            weight: 1,
-                            dashArray: "5 5",
-                            fillColor: "rgba(255, 255, 255, 0.15)",
-                            fillOpacity: 1,
-                            lineCap: "round",
-                            lineJoin: "round",
-                            interactive: false,
+                    if (coneGeom) {
+                        // Render the resulting geometry using L.geoJSON
+                        const envGroup = L.geoJSON(coneGeom, {
+                            style: {
+                                color: "rgba(255, 255, 255, 0.6)",
+                                weight: 1,
+                                dashArray: "5 5",
+                                fillColor: "rgba(255, 255, 255, 0.15)",
+                                fillOpacity: 1,
+                                lineCap: "round",
+                                lineJoin: "round",
+                                interactive: false,
+                            }
                         });
-                        env.distId = dist.id;
-                        env.isEnvelope = true;
-                        env.addTo(meanLayerGroupRef.current);
+                        
+                        // Add each sub-layer to the map with our custom properties
+                        envGroup.eachLayer(layer => {
+                            layer.distId = dist.id;
+                            layer.isEnvelope = true;
+                            layer.addTo(meanLayerGroupRef.current);
+                        });
                     }
 
                     // White outline for contrast
