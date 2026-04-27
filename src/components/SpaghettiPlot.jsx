@@ -522,6 +522,75 @@ export default function SpaghettiPlot() {
                     if (meanPts.length < 2) continue;
                     const meanLL = meanPts.map(pt => [pt.lat, pt.lon]);
 
+                    // Generate a proper Cone of Uncertainty polygon using orthogonal vectors
+                    const leftEnv = [];
+                    const rightEnv = [];
+                    const startCap = [];
+                    const endCap = [];
+
+                    for (let i = 0; i < meanPts.length; i++) {
+                        const pt = meanPts[i];
+                        const R = Math.max(0.1, (pt.sdLat + pt.sdLon) / 2); // radius in degrees
+
+                        // Smooth path direction (dx, dy) over a wider baseline to prevent sharp twists
+                        const step = 2;
+                        const startIdx = Math.max(0, i - step);
+                        const endIdx = Math.min(meanPts.length - 1, i + step);
+                        let dx = meanPts[endIdx].lon - meanPts[startIdx].lon;
+                        let dy = meanPts[endIdx].lat - meanPts[startIdx].lat;
+
+                        if (dx === 0 && dy === 0) { dx = 1; dy = 0; } // Fallback
+
+                        const len = Math.sqrt(dx * dx + dy * dy);
+                        // Normal vector (left perpendicular)
+                        const nx = -dy / len;
+                        const ny = dx / len;
+
+                        leftEnv.push([pt.lat + R * ny, pt.lon + R * nx]);
+                        rightEnv.push([pt.lat - R * ny, pt.lon - R * nx]);
+
+                        // Add rounded caps to the ends to prevent flat cutoffs
+                        if (i === 0) {
+                            const baseAngle = Math.atan2(dy, dx);
+                            // Connect from right side (-90 deg) around the back to left side (+90 deg or -270 deg)
+                            for (let a = -Math.PI/2 - 0.2; a > -3*Math.PI/2 + 0.2; a -= Math.PI/8) {
+                                startCap.push([
+                                    pt.lat + R * Math.sin(baseAngle + a),
+                                    pt.lon + R * Math.cos(baseAngle + a)
+                                ]);
+                            }
+                        }
+                        if (i === meanPts.length - 1) {
+                            const baseAngle = Math.atan2(dy, dx);
+                            // Connect from left side (+90 deg) around the front to right side (-90 deg)
+                            for (let a = Math.PI/2 - 0.2; a > -Math.PI/2 + 0.2; a -= Math.PI/8) {
+                                endCap.push([
+                                    pt.lat + R * Math.sin(baseAngle + a),
+                                    pt.lon + R * Math.cos(baseAngle + a)
+                                ]);
+                            }
+                        }
+                    }
+
+                    const envelopePoly = [...leftEnv, ...endCap, ...rightEnv.slice().reverse(), ...startCap];
+
+                    if (envelopePoly.length >= 3) {
+                        // Draw the single, continuous polygon
+                        const env = L.polygon(envelopePoly, {
+                            color: "rgba(255, 255, 255, 0.6)",
+                            weight: 1,
+                            dashArray: "5 5",
+                            fillColor: "rgba(255, 255, 255, 0.15)",
+                            fillOpacity: 1,
+                            lineCap: "round",
+                            lineJoin: "round",
+                            interactive: false,
+                        });
+                        env.distId = dist.id;
+                        env.isEnvelope = true;
+                        env.addTo(meanLayerGroupRef.current);
+                    }
+
                     // White outline for contrast
                     const outline = L.polyline(meanLL, {
                         color: "#ffffff", weight: 6, opacity: 0.3,
