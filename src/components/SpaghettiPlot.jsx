@@ -113,13 +113,14 @@ function clusterOrigins(origins, threshold = 5) {
                     lat: (c.center.lat * n + o.lat) / (n + 1),
                     lon: (c.center.lon * n + o.lon) / (n + 1),
                 };
+                c.minH = Math.min(c.minH, o.h);
                 c.origins.push(o);
                 merged = true;
                 break;
             }
         }
         if (!merged) {
-            clusters.push({ center: { lat: o.lat, lon: o.lon }, origins: [o] });
+            clusters.push({ center: { lat: o.lat, lon: o.lon }, origins: [o], minH: o.h });
         }
     }
     return clusters;
@@ -350,12 +351,13 @@ export default function SpaghettiPlot() {
                 }
                 if (bad) continue;
 
-                const origin = points.find(pt => pt.h === 0) || points[0];
+                // Find the absolute first point by time
+                const origin = points.find(pt => pt.h === 0) || points.reduce((prev, curr) => curr.h < prev.h ? curr : prev, points[0]);
                 if (!origin) continue;
                 const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
                 if (!uniqueOrigins.has(oKey)) {
                     uniqueOrigins.add(oKey);
-                    allOrigins.push({ lat: origin.lat, lon: origin.lon, oKey });
+                    allOrigins.push({ lat: origin.lat, lon: origin.lon, h: origin.h || 0, oKey });
                 }
             }
 
@@ -423,6 +425,12 @@ export default function SpaghettiPlot() {
                 drawn++;
             }
 
+            let initDate = null;
+            if (runInitTime && runInitTime !== "latest") {
+                const timeStr = runInitTime.includes('Z') ? runInitTime : runInitTime.replace(/-/g, '/');
+                initDate = new Date(timeStr);
+            }
+
             // Build disturbance metadata
             const disturbanceList = clusters.map(cluster => {
                 const allMinP = [];
@@ -442,6 +450,13 @@ export default function SpaghettiPlot() {
                     catCounts[cat] = (catCounts[cat] || 0) + 1;
                 }
 
+                let formationDateStr = "Unknown";
+                if (initDate && !isNaN(initDate.getTime())) {
+                    const minH = cluster.minH || 0;
+                    const d = new Date(initDate.getTime() + minH * 3600000);
+                    formationDateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+                }
+
                 return {
                     id: cluster.distId,
                     lat: cluster.center.lat,
@@ -452,6 +467,7 @@ export default function SpaghettiPlot() {
                     peakCat,
                     peakColor,
                     catCounts,
+                    formationDateStr,
                 };
             });
 
@@ -883,6 +899,10 @@ export default function SpaghettiPlot() {
                                     )}
                                 </div>
                                 <div className="system-details">
+                                    <div className="system-detail-row">
+                                        <span>First Expected:</span>
+                                        <span className="system-detail-value">{d.formationDateStr}</span>
+                                    </div>
                                     <div className="system-detail-row">
                                         <span>{d.region}</span>
                                         <span className="system-detail-value">{d.lat.toFixed(1)}°N, {d.lon.toFixed(1)}°E</span>
