@@ -100,28 +100,75 @@ function degreeDist(a, b) {
     return Math.sqrt((a.lat - b.lat) ** 2 + (a.lon - b.lon) ** 2);
 }
 
-// ── Cluster origins into distinct disturbances (5° threshold) ─────────────
-function clusterOrigins(origins, threshold = 5) {
-    const clusters = [];
-    for (const o of origins) {
-        let merged = false;
-        for (const c of clusters) {
-            if (degreeDist(c.center, o) < threshold) {
-                // Update running average center
-                const n = c.origins.length;
-                c.center = {
-                    lat: (c.center.lat * n + o.lat) / (n + 1),
-                    lon: (c.center.lon * n + o.lon) / (n + 1),
-                };
-                c.minH = Math.min(c.minH, o.h);
-                c.origins.push(o);
-                merged = true;
-                break;
+// ── DBSCAN clustering (density-based, order-independent, filters noise) ───
+function dbscanCluster(origins, eps = 5, minPts = 2) {
+    const n = origins.length;
+    const labels = new Array(n).fill(-1); // -1 = unvisited/noise
+    let clusterId = 0;
+
+    // Find all neighbors within eps distance
+    function regionQuery(idx) {
+        const neighbors = [];
+        for (let i = 0; i < n; i++) {
+            if (degreeDist(origins[idx], origins[i]) <= eps) {
+                neighbors.push(i);
             }
         }
-        if (!merged) {
-            clusters.push({ center: { lat: o.lat, lon: o.lon }, origins: [o], minH: o.h });
+        return neighbors;
+    }
+
+    for (let i = 0; i < n; i++) {
+        if (labels[i] !== -1) continue; // already processed
+
+        const neighbors = regionQuery(i);
+        if (neighbors.length < minPts) {
+            // Mark as noise (stays -1), may be reclaimed later
+            continue;
         }
+
+        // Start a new cluster
+        labels[i] = clusterId;
+        const seed = [...neighbors];
+        const visited = new Set([i]);
+
+        while (seed.length > 0) {
+            const j = seed.pop();
+            if (visited.has(j)) continue;
+            visited.add(j);
+
+            if (labels[j] === -1) {
+                // Was noise, reclaim into this cluster
+                labels[j] = clusterId;
+            }
+            if (labels[j] !== -1 && labels[j] !== clusterId) continue;
+            labels[j] = clusterId;
+
+            const jNeighbors = regionQuery(j);
+            if (jNeighbors.length >= minPts) {
+                for (const k of jNeighbors) {
+                    if (!visited.has(k)) seed.push(k);
+                }
+            }
+        }
+        clusterId++;
+    }
+
+    // Build cluster objects from labels
+    const clusterMap = {};
+    for (let i = 0; i < n; i++) {
+        const lbl = labels[i];
+        if (lbl === -1) continue; // skip noise
+        if (!clusterMap[lbl]) clusterMap[lbl] = { origins: [], minH: Infinity };
+        clusterMap[lbl].origins.push(origins[i]);
+        clusterMap[lbl].minH = Math.min(clusterMap[lbl].minH, origins[i].h);
+    }
+
+    // Compute centers
+    const clusters = Object.values(clusterMap);
+    for (const c of clusters) {
+        const sumLat = c.origins.reduce((s, o) => s + o.lat, 0);
+        const sumLon = c.origins.reduce((s, o) => s + o.lon, 0);
+        c.center = { lat: sumLat / c.origins.length, lon: sumLon / c.origins.length };
     }
     return clusters;
 }
@@ -361,8 +408,8 @@ export default function SpaghettiPlot() {
                 }
             }
 
-            // Cluster origins into distinct disturbances
-            const clusters = clusterOrigins(allOrigins, 5);
+            // Cluster origins using DBSCAN (density-based, order-independent)
+            const clusters = dbscanCluster(allOrigins, 5, 2);
             clusters.forEach((c, idx) => c.distId = idx + 1);
 
             const originSetDone = new Set();
@@ -510,9 +557,17 @@ export default function SpaghettiPlot() {
                     for (const h of hours) {
                         const d = byHour[h];
                         const n = d.lats.length;
-                        const mLat = d.lats.reduce((s, v) => s + v, 0) / n;
-                        const mLon = d.lons.reduce((s, v) => s + v, 0) / n;
-                        const mP = d.ps.length > 0 ? d.ps.reduce((s, v) => s + v, 0) / d.ps.length : NaN;
+
+                        // Median helper
+                        const median = arr => {
+                            const s = [...arr].sort((a, b) => a - b);
+                            const mid = Math.floor(s.length / 2);
+                            return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+                        };
+
+                        const mLat = median(d.lats);
+                        const mLon = median(d.lons);
+                        const mP = d.ps.length > 0 ? median(d.ps) : NaN;
 
                         // Std dev
                         const sdLat = Math.sqrt(d.lats.reduce((s, v) => s + (v - mLat) ** 2, 0) / n);
