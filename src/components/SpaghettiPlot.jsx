@@ -558,12 +558,12 @@ export default function SpaghettiPlot() {
                         } else {
                             // Convex hull of adjacent circles to form smooth capsule segments
                             for (let i = 0; i < circles.length - 1; i++) {
-                                const fc = turf.featureCollection([circles[i], circles[i+1]]);
+                                const fc = turf.featureCollection([circles[i], circles[i + 1]]);
                                 const capsule = turf.convex(fc);
                                 if (capsule) capsules.push(capsule);
                             }
                         }
-                        
+
                         // Union all capsules together into a single continuous polygon
                         try {
                             // For modern Turf.js (v7+), union takes a FeatureCollection
@@ -593,7 +593,7 @@ export default function SpaghettiPlot() {
                                 interactive: false,
                             }
                         });
-                        
+
                         // Add each sub-layer to the map with our custom properties
                         envGroup.eachLayer(layer => {
                             layer.distId = dist.id;
@@ -722,7 +722,7 @@ export default function SpaghettiPlot() {
     }, [showEnsembleMean]);
 
     // ── Sidebar panel ─────────────────────────────────────────────────────
-    const Panel = () => (
+    const sidebarContent = (
         <div className="spaghetti-sidebar">
 
             {/* Back to Forecast */}
@@ -978,7 +978,7 @@ export default function SpaghettiPlot() {
 
             <div className="spaghetti-footer">
                 <p className="spaghetti-footer-text">
-                    Powered by <strong className="spaghetti-footer-highlight">Calauan Weather</strong><br />
+                    Powered by <strong className="spaghetti-footer-highlight">Philippine Typhoon/Weather</strong><br />
                     Data: GDM FNV3 Ensemble<br />
                     Consult official agencies for guidance.
                 </p>
@@ -1001,7 +1001,7 @@ export default function SpaghettiPlot() {
                         </svg>
                     </button>
                 </div>
-                <Panel />
+                {sidebarContent}
             </aside>
 
             {/* Map */}

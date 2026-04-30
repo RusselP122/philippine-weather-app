@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib.colors import LinearSegmentedColormap
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import cartopy.io.img_tiles as cimgt  # For satellite tiles
@@ -15,8 +16,11 @@ from datetime import datetime, timedelta, timezone  # Added for time calculation
 import warnings
 import matplotlib.patches as patches  # Added for Patch
 from matplotlib.patches import Circle, Ellipse
+from shapely.geometry import MultiPoint, Polygon
+from shapely.ops import unary_union
+from matplotlib.patches import Polygon as MplPolygon
+
 import requests
-import sys
 import subprocess
 
 init_text = None
@@ -38,45 +42,6 @@ def get_pressure_color(pressure):
     else:
         return None
 
-def safe_gaussian_kde(xy, bandwidth_factor=1.0):
-    """
-    Safely create a gaussian_kde with fallback options for singular data
-    """
-    try:
-        # First, check if we have enough unique points
-        unique_points = np.unique(xy, axis=1)
-        if unique_points.shape[1] < 3:
-            return None, "Insufficient unique points"
-        
-        # Check for duplicate points and add small random noise if needed
-        if xy.shape[1] != unique_points.shape[1]:
-            print(f"Warning: Found duplicate points, adding small noise")
-            xy = xy + np.random.normal(0, 0.01, xy.shape)
-        
-        # Try creating KDE with default bandwidth
-        kde = gaussian_kde(xy)
-        
-        # Optionally adjust bandwidth
-        if bandwidth_factor != 1.0:
-            kde.covariance_factor = lambda: kde.silverman_factor() * bandwidth_factor
-            kde._compute_covariance()
-            
-        return kde, "Success"
-        
-    except np.linalg.LinAlgError as e:
-        print(f"LinAlgError: {e}")
-        try:
-            # Add more noise to spread out the points
-            print("Adding more noise to resolve singular matrix...")
-            xy_noisy = xy + np.random.normal(0, 0.1, xy.shape)
-            kde = gaussian_kde(xy_noisy)
-            return kde, "Success with noise"
-        except:
-            return None, "Failed even with noise"
-    except Exception as e:
-        print(f"Other KDE error: {e}")
-        return None, f"Error: {e}"
-
 # Added: Get category (low/medium/high) based on probability
 def get_category(prob):
     if prob < 40:
@@ -86,14 +51,29 @@ def get_category(prob):
     else:
         return 'high'
 
-# Added: Get area color based on category
-def get_area_color(cat):
-    if cat == 'low':
-        return 'yellow'
-    elif cat == 'medium':
-        return 'orange'
+import matplotlib.colors as mcolors
+import numpy as np
+
+# Added: Get area color based on exact probability with blending
+def get_area_color(prob):
+    yellow = np.array(mcolors.to_rgb('yellow'))
+    orange = np.array(mcolors.to_rgb('orange'))
+    red = np.array(mcolors.to_rgb('red'))
+    
+    if prob <= 30:
+        c = yellow # Pure Low
+    elif prob < 40:
+        ratio = (prob - 30) / 10.0
+        c = yellow * (1 - ratio) + orange * ratio # Blend Low to Medium
+    elif prob <= 55:
+        c = orange # Pure Medium
+    elif prob < 65:
+        ratio = (prob - 55) / 10.0
+        c = orange * (1 - ratio) + red * ratio # Blend Medium to High
     else:
-        return 'red'
+        c = red # Pure High
+        
+    return mcolors.to_hex(c)
 
 def classify_tc_stage(max_wind_kt):
     """Classify the system stage based on maximum sustained wind (knots)."""
@@ -142,8 +122,11 @@ def get_latest_run_url():
 
 # Load the CSV file, skipping comment lines
 try:
+    import os
     date_str, hour_str, latest_url = get_latest_run_url()
-    local_csv = f"FNV3_{date_str}T{hour_str}_00_cyclogenesis.csv"
+    csv_dir = os.path.join(os.path.dirname(__file__), "public", "data")
+    os.makedirs(csv_dir, exist_ok=True)
+    local_csv = os.path.join(csv_dir, f"FNV3_{date_str}T{hour_str}_00_cyclogenesis.csv")
     print(f"Downloading latest run with curl to: {local_csv}")
     subprocess.run([
         "curl",
@@ -171,13 +154,17 @@ try:
     init_text = f"{time_label} PHT, {latest_ph.strftime('%B %d, %Y')}"
 except subprocess.CalledProcessError as e:
     print(f"Error: curl failed to download CSV: {e}")
-    sys.exit(1)
+    exit()
 except pd.errors.ParserError:
     print("Error: Failed to parse CSV. Ensure the file is correctly formatted and contains the expected columns.")
-    sys.exit(1)
+    exit()
 except Exception as e:
     print(f"Error loading CSV: {str(e)}")
-    sys.exit(1)
+    exit()
+
+# DeepMind format change compatibility: convert timedelta string to hours
+if 'lead_time' in data.columns and 'lead_time_hours' not in data.columns:
+    data['lead_time_hours'] = pd.to_timedelta(data['lead_time']).dt.total_seconds() / 3600.0
 
 # Validate required columns
 required_columns = [
@@ -193,7 +180,7 @@ required_columns = [
 missing_columns = [col for col in required_columns if col not in data.columns]
 if missing_columns:
     print(f"Error: Missing required columns in CSV: {missing_columns}")
-    sys.exit(1)
+    exit()
 
 # Use all data up to 7 days (168 hours); adjust if data exceeds
 wp_data = data[
@@ -201,37 +188,39 @@ wp_data = data[
     & (data['maximum_sustained_wind_speed_knots'] >= MIN_GENESIS_WIND_KT)
 ].copy()
 
-# Get total number of unique samples (ensembles)
-num_samples = len(wp_data['sample'].unique())
+# Get total number of unique samples (ensembles) from the raw data
+num_samples = len(data[data['lead_time_hours'] <= 168]['sample'].unique())
 if num_samples == 0:
-    print("Error: No samples found in the data.")
-    sys.exit(1)
-print(f"Total samples: {num_samples}")
+    print("Warning: No samples found in the data. Proceeding to generate 'no formation' map.")
+    num_samples = 1  # Prevent division by zero later
 
-# Get all unique track IDs, filter to potential (numerical) tracks only
-all_track_ids = [tid for tid in wp_data['track_id'].unique() if str(tid).isdigit()]
-all_track_ids = sorted(all_track_ids, key=int)  # Sort numerically
-print(f"Processing potential track IDs: {all_track_ids}")
-
-# Check if any data remains
+# Check if any data remains meeting the criteria
 if wp_data.empty:
-    print("Error: No data found in the CSV file.")
-    sys.exit(1)
+    print("No valid storm tracks found in the data. Proceeding to generate 'no formation' map.")
+    all_track_ids = []
+    genesis_data = pd.DataFrame(columns=required_columns)
+    init_times = [latest_utc.strftime("%Y-%m-%d %H:%M:%S")]
+else:
+    # Get all unique track IDs, filter to potential (numerical) tracks only
+    all_track_ids = [tid for tid in wp_data['track_id'].unique() if str(tid).isdigit()]
+    all_track_ids = sorted(all_track_ids, key=int)  # Sort numerically
+    print(f"Processing potential track IDs: {all_track_ids}")
+    
+    # Ensure data is sorted by init_time, track_id, sample, and lead_time_hours
+    wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
+    
+    # Extract genesis points (earliest lead_time per init_time, track_id, sample)
+    genesis_data = wp_data.loc[wp_data.groupby(['init_time', 'track_id', 'sample'])['lead_time_hours'].idxmin()]
+    
+    # Filter genesis_data to potential tracks only
+    genesis_data = genesis_data[genesis_data['track_id'].isin(all_track_ids)]
+    
+    # Identify unique initialization times
+    init_times = wp_data['init_time'].unique()
 
-# Ensure data is sorted by init_time, track_id, sample, and lead_time_hours
-wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
-
-# Extract genesis points (earliest lead_time per init_time, track_id, sample)
-genesis_data = wp_data.loc[wp_data.groupby(['init_time', 'track_id', 'sample'])['lead_time_hours'].idxmin()]
-
-# Filter genesis_data to potential tracks only
-genesis_data = genesis_data[genesis_data['track_id'].isin(all_track_ids)]
-
-# Identify unique initialization times
-init_times = wp_data['init_time'].unique()
 if len(init_times) == 0:
-    print("Error: No valid init_time values found in the data.")
-    sys.exit(1)
+    init_times = [latest_utc.strftime("%Y-%m-%d %H:%M:%S")]
+
 print(f"Found {len(init_times)} forecast initialization times: {init_times}")
 
 # Use latest_ph as the initialization datetime in Philippine time
@@ -252,15 +241,15 @@ tiles = cimgt.GoogleTiles(style='satellite')
 ax.add_image(tiles, 6)  # Zoom level 6 for regional detail; adjust as needed
 
 # Add coastlines and borders (overlaid on satellite)
-ax.add_feature(cfeature.COASTLINE, linewidth=1.5)
-ax.add_feature(cfeature.BORDERS, linestyle=':', linewidth=1)
+ax.add_feature(cfeature.COASTLINE, edgecolor='white', alpha=0.7, linewidth=1.0)
+ax.add_feature(cfeature.BORDERS, edgecolor='white', alpha=0.5, linestyle=':', linewidth=0.8)
 
 # Add gridlines with emphasized labels at 5° intervals
-gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='white', alpha=0.3, linestyle='--')
 gl.xlocator = plt.FixedLocator(np.arange(105, 156, 5))
 gl.ylocator = plt.FixedLocator(np.arange(0, 41, 5))
-gl.xlabel_style = {'size': 12, 'weight': 'bold'}
-gl.ylabel_style = {'size': 12, 'weight': 'bold'}
+gl.xlabel_style = {'size': 11, 'weight': 'bold', 'color': 'white'}
+gl.ylabel_style = {'size': 11, 'weight': 'bold', 'color': 'white'}
 gl.top_labels = False
 gl.right_labels = False
 
@@ -270,7 +259,8 @@ par_vertices = [
     (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
 ]
 par_path = Path(par_vertices)
-par_patch = PathPatch(par_path, edgecolor='blue', linestyle='--', linewidth=2, facecolor='none', transform=ccrs.PlateCarree())
+# Use a glowing cyan color for better visibility against dark ocean background
+par_patch = PathPatch(par_path, edgecolor='#00E5FF', linestyle='-', linewidth=2.0, facecolor='none', alpha=0.8, transform=ccrs.PlateCarree())
 ax.add_patch(par_patch)
 
 # Prepare data for clustering (using all potential genesis points)
@@ -285,34 +275,90 @@ genesis_data = genesis_data.iloc[mask]
 
 print(f"Total genesis points: {len(lons)}")
 
+has_active_tc = False
+active_wp_ids = [tid for tid in wp_data['track_id'].unique() if str(tid).startswith('WP')]
+if active_wp_ids:
+    print(f"Found active FNV3 tracks: {active_wp_ids}")
+    for tid in active_wp_ids:
+        # Filter track points within window
+        tc_pts_raw = wp_data[(wp_data['track_id'] == tid) & (wp_data['lead_time_hours'] <= 168)]
+        if tc_pts_raw.empty:
+            continue
+            
+        # Get coordinates within map extent
+        mask = (tc_pts_raw['lon'] >= 105) & (tc_pts_raw['lon'] <= 155) & (tc_pts_raw['lat'] >= 0) & (tc_pts_raw['lat'] <= 40)
+        tc_pts = tc_pts_raw[mask]
+        
+        if not tc_pts.empty:
+            has_active_tc = True
+            area_color = '#d811ad'
+            line_style = '-'
+            center_lon = tc_pts['lon'].mean()
+            center_lat = tc_pts['lat'].mean()
+            
+            # Create a time-varying cone using ensemble spread
+            lead_times = sorted(tc_pts['lead_time_hours'].unique())
+            hour_polygons = {}
+            
+            for lt in lead_times:
+                pts = tc_pts[tc_pts['lead_time_hours'] == lt]
+                points = np.column_stack((pts['lon'].values, pts['lat'].values))
+                if len(points) == 1:
+                    hour_polygons[lt] = MultiPoint(points).buffer(0.5)
+                else:
+                    hour_polygons[lt] = MultiPoint(points).convex_hull.buffer(0.8, join_style='round')
+
+            if len(lead_times) > 1:
+                segments = []
+                for idx in range(len(lead_times)-1):
+                    poly1 = hour_polygons[lead_times[idx]]
+                    poly2 = hour_polygons[lead_times[idx+1]]
+                    segment = unary_union([poly1, poly2]).convex_hull
+                    segments.append(segment)
+                buffered_geom = unary_union(segments)
+            else:
+                buffered_geom = hour_polygons[lead_times[0]]
+
+            # Plot the cone geometry
+            if buffered_geom.geom_type == 'Polygon':
+                ext_coords = list(buffered_geom.exterior.coords)
+                patch = MplPolygon(ext_coords, facecolor=area_color, edgecolor='none', alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
+                ax.add_patch(patch)
+                outline_patch = MplPolygon(ext_coords, fill=False, edgecolor=area_color, linewidth=2.5, linestyle=line_style, transform=ccrs.PlateCarree(), zorder=51)
+                ax.add_patch(outline_patch)
+            elif buffered_geom.geom_type == 'MultiPolygon':
+                for poly in buffered_geom.geoms:
+                    ext_coords = list(poly.exterior.coords)
+                    patch = MplPolygon(ext_coords, facecolor=area_color, edgecolor='none', alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
+                    ax.add_patch(patch)
+                    outline_patch = MplPolygon(ext_coords, fill=False, edgecolor=area_color, linewidth=2.5, linestyle=line_style, transform=ccrs.PlateCarree(), zorder=51)
+                    ax.add_patch(outline_patch)
+            else:
+                patch = Circle((center_lon, center_lat), radius=2.5, facecolor=area_color, lw=0, alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
+                ax.add_patch(patch)
+
+            y_label_pos = center_lat + 4.5
+            x_norm = (center_lon - 105.0) / (155.0 - 105.0)
+            y_norm = (y_label_pos - 0.0) / (40.0 - 0.0)
+            x_norm = min(max(x_norm, 0.12), 0.88)
+            y_norm = min(max(y_norm, 0.15), 0.90)
+            
+            label_title = "Active Tropical Cyclone Area"
+            ax.text(x_norm, y_norm, f"{label_title}", fontsize=9, ha='center', va='bottom',
+                    fontweight='bold', color='white', 
+                    bbox=dict(facecolor='#1c1e22', alpha=0.85, edgecolor=area_color, linewidth=1.5, boxstyle='round,pad=0.6'), 
+                    transform=ax.transAxes, zorder=100)
+
+
 if len(lons) < 2:
     print("Insufficient points for density estimation. Creating visualization with no formation message.")
     
-    # Add central message box with end date
-    end_date_str = (init_ph + timedelta(days=7)).strftime("%m/%d/%Y")
-    message_text = (
-        f"NO TROPICAL CYCLONE\n"
-        f"FORMATION EXPECTED\n\n"
-        f"UNTIL {end_date_str}"
-    )
-    
-    # Create a cleaner, modern message box in the center
-    ax.text(
-        0.5, 0.5, message_text,
-        transform=ax.transAxes,
-        fontsize=22,
-        weight='bold',
-        ha='center',
-        va='center',
-        color='#003366', # Dark blue text
-        bbox=dict(
-            boxstyle='round,pad=1.0',
-            facecolor='#F0F8FF', # AliceBlue background
-            edgecolor='#003366',
-            linewidth=2,
-            alpha=0.9
-        )
-    )
+    if not has_active_tc:
+        # Add central message box with end date
+        end_date_str = (init_ph + timedelta(days=7)).strftime("%m/%d/%Y")
+        message_text = f"NO TROPICAL CYCLONE\nFORMATION EXPECTED\n\nUNTIL {end_date_str}"
+        ax.text(0.5, 0.5, message_text, transform=ax.transAxes, fontsize=22, weight='heavy', ha='center', va='center', color='white', 
+                bbox=dict(boxstyle='round,pad=1.2', facecolor='#1c1e22', edgecolor='#00E5FF', linewidth=2, alpha=0.9))
     
     # Add prepared by information with initialization line
     init_line = init_text or "Initialization unavailable"
@@ -321,33 +367,40 @@ if len(lons) < 2:
         f"Initialization: {init_line}\n"
         "Prepared By: Philippine Typhoon/Weather"
     )
-    plt.text(
+    ax.text(
         0.98, 0.02, legend_text,
         transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right',
-        bbox=dict(facecolor='white', alpha=0.8, edgecolor='black', boxstyle='round,pad=0.3')
+        color='white', weight='bold',
+        bbox=dict(facecolor='#1c1e22', alpha=0.85, edgecolor='gray', boxstyle='round,pad=0.5')
     )
     
 
     
-    # Add title
-    ax.set_title("7-Day Tropical Weather Outlook - Western Pacific", fontsize=16, weight='bold')
-    
-    # Save the plot to a file
+    # Add disclaimer
+    disclaimer = (
+        "WARNING: EXPERIMENTAL GUIDANCE PRODUCT\n"
+        "Should not be used for critical decision making. This is not an official forecast.\n"
+        "Refer to PAGASA and official meteorological agencies for official warnings and advisories."
+    )
+    ax.text(0.01, 0.01, disclaimer, transform=ax.transAxes, fontsize=9, ha='left', va='bottom', weight='bold', color='#FFD700', bbox=dict(facecolor='#111111', alpha=0.85, edgecolor='none', boxstyle='round,pad=0.5'))
+
+    # Add title banner
+    ax.set_title("7-Day Tropical Weather Outlook - Western Pacific", fontsize=18, weight='heavy', pad=15,
+                 color='white', bbox=dict(facecolor='#001f3f', edgecolor='none', alpha=0.9, pad=10, boxstyle='square,pad=0.4'))
+    fig.patch.set_facecolor('#111111') # Set figure background
     # Save the plot to a file
     try:
         import os
-        output_dir = "public/images"
+        output_dir = os.path.join(os.path.dirname(__file__), "public", "images")
         os.makedirs(output_dir, exist_ok=True)
-        
         output_file = os.path.join(output_dir, "tropical_outlook_week1_latest.png")
         plt.savefig(output_file, dpi=300, bbox_inches='tight')
         print(f"Plot saved to {output_file}")
     except Exception as e:
         print(f"Error saving plot: {str(e)}")
-        sys.exit(1)
     
     plt.close()
-    sys.exit(0)
+    exit()
 
 # Cluster the points using DBSCAN to separate distinct regions
 coords = np.column_stack((lons, lats))
@@ -395,54 +448,50 @@ for i, label in enumerate(unique_labels, start=1):
     # Compute ensemble mean center
     center_lon = np.mean(cluster_lons)
     center_lat = np.mean(cluster_lats)
-    area_color = get_area_color(cat_7day)
+    area_color = get_area_color(prob_7day)
 
-    # Compute KDE for this cluster
-    xy = np.vstack([cluster_lons, cluster_lats])
-    kde, status = safe_gaussian_kde(xy, bandwidth_factor=1.2)
-    
-    if kde is None:
-        print(f"KDE failed for cluster {label}: {status}")
-        if len(cluster_lons) == 1:
-            # Fixed circle for single point
-            radius = 2.0
-            patch = Circle((center_lon, center_lat), radius, facecolor=area_color, edgecolor='black', linewidth=2, alpha=0.6, transform=ccrs.PlateCarree())
+    # Create smooth polygon blob around the cluster points
+    points = np.column_stack((cluster_lons, cluster_lats))
+    if len(points) == 1:
+        # Single point, just a circle
+        patch = Circle((center_lon, center_lat), radius=2.5, facecolor=area_color, lw=0, alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
+        ax.add_patch(patch)
+        outline_patch = Circle((center_lon, center_lat), radius=2.5, facecolor='none', edgecolor=area_color, linewidth=2.5, linestyle='--', transform=ccrs.PlateCarree(), zorder=51)
+        ax.add_patch(outline_patch)
+        kde_success = True
+    else:
+        try:
+            # Use shapely to create a convex hull and buffer it for beautifully rounded edges (NHC style)
+            geom = MultiPoint(points).convex_hull
+            # Add a 2.5-degree padding (approx 275km) around the outermost points
+            buffered_geom = geom.buffer(2.5, join_style='round')
+            
+            # If it's a valid polygon, extract outer coords
+            if buffered_geom.geom_type == 'Polygon':
+                ext_coords = list(buffered_geom.exterior.coords)
+                patch = MplPolygon(ext_coords, facecolor=area_color, edgecolor='none', alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
+                ax.add_patch(patch)
+                # Add crisp dashed outline
+                outline_patch = MplPolygon(ext_coords, fill=False, edgecolor=area_color, linewidth=2.5, linestyle='--', transform=ccrs.PlateCarree(), zorder=51)
+                ax.add_patch(outline_patch)
+                kde_success = True
+            elif buffered_geom.geom_type == 'MultiPolygon':
+                for poly in buffered_geom.geoms:
+                    ext_coords = list(poly.exterior.coords)
+                    patch = MplPolygon(ext_coords, facecolor=area_color, edgecolor='none', alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
+                    ax.add_patch(patch)
+                    outline_patch = MplPolygon(ext_coords, fill=False, edgecolor=area_color, linewidth=2.5, linestyle='--', transform=ccrs.PlateCarree(), zorder=51)
+                    ax.add_patch(outline_patch)
+                kde_success = True
+        except Exception as e:
+            print(f"Error plotting buffer blob for cluster {label}: {e}")
+            patch = Circle((center_lon, center_lat), radius=2.5, facecolor=area_color, edgecolor='none', alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
             ax.add_patch(patch)
-        continue
-
-    kde_success = True
-    print(f"KDE successful for cluster {label}: {status}")
-
-    # Create grid for contouring
-    lon_grid, lat_grid = np.mgrid[105:155:200j, 0:40:200j]
-    positions = np.vstack([lon_grid.ravel(), lat_grid.ravel()])
-    
-    try:
-        densities = kde.evaluate(positions)
-        densities = densities.reshape(lon_grid.shape)
-
-        # Normalize densities for this cluster
-        densities_norm = densities / densities.max() if densities.max() > 0 else densities
-
-        # Plot filled contours for this cluster
-        cs = ax.contourf(
-            lon_grid, lat_grid, densities_norm,
-            levels=[0.1, 1.0], colors=[area_color], alpha=0.6,
-            transform=ccrs.PlateCarree(), extend='max'
-        )
-
-        # Add contour lines for boundaries
-        ax.contour(
-            lon_grid, lat_grid, densities_norm,
-            levels=[0.1], colors='black', linewidths=2.0, linestyles='solid',
-            transform=ccrs.PlateCarree()
-        )
-    except Exception as e:
-        print(f"Error plotting contours for cluster {label}: {e}")
 
     # Add NHC-style text for potentials near cluster center
     # Convert cluster center position to normalized axes coordinates (0-1)
-    center_lat_text = center_lat + 2
+    # Give a larger vertical offset (+4.5 degrees) so the box doesn't overlap the glowing contours
+    center_lat_text = center_lat + 4.5
     x_norm = (center_lon - 105.0) / (155.0 - 105.0)
     y_norm = (center_lat_text - 0.0) / (40.0 - 0.0)
 
@@ -450,12 +499,12 @@ for i, label in enumerate(unique_labels, start=1):
     x_norm = min(max(x_norm, 0.12), 0.88)
     y_norm = min(max(y_norm, 0.15), 0.90)
 
-    # Use maximum genesis wind in this cluster to infer stage
+    # Use average genesis wind in this cluster to infer stage
     if 'maximum_sustained_wind_speed_knots' in cluster_genesis.columns:
-        max_wind = cluster_genesis['maximum_sustained_wind_speed_knots'].max()
-        stage = classify_tc_stage(max_wind)
+        mean_wind = cluster_genesis['maximum_sustained_wind_speed_knots'].mean()
+        stage = classify_tc_stage(mean_wind)
     else:
-        max_wind = float('nan')
+        mean_wind = float('nan')
         stage = 'Unknown'
 
     area_text = (
@@ -484,15 +533,15 @@ for i, label in enumerate(unique_labels, start=1):
     # Print a summary of this potential formation area to the terminal
     print(
         f"Area {i}: Possible tropical cyclone formation area | "
-        f"Stage at genesis (max wind {max_wind:.1f} kt): {stage} | "
+        f"Stage at genesis (avg wind {mean_wind:.1f} kt): {stage} | "
         f"2-day: ({two_day_day}) {cat_2day} ({int(prob_2day_rounded)}%), "
         f"7-day: ({seven_day_day}) {cat_7day} ({int(prob_7day_rounded)}%)"
     )
     ax.text(
         x_norm, y_norm, area_text,
         fontsize=9, ha='center', va='bottom',
-        fontweight='bold',
-        bbox=dict(facecolor='white', alpha=0.9, edgecolor='gray', boxstyle='round,pad=0.5'),
+        fontweight='bold', color='white',
+        bbox=dict(facecolor='#1c1e22', alpha=0.85, edgecolor=area_color, linewidth=1.5, boxstyle='round,pad=0.6'),
         transform=ax.transAxes,
         zorder=100
     )
@@ -513,8 +562,14 @@ legend = ax.legend(
     handles=legend_elements, loc='upper left', bbox_to_anchor=(0.02, 0.98),
     frameon=True, fancybox=True, shadow=True, fontsize=10, title='Development Potential'
 )
-legend.get_frame().set_facecolor('white')
-legend.get_frame().set_alpha(0.9)
+# Make the legend look more premium with a dark background and white text
+legend.get_title().set_color('white')
+legend.get_title().set_weight('bold')
+for text in legend.get_texts():
+    text.set_color('white')
+legend.get_frame().set_facecolor('#1c1e22')
+legend.get_frame().set_edgecolor('gray')
+legend.get_frame().set_alpha(0.85)
 
 # Update legend text with initialization line
 init_line = init_text or "Initialization unavailable"
@@ -523,91 +578,35 @@ legend_text = (
     f"Initialization: {init_line}\n"
     "Prepared By: Philippine Typhoon/Weather"
 )
-plt.text(
+ax.text(
     0.98, 0.02, legend_text,
     transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right',
-    bbox=dict(facecolor='white', alpha=0.8, edgecolor='black', boxstyle='round,pad=0.3')
+    color='white', weight='bold',
+    bbox=dict(facecolor='#1c1e22', alpha=0.85, edgecolor='gray', boxstyle='round,pad=0.5')
 )
 
 # Add disclaimer
 disclaimer = (
-    "This is an experimental guidance product and should not be used for critical decision making\n"
-    "Please do not treat this as an official forecast.\n"
-    "Refer to PAGASA and other official meteorological agencies for official forecasts, warnings, and advisories."
+    "WARNING: EXPERIMENTAL GUIDANCE PRODUCT\n"
+    "Should not be used for critical decision making. This is not an official forecast.\n"
+    "Refer to PAGASA and official meteorological agencies for official warnings and advisories."
 )
 
 ax.text(0.01, 0.01, disclaimer, transform=ax.transAxes, fontsize=9,
-       ha='left', va='bottom', style='italic', color='black',
-       bbox=dict(facecolor='yellow', alpha=0.9, edgecolor='black', linewidth=1.5))
+       ha='left', va='bottom', weight='bold', color='#FFD700',
+       bbox=dict(facecolor='#111111', alpha=0.85, edgecolor='none', boxstyle='round,pad=0.5'))
 
-# Fetch current positions from ATCF API (unchanged, for existing systems)
-try:
-    url = "https://api.knackwx.com/atcf/v2"
-    req = urllib.request.Request(url, headers={
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'application/json'
-    })
-    with urllib.request.urlopen(req) as response:
-        atcf_data = json.loads(response.read().decode())
-    # Plot markers for current systems in WPAC
-    for system in atcf_data:
-        lat = system.get('latitude')
-        lon = system.get('longitude')
-        pressure = system.get('pressure')
-        storm_name = system.get('storm_name', '').upper()
-        atcf_id = system.get('atcf_id', '')
-        atcf_sector = system.get('atcf_sector_file', '')
-        if lon is None or lat is None or pressure is None:
-            continue
-        if lon < 0 or 'WPAC' not in atcf_sector.upper():  # Skip non-WPAC
-            continue
-        if not (105 <= lon <= 155 and 0 <= lat <= 40):
-            continue
-        if storm_name == 'INVEST':
-            label = f"LPA {atcf_id}"
-        else:
-            label = storm_name
-        color = get_pressure_color(pressure)
-        if color is None:
-            continue
-        # Plot larger marker with white outline for current position
-        ax.plot(
-            lon, lat,
-            color='white',
-            marker='X',
-            markersize=14,
-            markeredgewidth=0,
-            transform=ccrs.PlateCarree()
-        )
-        ax.plot(
-            lon, lat,
-            color='black',
-            marker='X',
-            markersize=12,
-            transform=ccrs.PlateCarree()
-        )
-        # Add label
-        ax.text(
-            lon + 0.5, lat + 0.5,
-            label,
-            fontsize=12,
-            weight='bold',
-            color='black',
-            transform=ccrs.PlateCarree()
-        )
-except Exception as e:
-    print(f"Error fetching or plotting ATCF data: {str(e)}")
 
-# Add title
-ax.set_title("7-Day Tropical Weather Outlook - Western Pacific", fontsize=16, weight='bold')
+# Add title banner
+ax.set_title("7-Day Tropical Weather Outlook - Western Pacific", fontsize=18, weight='heavy', pad=15,
+             color='white', bbox=dict(facecolor='#001f3f', edgecolor='none', alpha=0.9, pad=10, boxstyle='square,pad=0.4'))
+fig.patch.set_facecolor('#111111') # Set figure background
 
 # Save the plot to a file
 try:
-    # Use relative path for GitHub Actions
     import os
-    output_dir = "public/images"
+    output_dir = os.path.join(os.path.dirname(__file__), "public", "images")
     os.makedirs(output_dir, exist_ok=True)
-    
     output_file = os.path.join(output_dir, "tropical_outlook_week1_latest.png")
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Plot saved to {output_file}")
