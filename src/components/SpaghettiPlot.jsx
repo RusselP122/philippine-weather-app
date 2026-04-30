@@ -430,10 +430,21 @@ export default function SpaghettiPlot() {
 
                 const origin = points.find(pt => pt.h === 0) || points[0];
                 const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
-                const myCluster = clusters.find(c => c.origins.some(o => o.oKey === oKey));
-                const distId = myCluster ? myCluster.distId : null;
 
-                // Collect tracks for ensemble mean computation
+                // Assign to nearest cluster (not just exact oKey match)
+                let distId = null;
+                let bestDist = Infinity;
+                for (const c of clusters) {
+                    const dd = degreeDist(c.center, origin);
+                    if (dd < bestDist) {
+                        bestDist = dd;
+                        distId = c.distId;
+                    }
+                }
+                // Only assign if reasonably close (within 2x the DBSCAN eps)
+                if (bestDist > 10) distId = null;
+
+                // Collect tracks for ensemble median computation
                 if (distId !== null) {
                     if (!tracksByDisturbance[distId]) tracksByDisturbance[distId] = [];
                     tracksByDisturbance[distId].push(points);
