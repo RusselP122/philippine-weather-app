@@ -409,7 +409,8 @@ export default function SpaghettiPlot() {
             }
 
             // Cluster origins using DBSCAN (density-based, order-independent)
-            const clusters = dbscanCluster(allOrigins, 5, 2);
+            // eps=3° (~333km) prevents merging nearby but distinct TCs
+            const clusters = dbscanCluster(allOrigins, 3, 2);
             clusters.forEach((c, idx) => c.distId = idx + 1);
 
             const originSetDone = new Set();
@@ -442,7 +443,7 @@ export default function SpaghettiPlot() {
                     }
                 }
                 // Only assign if reasonably close (within 2x the DBSCAN eps)
-                if (bestDist > 10) distId = null;
+                if (bestDist > 6) distId = null;
 
                 // Collect tracks for ensemble median computation
                 if (distId !== null) {
@@ -576,24 +577,37 @@ export default function SpaghettiPlot() {
                             return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
                         };
 
+                        // Percentile helper (0-1)
+                        const percentile = (arr, p) => {
+                            const s = [...arr].sort((a, b) => a - b);
+                            const idx = Math.ceil(p * s.length) - 1;
+                            return s[Math.max(0, Math.min(idx, s.length - 1))];
+                        };
+
                         const mLat = median(d.lats);
                         const mLon = median(d.lons);
                         const mP = d.ps.length > 0 ? median(d.ps) : NaN;
 
-                        // Std dev
+                        // Std dev (kept for spread display)
                         const sdLat = Math.sqrt(d.lats.reduce((s, v) => s + (v - mLat) ** 2, 0) / n);
                         const sdLon = Math.sqrt(d.lons.reduce((s, v) => s + (v - mLon) ** 2, 0) / n);
 
-                        // Agreement: fraction within AGREEMENT_RADIUS degrees of mean
+                        // 67th percentile distance from median (NHC-style cone radius)
+                        const dists = [];
+                        for (let i = 0; i < n; i++) {
+                            dists.push(Math.sqrt((d.lats[i] - mLat) ** 2 + (d.lons[i] - mLon) ** 2));
+                        }
+                        const r67 = percentile(dists, 0.67);
+
+                        // Agreement: fraction within AGREEMENT_RADIUS degrees of median
                         let inside = 0;
                         for (let i = 0; i < n; i++) {
-                            const dd = Math.sqrt((d.lats[i] - mLat) ** 2 + (d.lons[i] - mLon) ** 2);
-                            if (dd <= AGREEMENT_RADIUS) inside++;
+                            if (dists[i] <= AGREEMENT_RADIUS) inside++;
                         }
                         totalAgreement += inside / n;
                         agreementSteps++;
 
-                        meanPts.push({ lat: mLat, lon: mLon, p: mP, h, sdLat, sdLon });
+                        meanPts.push({ lat: mLat, lon: mLon, p: mP, h, sdLat, sdLon, r67 });
                         upperEnv.push([mLat + sdLat, mLon + sdLon]);
                         lowerEnv.push([mLat - sdLat, mLon - sdLon]);
                     }
@@ -605,13 +619,12 @@ export default function SpaghettiPlot() {
                     if (meanPts.length < 2) continue;
                     const meanLL = meanPts.map(pt => [pt.lat, pt.lon]);
 
-                    // Generate a proper Cone of Uncertainty polygon using Turf.js
+                    // Generate Cone of Uncertainty using 67th percentile radius (NHC method)
                     const circles = [];
                     for (let i = 0; i < meanPts.length; i++) {
                         const pt = meanPts[i];
-                        const R_deg = Math.max(0.1, (pt.sdLat + pt.sdLon) / 2);
-                        const R_km = R_deg * 111.32; // Convert degrees to km
-                        // turf.circle takes [lon, lat]
+                        const R_deg = Math.max(0.1, pt.r67);
+                        const R_km = R_deg * 111.32;
                         const c = turf.circle([pt.lon, pt.lat], R_km, { steps: 36, units: 'kilometers' });
                         circles.push(c);
                     }
