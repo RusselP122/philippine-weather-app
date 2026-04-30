@@ -95,9 +95,17 @@ function pressureCategory(p) {
     return "LPA";
 }
 
-// ── Haversine-ish fast distance (degrees, not km — good enough for clustering)
-function degreeDist(a, b) {
-    return Math.sqrt((a.lat - b.lat) ** 2 + (a.lon - b.lon) ** 2);
+// ── True Haversine distance (km) for accurate cone radii at high latitudes
+function haversineKm(a, b) {
+    const R = 6371;
+    const dLat = (b.lat - a.lat) * Math.PI / 180;
+    const dLon = (b.lon - a.lon) * Math.PI / 180;
+    const lat1 = a.lat * Math.PI / 180;
+    const lat2 = b.lat * Math.PI / 180;
+    const sinD = Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1) * Math.cos(lat2) *
+        Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.asin(Math.sqrt(sinD));
 }
 
 // ── DBSCAN clustering (density-based, order-independent, filters noise) ───
@@ -106,11 +114,11 @@ function dbscanCluster(origins, eps = 5, minPts = 2) {
     const labels = new Array(n).fill(-1); // -1 = unvisited/noise
     let clusterId = 0;
 
-    // Find all neighbors within eps distance
+    // Find all neighbors within epsKm distance
     function regionQuery(idx) {
         const neighbors = [];
         for (let i = 0; i < n; i++) {
-            if (degreeDist(origins[idx], origins[i]) <= eps) {
+            if (haversineKm(origins[idx], origins[i]) <= eps) {
                 neighbors.push(i);
             }
         }
@@ -409,8 +417,8 @@ export default function SpaghettiPlot() {
             }
 
             // Cluster origins using DBSCAN (density-based, order-independent)
-            // eps=3° (~333km) prevents merging nearby but distinct TCs
-            const clusters = dbscanCluster(allOrigins, 3, 2);
+            // epsKm=333km (~3°) prevents merging nearby but distinct TCs
+            const clusters = dbscanCluster(allOrigins, 333, 2);
             clusters.forEach((c, idx) => c.distId = idx + 1);
 
             const originSetDone = new Set();
@@ -432,18 +440,18 @@ export default function SpaghettiPlot() {
                 const origin = points.find(pt => pt.h === 0) || points[0];
                 const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
 
-                // Assign to nearest cluster (not just exact oKey match)
+                // Assign to nearest cluster (using true Haversine distance)
                 let distId = null;
-                let bestDist = Infinity;
+                let bestDistKm = Infinity;
                 for (const c of clusters) {
-                    const dd = degreeDist(c.center, origin);
-                    if (dd < bestDist) {
-                        bestDist = dd;
+                    const dd = haversineKm(c.center, origin);
+                    if (dd < bestDistKm) {
+                        bestDistKm = dd;
                         distId = c.distId;
                     }
                 }
-                // Only assign if reasonably close (within 2x the DBSCAN eps)
-                if (bestDist > 6) distId = null;
+                // Only assign if reasonably close (within 2x the DBSCAN epsKm, ~666km)
+                if (bestDistKm > 666) distId = null;
 
                 // Collect tracks for ensemble median computation
                 if (distId !== null) {
@@ -553,7 +561,7 @@ export default function SpaghettiPlot() {
                             if (!byHour[pt.h]) byHour[pt.h] = { lats: [], lons: [], ps: [] };
                             byHour[pt.h].lats.push(pt.lat);
                             byHour[pt.h].lons.push(pt.lon);
-                            if (!isNaN(pt.p)) byHour[pt.h].ps.push(pt.p);
+                            byHour[pt.h].ps.push(!isNaN(pt.p) ? pt.p : NaN);
                         }
                     }
 
@@ -586,45 +594,107 @@ export default function SpaghettiPlot() {
 
                         const mLat = median(d.lats);
                         const mLon = median(d.lons);
-                        const mP = d.ps.length > 0 ? median(d.ps) : NaN;
 
-                        // Std dev (kept for spread display)
-                        const sdLat = Math.sqrt(d.lats.reduce((s, v) => s + (v - mLat) ** 2, 0) / n);
-                        const sdLon = Math.sqrt(d.lons.reduce((s, v) => s + (v - mLon) ** 2, 0) / n);
+                        // To calculate a smooth and physically realistic median intensity (mP) without survivorship bias:
+                        // We take the pressures of all active members. For any member that has dissipated or not yet formed,
+                        // we pad it with a standard background pressure of 1010 hPa.
+                        // This guarantees the median gracefully decays if the majority of the ensemble kills off the storm.
+                        const activePressures = d.ps.filter(p => !isNaN(p));
+                        const deadCount = tracks.length - activePressures.length;
+                        const allPressures = [...activePressures];
+                        for (let i = 0; i < deadCount; i++) {
+                            allPressures.push(1010);
+                        }
+                        const mP = median(allPressures);
+
+                        const distsKm = [];
+                        for (let i = 0; i < n; i++) {
+                            const dd_km = haversineKm(
+                                { lat: d.lats[i], lon: d.lons[i] },
+                                { lat: mLat, lon: mLon }
+                            );
+                            distsKm.push(dd_km);
+                        }
+
+                        // True Std Dev of distances from median (in km)
+                        const meanDistKm = distsKm.reduce((s, v) => s + v, 0) / n;
+                        const varianceKm = distsKm.reduce((s, v) => s + Math.pow(v - meanDistKm, 2), 0) / n;
+                        const sdKm = Math.sqrt(varianceKm);
 
                         // 67th percentile distance from median (NHC-style cone radius)
-                        const dists = [];
-                        for (let i = 0; i < n; i++) {
-                            dists.push(Math.sqrt((d.lats[i] - mLat) ** 2 + (d.lons[i] - mLon) ** 2));
-                        }
-                        const r67 = percentile(dists, 0.67);
+                        const p67km = percentile(distsKm, 0.67);
+                        const r67km = p67km;
 
                         // Agreement: fraction within AGREEMENT_RADIUS degrees of median
                         let inside = 0;
                         for (let i = 0; i < n; i++) {
-                            if (dists[i] <= AGREEMENT_RADIUS) inside++;
+                            if (distsKm[i] <= (AGREEMENT_RADIUS * 111.32)) inside++;
                         }
                         totalAgreement += inside / n;
                         agreementSteps++;
 
-                        meanPts.push({ lat: mLat, lon: mLon, p: mP, h, sdLat, sdLon, r67 });
-                        upperEnv.push([mLat + sdLat, mLon + sdLon]);
-                        lowerEnv.push([mLat - sdLat, mLon - sdLon]);
+                        // Survival tracking
+                        const activeMembers = n;
+                        const totalMembers = tracks.length;
+
+                        meanPts.push({ lat: mLat, lon: mLon, p: mP, h, sdKm, r67km, activeMembers, totalMembers });
                     }
 
                     dist.agreement = agreementSteps > 0 ? Math.round((totalAgreement / agreementSteps) * 100) : 0;
-                    const avgSd = meanPts.reduce((s, p) => s + (p.sdLat + p.sdLon) / 2, 0) / (meanPts.length || 1);
-                    dist.spreadKm = Math.round(avgSd * 111);
+                    const avgSdKm = meanPts.reduce((s, p) => s + p.sdKm, 0) / (meanPts.length || 1);
+                    dist.spreadKm = Math.round(avgSdKm);
 
                     if (meanPts.length < 2) continue;
                     const meanLL = meanPts.map(pt => [pt.lat, pt.lon]);
+
+                    // Official NHC historical error radii (in km)
+                    const NHC_RADII_KM = {
+                        0: 0.1,
+                        12: 48,
+                        24: 74,
+                        36: 102,
+                        48: 130,
+                        72: 195,
+                        96: 278,
+                        120: 361
+                    };
+
+                    const getNhcRadius = (h) => {
+                        const keys = Object.keys(NHC_RADII_KM).map(Number).sort((a, b) => a - b);
+                        if (h <= 0) return 0.1;
+                        if (h >= 120) {
+                            // Extrapolate linearly past 120h using the Day 4 to Day 5 growth rate (~3.45 km/h)
+                            const rate = (NHC_RADII_KM[120] - NHC_RADII_KM[96]) / 24;
+                            return NHC_RADII_KM[120] + (h - 120) * rate;
+                        }
+                        for (let i = 0; i < keys.length - 1; i++) {
+                            const h1 = keys[i];
+                            const h2 = keys[i + 1];
+                            if (h >= h1 && h <= h2) {
+                                const fraction = (h - h1) / (h2 - h1);
+                                return NHC_RADII_KM[h1] + fraction * (NHC_RADII_KM[h2] - NHC_RADII_KM[h1]);
+                            }
+                        }
+                        return 0.1;
+                    };
 
                     // Generate Cone of Uncertainty using 67th percentile radius (NHC method)
                     const circles = [];
                     for (let i = 0; i < meanPts.length; i++) {
                         const pt = meanPts[i];
-                        const R_deg = Math.max(0.1, pt.r67);
-                        const R_km = R_deg * 111.32;
+                        let R_km = Math.max(10, pt.r67km); // Minimum 10km radius
+
+                        if (i === 0 || pt.h === 0) {
+                            // Force Hour 0 to originate as a point to match NHC convention
+                            R_km = 0.1;
+                        } else {
+                            // Prevent the cone from exploding instantly if ensemble members are scattered at formation.
+                            // Cap the uncertainty growth using the interpolated official NHC historical error radii.
+                            const hoursSinceOrigin = pt.h - meanPts[0].h;
+                            const maxRadius = getNhcRadius(hoursSinceOrigin);
+                            R_km = Math.min(R_km, maxRadius);
+                        }
+
                         const c = turf.circle([pt.lon, pt.lat], R_km, { steps: 36, units: 'kilometers' });
                         circles.push(c);
                     }
@@ -652,8 +722,8 @@ export default function SpaghettiPlot() {
                                 // Fallback for older Turf.js (v6)
                                 coneGeom = capsules.reduce((acc, curr) => turf.union(acc, curr));
                             } catch (e2) {
-                                console.warn("Turf union failed", e2);
-                                coneGeom = capsules[0];
+                                console.warn("Turf union failed, skipping cone for disturbance", dist.id);
+                                coneGeom = null;
                             }
                         }
                     }
@@ -704,6 +774,19 @@ export default function SpaghettiPlot() {
                             fillColor: pressureColor(pt.p), fillOpacity: 1, opacity: 1
                         });
                         mk.distId = dist.id;
+
+                        const survRate = Math.round((pt.activeMembers / pt.totalMembers) * 100);
+                        const tooltipHtml = `
+                            <div style="text-align: center; font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #ccc; padding-bottom: 4px;">
+                                Hour ${pt.h}
+                            </div>
+                            <div style="font-size: 11px;">
+                                Intensity: ${isNaN(pt.p) ? 'N/A' : pt.p.toFixed(0) + ' hPa'}<br/>
+                                Survivorship: ${pt.activeMembers}/${pt.totalMembers} members (${survRate}%)
+                            </div>
+                        `;
+                        mk.bindTooltip(tooltipHtml, { direction: 'top', offset: [0, -5] });
+
                         mk.addTo(meanLayerGroupRef.current);
                     }
                 }
@@ -993,10 +1076,18 @@ export default function SpaghettiPlot() {
                                     {d.hasEnsembleMean && (
                                         <>
                                             <div className="system-detail-row">
-                                                <span>Agreement:</span>
+                                                <span>Confidence:</span>
                                                 <span className="system-detail-value" style={{
-                                                    color: d.agreement >= 70 ? '#10b981' : d.agreement >= 40 ? '#f59e0b' : '#ef4444'
-                                                }}>{d.agreement}%</span>
+                                                    color: d.agreement >= 70 ? '#10b981' : d.agreement >= 40 ? '#f59e0b' : '#ef4444',
+                                                    fontWeight: 'bold',
+                                                    textTransform: 'uppercase',
+                                                    fontSize: '0.85em',
+                                                    letterSpacing: '0.05em'
+                                                }}>{d.agreement >= 70 ? 'High' : d.agreement >= 40 ? 'Medium' : 'Low'}</span>
+                                            </div>
+                                            <div className="system-detail-row">
+                                                <span>Agreement:</span>
+                                                <span className="system-detail-value">{d.agreement}%</span>
                                             </div>
                                             <div className="system-detail-row">
                                                 <span>Spread (1σ):</span>
