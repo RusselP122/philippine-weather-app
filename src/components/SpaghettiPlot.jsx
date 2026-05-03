@@ -108,31 +108,72 @@ function haversineKm(a, b) {
     return R * 2 * Math.asin(Math.sqrt(sinD));
 }
 
-// ── Greedy clustering ─────────────────────────────────────────────────────
-function clusterOriginsGreedy(origins, distKm = 300) {
-    const clusters = [];
-    for (const origin of origins) {
-        let added = false;
-        for (const cluster of clusters) {
-            if (haversineKm(cluster.center, origin) <= distKm) {
-                cluster.origins.push(origin);
-                cluster.minH = Math.min(cluster.minH, origin.h);
-                // Update center (simple average)
-                const sumLat = cluster.origins.reduce((s, o) => s + o.lat, 0);
-                const sumLon = cluster.origins.reduce((s, o) => s + o.lon, 0);
-                cluster.center = { lat: sumLat / cluster.origins.length, lon: sumLon / cluster.origins.length };
-                added = true;
-                break;
+// ── Improved Greedy Clustering (Density-Sorted + Best-Match) ──────────────
+function clusterOriginsGreedy(origins, distKm = 300, maxGenesisSpread = 96) {
+    if (origins.length === 0) return [];
+
+    // 1. Calculate density. N is small (usually <200 origins), so O(n²) is negligible (<1ms)
+    const withDensity = origins.map(orig => {
+        let count = 0;
+        for (const other of origins) {
+            if (haversineKm(orig, other) <= distKm && Math.abs(orig.h - other.h) <= maxGenesisSpread) {
+                count++;
             }
         }
-        if (!added) {
+        return { ...orig, density: count };
+    });
+
+    // 2. Sort by density descending
+    withDensity.sort((a, b) => b.density - a.density);
+
+    const clusters = [];
+    
+    for (const origin of withDensity) {
+        let bestCluster = null;
+        let bestScore = Infinity;
+        
+        // Find the BEST fitting cluster, not just the first one
+        for (const cluster of clusters) {
+            const dKm = haversineKm(cluster.center, origin);
+            if (dKm > distKm) continue; // Spatial boundary
+            
+            // Temporal boundary: Ensure the total genesis spread of the cluster doesn't exceed the limit
+            const newMinH = Math.min(cluster.minH, origin.h);
+            const newMaxH = Math.max(cluster.maxH, origin.h);
+            if (newMaxH - newMinH > maxGenesisSpread) continue;
+            
+            // Normalize distances to [0, 1] bounds for fair weighting (no magic constants)
+            const normSpace = dKm / distKm;
+            const timeDiff = Math.abs(cluster.meanH - origin.h);
+            const timeRadius = maxGenesisSpread / 2;
+            const normTime = timeDiff / timeRadius;
+            
+            // Equal weighting to spatial and temporal fitness
+            const score = normSpace + normTime;
+            
+            if (score < bestScore) {
+                bestScore = score;
+                bestCluster = cluster;
+            }
+        }
+        
+        if (bestCluster) {
+            // Update rolling temporal centroid
+            bestCluster.meanH = ((bestCluster.meanH * bestCluster.origins.length) + origin.h) / (bestCluster.origins.length + 1);
+            bestCluster.origins.push(origin);
+            bestCluster.minH = Math.min(bestCluster.minH, origin.h);
+            bestCluster.maxH = Math.max(bestCluster.maxH, origin.h);
+        } else {
             clusters.push({
-                center: { lat: origin.lat, lon: origin.lon },
+                center: { lat: origin.lat, lon: origin.lon, h: origin.h },
                 origins: [origin],
-                minH: origin.h
+                minH: origin.h,
+                maxH: origin.h,
+                meanH: origin.h
             });
         }
     }
+    
     return clusters;
 }
 
