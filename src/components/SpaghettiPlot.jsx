@@ -108,75 +108,30 @@ function haversineKm(a, b) {
     return R * 2 * Math.asin(Math.sqrt(sinD));
 }
 
-// ── DBSCAN clustering (density-based, order-independent, filters noise) ───
-function dbscanCluster(origins, eps = 5, minPts = 2) {
-    const n = origins.length;
-    const labels = new Array(n).fill(-1); // -1 = unvisited/noise
-    let clusterId = 0;
-
-    // Find all neighbors within epsKm distance
-    function regionQuery(idx) {
-        const neighbors = [];
-        for (let i = 0; i < n; i++) {
-            if (haversineKm(origins[idx], origins[i]) <= eps) {
-                neighbors.push(i);
+// ── Greedy clustering ─────────────────────────────────────────────────────
+function clusterOriginsGreedy(origins, distKm = 300) {
+    const clusters = [];
+    for (const origin of origins) {
+        let added = false;
+        for (const cluster of clusters) {
+            if (haversineKm(cluster.center, origin) <= distKm) {
+                cluster.origins.push(origin);
+                cluster.minH = Math.min(cluster.minH, origin.h);
+                // Update center (simple average)
+                const sumLat = cluster.origins.reduce((s, o) => s + o.lat, 0);
+                const sumLon = cluster.origins.reduce((s, o) => s + o.lon, 0);
+                cluster.center = { lat: sumLat / cluster.origins.length, lon: sumLon / cluster.origins.length };
+                added = true;
+                break;
             }
         }
-        return neighbors;
-    }
-
-    for (let i = 0; i < n; i++) {
-        if (labels[i] !== -1) continue; // already processed
-
-        const neighbors = regionQuery(i);
-        if (neighbors.length < minPts) {
-            // Mark as noise (stays -1), may be reclaimed later
-            continue;
+        if (!added) {
+            clusters.push({
+                center: { lat: origin.lat, lon: origin.lon },
+                origins: [origin],
+                minH: origin.h
+            });
         }
-
-        // Start a new cluster
-        labels[i] = clusterId;
-        const seed = [...neighbors];
-        const visited = new Set([i]);
-
-        while (seed.length > 0) {
-            const j = seed.pop();
-            if (visited.has(j)) continue;
-            visited.add(j);
-
-            if (labels[j] === -1) {
-                // Was noise, reclaim into this cluster
-                labels[j] = clusterId;
-            }
-            if (labels[j] !== -1 && labels[j] !== clusterId) continue;
-            labels[j] = clusterId;
-
-            const jNeighbors = regionQuery(j);
-            if (jNeighbors.length >= minPts) {
-                for (const k of jNeighbors) {
-                    if (!visited.has(k)) seed.push(k);
-                }
-            }
-        }
-        clusterId++;
-    }
-
-    // Build cluster objects from labels
-    const clusterMap = {};
-    for (let i = 0; i < n; i++) {
-        const lbl = labels[i];
-        if (lbl === -1) continue; // skip noise
-        if (!clusterMap[lbl]) clusterMap[lbl] = { origins: [], minH: Infinity };
-        clusterMap[lbl].origins.push(origins[i]);
-        clusterMap[lbl].minH = Math.min(clusterMap[lbl].minH, origins[i].h);
-    }
-
-    // Compute centers
-    const clusters = Object.values(clusterMap);
-    for (const c of clusters) {
-        const sumLat = c.origins.reduce((s, o) => s + o.lat, 0);
-        const sumLon = c.origins.reduce((s, o) => s + o.lon, 0);
-        c.center = { lat: sumLat / c.origins.length, lon: sumLon / c.origins.length };
     }
     return clusters;
 }
@@ -318,7 +273,7 @@ export default function SpaghettiPlot() {
         setShowEnsembleMean(false);
         setMeanOnlyIds(new Set());
         setStatus("loading");
-        setStatusMsg("Loading latest FNV3 CSV…");
+        setStatusMsg("Loading latest FNV3 CSV\u2026");
         setTrackCount(0);
         setRunLabel("");
 
@@ -349,7 +304,7 @@ export default function SpaghettiPlot() {
             runInitTime = rows[0].init_time;
         }
 
-        setRunLabel(isLarge ? `FNV3 Large Ensemble · ${runInitTime}` : `FNV3 Base · ${runInitTime}`);
+        setRunLabel(isLarge ? `FNV3 Large Ensemble \u00b7 ${runInitTime}` : `FNV3 Base \u00b7 ${runInitTime}`);
         setStatusMsg("Parsing tracks…");
         const rawRows = rows.filter(r => (r.lead_time_hours !== undefined || r.lead_time !== undefined) && r.lat !== undefined);
         setRawRowCount(rawRows.length);
@@ -416,9 +371,8 @@ export default function SpaghettiPlot() {
                 }
             }
 
-            // Cluster origins using DBSCAN (density-based, order-independent)
-            // epsKm=333km (~3°) prevents merging nearby but distinct TCs
-            const clusters = dbscanCluster(allOrigins, 333, 2);
+            // Cluster origins greedily
+            const clusters = clusterOriginsGreedy(allOrigins, 300);
             clusters.forEach((c, idx) => c.distId = idx + 1);
 
             const originSetDone = new Set();
