@@ -2,9 +2,9 @@
     "metadata": {
         "api_source": "Philippine Typhoon/Weather",
         "data_source": "Philippine Institute of Volcanology and Seismology",
-        "last_updated": "2026-04-30T06:44:39.771692+08:00",
+        "last_updated": "2026-05-03T18:43:41.912938+08:00",
         "developer_note": "Made by a Filipino, For the Filipino, and For the World. This API is free for non-commercial use, is not affiliated with any government entities, and is solely operated independently by Philippine Typhoon/Weather. We extend our sincere gratitude to all our generous supporters. Proxy or replicate this data before using it in your application to prevent undue stress on our existing infrastructure.",
-        "total_Volcanic_earthquakes": "mvo: 12, bvo: 17, kvo: 3, tvo: 0, hvo: 0, pvo: 0"
+        "total_Volcanic_earthquakes": "mvo: 5, bvo: 25, kvo: 18, tvo: 16, hvo: 0, pvo: 0"
     },
     "records": [
         {
@@ -4894,6 +4894,149 @@
                 "pvo": "0"
             },
             "total_Volcanic_earthquakes": "mvo: 12, bvo: 17, kvo: 3, tvo: 0, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-04-30T19:22:52.089224+08:00",
+            "date": "2026-04-30",
+            "data": {
+                "mvo": "15",
+                "bvo": "81",
+                "kvo": "4",
+                "tvo": "1",
+                "hvo": "1",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 15, bvo: 81, kvo: 4, tvo: 1, hvo: 1, pvo: 0"
+        },
+        {
+            "timestamp": "2026-05-01T01:08:15.204473+08:00",
+            "date": "2026-05-01",
+            "data": {
+                "mvo": "0",
+                "bvo": "0",
+                "kvo": "0",
+                "tvo": "0",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 0, bvo: 0, kvo: 0, tvo: 0, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-05-01T06:40:42.744241+08:00",
+            "date": "2026-05-01",
+            "data": {
+                "mvo": "0",
+                "bvo": "8",
+                "kvo": "0",
+                "tvo": "1",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 0, bvo: 8, kvo: 0, tvo: 1, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-05-01T14:31:55.156624+08:00",
+            "date": "2026-05-01",
+            "data": {
+                "mvo": "0",
+                "bvo": "11",
+                "kvo": "1",
+                "tvo": "1",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 0, bvo: 11, kvo: 1, tvo: 1, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-05-01T19:00:37.204919+08:00",
+            "date": "2026-05-01",
+            "data": {
+                "mvo": "27",
+                "bvo": "11",
+                "kvo": "1",
+                "tvo": "1",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 27, bvo: 11, kvo: 1, tvo: 1, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-05-02T00:43:28.983993+08:00",
+            "date": "2026-05-02",
+            "data": {
+                "mvo": "0",
+                "bvo": "0",
+                "kvo": "0",
+                "tvo": "0",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 0, bvo: 0, kvo: 0, tvo: 0, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-05-02T06:39:39.169280+08:00",
+            "date": "2026-05-02",
+            "data": {
+                "mvo": "9",
+                "bvo": "0",
+                "kvo": "17",
+                "tvo": "0",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 9, bvo: 0, kvo: 17, tvo: 0, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-05-02T18:40:53.878071+08:00",
+            "date": "2026-05-02",
+            "data": {
+                "mvo": "26",
+                "bvo": "9",
+                "kvo": "36",
+                "tvo": "0",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 26, bvo: 9, kvo: 36, tvo: 0, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-05-03T00:35:23.331989+08:00",
+            "date": "2026-05-03",
+            "data": {
+                "mvo": "0",
+                "bvo": "0",
+                "kvo": "1",
+                "tvo": "0",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 0, bvo: 0, kvo: 1, tvo: 0, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-05-03T06:28:55.122987+08:00",
+            "date": "2026-05-03",
+            "data": {
+                "mvo": "3",
+                "bvo": "0",
+                "kvo": "7",
+                "tvo": "0",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 3, bvo: 0, kvo: 7, tvo: 0, hvo: 0, pvo: 0"
+        },
+        {
+            "timestamp": "2026-05-03T18:43:41.912938+08:00",
+            "date": "2026-05-03",
+            "data": {
+                "mvo": "5",
+                "bvo": "25",
+                "kvo": "18",
+                "tvo": "16",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 5, bvo: 25, kvo: 18, tvo: 16, hvo: 0, pvo: 0"
         }
     ]
 }
