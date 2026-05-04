@@ -44,87 +44,23 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ── Forecast data (mean track)  ────────────────────────────────────────────────
 data_dict = {
-    'lead_time_hours': [6.0, 30.0, 54.0, 78.0, 102.0, 126.0, 150.0],
-    'lat': [13.70, 15.36, 17.38, 20.17, 22.73, 25.98, 28.91],
-    'lon': [147.00, 146.00, 145.46, 146.94, 149.58, 153.24, 161.75],
-    'minimum_sea_level_pressure_hpa': [929.5, 943.7, 949.8, 959.5, 974.7, 985.6, 991.3],
-    'maximum_sustained_wind_speed_knots': [124.2, 105.7, 99.6, 85.6, 66.6, 51.7, 40.0]
+    'lead_time_hours': [6.0, 30.0, 54.0, 78.0, 102.0],
+    'lat': [7.80, 8.17, 7.50, 7.96, 8.95],
+    'lon': [149.17, 148.02, 144.67, 141.72, 138.50],
+    'minimum_sea_level_pressure_hpa': [1006.2, 1001.6, 1000.3, 995.5, 990.6],
+    'maximum_sustained_wind_speed_knots': [20.5, 33.1, 35.3, 44.8, 53.3]
 }
 
 # ── Historical (past-track) data  ──────────────────────────────────────────────
 history_dict = [
-    {'init_time': '2026-4-08 00:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.70, 'lon': 154.50, 'minimum_sea_level_pressure_hpa': 1006.9,
+    {'init_time': '2026-05-04 06:00:00', 'lead_time': '0 days 00:00:00',
+     'lat': 8.0, 'lon': 150.40, 'minimum_sea_level_pressure_hpa': 1006.9,
      'maximum_sustained_wind_speed_knots': 16.1},
-    {'init_time': '2026-4-08 06:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.90, 'lon': 153.70, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-    {'init_time': '2026-4-08 12:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.80, 'lon': 153.20, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-    {'init_time': '2026-4-08 18:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.60, 'lon': 152.20, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-    {'init_time': '2026-4-09 00:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.10, 'lon': 152.10, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-    {'init_time': '2026-4-09 06:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.20, 'lon': 151.80, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-    {'init_time': '2026-4-09 12:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.40, 'lon': 151.80, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-    {'init_time': '2026-4-09 18:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.20, 'lon': 151.10, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-    {'init_time': '2026-4-10 00:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.20, 'lon': 151.00, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-    {'init_time': '2026-4-10 06:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.10, 'lon': 150.90, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-    {'init_time': '2026-4-10 12:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.10, 'lon': 150.90, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-    {'init_time': '2026-4-10 18:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.50, 'lon': 150.50, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-     {'init_time': '2026-4-11 00:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.80, 'lon': 151.40, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-     {'init_time': '2026-4-11 06:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 9.00, 'lon': 151.10, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-     {'init_time': '2026-4-11 12:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 9.30, 'lon': 151.50, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-     {'init_time': '2026-4-11 18:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 9.90, 'lon': 151.20, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-     {'init_time': '2026-4-12 00:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 10.30, 'lon': 150.60, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-     {'init_time': '2026-4-12 06:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 11.10, 'lon': 150.20, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-     {'init_time': '2026-4-12 12:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 11.60, 'lon': 149.50, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-     {'init_time': '2026-4-12 18:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 12.20, 'lon': 148.90, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-     {'init_time': '2026-4-13 00:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 12.70, 'lon': 148.00, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-     {'init_time': '2026-4-13 06:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 13.10, 'lon': 147.40, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1},
-
 ]
 
-STORM_NAME    = "Super Typhoon Sinlaku"
-INIT_TIME_STR = "2026-04-13 12:00:00"
-CURRENT_TIME_PH = "4:00 AM PhST, April 14, 2026"
+STORM_NAME    = "Low Pressure Area"
+INIT_TIME_STR = "2026-05-04 12:00:00"
+CURRENT_TIME_PH = "5:00 AM PhST, May 5, 2026"
 
 # ── NHC standard cone radii (nautical miles) by lead time (hours)  ─────────────
 LEAD_STANDARD = [0,  12,  24,  36,  48,   60,   72,   96,  120,  144]
