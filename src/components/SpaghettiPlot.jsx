@@ -499,13 +499,16 @@ export default function SpaghettiPlot() {
                 initDate = new Date(timeStr);
             }
 
-            // Build disturbance metadata
+            // Build disturbance metadata using tracksByDisturbance as single source of truth
             const disturbanceList = clusters.map(cluster => {
-                const allMaxW = [];
-                for (const o of cluster.origins) {
-                    const trks = tracksByOriginKey[o.oKey] || [];
-                    allMaxW.push(...trks);
-                }
+                const distTracks = tracksByDisturbance[cluster.distId] || [];
+                
+                // Compute peak wind from actual tracks assigned to this disturbance
+                const allMaxW = distTracks.map(pts => {
+                    const winds = pts.map(pt => isNaN(pt.windKt) ? 0 : pt.windKt);
+                    return winds.length > 0 ? Math.max(...winds) : 0;
+                });
+                
                 const peakW = allMaxW.length > 0 ? Math.max(...allMaxW) : 0;
                 const peakCat = windCategory(peakW);
                 const peakColor = windColor(peakW);
@@ -530,7 +533,7 @@ export default function SpaghettiPlot() {
                     lat: cluster.center.lat,
                     lon: cluster.center.lon,
                     region,
-                    trackCount: allMaxW.length,
+                    trackCount: distTracks.length,
                     peakW,
                     peakCat,
                     peakColor,
@@ -538,6 +541,33 @@ export default function SpaghettiPlot() {
                     formationDateStr,
                 };
             });
+
+            // ── Renumber disturbances: most tracks = Disturbance 1 ──────────
+            disturbanceList.sort((a, b) => b.trackCount - a.trackCount);
+            const oldToNew = {};
+            disturbanceList.forEach((d, idx) => {
+                const newId = idx + 1;
+                oldToNew[d.id] = newId;
+                d.id = newId;
+            });
+
+            // Update all drawn map layers to reference the new disturbance IDs
+            if (layerGroupRef.current) {
+                layerGroupRef.current.eachLayer(layer => {
+                    if (layer.distId != null && oldToNew[layer.distId] != null) {
+                        layer.distId = oldToNew[layer.distId];
+                    }
+                });
+            }
+
+            // Rebuild tracksByDisturbance with updated IDs
+            const updatedTracksByDist = {};
+            for (const [oldId, trks] of Object.entries(tracksByDisturbance)) {
+                const newId = oldToNew[parseInt(oldId)] || oldId;
+                updatedTracksByDist[newId] = trks;
+            }
+            Object.keys(tracksByDisturbance).forEach(k => delete tracksByDisturbance[k]);
+            Object.assign(tracksByDisturbance, updatedTracksByDist);
 
             // ── Parse official paired mean tracks (sample=-1, WP systems) ────
             const pairedMeanByTrackId = {};
@@ -586,6 +616,45 @@ export default function SpaghettiPlot() {
             // 3) Spread: std-dev envelope at each time step
             // 4) Agreement: % of members within 2° of mean
             const AGREEMENT_RADIUS = 2; // degrees
+
+            // ── Pre-assign each paired track to its BEST disturbance (exclusive) ──
+            // Each paired track matches at most one disturbance (the closest).
+            // Each disturbance matches at most one paired track.
+            const pairedAssignment = {}; // distId → { paired, trackName }
+            const usedPairedTracks = new Set();
+            const usedDisturbances = new Set();
+
+            // Build candidate matches: for each (pairedTrack, disturbance) pair, record distance
+            const candidates = [];
+            for (const [tId, paired] of Object.entries(pairedMeanByTrackId)) {
+                if (paired.points.length < 2) continue;
+                const pOrigin = paired.points[0];
+                for (const dist of disturbanceList) {
+                    const tracks = tracksByDisturbance[dist.id] || [];
+                    if (tracks.length < 2) continue;
+                    const dKm = haversineKm(
+                        { lat: dist.lat, lon: dist.lon },
+                        { lat: pOrigin.lat, lon: pOrigin.lon }
+                    );
+                    if (dKm < 500) {
+                        candidates.push({ tId, paired, dist, dKm });
+                    }
+                }
+            }
+
+            // Sort by distance (closest first), then assign greedily
+            candidates.sort((a, b) => a.dKm - b.dKm);
+            for (const c of candidates) {
+                if (usedPairedTracks.has(c.tId) || usedDisturbances.has(c.dist.id)) continue;
+                usedPairedTracks.add(c.tId);
+                usedDisturbances.add(c.dist.id);
+                const numMatch = c.tId.match(/WP(\d{2})/i);
+                pairedAssignment[c.dist.id] = {
+                    paired: c.paired,
+                    trackName: numMatch ? `${numMatch[1]}W` : c.tId,
+                };
+            }
+
             if (meanLayerGroupRef.current) {
                 for (const dist of disturbanceList) {
                     const tracks = tracksByDisturbance[dist.id] || [];
@@ -597,25 +666,13 @@ export default function SpaghettiPlot() {
                     }
                     dist.hasEnsembleMean = true;
 
-                    // ── Try to match a paired WP mean track to this disturbance ──
-                    // Match by spatial proximity: the paired track's origin must be
-                    // within 500km of the disturbance cluster center
+                    // Look up pre-assigned paired track for this disturbance
                     let matchedPaired = null;
-                    for (const [tId, paired] of Object.entries(pairedMeanByTrackId)) {
-                        if (paired.points.length < 2) continue;
-                        const pOrigin = paired.points[0];
-                        const dKm = haversineKm(
-                            { lat: dist.lat, lon: dist.lon },
-                            { lat: pOrigin.lat, lon: pOrigin.lon }
-                        );
-                        if (dKm < 500) {
-                            matchedPaired = paired;
-                            // Extract short name (e.g., WP932026 → 93W)
-                            const numMatch = tId.match(/WP(\d{2})/i);
-                            dist.pairedTrackName = numMatch ? `${numMatch[1]}W` : tId;
-                            dist.meanSource = "paired";
-                            break;
-                        }
+                    const assignment = pairedAssignment[dist.id];
+                    if (assignment) {
+                        matchedPaired = assignment.paired;
+                        dist.pairedTrackName = assignment.trackName;
+                        dist.meanSource = "paired";
                     }
 
                     // Group all points by lead time hour
