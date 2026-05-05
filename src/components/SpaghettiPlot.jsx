@@ -538,15 +538,18 @@ export default function SpaghettiPlot() {
                 };
             });
 
-            // ── Parse official paired mean tracks (sample=-1, WP systems) ────
+            // ── Parse official paired mean tracks (WP systems) ────
+            // The ensemble_mean paired endpoint provides all paired members (samples 0-49)
+            // for a given track ID. We compute the median at each lead time to form the mean track.
             const pairedMeanByTrackId = {};
             if (pairedCsvText) {
                 const { rows: pairedRows } = parseCSV(pairedCsvText);
+                const groupedByTrackId = {};
+
                 for (const row of pairedRows) {
                     const trackId = (row.track_id || "").trim();
-                    const sampleVal = (row.sample || "").trim();
-                    // Only use the official ensemble mean (sample=-1) for WP-prefixed storms
-                    if (sampleVal !== "-1" || !trackId.toUpperCase().startsWith("WP")) continue;
+                    if (!trackId.toUpperCase().startsWith("WP")) continue;
+
                     let leadH = parseFloat(row.lead_time_hours);
                     if (isNaN(leadH) || row.lead_time_hours === undefined) {
                         const str = row.lead_time || "";
@@ -558,25 +561,52 @@ export default function SpaghettiPlot() {
                         }
                     }
                     if (isNaN(leadH) || leadH > maxHours) continue;
+
                     const lat = parseFloat(row.lat);
                     const lon = parseFloat(row.lon);
                     const pres = parseFloat(row.minimum_sea_level_pressure_hpa);
                     const windKt = parseFloat(row.maximum_sustained_wind_speed_knots);
                     if (isNaN(lat) || isNaN(lon)) continue;
-                    if (!pairedMeanByTrackId[trackId]) pairedMeanByTrackId[trackId] = { points: [], trackId };
-                    pairedMeanByTrackId[trackId].points.push({
+
+                    if (!groupedByTrackId[trackId]) groupedByTrackId[trackId] = {};
+                    if (!groupedByTrackId[trackId][leadH]) groupedByTrackId[trackId][leadH] = [];
+                    
+                    groupedByTrackId[trackId][leadH].push({
                         lat, lon: lon > 180 ? lon - 360 : lon,
-                        p: pres, windKt, h: leadH
+                        p: pres, windKt
                     });
                 }
-                // Sort each paired track by lead time
-                for (const key of Object.keys(pairedMeanByTrackId)) {
-                    pairedMeanByTrackId[key].points.sort((a, b) => a.h - b.h);
+
+                // Median helper for paired tracks
+                const calcMedian = arr => {
+                    const s = [...arr].sort((a, b) => a - b);
+                    const mid = Math.floor(s.length / 2);
+                    return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+                };
+
+                // Compute median track for each track ID
+                for (const [tId, hourGroups] of Object.entries(groupedByTrackId)) {
+                    const meanPoints = [];
+                    for (const hStr of Object.keys(hourGroups)) {
+                        const h = parseFloat(hStr);
+                        const pts = hourGroups[h];
+                        
+                        const mLat = calcMedian(pts.map(p => p.lat));
+                        const mLon = calcMedian(pts.map(p => p.lon));
+                        const validP = pts.map(p => p.p).filter(p => !isNaN(p));
+                        const mP = validP.length > 0 ? calcMedian(validP) : NaN;
+                        const validW = pts.map(p => p.windKt).filter(w => !isNaN(w));
+                        const mW = validW.length > 0 ? calcMedian(validW) : NaN;
+
+                        meanPoints.push({ lat: mLat, lon: mLon, p: mP, windKt: mW, h });
+                    }
+                    meanPoints.sort((a, b) => a.h - b.h);
+                    pairedMeanByTrackId[tId] = { points: meanPoints, trackId: tId };
                 }
             }
 
             // ── Ensemble analysis: mean, spread, agreement ──────────────
-            // 1) Mean: prefer official paired track (sample=-1) when available for WP systems
+            // 1) Mean: prefer official paired track when available for WP systems
             // 2) Fallback: computed median from 100% of ensemble members
             // 3) Spread: std-dev envelope at each time step
             // 4) Agreement: % of members within 2° of mean
@@ -1157,6 +1187,14 @@ export default function SpaghettiPlot() {
                                     </div>
                                     {d.hasEnsembleMean && (
                                         <>
+                                            <div className="system-detail-row">
+                                                <span>Mean Track:</span>
+                                                <span className="system-detail-value font-medium" style={{
+                                                    color: d.meanSource === "paired" ? "#0ea5e9" : "#a8a29e",
+                                                }}>
+                                                    {d.meanSource === "paired" ? `WeatherLab Official (${d.pairedTrackName})` : "Computed Median"}
+                                                </span>
+                                            </div>
                                             <div className="system-detail-row">
                                                 <span>Confidence:</span>
                                                 <span className="system-detail-value" style={{
