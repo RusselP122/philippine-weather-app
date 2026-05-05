@@ -627,6 +627,46 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Global Legend */
+.spaghetti-legend {
+  padding-top: 1rem;
+  padding-bottom: 0.5rem;
+}
+
+.spaghetti-legend-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.spaghetti-legend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+.spaghetti-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.spaghetti-legend-color {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.spaghetti-legend-label {
+  font-size: 0.7rem;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
 /* Footer */
 .spaghetti-footer {
   padding-top: 1rem;

@@ -21,15 +21,15 @@ const loadLeaflet = () =>
         document.head.appendChild(s);
     });
 
-// ── Pressure → colour (matches Forcast3/4.py exactly) ────────────────────
-function pressureColor(p) {
-    if (isNaN(p)) return "#3498DB";
-    if (p < 920) return "#5B0E2D";   // Super Typhoon
-    if (p <= 945) return "#A83232";   // Typhoon
-    if (p <= 970) return "#E67E22";   // Severe Tropical Storm
-    if (p <= 990) return "#F1C40F";   // Tropical Storm
-    if (p <= 1005) return "#2ECC71";   // Tropical Depression
-    return "#3498DB";                  // Low Pressure Area
+// ── Wind → colour (PAGASA Scale) ────────────────────
+function windColor(w) {
+    if (isNaN(w)) return "#3498DB";
+    if (w >= 100) return "#5B0E2D";   // Super Typhoon
+    if (w >= 64) return "#A83232";    // Typhoon
+    if (w >= 48) return "#E67E22";    // Severe Tropical Storm
+    if (w >= 34) return "#F1C40F";    // Tropical Storm
+    if (w >= 22) return "#2ECC71";    // Tropical Depression
+    return "#3498DB";                 // Low Pressure Area
 }
 
 // ── CSV parser (robust: handles \r\n, returns cols for diagnostics) ────────
@@ -77,24 +77,24 @@ const BASINS = [
     { id: "natl", label: "North Atlantic", center: [25, -60], zoom: 4, latMin: 0, latMax: 60, lonMin: -100, lonMax: -10 },
 ];
 
-// ── Pressure legend entries ───────────────────────────────────────────────
-const PRESSURE_LEGEND = [
-    { label: "< 920 hPa", color: "#5B0E2D" },
-    { label: "920–945 hPa", color: "#A83232" },
-    { label: "945–970 hPa", color: "#E67E22" },
-    { label: "970–990 hPa", color: "#F1C40F" },
-    { label: "990–1005 hPa", color: "#2ECC71" },
-    { label: "> 1005 hPa", color: "#3498DB" },
+// ── Wind legend entries (PAGASA Scale) ───────────────────────────────────────────────
+const WIND_LEGEND = [
+    { label: "≥ 100 kt", color: "#5B0E2D" },
+    { label: "64–99 kt", color: "#A83232" },
+    { label: "48–63 kt", color: "#E67E22" },
+    { label: "34–47 kt", color: "#F1C40F" },
+    { label: "22–33 kt", color: "#2ECC71" },
+    { label: "< 22 kt", color: "#3498DB" },
 ];
 
-// ── Pressure → category name ──────────────────────────────────────────────
-function pressureCategory(p) {
-    if (isNaN(p)) return "Unknown";
-    if (p < 920) return "Super Typhoon";
-    if (p <= 945) return "Typhoon";
-    if (p <= 970) return "Sev. Tropical Storm";
-    if (p <= 990) return "Tropical Storm";
-    if (p <= 1005) return "Tropical Depression";
+// ── Wind → category name ──────────────────────────────────────────────
+function windCategory(w) {
+    if (isNaN(w)) return "Unknown";
+    if (w >= 100) return "Super Typhoon";
+    if (w >= 64) return "Typhoon";
+    if (w >= 48) return "Sev. Tropical Storm";
+    if (w >= 34) return "Tropical Storm";
+    if (w >= 22) return "Tropical Depression";
     return "LPA";
 }
 
@@ -377,11 +377,12 @@ export default function SpaghettiPlot() {
                 const lat = parseFloat(row.lat);
                 const lon = parseFloat(row.lon);
                 const pres = parseFloat(row.minimum_sea_level_pressure_hpa);
+                const windKt = parseFloat(row.maximum_sustained_wind_speed_knots);
                 if (isNaN(lat) || isNaN(lon)) continue;
                 const llon = lon > 180 ? lon - 360 : lon;
                 const key = `${row.track_id}__${row.sample}`;
                 if (!grouped[key]) grouped[key] = [];
-                grouped[key].push({ lat, lon: llon, p: pres, h: leadH });
+                grouped[key].push({ lat, lon: llon, p: pres, windKt, h: leadH });
             }
 
             // Keep only tracks whose origin point falls inside the selected basin
@@ -471,7 +472,7 @@ export default function SpaghettiPlot() {
                 for (const pt of points) {
                     const mark = L.circleMarker([pt.lat, pt.lon], {
                         radius: 3.5, color: "white", weight: 0.8,
-                        fillColor: pressureColor(pt.p), fillOpacity: 0.9,
+                        fillColor: windColor(pt.windKt), fillOpacity: 0.9,
                         opacity: 1
                     });
                     mark.distId = distId;
@@ -484,10 +485,10 @@ export default function SpaghettiPlot() {
                     originSetDone.add(oKey);
                     tracksByOriginKey[oKey] = [];
                 }
-                // Store the min pressure across all points in this track
-                const minP = Math.min(...points.map(pt => isNaN(pt.p) ? 9999 : pt.p));
+                // Store the max wind across all points in this track
+                const maxW = Math.max(...points.map(pt => isNaN(pt.windKt) ? 0 : pt.windKt));
                 if (tracksByOriginKey[oKey]) {
-                    tracksByOriginKey[oKey].push(minP);
+                    tracksByOriginKey[oKey].push(maxW);
                 }
                 drawn++;
             }
@@ -500,20 +501,20 @@ export default function SpaghettiPlot() {
 
             // Build disturbance metadata
             const disturbanceList = clusters.map(cluster => {
-                const allMinP = [];
+                const allMaxW = [];
                 for (const o of cluster.origins) {
                     const trks = tracksByOriginKey[o.oKey] || [];
-                    allMinP.push(...trks);
+                    allMaxW.push(...trks);
                 }
-                const peakP = allMinP.length > 0 ? Math.min(...allMinP) : 9999;
-                const peakCat = pressureCategory(peakP);
-                const peakColor = pressureColor(peakP);
+                const peakW = allMaxW.length > 0 ? Math.max(...allMaxW) : 0;
+                const peakCat = windCategory(peakW);
+                const peakColor = windColor(peakW);
                 const region = regionName(cluster.center.lat, cluster.center.lon);
 
                 // Count tracks by category
                 const catCounts = {};
-                for (const p of allMinP) {
-                    const cat = pressureCategory(p);
+                for (const w of allMaxW) {
+                    const cat = windCategory(w);
                     catCounts[cat] = (catCounts[cat] || 0) + 1;
                 }
 
@@ -529,8 +530,8 @@ export default function SpaghettiPlot() {
                     lat: cluster.center.lat,
                     lon: cluster.center.lon,
                     region,
-                    trackCount: allMinP.length,
-                    peakP,
+                    trackCount: allMaxW.length,
+                    peakW,
                     peakCat,
                     peakColor,
                     catCounts,
@@ -538,17 +539,15 @@ export default function SpaghettiPlot() {
                 };
             });
 
-            // ── Parse official paired mean tracks (WP systems) ────
-            // The ensemble_mean paired endpoint provides all paired members (samples 0-49)
-            // for a given track ID. We compute the median at each lead time to form the mean track.
+            // ── Parse official paired mean tracks (sample=-1, WP systems) ────
             const pairedMeanByTrackId = {};
             if (pairedCsvText) {
                 const { rows: pairedRows } = parseCSV(pairedCsvText);
-                const groupedByTrackId = {};
-
                 for (const row of pairedRows) {
                     const trackId = (row.track_id || "").trim();
-                    if (!trackId.toUpperCase().startsWith("WP")) continue;
+                    const sampleVal = (row.sample || "").trim();
+                    // Only use the official ensemble mean (sample=-1) for WP-prefixed storms
+                    if (sampleVal !== "-1" || !trackId.toUpperCase().startsWith("WP")) continue;
 
                     let leadH = parseFloat(row.lead_time_hours);
                     if (isNaN(leadH) || row.lead_time_hours === undefined) {
@@ -568,40 +567,16 @@ export default function SpaghettiPlot() {
                     const windKt = parseFloat(row.maximum_sustained_wind_speed_knots);
                     if (isNaN(lat) || isNaN(lon)) continue;
 
-                    if (!groupedByTrackId[trackId]) groupedByTrackId[trackId] = {};
-                    if (!groupedByTrackId[trackId][leadH]) groupedByTrackId[trackId][leadH] = [];
-                    
-                    groupedByTrackId[trackId][leadH].push({
+                    if (!pairedMeanByTrackId[trackId]) pairedMeanByTrackId[trackId] = { points: [], trackId };
+                    pairedMeanByTrackId[trackId].points.push({
                         lat, lon: lon > 180 ? lon - 360 : lon,
-                        p: pres, windKt
+                        p: pres, windKt, h: leadH
                     });
                 }
 
-                // Median helper for paired tracks
-                const calcMedian = arr => {
-                    const s = [...arr].sort((a, b) => a - b);
-                    const mid = Math.floor(s.length / 2);
-                    return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
-                };
-
-                // Compute median track for each track ID
-                for (const [tId, hourGroups] of Object.entries(groupedByTrackId)) {
-                    const meanPoints = [];
-                    for (const hStr of Object.keys(hourGroups)) {
-                        const h = parseFloat(hStr);
-                        const pts = hourGroups[h];
-                        
-                        const mLat = calcMedian(pts.map(p => p.lat));
-                        const mLon = calcMedian(pts.map(p => p.lon));
-                        const validP = pts.map(p => p.p).filter(p => !isNaN(p));
-                        const mP = validP.length > 0 ? calcMedian(validP) : NaN;
-                        const validW = pts.map(p => p.windKt).filter(w => !isNaN(w));
-                        const mW = validW.length > 0 ? calcMedian(validW) : NaN;
-
-                        meanPoints.push({ lat: mLat, lon: mLon, p: mP, windKt: mW, h });
-                    }
-                    meanPoints.sort((a, b) => a.h - b.h);
-                    pairedMeanByTrackId[tId] = { points: meanPoints, trackId: tId };
+                // Sort each paired track by lead time
+                for (const key of Object.keys(pairedMeanByTrackId)) {
+                    pairedMeanByTrackId[key].points.sort((a, b) => a.h - b.h);
                 }
             }
 
@@ -638,6 +613,7 @@ export default function SpaghettiPlot() {
                             // Extract short name (e.g., WP932026 → 93W)
                             const numMatch = tId.match(/WP(\d{2})/i);
                             dist.pairedTrackName = numMatch ? `${numMatch[1]}W` : tId;
+                            dist.meanSource = "paired";
                             break;
                         }
                     }
@@ -646,10 +622,11 @@ export default function SpaghettiPlot() {
                     const byHour = {};
                     for (const track of tracks) {
                         for (const pt of track) {
-                            if (!byHour[pt.h]) byHour[pt.h] = { lats: [], lons: [], ps: [] };
+                            if (!byHour[pt.h]) byHour[pt.h] = { lats: [], lons: [], ps: [], winds: [] };
                             byHour[pt.h].lats.push(pt.lat);
                             byHour[pt.h].lons.push(pt.lon);
                             byHour[pt.h].ps.push(!isNaN(pt.p) ? pt.p : NaN);
+                            byHour[pt.h].winds.push(!isNaN(pt.windKt) ? pt.windKt : NaN);
                         }
                     }
 
@@ -681,7 +658,7 @@ export default function SpaghettiPlot() {
                         const n = d.lats.length;
 
                         // ── Mean position: prefer official paired track if available ──
-                        let mLat, mLon, mP;
+                        let mLat, mLon, mW;
                         const usePaired = matchedPaired !== null;
 
                         if (usePaired) {
@@ -693,27 +670,21 @@ export default function SpaghettiPlot() {
                             if (Math.abs(pairedPt.h - h) <= 3) {
                                 mLat = pairedPt.lat;
                                 mLon = pairedPt.lon;
-                                mP = pairedPt.p;
+                                mW = pairedPt.windKt;
                             } else {
-                                // Fall back to computed median for this hour
-                                mLat = median(d.lats);
-                                mLon = median(d.lons);
-                                const activePressures = d.ps.filter(p => !isNaN(p));
-                                const deadCount = tracks.length - activePressures.length;
-                                const allPressures = [...activePressures];
-                                for (let i = 0; i < deadCount; i++) allPressures.push(1010);
-                                mP = median(allPressures);
+                                // Paired data ended, stop drawing the mean track
+                                continue;
                             }
                         } else {
                             // Default: computed median from ensemble members
                             mLat = median(d.lats);
                             mLon = median(d.lons);
-                            // Survivorship-bias-corrected median intensity
-                            const activePressures = d.ps.filter(p => !isNaN(p));
-                            const deadCount = tracks.length - activePressures.length;
-                            const allPressures = [...activePressures];
-                            for (let i = 0; i < deadCount; i++) allPressures.push(1010);
-                            mP = median(allPressures);
+                            // Survivorship-bias-corrected median intensity using wind
+                            const activeWinds = d.winds.filter(w => !isNaN(w));
+                            const deadCount = tracks.length - activeWinds.length;
+                            const allWinds = [...activeWinds];
+                            for (let i = 0; i < deadCount; i++) allWinds.push(15); // Default dead to 15 kt
+                            mW = median(allWinds);
                         }
 
                         const distsKm = [];
@@ -746,7 +717,7 @@ export default function SpaghettiPlot() {
                         const activeMembers = n;
                         const totalMembers = tracks.length;
 
-                        meanPts.push({ lat: mLat, lon: mLon, p: mP, h, sdKm, r67km, activeMembers, totalMembers });
+                        meanPts.push({ lat: mLat, lon: mLon, windKt: mW, h, sdKm, r67km, activeMembers, totalMembers });
                     }
 
                     // Tag disturbance with source info
@@ -879,11 +850,11 @@ export default function SpaghettiPlot() {
                     meanLine.distId = dist.id;
                     meanLine.addTo(meanLayerGroupRef.current);
 
-                    // Mean position dots colored by pressure
+                    // Mean position dots colored by wind speed
                     for (const pt of meanPts) {
                         const mk = L.circleMarker([pt.lat, pt.lon], {
                             radius: 5, color: "#000000", weight: 2,
-                            fillColor: pressureColor(pt.p), fillOpacity: 1, opacity: 1
+                            fillColor: windColor(pt.windKt), fillOpacity: 1, opacity: 1
                         });
                         mk.distId = dist.id;
 
@@ -893,7 +864,7 @@ export default function SpaghettiPlot() {
                                 Hour ${pt.h}
                             </div>
                             <div style="font-size: 11px;">
-                                Intensity: ${isNaN(pt.p) ? 'N/A' : pt.p.toFixed(0) + ' hPa'}<br/>
+                                Wind: ${isNaN(pt.windKt) ? 'N/A' : pt.windKt.toFixed(0) + ' kt'}<br/>
                                 Survivorship: ${pt.activeMembers}/${pt.totalMembers} members (${survRate}%)
                             </div>
                         `;
@@ -1182,19 +1153,12 @@ export default function SpaghettiPlot() {
                                         <span className="system-detail-value">{d.lat.toFixed(1)}°N, {d.lon.toFixed(1)}°E</span>
                                     </div>
                                     <div className="system-detail-row system-detail-divider">
-                                        <span>Peak Intensity:</span>
-                                        <span className="system-peak-value" style={{ color: d.peakColor }}>{d.peakP < 9999 ? `${d.peakP.toFixed(0)} hPa` : "N/A"}</span>
+                                        <span>Peak Wind:</span>
+                                        <span className="system-peak-value" style={{ color: d.peakColor }}>{d.peakW > 0 ? `${d.peakW.toFixed(0)} kt` : "N/A"}</span>
                                     </div>
                                     {d.hasEnsembleMean && (
                                         <>
-                                            <div className="system-detail-row">
-                                                <span>Mean Track:</span>
-                                                <span className="system-detail-value font-medium" style={{
-                                                    color: d.meanSource === "paired" ? "#0ea5e9" : "#a8a29e",
-                                                }}>
-                                                    {d.meanSource === "paired" ? `WeatherLab Official (${d.pairedTrackName})` : "Computed Median"}
-                                                </span>
-                                            </div>
+
                                             <div className="system-detail-row">
                                                 <span>Confidence:</span>
                                                 <span className="system-detail-value" style={{
@@ -1218,13 +1182,13 @@ export default function SpaghettiPlot() {
                                     {/* Intensity breakdown per category */}
                                     {Object.keys(d.catCounts).length > 0 && (
                                         <div className="system-intensity-breakdown">
-                                            {PRESSURE_LEGEND.map(({ label, color }) => {
-                                                const cat = pressureCategory(
-                                                    label.includes("<") ? 910 :
-                                                        label.includes("920") ? 930 :
-                                                            label.includes("945") ? 960 :
-                                                                label.includes("970") ? 980 :
-                                                                    label.includes("990") ? 1000 : 1010
+                                            {WIND_LEGEND.map(({ label, color }) => {
+                                                const cat = windCategory(
+                                                    label.includes("≥ 100") ? 100 :
+                                                        label.includes("64") ? 64 :
+                                                            label.includes("48") ? 48 :
+                                                                label.includes("34") ? 34 :
+                                                                    label.includes("22–33") ? 22 : 10
                                                 );
                                                 const count = d.catCounts[cat] || 0;
                                                 if (count === 0) return null;
@@ -1248,21 +1212,16 @@ export default function SpaghettiPlot() {
                 </div>
             )}
 
-            {/* Pressure legend */}
-            <div>
-                <h2 className="spaghetti-section-title">
-                    <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
-                    Intensity Legend
-                </h2>
-                <div className="legend-box">
-                    <ul className="legend-list">
-                        {PRESSURE_LEGEND.map(({ label, color }) => (
-                            <li key={label} className="legend-item">
-                                <span className="legend-color" style={{ background: color, boxShadow: `0 0 8px ${color}80` }} />
-                                {label}
-                            </li>
-                        ))}
-                    </ul>
+            {/* Global Intensity Legend */}
+            <div className="spaghetti-legend">
+                <div className="spaghetti-legend-title">Wind Intensity Scale (kt)</div>
+                <div className="spaghetti-legend-grid">
+                    {WIND_LEGEND.map(({ label, color }) => (
+                        <div key={label} className="spaghetti-legend-item">
+                            <span className="spaghetti-legend-color" style={{ background: color, boxShadow: `0 0 6px ${color}60` }} />
+                            <span className="spaghetti-legend-label">{label}</span>
+                        </div>
+                    ))}
                 </div>
             </div>
 
