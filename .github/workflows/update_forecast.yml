@@ -41,7 +41,7 @@ jobs:
 
       - name: Download FNV3 Base paired/mean track CSV
         run: |
-          BASE_URL="https://deepmind.google.com/science/weatherlab/download/cyclones/FNV3/ensemble/paired/csv"
+          BASE_URL="https://deepmind.google.com/science/weatherlab/download/cyclones/FNV3/ensemble_mean/paired/csv"
           OUTPUT="public/data/fnv3_paired_latest.csv"
           FOUND=false
 
