@@ -53,11 +53,14 @@ function parseCSV(text) {
 }
 
 // ── Local CSV paths served as static assets (committed by GitHub Actions) ──
-// Forcast.py  → public/data/fnv3_base_latest.csv
-// Forcast3.py → public/data/fnv3_large_latest.csv
+// Forcast.py  → public/data/fnv3_base_latest.csv       (base ensemble members)
+// Forcast3.py → public/data/fnv3_large_latest.csv       (large ensemble members)
+// FNV3 paired CSVs → official ensemble mean tracks (sample=-1) per dataset
 const LOCAL_CSV = {
     base: "/data/fnv3_base_latest.csv",
     large: "/data/fnv3_large_latest.csv",
+    basePaired: "/data/fnv3_paired_latest.csv",
+    largePaired: "/data/fnv3_large_paired_latest.csv",
 };
 
 // ── PAR boundary ──────────────────────────────────────────────────────────
@@ -157,11 +160,11 @@ function clusterOriginsGreedy(origins, distKm = 400, maxGenesisSpread = 96) {
         const sumLon = c.origins.reduce((s, o) => s + (o.lon < 0 ? o.lon + 360 : o.lon), 0);
         let avgLon = sumLon / c.origins.length;
         if (avgLon > 180) avgLon -= 360;
-        
-        c.center = { 
-            lat: sumLat / c.origins.length, 
-            lon: avgLon, 
-            h: c.minH 
+
+        c.center = {
+            lat: sumLat / c.origins.length,
+            lon: avgLon,
+            h: c.minH
         };
     }
 
@@ -312,6 +315,7 @@ export default function SpaghettiPlot() {
         const isLarge = dataset === "large";
         const csvUrl = LOCAL_CSV[dataset];
         let csvText = null;
+        let pairedCsvText = null;
 
         try {
             const res = await fetch(csvUrl);
@@ -326,6 +330,16 @@ export default function SpaghettiPlot() {
             // Re-attach the layer group before returning
             if (map && layerGroupRef.current) layerGroupRef.current.addTo(map);
             return;
+        }
+
+        // Attempt to fetch the official FNV3 paired/ensemble-mean CSV (non-blocking)
+        // Base → fnv3_paired_latest.csv, Large → fnv3_large_paired_latest.csv
+        const pairedUrl = isLarge ? LOCAL_CSV.largePaired : LOCAL_CSV.basePaired;
+        try {
+            const pairedRes = await fetch(pairedUrl);
+            if (pairedRes.ok) pairedCsvText = await pairedRes.text();
+        } catch (_) {
+            // Silently skip — we fall back to computed median
         }
 
         const { rows, cols } = parseCSV(csvText);
@@ -524,10 +538,48 @@ export default function SpaghettiPlot() {
                 };
             });
 
+            // ── Parse official paired mean tracks (sample=-1, WP systems) ────
+            const pairedMeanByTrackId = {};
+            if (pairedCsvText) {
+                const { rows: pairedRows } = parseCSV(pairedCsvText);
+                for (const row of pairedRows) {
+                    const trackId = (row.track_id || "").trim();
+                    const sampleVal = (row.sample || "").trim();
+                    // Only use the official ensemble mean (sample=-1) for WP-prefixed storms
+                    if (sampleVal !== "-1" || !trackId.toUpperCase().startsWith("WP")) continue;
+                    let leadH = parseFloat(row.lead_time_hours);
+                    if (isNaN(leadH) || row.lead_time_hours === undefined) {
+                        const str = row.lead_time || "";
+                        const parts = str.match(/(?:(\d+)\s+days\s+)?(\d+):(\d+):(\d+)/);
+                        if (parts) {
+                            const d = parseInt(parts[1] || 0);
+                            const h = parseInt(parts[2] || 0);
+                            leadH = d * 24 + h;
+                        }
+                    }
+                    if (isNaN(leadH) || leadH > maxHours) continue;
+                    const lat = parseFloat(row.lat);
+                    const lon = parseFloat(row.lon);
+                    const pres = parseFloat(row.minimum_sea_level_pressure_hpa);
+                    const windKt = parseFloat(row.maximum_sustained_wind_speed_knots);
+                    if (isNaN(lat) || isNaN(lon)) continue;
+                    if (!pairedMeanByTrackId[trackId]) pairedMeanByTrackId[trackId] = { points: [], trackId };
+                    pairedMeanByTrackId[trackId].points.push({
+                        lat, lon: lon > 180 ? lon - 360 : lon,
+                        p: pres, windKt, h: leadH
+                    });
+                }
+                // Sort each paired track by lead time
+                for (const key of Object.keys(pairedMeanByTrackId)) {
+                    pairedMeanByTrackId[key].points.sort((a, b) => a.h - b.h);
+                }
+            }
+
             // ── Ensemble analysis: mean, spread, agreement ──────────────
-            // 1) Mean: always from 100% of members (no threshold)
-            // 2) Spread: std-dev envelope at each time step
-            // 3) Agreement: % of members within 2° of mean
+            // 1) Mean: prefer official paired track (sample=-1) when available for WP systems
+            // 2) Fallback: computed median from 100% of ensemble members
+            // 3) Spread: std-dev envelope at each time step
+            // 4) Agreement: % of members within 2° of mean
             const AGREEMENT_RADIUS = 2; // degrees
             if (meanLayerGroupRef.current) {
                 for (const dist of disturbanceList) {
@@ -539,6 +591,26 @@ export default function SpaghettiPlot() {
                         continue;
                     }
                     dist.hasEnsembleMean = true;
+
+                    // ── Try to match a paired WP mean track to this disturbance ──
+                    // Match by spatial proximity: the paired track's origin must be
+                    // within 500km of the disturbance cluster center
+                    let matchedPaired = null;
+                    for (const [tId, paired] of Object.entries(pairedMeanByTrackId)) {
+                        if (paired.points.length < 2) continue;
+                        const pOrigin = paired.points[0];
+                        const dKm = haversineKm(
+                            { lat: dist.lat, lon: dist.lon },
+                            { lat: pOrigin.lat, lon: pOrigin.lon }
+                        );
+                        if (dKm < 500) {
+                            matchedPaired = paired;
+                            // Extract short name (e.g., WP932026 → 93W)
+                            const numMatch = tId.match(/WP(\d{2})/i);
+                            dist.pairedTrackName = numMatch ? `${numMatch[1]}W` : tId;
+                            break;
+                        }
+                    }
 
                     // Group all points by lead time hour
                     const byHour = {};
@@ -560,38 +632,59 @@ export default function SpaghettiPlot() {
                     let totalAgreement = 0;
                     let agreementSteps = 0;
 
+                    // Median helper
+                    const median = arr => {
+                        const s = [...arr].sort((a, b) => a - b);
+                        const mid = Math.floor(s.length / 2);
+                        return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+                    };
+
+                    // Percentile helper (0-1)
+                    const percentile = (arr, p) => {
+                        const s = [...arr].sort((a, b) => a - b);
+                        const idx = Math.ceil(p * s.length) - 1;
+                        return s[Math.max(0, Math.min(idx, s.length - 1))];
+                    };
+
                     for (const h of hours) {
                         const d = byHour[h];
                         const n = d.lats.length;
 
-                        // Median helper
-                        const median = arr => {
-                            const s = [...arr].sort((a, b) => a - b);
-                            const mid = Math.floor(s.length / 2);
-                            return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
-                        };
+                        // ── Mean position: prefer official paired track if available ──
+                        let mLat, mLon, mP;
+                        const usePaired = matchedPaired !== null;
 
-                        // Percentile helper (0-1)
-                        const percentile = (arr, p) => {
-                            const s = [...arr].sort((a, b) => a - b);
-                            const idx = Math.ceil(p * s.length) - 1;
-                            return s[Math.max(0, Math.min(idx, s.length - 1))];
-                        };
-
-                        const mLat = median(d.lats);
-                        const mLon = median(d.lons);
-
-                        // To calculate a smooth and physically realistic median intensity (mP) without survivorship bias:
-                        // We take the pressures of all active members. For any member that has dissipated or not yet formed,
-                        // we pad it with a standard background pressure of 1010 hPa.
-                        // This guarantees the median gracefully decays if the majority of the ensemble kills off the storm.
-                        const activePressures = d.ps.filter(p => !isNaN(p));
-                        const deadCount = tracks.length - activePressures.length;
-                        const allPressures = [...activePressures];
-                        for (let i = 0; i < deadCount; i++) {
-                            allPressures.push(1010);
+                        if (usePaired) {
+                            // Find the paired point closest to this lead time hour
+                            const pairedPt = matchedPaired.points.reduce((best, pt) => {
+                                return Math.abs(pt.h - h) < Math.abs(best.h - h) ? pt : best;
+                            }, matchedPaired.points[0]);
+                            // Only use if the paired point is within 3h of this step
+                            if (Math.abs(pairedPt.h - h) <= 3) {
+                                mLat = pairedPt.lat;
+                                mLon = pairedPt.lon;
+                                mP = pairedPt.p;
+                            } else {
+                                // Fall back to computed median for this hour
+                                mLat = median(d.lats);
+                                mLon = median(d.lons);
+                                const activePressures = d.ps.filter(p => !isNaN(p));
+                                const deadCount = tracks.length - activePressures.length;
+                                const allPressures = [...activePressures];
+                                for (let i = 0; i < deadCount; i++) allPressures.push(1010);
+                                mP = median(allPressures);
+                            }
+                        } else {
+                            // Default: computed median from ensemble members
+                            mLat = median(d.lats);
+                            mLon = median(d.lons);
+                            // Survivorship-bias-corrected median intensity
+                            const activePressures = d.ps.filter(p => !isNaN(p));
+                            const deadCount = tracks.length - activePressures.length;
+                            const allPressures = [...activePressures];
+                            for (let i = 0; i < deadCount; i++) allPressures.push(1010);
+                            mP = median(allPressures);
                         }
-                        const mP = median(allPressures);
 
                         const distsKm = [];
                         for (let i = 0; i < n; i++) {
@@ -625,6 +718,9 @@ export default function SpaghettiPlot() {
 
                         meanPts.push({ lat: mLat, lon: mLon, p: mP, h, sdKm, r67km, activeMembers, totalMembers });
                     }
+
+                    // Tag disturbance with source info
+                    dist.meanSource = matchedPaired ? "paired" : "computed";
 
                     dist.agreement = agreementSteps > 0 ? Math.round((totalAgreement / agreementSteps) * 100) : 0;
                     const avgSdKm = meanPts.reduce((s, p) => s + p.sdKm, 0) / (meanPts.length || 1);
