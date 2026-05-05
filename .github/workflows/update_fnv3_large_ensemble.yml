@@ -39,14 +39,41 @@ jobs:
           python Forcast3.py
           python forcast4.py
 
+      - name: Download FNV3 Large Ensemble paired/mean track CSV
+        run: |
+          BASE_URL="https://deepmind.google.com/science/weatherlab/download/cyclones/FNV3_LARGE_ENSEMBLE/ensemble_mean/paired/csv"
+          OUTPUT="public/data/fnv3_large_paired_latest.csv"
+          FOUND=false
+
+          # Probe the last 3 days × 4 cycles to find the latest available run
+          for DAYS_AGO in 0 1 2 3; do
+            DATE=$(date -u -d "-${DAYS_AGO} days" +%Y_%m_%d)
+            for HOUR in 18 12 06 00; do
+              URL="${BASE_URL}/FNV3_LARGE_ENSEMBLE_${DATE}T${HOUR}_00_paired.csv"
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -L "$URL")
+              if [ "$HTTP_CODE" = "200" ]; then
+                echo "✓ Found large ensemble paired run: ${DATE}T${HOUR}:00"
+                curl -sL -o "$OUTPUT" "$URL"
+                echo "  Downloaded → $OUTPUT ($(wc -c < "$OUTPUT") bytes)"
+                FOUND=true
+                break 2
+              fi
+            done
+          done
+
+          if [ "$FOUND" = "false" ]; then
+            echo "⚠ No large ensemble paired CSV found in last 3 days — skipping (will use computed median)"
+          fi
+
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Add forecast PNGs and the proxied CSV for browser use
+          # Add forecast PNGs and the proxied CSVs for browser use
           git add public/assets/fnv3_*.png
           git add -f public/data/fnv3_large_latest.csv || true
+          git add -f public/data/fnv3_large_paired_latest.csv || true
           
           # Commit if there are changes
           if git diff --staged --quiet; then
