@@ -376,6 +376,64 @@ const Alert = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [modalContent, setModalContent] = useState(null);
+
+  const renderAreaListDict = (obj, colorClasses, title, icon) => {
+    const keys = Object.keys(obj);
+    if (keys.length === 0) return null;
+    
+    const maxVisible = 4;
+    const visibleKeys = keys.slice(0, maxVisible);
+    const hiddenCount = keys.length - maxVisible;
+
+    const renderItem = (prov) => (
+      <span key={prov} className={`px-3 py-1 ${colorClasses} text-sm font-semibold rounded-lg inline-block`}>
+        {prov} {obj[prov].size > 0 ? `(${Array.from(obj[prov]).join(", ")})` : ""}
+      </span>
+    );
+
+    return (
+      <div className="pl-3 flex flex-wrap gap-2 items-center">
+        {visibleKeys.map(renderItem)}
+        {hiddenCount > 0 && (
+          <button 
+            onClick={() => setModalContent({ title, icon, items: keys.map(renderItem) })}
+            className={`px-3 py-1 ${colorClasses} opacity-90 hover:opacity-100 text-sm font-bold rounded-lg cursor-pointer transition-all underline decoration-dashed underline-offset-4 hover:scale-105 active:scale-95`}
+          >
+            + {hiddenCount} See More
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const renderAreaListArray = (arr, colorClasses, title, icon) => {
+    if (!arr || arr.length === 0) return null;
+    
+    const maxVisible = 4;
+    const visibleItems = arr.slice(0, maxVisible);
+    const hiddenCount = arr.length - maxVisible;
+
+    const renderItem = (loc) => (
+      <span key={loc} className={`px-3 py-1.5 ${colorClasses} text-sm font-semibold rounded-lg shadow-sm inline-block`}>
+        {loc}
+      </span>
+    );
+
+    return (
+      <div className="pl-3 flex flex-wrap gap-2.5 items-center">
+        {visibleItems.map(renderItem)}
+        {hiddenCount > 0 && (
+          <button 
+            onClick={() => setModalContent({ title, icon, items: arr.map(renderItem) })}
+            className={`px-3 py-1.5 ${colorClasses} opacity-90 hover:opacity-100 text-sm font-bold rounded-lg cursor-pointer transition-all underline decoration-dashed underline-offset-4 hover:scale-105 active:scale-95`}
+          >
+            + {hiddenCount} See More
+          </button>
+        )}
+      </div>
+    );
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -911,11 +969,7 @@ const Alert = () => {
                     </div>
                     <p className="text-sm text-red-200/70 mb-4 pl-3">Take Action: Severe flooding expected in low-lying areas and near river channels.</p>
                     <div className="pl-3 flex flex-wrap gap-2">
-                      {Object.keys(rainfallSummary.red).map((prov) => (
-                        <span key={prov} className="px-3 py-1 bg-red-500/10 border border-red-500/30 text-red-300 text-sm font-semibold rounded-lg">
-                          {prov} {rainfallSummary.red[prov].size > 0 ? `(${Array.from(rainfallSummary.red[prov]).join(", ")})` : ""}
-                        </span>
-                      ))}
+                      {renderAreaListDict(rainfallSummary.red, "bg-red-500/10 border border-red-500/30 text-red-300", "Red Warning Areas", "🔴")}
                     </div>
                   </div>
                 )}
@@ -928,11 +982,7 @@ const Alert = () => {
                     </div>
                     <p className="text-sm text-orange-200/70 mb-4 pl-3">Be Prepared: Flooding is threatening in low-lying areas.</p>
                     <div className="pl-3 flex flex-wrap gap-2">
-                      {Object.keys(rainfallSummary.orange).map((prov) => (
-                        <span key={prov} className="px-3 py-1 bg-orange-500/10 border border-orange-500/30 text-orange-300 text-sm font-semibold rounded-lg">
-                          {prov} {rainfallSummary.orange[prov].size > 0 ? `(${Array.from(rainfallSummary.orange[prov]).join(", ")})` : ""}
-                        </span>
-                      ))}
+                      {renderAreaListDict(rainfallSummary.orange, "bg-orange-500/10 border border-orange-500/30 text-orange-300", "Orange Warning Areas", "🟠")}
                     </div>
                   </div>
                 )}
@@ -945,11 +995,7 @@ const Alert = () => {
                     </div>
                     <p className="text-sm text-yellow-200/70 mb-4 pl-3">Be Aware: Flooding is possible in low-lying areas.</p>
                     <div className="pl-3 flex flex-wrap gap-2">
-                      {Object.keys(rainfallSummary.yellow).map((prov) => (
-                        <span key={prov} className="px-3 py-1 bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-sm font-semibold rounded-lg">
-                          {prov} {rainfallSummary.yellow[prov].size > 0 ? `(${Array.from(rainfallSummary.yellow[prov]).join(", ")})` : ""}
-                        </span>
-                      ))}
+                      {renderAreaListDict(rainfallSummary.yellow, "bg-yellow-500/10 border border-yellow-500/30 text-yellow-300", "Yellow Warning Areas", "🟡")}
                     </div>
                   </div>
                 )}
@@ -961,16 +1007,7 @@ const Alert = () => {
                       <h4 className="text-lg font-black text-cyan-400 tracking-wide uppercase">Light-Moderate Rain</h4>
                     </div>
                     <div className="pl-3 flex flex-wrap gap-2">
-                      {Object.keys(rainfallSummary.severe).map((prov) => (
-                        <span key={`sev-${prov}`} className="px-3 py-1 bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-sm font-semibold rounded-lg">
-                          {prov} {rainfallSummary.severe[prov].size > 0 ? `(${Array.from(rainfallSummary.severe[prov]).join(", ")})` : ""}
-                        </span>
-                      ))}
-                      {Object.keys(rainfallSummary.moderate).map((prov) => (
-                        <span key={`mod-${prov}`} className="px-3 py-1 bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-sm font-semibold rounded-lg">
-                          {prov} {rainfallSummary.moderate[prov].size > 0 ? `(${Array.from(rainfallSummary.moderate[prov]).join(", ")})` : ""}
-                        </span>
-                      ))}
+                      {renderAreaListDict({ ...rainfallSummary.severe, ...rainfallSummary.moderate }, "bg-cyan-500/10 border border-cyan-500/30 text-cyan-300", "Light-Moderate Rain Areas", "💧")}
                     </div>
                   </div>
                 )}
@@ -983,11 +1020,7 @@ const Alert = () => {
                     </div>
                     <p className="text-xs text-slate-500 mb-3 pl-3">Precipitation likely within 1-2 hours.</p>
                     <div className="pl-3 flex flex-wrap gap-2">
-                      {Object.keys(rainfallSummary.expected).map((prov) => (
-                        <span key={prov} className="px-3 py-1 bg-slate-800 border border-slate-700 text-slate-400 text-sm font-semibold rounded-lg">
-                          {prov} {rainfallSummary.expected[prov].size > 0 ? `(${Array.from(rainfallSummary.expected[prov]).join(", ")})` : ""}
-                        </span>
-                      ))}
+                      {renderAreaListDict(rainfallSummary.expected, "bg-slate-800 border border-slate-700 text-slate-400", "Expecting Rain Areas", "☁️")}
                     </div>
                   </div>
                 )}
@@ -1020,9 +1053,7 @@ const Alert = () => {
                     </p>
 
                     <div className="pl-3 flex flex-wrap gap-2.5">
-                      {thunderSummary.affecting.map((loc) => (
-                        <span key={loc} className="px-3 py-1.5 bg-amber-500/10 border border-amber-500/40 text-amber-300 text-sm font-semibold rounded-lg shadow-sm">{loc}</span>
-                      ))}
+                      {renderAreaListArray(thunderSummary.affecting, "bg-amber-500/10 border border-amber-500/40 text-amber-300", "Thunderstorm Affecting Areas", "⚡")}
                     </div>
                   </div>
                 )}
@@ -1044,9 +1075,7 @@ const Alert = () => {
                     </p>
 
                     <div className="pl-3 flex flex-wrap gap-2.5">
-                      {thunderSummary.expected.map((loc) => (
-                        <span key={loc} className="px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-sm font-semibold rounded-lg">{loc}</span>
-                      ))}
+                      {renderAreaListArray(thunderSummary.expected, "bg-cyan-500/10 border border-cyan-500/30 text-cyan-300", "Thunderstorm Expecting Areas", "⛈️")}
                     </div>
                   </div>
                 )}
@@ -1069,6 +1098,28 @@ const Alert = () => {
 
           </div>
         </div>
+        {/* Modal for "See More" */}
+      {modalContent && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl relative overflow-hidden">
+            <div className="flex justify-between items-center p-5 border-b border-slate-800 bg-slate-900/90 z-10 sticky top-0">
+              <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                {modalContent.icon && <span className="text-2xl">{modalContent.icon}</span>}
+                {modalContent.title}
+              </h3>
+              <button 
+                onClick={() => setModalContent(null)}
+                className="text-slate-400 hover:text-white transition-colors p-2 rounded-full hover:bg-slate-800 cursor-pointer"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex flex-wrap gap-3">
+              {modalContent.items}
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
