@@ -44,11 +44,11 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ── Forecast data (mean track)  ────────────────────────────────────────────────
 data_dict = {
-    'lead_time_hours': [6.0, 30.0, 54.0, 78.0, 102.0],
-    'lat': [8.40, 7.72, 8.44, 9.38, 10.30],
-    'lon': [149.80, 144.76, 141.17, 137.33, 133.43],
-    'minimum_sea_level_pressure_hpa': [1001.6, 1002.8, 1000.0, 996.4, 997.0],
-    'maximum_sustained_wind_speed_knots': [33.5, 30.4, 36.4, 44.0, 42.1]
+    'lead_time_hours': [6.0, 30.0, 54.0, 78.0, 102.0, 126.0],
+    'lat': [7.20, 7.73, 8.52, 9.50, 10.31, 11.19],
+    'lon': [146.70, 143.94, 140.25, 136.48, 133.22, 130.03],
+    'minimum_sea_level_pressure_hpa': [1002.1, 1001.7, 997.9, 996.6, 995.2, 996.7],
+    'maximum_sustained_wind_speed_knots': [30.2, 35.5, 40.6, 44.4, 43.5, 39.8]
 }
 
 # ── Historical (past-track) data  ──────────────────────────────────────────────
@@ -64,11 +64,17 @@ history_dict = [
      'maximum_sustained_wind_speed_knots': 16.1}, 
     {'init_time': '2026-05-05 06:00:00', 'lead_time': '0 days 00:00:00',
      'lat': 8.20, 'lon': 149.50, 'minimum_sea_level_pressure_hpa': 1006.9,
+     'maximum_sustained_wind_speed_knots': 16.1}, 
+      {'init_time': '2026-05-05 12:00:00', 'lead_time': '0 days 00:00:00',
+     'lat': 7.90, 'lon': 148.60, 'minimum_sea_level_pressure_hpa': 1006.9,
+     'maximum_sustained_wind_speed_knots': 16.1}, 
+     {'init_time': '2026-05-05 18:00:00', 'lead_time': '0 days 00:00:00',
+     'lat': 7.60, 'lon': 147.80, 'minimum_sea_level_pressure_hpa': 1006.9,
      'maximum_sustained_wind_speed_knots': 16.1}, ]
 
 STORM_NAME    = "Tropical Depression"
-INIT_TIME_STR = "2026-05-05 06:00:00"
-CURRENT_TIME_PH = "9:00 PM PhST, May 5, 2026"
+INIT_TIME_STR = "2026-05-05 18:00:00"
+CURRENT_TIME_PH = "9:00 AM PhST, May 6, 2026"
 
 # ── NHC standard cone radii (nautical miles) by lead time (hours)  ─────────────
 LEAD_STANDARD = [0,  12,  24,  36,  48,   60,   72,   96,  120,  144]
