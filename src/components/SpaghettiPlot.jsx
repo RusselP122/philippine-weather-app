@@ -677,13 +677,15 @@ export default function SpaghettiPlot() {
 
                     // Group all points by lead time hour
                     const byHour = {};
-                    for (const track of tracks) {
+                    for (let tIdx = 0; tIdx < tracks.length; tIdx++) {
+                        const track = tracks[tIdx];
                         for (const pt of track) {
-                            if (!byHour[pt.h]) byHour[pt.h] = { lats: [], lons: [], ps: [], winds: [] };
+                            if (!byHour[pt.h]) byHour[pt.h] = { lats: [], lons: [], ps: [], winds: [], trackIndices: [] };
                             byHour[pt.h].lats.push(pt.lat);
                             byHour[pt.h].lons.push(pt.lon);
                             byHour[pt.h].ps.push(!isNaN(pt.p) ? pt.p : NaN);
                             byHour[pt.h].winds.push(!isNaN(pt.windKt) ? pt.windKt : NaN);
+                            byHour[pt.h].trackIndices.push(tIdx);
                         }
                     }
 
@@ -702,6 +704,69 @@ export default function SpaghettiPlot() {
                         const mid = Math.floor(s.length / 2);
                         return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
                     };
+
+                    // Weighted median helper
+                    const weightedMedian = (values, weights) => {
+                        if (values.length === 0) return 0;
+                        const pairs = values.map((v, i) => ({ v, w: weights[i] })).sort((a, b) => a.v - b.v);
+                        const totalWeight = pairs.reduce((sum, p) => sum + p.w, 0);
+                        let cumulative = 0;
+                        for (const p of pairs) {
+                            cumulative += p.w;
+                            if (cumulative >= totalWeight / 2) return p.v;
+                        }
+                        return pairs[pairs.length - 1].v;
+                    };
+
+                    // --- PRE-CALCULATE TRACK WEIGHTS (PERSISTENCE) ---
+                    const trackWeights = [];
+                    for (const track of tracks) {
+                        let maxJumpSpeed = 0; // km/h
+                        for (let i = 1; i < track.length; i++) {
+                            const pt1 = track[i - 1];
+                            const pt2 = track[i];
+                            const dH = pt2.h - pt1.h;
+                            if (dH > 0) {
+                                const dKm = haversineKm({ lat: pt1.lat, lon: pt1.lon }, { lat: pt2.lat, lon: pt2.lon });
+                                const speed = dKm / dH;
+                                if (speed > maxJumpSpeed) maxJumpSpeed = speed;
+                            }
+                        }
+                        let weight = 1.0;
+                        if (maxJumpSpeed > 60) weight = 0.3; // Very erratic
+                        else if (maxJumpSpeed > 45) weight = 0.6; // Slightly erratic
+                        trackWeights.push(weight);
+                    }
+
+                    // --- SELECTIVE ENSEMBLE MEAN (SEM) PRE-PROCESSING ---
+                    let refHour = 24;
+                    if (!byHour[24]) {
+                        refHour = hours.filter(h => h <= 24).pop() || hours[hours.length - 1];
+                    }
+                    let semSelectedIndices = new Set(tracks.map((_, i) => i)); 
+                    
+                    if (byHour[refHour] && byHour[refHour].lats.length >= 3) {
+                        const refMedianLat = median(byHour[refHour].lats);
+                        const refMedianLon = median(byHour[refHour].lons);
+                        
+                        const trackErrors = [];
+                        let totalError = 0;
+                        for (let i = 0; i < byHour[refHour].lats.length; i++) {
+                            const tIdx = byHour[refHour].trackIndices[i];
+                            const err = haversineKm(
+                                { lat: byHour[refHour].lats[i], lon: byHour[refHour].lons[i] },
+                                { lat: refMedianLat, lon: refMedianLon }
+                            );
+                            trackErrors.push({ tIdx, err });
+                            totalError += err;
+                        }
+                        
+                        const avgError = totalError / trackErrors.length;
+                        const selected = trackErrors.filter(t => t.err <= avgError).map(t => t.tIdx);
+                        if (selected.length > 0) {
+                            semSelectedIndices = new Set(selected);
+                        }
+                    }
 
                     // Percentile helper (0-1)
                     const percentile = (arr, p) => {
@@ -733,15 +798,58 @@ export default function SpaghettiPlot() {
                                 continue;
                             }
                         } else {
-                            // Default: computed median from ensemble members
-                            mLat = median(d.lats);
-                            mLon = median(d.lons);
-                            // Survivorship-bias-corrected median intensity using wind
-                            const activeWinds = d.winds.filter(w => !isNaN(w));
-                            const deadCount = tracks.length - activeWinds.length;
-                            const allWinds = [...activeWinds];
-                            for (let i = 0; i < deadCount; i++) allWinds.push(15); // Default dead to 15 kt
-                            mW = median(allWinds);
+                            // Selective Ensemble Mean (SEM) for position
+                            const semLats = [];
+                            const semLons = [];
+                            for (let i = 0; i < d.lats.length; i++) {
+                                if (semSelectedIndices.has(d.trackIndices[i])) {
+                                    semLats.push(d.lats[i]);
+                                    semLons.push(d.lons[i]);
+                                }
+                            }
+                            
+                            if (semLats.length > 0) {
+                                mLat = median(semLats);
+                                mLon = median(semLons);
+                            } else {
+                                mLat = median(d.lats);
+                                mLon = median(d.lons);
+                            }
+
+                            // Survivorship-bias-corrected weighted median intensity
+                            const windVals = [];
+                            const windWeights = [];
+                            
+                            // Active members (weighted by persistence)
+                            for (let i = 0; i < d.winds.length; i++) {
+                                if (!isNaN(d.winds[i])) {
+                                    windVals.push(d.winds[i]);
+                                    windWeights.push(trackWeights[d.trackIndices[i]]);
+                                }
+                            }
+                            
+                            // Dead members (Decay Curve)
+                            const activeCount = windVals.length;
+                            const deadCount = tracks.length - activeCount;
+                            for (let i = 0; i < deadCount; i++) {
+                                // Spread dead values from 10 to 20 knots (Decay "Smear")
+                                const decayVal = deadCount > 1 ? 10 + (i / (deadCount - 1)) * 10 : 15;
+                                windVals.push(decayVal);
+                                windWeights.push(1.0); // Full weight for penalty
+                            }
+                            
+                            mW = weightedMedian(windVals, windWeights);
+
+                            // Integrated "RI" Check (Secondary High-End Mean)
+                            if (activeCount > 0) {
+                                const sortedActive = [...windVals.slice(0, activeCount)].sort((a, b) => b - a);
+                                const top10Count = Math.max(1, Math.floor(sortedActive.length * 0.1));
+                                const top10Mean = sortedActive.slice(0, top10Count).reduce((a, b) => a + b, 0) / top10Count;
+                                
+                                if (top10Mean - mW > 40) {
+                                    dist.highIntensityUncertainty = true;
+                                }
+                            }
                         }
 
                         const distsKm = [];
@@ -1213,6 +1321,22 @@ export default function SpaghettiPlot() {
                                         <span>Peak Wind:</span>
                                         <span className="system-peak-value" style={{ color: d.peakColor }}>{d.peakW > 0 ? `${d.peakW.toFixed(0)} kt` : "N/A"}</span>
                                     </div>
+                                    {d.highIntensityUncertainty && (
+                                        <div style={{
+                                            fontSize: "10px",
+                                            color: "#facc15",
+                                            fontWeight: "bold",
+                                            border: "1px solid rgba(250, 204, 21, 0.3)",
+                                            backgroundColor: "rgba(250, 204, 21, 0.1)",
+                                            padding: "2px 4px",
+                                            borderRadius: "4px",
+                                            textAlign: "center",
+                                            marginBottom: "4px",
+                                            boxShadow: "0 0 5px rgba(250, 204, 21, 0.2)"
+                                        }}>
+                                            ⚠️ High Intensity Uncertainty (RI Risk)
+                                        </div>
+                                    )}
                                     {d.hasEnsembleMean && (
                                         <>
 
