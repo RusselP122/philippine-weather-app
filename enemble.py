@@ -44,43 +44,37 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ── Forecast data (mean track)  ────────────────────────────────────────────────
 data_dict = {
-    'lead_time_hours': [6.0, 30.0, 54.0, 78.0, 102.0, 126.0],
-    'lat': [7.10, 8.29, 9.04, 9.95, 10.67, 12.12],
-    'lon': [145.70, 142.24, 138.34, 134.88, 132.07, 129.35],
-    'minimum_sea_level_pressure_hpa': [1002.8, 999.6, 998.2, 998.8, 1001.4, 1001.6],
-    'maximum_sustained_wind_speed_knots': [35.0, 38.6, 42.4, 39.3, 33.9, 32.5]
+    'lead_time_hours': [6.0, 30.0, 54.0],
+    'lat': [8.70, 10.40, 11.48],
+    'lon': [136.10, 134.11, 130.55],
+    'minimum_sea_level_pressure_hpa': [1003.6, 1003.5, 1005.1],
+    'maximum_sustained_wind_speed_knots': [35.1, 30.8, 20.7]
 }
 
 # ── Historical (past-track) data  ──────────────────────────────────────────────
 history_dict = [
-    {'init_time': '2026-05-04 12:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.0, 'lon': 150.40, 'minimum_sea_level_pressure_hpa': 1006.9,
+    {'init_time': '2026-05-07 06:00:00', 'lead_time': '0 days 00:00:00',
+     'lat': 7.50, 'lon': 142.90, 'minimum_sea_level_pressure_hpa': 1006.9,
      'maximum_sustained_wind_speed_knots': 16.1}, 
-    {'init_time': '2026-05-04 18:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 7.60, 'lon': 150.50, 'minimum_sea_level_pressure_hpa': 1006.9,
+    {'init_time': '2026-05-07 12:00:00', 'lead_time': '0 days 00:00:00',
+     'lat': 7.70, 'lon': 143.20, 'minimum_sea_level_pressure_hpa': 1006.9,
      'maximum_sustained_wind_speed_knots': 16.1}, 
-    {'init_time': '2026-05-05 00:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 7.70, 'lon': 149.70, 'minimum_sea_level_pressure_hpa': 1006.9,
+     {'init_time': '2026-05-07 18:00:00', 'lead_time': '0 days 00:00:00',
+     'lat': 8.10, 'lon': 141.10, 'minimum_sea_level_pressure_hpa': 1006.9,
      'maximum_sustained_wind_speed_knots': 16.1}, 
-    {'init_time': '2026-05-05 06:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 8.20, 'lon': 149.50, 'minimum_sea_level_pressure_hpa': 1006.9,
+     {'init_time': '2026-05-08 00:00:00', 'lead_time': '0 days 00:00:00',
+     'lat': 8.50, 'lon': 139.90, 'minimum_sea_level_pressure_hpa': 1006.9,
      'maximum_sustained_wind_speed_knots': 16.1}, 
-      {'init_time': '2026-05-05 12:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 7.90, 'lon': 148.60, 'minimum_sea_level_pressure_hpa': 1006.9,
+    {'init_time': '2026-05-08 06:00:00', 'lead_time': '0 days 00:00:00',
+     'lat': 8.70, 'lon': 137.90, 'minimum_sea_level_pressure_hpa': 1006.9,
      'maximum_sustained_wind_speed_knots': 16.1}, 
-     {'init_time': '2026-05-05 18:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 7.60, 'lon': 147.80, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1}, 
-     {'init_time': '2026-05-06 00:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 7.30, 'lon': 146.80, 'minimum_sea_level_pressure_hpa': 1006.9,
-     'maximum_sustained_wind_speed_knots': 16.1}, 
-     {'init_time': '2026-05-06 06:00:00', 'lead_time': '0 days 00:00:00',
-     'lat': 7.40, 'lon': 146.90, 'minimum_sea_level_pressure_hpa': 1006.9,
+    {'init_time': '2026-05-08 12:00:00', 'lead_time': '0 days 00:00:00',
+     'lat': 8.70, 'lon': 138.70, 'minimum_sea_level_pressure_hpa': 1006.9,
      'maximum_sustained_wind_speed_knots': 16.1}, ]
 
-STORM_NAME    = "Tropical Depression"
-INIT_TIME_STR = "2026-05-06 00:00:00"
-CURRENT_TIME_PH = "2:00 pM PhST, May 6, 2026"
+STORM_NAME    = "Tropical Storm Hagupit"
+INIT_TIME_STR = "2026-05-08 12:00:00"
+CURRENT_TIME_PH = "9:00 AM PhST, May 9, 2026"
 
 # ── NHC standard cone radii (nautical miles) by lead time (hours)  ─────────────
 LEAD_STANDARD = [0,  12,  24,  36,  48,   60,   72,   96,  120,  144]
