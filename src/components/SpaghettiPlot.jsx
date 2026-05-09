@@ -187,6 +187,8 @@ export default function SpaghettiPlot() {
     const mapInstanceRef = useRef(null);
     const layerGroupRef = useRef(null);
     const meanLayerGroupRef = useRef(null);
+    const animLayerGroupRef = useRef(null);
+    const animObjectsRef = useRef([]);
 
     const [horizon, setHorizon] = useState("5day");
     const [dataset, setDataset] = useState("base");
@@ -202,6 +204,18 @@ export default function SpaghettiPlot() {
     const [leafletReady, setLeafletReady] = useState(false);
     const [showEnsembleMean, setShowEnsembleMean] = useState(false);
     const [meanOnlyIds, setMeanOnlyIds] = useState(new Set());
+
+    const [viewModeState, setViewModeState] = useState("tracker");
+    const viewModeRef = useRef("tracker");
+    const setViewMode = (mode) => {
+        viewModeRef.current = mode;
+        setViewModeState(mode);
+    };
+    const viewMode = viewModeState;
+
+    const [animHour, setAnimHour] = useState(0);
+    const [maxAnimHour, setMaxAnimHour] = useState(120);
+    const [isPlaying, setIsPlaying] = useState(false);
 
     // ── Init map once ─────────────────────────────────────────────────────
     useEffect(() => {
@@ -266,6 +280,7 @@ export default function SpaghettiPlot() {
 
             layerGroupRef.current = L.layerGroup().addTo(map);
             meanLayerGroupRef.current = L.layerGroup(); // not added to map — default OFF
+            animLayerGroupRef.current = L.layerGroup(); // not added to map — default OFF
             mapInstanceRef.current = map;
 
             // Fly to default basin
@@ -305,6 +320,13 @@ export default function SpaghettiPlot() {
             meanLayerGroupRef.current.clearLayers();
             map?.removeLayer(meanLayerGroupRef.current);
         }
+        if (animLayerGroupRef.current) {
+            animLayerGroupRef.current.clearLayers();
+        }
+        animObjectsRef.current = [];
+        setIsPlaying(false);
+        setAnimHour(0);
+
         setShowEnsembleMean(false);
         setMeanOnlyIds(new Set());
         setStatus("loading");
@@ -355,6 +377,7 @@ export default function SpaghettiPlot() {
         const rawRows = rows.filter(r => (r.lead_time_hours !== undefined || r.lead_time !== undefined) && r.lat !== undefined);
         setRawRowCount(rawRows.length);
         const maxHours = horizon === "5day" ? 120 : 360;
+        setMaxAnimHour(maxHours);
 
         try {
             // Basin bounds filter
@@ -459,6 +482,24 @@ export default function SpaghettiPlot() {
                     if (!tracksByDisturbance[distId]) tracksByDisturbance[distId] = [];
                     tracksByDisturbance[distId].push(points);
                 }
+
+                // Animation objects
+                const animLine = L.polyline([], {
+                    color: "#00d4ff", weight: 2.5, opacity: 0.5,
+                    lineCap: "round", lineJoin: "round", noClip: true,
+                }).addTo(animLayerGroupRef.current);
+                
+                const animMarker = L.circleMarker([0,0], {
+                    radius: 5, color: "white", weight: 1,
+                    fillColor: "transparent", fillOpacity: 0.9, opacity: 0
+                }).addTo(animLayerGroupRef.current);
+                
+                animObjectsRef.current.push({
+                    distId,
+                    line: animLine,
+                    marker: animMarker,
+                    points: points
+                });
 
                 const line = L.polyline(latlngs, {
                     color: "#00d4ff", weight: 2.5, opacity: 0.5,
@@ -1060,9 +1101,14 @@ export default function SpaghettiPlot() {
             setStatusMsg(`Processing error: ${err.message}`);
             console.error(err);
         } finally {
-            // Re-attach the layer group to the map now that bulk adds are done
-            if (map && layerGroupRef.current) {
-                layerGroupRef.current.addTo(map);
+            // Re-attach the correct layer group based on the active view mode
+            if (map) {
+                if (viewModeRef.current === "tracker") {
+                    if (layerGroupRef.current) layerGroupRef.current.addTo(map);
+                    // The showEnsembleMean effect will handle re-attaching the mean layer if needed
+                } else if (viewModeRef.current === "animation") {
+                    if (animLayerGroupRef.current) animLayerGroupRef.current.addTo(map);
+                }
             }
         }
 
@@ -1124,12 +1170,78 @@ export default function SpaghettiPlot() {
     useEffect(() => {
         if (!meanLayerGroupRef.current || !mapInstanceRef.current) return;
         const map = mapInstanceRef.current;
-        if (showEnsembleMean) {
+        if (showEnsembleMean && viewMode === "tracker") {
             meanLayerGroupRef.current.addTo(map);
         } else {
             map.removeLayer(meanLayerGroupRef.current);
         }
-    }, [showEnsembleMean]);
+    }, [showEnsembleMean, viewMode]);
+
+    // Toggle view mode (Tracker vs Animation)
+    useEffect(() => {
+        const map = mapInstanceRef.current;
+        if (!map || !layerGroupRef.current || !animLayerGroupRef.current) return;
+        
+        if (viewMode === "tracker") {
+            map.removeLayer(animLayerGroupRef.current);
+            layerGroupRef.current.addTo(map);
+            if (showEnsembleMean) meanLayerGroupRef.current.addTo(map);
+        } else {
+            map.removeLayer(layerGroupRef.current);
+            map.removeLayer(meanLayerGroupRef.current);
+            animLayerGroupRef.current.addTo(map);
+            setAnimHour(prev => prev);
+        }
+    }, [viewMode, showEnsembleMean]);
+
+    // Animation playback loop
+    useEffect(() => {
+        let interval;
+        if (isPlaying) {
+            interval = setInterval(() => {
+                setAnimHour(prev => {
+                    if (prev >= maxAnimHour) {
+                        setIsPlaying(false);
+                        return prev;
+                    }
+                    return prev + 6;
+                });
+            }, 200); // 200ms per 6h frame
+        }
+        return () => clearInterval(interval);
+    }, [isPlaying, maxAnimHour]);
+
+    // Update animation layers based on animHour
+    useEffect(() => {
+        if (viewMode !== "animation" || status !== "ok") return;
+
+        for (const obj of animObjectsRef.current) {
+            const isSelected = activeDisturbanceId === null || obj.distId === activeDisturbanceId;
+            const isMeanOnly = obj.distId != null && meanOnlyIds.has(obj.distId);
+            const hidden = isMeanOnly || !isSelected;
+
+            const maxTrackHour = obj.points[obj.points.length - 1].h;
+            const hasEnded = animHour > maxTrackHour;
+
+            const visiblePts = obj.points.filter(p => p.h <= animHour);
+            if (visiblePts.length === 0 || hidden || hasEnded) {
+                obj.line.setLatLngs([]);
+                obj.marker.setStyle({ opacity: 0, fillOpacity: 0 });
+                continue;
+            }
+
+            const latlngs = visiblePts.map(p => [p.lat, p.lon]);
+            obj.line.setLatLngs(latlngs);
+
+            const lastPt = visiblePts[visiblePts.length - 1];
+            obj.marker.setLatLng([lastPt.lat, lastPt.lon]);
+            obj.marker.setStyle({
+                fillColor: windColor(lastPt.windKt),
+                opacity: 1,
+                fillOpacity: 0.9
+            });
+        }
+    }, [animHour, viewMode, activeDisturbanceId, status, meanOnlyIds]);
 
     // ── Sidebar panel ─────────────────────────────────────────────────────
     const sidebarContent = (
@@ -1186,6 +1298,70 @@ export default function SpaghettiPlot() {
                     ))}
                 </div>
             </div>
+
+            {/* Display Mode selector */}
+            <div>
+                <h2 className="spaghetti-section-title">
+                    <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    Display Mode
+                </h2>
+                <div className="segmented-control">
+                    {[{ id: "tracker", label: "Tracker" },
+                      { id: "animation", label: "Animation" }]
+                        .map(opt => (
+                            <button
+                                key={opt.id}
+                                onClick={() => {
+                                    setViewMode(opt.id);
+                                    if(opt.id === "animation" && !isPlaying && animHour === 0) setIsPlaying(true);
+                                }}
+                                className={`segment-btn ${viewMode === opt.id ? "active primary" : ""}`}
+                            >
+                                <span className="segment-label">{opt.label}</span>
+                            </button>
+                        ))}
+                </div>
+            </div>
+
+            {/* Animation Controls */}
+            {viewMode === "animation" && (
+                <div style={{ padding: "12px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(51, 65, 85, 0.5)", borderRadius: "8px", marginBottom: "16px" }}>
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-sm font-bold text-cyan-400">Hour: +{animHour}</span>
+                        <button 
+                            onClick={() => {
+                                if (animHour >= maxAnimHour) setAnimHour(0);
+                                setIsPlaying(!isPlaying);
+                            }}
+                            style={{ 
+                                background: isPlaying ? "rgba(239, 68, 68, 0.2)" : "rgba(16, 185, 129, 0.2)", 
+                                border: `1px solid ${isPlaying ? "rgba(239, 68, 68, 0.5)" : "rgba(16, 185, 129, 0.5)"}`,
+                                color: isPlaying ? "#fca5a5" : "#6ee7b7", 
+                                padding: "4px 12px", 
+                                borderRadius: "4px", 
+                                fontSize: "12px", 
+                                fontWeight: "bold",
+                                cursor: "pointer",
+                                transition: "all 0.2s"
+                            }}
+                        >
+                            {isPlaying ? "⏸ Pause" : (animHour >= maxAnimHour ? "🔄 Restart" : "▶ Play")}
+                        </button>
+                    </div>
+                    <input 
+                        type="range" 
+                        min="0" 
+                        max={maxAnimHour} 
+                        step="6"
+                        value={animHour} 
+                        onChange={(e) => {
+                            setAnimHour(parseInt(e.target.value));
+                            if(isPlaying) setIsPlaying(false);
+                        }}
+                        style={{ width: "100%", accentColor: "#00d4ff", cursor: "pointer" }}
+                    />
+                </div>
+            )}
 
             {/* Dataset selector */}
             <div>
