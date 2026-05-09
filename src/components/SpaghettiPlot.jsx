@@ -1813,6 +1813,18 @@ export default function SpaghettiPlot() {
                             <div className="gif-watermark-valid">
                                 <strong>Valid:</strong> {runInitDate ? new Date(runInitDate.getTime() + animHour * 3600000).toISOString().replace('T', ' ').substring(0, 19) + ' UTC' : 'Loading...'} <span style={{ color: '#38bdf8', marginLeft: '4px' }}>(+{animHour}h)</span>
                             </div>
+                            
+                            <div className="gif-watermark-legend">
+                                {WIND_LEGEND.map(({ label, color }, idx) => {
+                                    const acronyms = ["STY", "TY", "STS", "TS", "TD", "LPA"];
+                                    return (
+                                        <div key={label} className="gif-watermark-legend-item">
+                                            <div className="gif-watermark-legend-color" style={{ backgroundColor: color }} />
+                                            <span>{acronyms[idx]}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
                 </div>
