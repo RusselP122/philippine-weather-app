@@ -13,6 +13,8 @@
     "@tmcw/togeojson": "^7.1.2",
     "@turf/turf": "^7.3.5",
     "@vercel/analytics": "^2.0.1",
+    "gif.js": "^0.2.0",
+    "html2canvas": "^1.4.1",
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.554.0",

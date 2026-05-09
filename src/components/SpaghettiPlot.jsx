@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as turf from "@turf/turf";
+import html2canvas from "html2canvas";
+import GIF from "gif.js";
+import gifWorkerUrl from "gif.js/dist/gif.worker.js?url";
 import "./SpaghettiPlot.css";
 
 // ── Leaflet asset injection ───────────────────────────────────────────────
@@ -216,6 +219,10 @@ export default function SpaghettiPlot() {
     const [animHour, setAnimHour] = useState(0);
     const [maxAnimHour, setMaxAnimHour] = useState(120);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportProgress, setExportProgress] = useState(0);
+    const [runInitDate, setRunInitDate] = useState(null);
+    const exportWrapperRef = useRef(null);
 
     // ── Init map once ─────────────────────────────────────────────────────
     useEffect(() => {
@@ -488,12 +495,12 @@ export default function SpaghettiPlot() {
                     color: "#00d4ff", weight: 2.5, opacity: 0.5,
                     lineCap: "round", lineJoin: "round", noClip: true,
                 }).addTo(animLayerGroupRef.current);
-                
-                const animMarker = L.circleMarker([0,0], {
+
+                const animMarker = L.circleMarker([0, 0], {
                     radius: 5, color: "white", weight: 1,
                     fillColor: "transparent", fillOpacity: 0.9, opacity: 0
                 }).addTo(animLayerGroupRef.current);
-                
+
                 animObjectsRef.current.push({
                     distId,
                     line: animLine,
@@ -536,20 +543,27 @@ export default function SpaghettiPlot() {
 
             let initDate = null;
             if (runInitTime && runInitTime !== "latest") {
-                const timeStr = runInitTime.includes('Z') ? runInitTime : runInitTime.replace(/-/g, '/');
+                // FNV3 init_time is strictly UTC. Ensure it's parsed as UTC.
+                let timeStr = runInitTime;
+                if (!timeStr.includes('Z') && !timeStr.includes('+')) {
+                    timeStr = timeStr.trim().replace(' ', 'T') + 'Z';
+                } else {
+                    timeStr = timeStr.includes('Z') ? timeStr : timeStr.replace(/-/g, '/');
+                }
                 initDate = new Date(timeStr);
             }
+            setRunInitDate(initDate);
 
             // Build disturbance metadata using tracksByDisturbance as single source of truth
             const disturbanceList = clusters.map(cluster => {
                 const distTracks = tracksByDisturbance[cluster.distId] || [];
-                
+
                 // Compute peak wind from actual tracks assigned to this disturbance
                 const allMaxW = distTracks.map(pts => {
                     const winds = pts.map(pt => isNaN(pt.windKt) ? 0 : pt.windKt);
                     return winds.length > 0 ? Math.max(...winds) : 0;
                 });
-                
+
                 const peakW = allMaxW.length > 0 ? Math.max(...allMaxW) : 0;
                 const peakCat = windCategory(peakW);
                 const peakColor = windColor(peakW);
@@ -784,12 +798,12 @@ export default function SpaghettiPlot() {
                     if (!byHour[24]) {
                         refHour = hours.filter(h => h <= 24).pop() || hours[hours.length - 1];
                     }
-                    let semSelectedIndices = new Set(tracks.map((_, i) => i)); 
-                    
+                    let semSelectedIndices = new Set(tracks.map((_, i) => i));
+
                     if (byHour[refHour] && byHour[refHour].lats.length >= 3) {
                         const refMedianLat = median(byHour[refHour].lats);
                         const refMedianLon = median(byHour[refHour].lons);
-                        
+
                         const trackErrors = [];
                         let totalError = 0;
                         for (let i = 0; i < byHour[refHour].lats.length; i++) {
@@ -801,7 +815,7 @@ export default function SpaghettiPlot() {
                             trackErrors.push({ tIdx, err });
                             totalError += err;
                         }
-                        
+
                         const avgError = totalError / trackErrors.length;
                         const selected = trackErrors.filter(t => t.err <= avgError).map(t => t.tIdx);
                         if (selected.length > 0) {
@@ -848,7 +862,7 @@ export default function SpaghettiPlot() {
                                     semLons.push(d.lons[i]);
                                 }
                             }
-                            
+
                             if (semLats.length > 0) {
                                 mLat = median(semLats);
                                 mLon = median(semLons);
@@ -860,7 +874,7 @@ export default function SpaghettiPlot() {
                             // Survivorship-bias-corrected weighted median intensity
                             const windVals = [];
                             const windWeights = [];
-                            
+
                             // Active members (weighted by persistence)
                             for (let i = 0; i < d.winds.length; i++) {
                                 if (!isNaN(d.winds[i])) {
@@ -868,7 +882,7 @@ export default function SpaghettiPlot() {
                                     windWeights.push(trackWeights[d.trackIndices[i]]);
                                 }
                             }
-                            
+
                             // Dead members (Decay Curve)
                             const activeCount = windVals.length;
                             const deadCount = tracks.length - activeCount;
@@ -878,7 +892,7 @@ export default function SpaghettiPlot() {
                                 windVals.push(decayVal);
                                 windWeights.push(1.0); // Full weight for penalty
                             }
-                            
+
                             mW = weightedMedian(windVals, windWeights);
 
                             // Integrated "RI" Check (Secondary High-End Mean)
@@ -886,7 +900,7 @@ export default function SpaghettiPlot() {
                                 const sortedActive = [...windVals.slice(0, activeCount)].sort((a, b) => b - a);
                                 const top10Count = Math.max(1, Math.floor(sortedActive.length * 0.1));
                                 const top10Mean = sortedActive.slice(0, top10Count).reduce((a, b) => a + b, 0) / top10Count;
-                                
+
                                 if (top10Mean - mW > 40) {
                                     dist.highIntensityUncertainty = true;
                                 }
@@ -1181,7 +1195,7 @@ export default function SpaghettiPlot() {
     useEffect(() => {
         const map = mapInstanceRef.current;
         if (!map || !layerGroupRef.current || !animLayerGroupRef.current) return;
-        
+
         if (viewMode === "tracker") {
             map.removeLayer(animLayerGroupRef.current);
             layerGroupRef.current.addTo(map);
@@ -1242,6 +1256,194 @@ export default function SpaghettiPlot() {
             });
         }
     }, [animHour, viewMode, activeDisturbanceId, status, meanOnlyIds]);
+
+    const exportGif = async () => {
+        if (!mapInstanceRef.current || !exportWrapperRef.current) return;
+        setIsExporting(true);
+        setExportProgress(0);
+        setIsPlaying(false);
+
+        const mapEl = exportWrapperRef.current;
+        const rect = mapEl.getBoundingClientRect();
+        
+        // Render DOM at 1x native scale for crisp text and map lines
+        const renderScale = 1; 
+        
+        // Target GIF size (downscale if larger than 1200px to prevent massive file sizes)
+        const maxGifWidth = 1200;
+        let captureWidth = Math.floor(rect.width);
+        let captureHeight = Math.floor(rect.height);
+        
+        if (rect.width > maxGifWidth) {
+            const ratio = maxGifWidth / rect.width;
+            captureWidth = maxGifWidth;
+            captureHeight = Math.floor(rect.height * ratio);
+        }
+
+        const gif = new GIF({
+            workers: 2,
+            quality: 5, // Improved color quantization quality
+            workerScript: gifWorkerUrl,
+            width: captureWidth,
+            height: captureHeight
+        });
+
+        // Ensure we are at hour 0
+        setAnimHour(0);
+        await new Promise(r => setTimeout(r, 400));
+
+        // Disable map controls to prevent user interaction during capture
+        mapInstanceRef.current.dragging.disable();
+        mapInstanceRef.current.scrollWheelZoom.disable();
+        if (mapInstanceRef.current.keyboard) mapInstanceRef.current.keyboard.disable();
+
+        try {
+            for (let h = 0; h <= maxAnimHour; h += 6) {
+                setAnimHour(h);
+                // Wait for React to apply state, useEffect to run, and Leaflet to render
+                await new Promise(r => setTimeout(r, 200)); 
+
+                setExportProgress((h / maxAnimHour) * 0.5); // First 50% is capturing
+
+                const canvas = await html2canvas(mapEl, {
+                    useCORS: true,
+                    allowTaint: false,
+                    scale: renderScale,
+                    backgroundColor: "#0f172a",
+                    logging: false,
+                    // Ignore Leaflet UI controls (zoom buttons, attributions)
+                    ignoreElements: (node) => node.classList && node.classList.contains('leaflet-control-container')
+                });
+
+                if (captureWidth !== Math.floor(rect.width)) {
+                    // High-quality downsampling using Canvas 2D
+                    const downscaledCanvas = document.createElement('canvas');
+                    downscaledCanvas.width = captureWidth;
+                    downscaledCanvas.height = captureHeight;
+                    const ctx = downscaledCanvas.getContext('2d');
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = "high";
+                    ctx.drawImage(canvas, 0, 0, captureWidth, captureHeight);
+                    gif.addFrame(downscaledCanvas, { delay: 200 });
+                } else {
+                    gif.addFrame(canvas, { delay: 200 });
+                }
+            }
+
+            gif.on('progress', p => {
+                setExportProgress(0.5 + p * 0.5); // Second 50% is encoding
+            });
+
+            gif.on('finished', blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `fnv3-ensemble-${Date.now()}.gif`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                setIsExporting(false);
+                setExportProgress(0);
+                
+                // Re-enable controls
+                mapInstanceRef.current.dragging.enable();
+                mapInstanceRef.current.scrollWheelZoom.enable();
+                if (mapInstanceRef.current.keyboard) mapInstanceRef.current.keyboard.enable();
+            });
+
+            gif.render();
+        } catch (err) {
+            console.error("GIF Export failed:", err);
+            setIsExporting(false);
+            setExportProgress(0);
+            mapInstanceRef.current.dragging.enable();
+            mapInstanceRef.current.scrollWheelZoom.enable();
+            if (mapInstanceRef.current.keyboard) mapInstanceRef.current.keyboard.enable();
+        }
+    };
+
+    const animationControlsNode = viewMode === "animation" && (
+        <div className="animation-controls-card">
+            <div className="flex justify-between items-center mb-3">
+                <div className="flex flex-col">
+                    <span className="text-sm font-bold text-cyan-400">Hour: +{animHour}</span>
+                    <span className="text-[11px] text-slate-300 font-mono mt-0.5">
+                        {runInitDate ? new Date(runInitDate.getTime() + animHour * 3600000).toISOString().replace('T', ' ').substring(0, 19) + ' UTC' : 'Loading...'}
+                    </span>
+                </div>
+                <button
+                    onClick={() => {
+                        if (animHour >= maxAnimHour) setAnimHour(0);
+                        setIsPlaying(!isPlaying);
+                    }}
+                    style={{
+                        background: isPlaying ? "rgba(239, 68, 68, 0.2)" : "rgba(16, 185, 129, 0.2)",
+                        border: `1px solid ${isPlaying ? "rgba(239, 68, 68, 0.5)" : "rgba(16, 185, 129, 0.5)"}`,
+                        color: isPlaying ? "#fca5a5" : "#6ee7b7",
+                        padding: "4px 12px",
+                        borderRadius: "4px",
+                        fontSize: "12px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                        transition: "all 0.2s"
+                    }}
+                >
+                    {isPlaying ? "⏸ Pause" : (animHour >= maxAnimHour ? "🔄 Restart" : "▶ Play")}
+                </button>
+            </div>
+            <input
+                type="range"
+                min="0"
+                max={maxAnimHour}
+                step="6"
+                value={animHour}
+                onChange={(e) => {
+                    setAnimHour(parseInt(e.target.value));
+                    if (isPlaying) setIsPlaying(false);
+                }}
+                style={{ width: "100%", accentColor: "#00d4ff", cursor: "pointer", marginBottom: "12px" }}
+            />
+            
+            <button
+                onClick={exportGif}
+                disabled={isExporting}
+                style={{
+                    width: "100%",
+                    background: isExporting ? "rgba(100, 116, 139, 0.5)" : "rgba(14, 165, 233, 0.2)",
+                    border: `1px solid ${isExporting ? "rgba(100, 116, 139, 0.5)" : "rgba(14, 165, 233, 0.5)"}`,
+                    color: isExporting ? "#cbd5e1" : "#7dd3fc",
+                    padding: "8px",
+                    borderRadius: "4px",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    cursor: isExporting ? "not-allowed" : "pointer",
+                    transition: "all 0.2s",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px"
+                }}
+            >
+                {isExporting ? (
+                    <>
+                        <div className="spinner" style={{ width: "12px", height: "12px", borderTopColor: "#fff" }} />
+                        <span>Exporting... {Math.round(exportProgress * 100)}%</span>
+                    </>
+                ) : (
+                    <>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        <span>Export as GIF</span>
+                    </>
+                )}
+            </button>
+            
+            {isExporting && (
+                <div style={{ marginTop: "8px", height: "4px", background: "rgba(0,0,0,0.5)", borderRadius: "2px", overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${exportProgress * 100}%`, background: "#00d4ff", transition: "width 0.2s ease-out" }} />
+                </div>
+            )}
+        </div>
+    );
 
     // ── Sidebar panel ─────────────────────────────────────────────────────
     const sidebarContent = (
@@ -1307,13 +1509,13 @@ export default function SpaghettiPlot() {
                 </h2>
                 <div className="segmented-control">
                     {[{ id: "tracker", label: "Tracker" },
-                      { id: "animation", label: "Animation" }]
+                    { id: "animation", label: "Animation" }]
                         .map(opt => (
                             <button
                                 key={opt.id}
                                 onClick={() => {
                                     setViewMode(opt.id);
-                                    if(opt.id === "animation" && !isPlaying && animHour === 0) setIsPlaying(true);
+                                    if (opt.id === "animation" && !isPlaying && animHour === 0) setIsPlaying(true);
                                 }}
                                 className={`segment-btn ${viewMode === opt.id ? "active primary" : ""}`}
                             >
@@ -1323,51 +1525,15 @@ export default function SpaghettiPlot() {
                 </div>
             </div>
 
-            {/* Animation Controls */}
-            {viewMode === "animation" && (
-                <div style={{ padding: "12px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(51, 65, 85, 0.5)", borderRadius: "8px", marginBottom: "16px" }}>
-                    <div className="flex justify-between items-center mb-3">
-                        <span className="text-sm font-bold text-cyan-400">Hour: +{animHour}</span>
-                        <button 
-                            onClick={() => {
-                                if (animHour >= maxAnimHour) setAnimHour(0);
-                                setIsPlaying(!isPlaying);
-                            }}
-                            style={{ 
-                                background: isPlaying ? "rgba(239, 68, 68, 0.2)" : "rgba(16, 185, 129, 0.2)", 
-                                border: `1px solid ${isPlaying ? "rgba(239, 68, 68, 0.5)" : "rgba(16, 185, 129, 0.5)"}`,
-                                color: isPlaying ? "#fca5a5" : "#6ee7b7", 
-                                padding: "4px 12px", 
-                                borderRadius: "4px", 
-                                fontSize: "12px", 
-                                fontWeight: "bold",
-                                cursor: "pointer",
-                                transition: "all 0.2s"
-                            }}
-                        >
-                            {isPlaying ? "⏸ Pause" : (animHour >= maxAnimHour ? "🔄 Restart" : "▶ Play")}
-                        </button>
-                    </div>
-                    <input 
-                        type="range" 
-                        min="0" 
-                        max={maxAnimHour} 
-                        step="6"
-                        value={animHour} 
-                        onChange={(e) => {
-                            setAnimHour(parseInt(e.target.value));
-                            if(isPlaying) setIsPlaying(false);
-                        }}
-                        style={{ width: "100%", accentColor: "#00d4ff", cursor: "pointer" }}
-                    />
-                </div>
-            )}
-
+            {/* Animation Controls (Desktop) */}
+            <div className="sidebar-animation-panel">
+                {animationControlsNode}
+            </div>
             {/* Dataset selector */}
             <div>
                 <h2 className="spaghetti-section-title">
                     <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
-                    Dataset
+                    FNV3 Dataset
                 </h2>
                 <div className="segmented-control">
                     {[{ id: "base", label: "Base" },
@@ -1421,7 +1587,7 @@ export default function SpaghettiPlot() {
 
             {/* Ensemble Mean Toggle */}
             {disturbances.some(d => d.hasEnsembleMean) && (
-                <div>
+                <div style={{ opacity: viewMode === "animation" ? 0.4 : 1, pointerEvents: viewMode === "animation" ? "none" : "auto", transition: "all 0.2s" }}>
                     <h2 className="spaghetti-section-title">
                         <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                         Ensemble Mean
@@ -1443,7 +1609,7 @@ export default function SpaghettiPlot() {
 
             {/* Detected disturbances */}
             {disturbances.length > 0 && (
-                <div>
+                <div style={{ opacity: viewMode === "animation" ? 0.4 : 1, pointerEvents: viewMode === "animation" ? "none" : "auto", transition: "all 0.2s" }}>
                     <h2 className="spaghetti-section-title">
                         <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                         Systems ({disturbances.length})
@@ -1632,7 +1798,29 @@ export default function SpaghettiPlot() {
                     </div>
                 )}
 
-                <div ref={mapRef} className="map-container" style={{ width: '100%', height: '100%', minHeight: '400px' }} />
+                <div ref={exportWrapperRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+                    <div ref={mapRef} className="map-container" style={{ width: '100%', height: '100%', minHeight: '400px' }} />
+                    
+                    {/* GIF Watermark Overlay (Visible in Animation Mode) */}
+                    {(viewMode === "animation" || isExporting) && (
+                        <div className="gif-watermark">
+                            <h3 className="gif-watermark-title">
+                                {dataset === 'large' ? 'Google Deepmind FNV3 1000 Ensemble Track' : 'Google Deepmind FNV3 50 Ensemble Track'}
+                            </h3>
+                            <div className="gif-watermark-row">
+                                <strong>Init:</strong> {runInitDate ? runInitDate.toISOString().replace('T', ' ').substring(0, 19) + ' UTC' : 'Loading...'}
+                            </div>
+                            <div className="gif-watermark-valid">
+                                <strong>Valid:</strong> {runInitDate ? new Date(runInitDate.getTime() + animHour * 3600000).toISOString().replace('T', ' ').substring(0, 19) + ' UTC' : 'Loading...'} <span style={{ color: '#38bdf8', marginLeft: '4px' }}>(+{animHour}h)</span>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Animation Controls (Mobile) */}
+                <div className="map-animation-panel">
+                    {animationControlsNode}
+                </div>
             </main>
         </div>
     );

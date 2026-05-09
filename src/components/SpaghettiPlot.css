@@ -41,6 +41,7 @@
   transition: all 0.2s ease;
   cursor: pointer;
 }
+
 .back-to-forecast:hover {
   color: var(--text-accent);
   border-color: var(--border-highlight);
@@ -75,13 +76,16 @@
 .spaghetti-sidebar::-webkit-scrollbar {
   width: 4px;
 }
+
 .spaghetti-sidebar::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .spaghetti-sidebar::-webkit-scrollbar-thumb {
   background-color: var(--border-color);
   border-radius: 20px;
 }
+
 .spaghetti-sidebar::-webkit-scrollbar-thumb:hover {
   background-color: var(--border-highlight);
 }
@@ -162,8 +166,15 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* Sections */
@@ -248,6 +259,7 @@
   color: var(--text-main);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
+
 .segment-btn.active.primary {
   background: linear-gradient(135deg, rgba(0, 212, 255, 0.8), rgba(0, 150, 255, 0.8));
   color: white;
@@ -303,7 +315,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Ensemble Mean Toggle */
@@ -467,7 +481,9 @@
 }
 
 @keyframes ping {
-  75%, 100% {
+
+  75%,
+  100% {
     transform: scale(2.5);
     opacity: 0;
   }
@@ -480,7 +496,7 @@
   border: 1px solid rgba(0, 0, 0, 0.5);
   position: relative;
   z-index: 10;
-  box-shadow: 0 0 8px rgba(0,0,0,0.5);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
 }
 
 .system-title {
@@ -805,8 +821,79 @@
   cursor: pointer;
 }
 
+/* GIF Watermark Overlay */
+.gif-watermark {
+  position: absolute;
+  top: 16px;
+  left: 60px;
+  /* Offset to avoid overlapping standard Leaflet controls */
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  padding: 12px 18px;
+  border-radius: 8px;
+  color: #fff;
+  font-family: var(--font-sans);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  /* Let clicks pass through */
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: all 0.3s ease;
+}
+
+.gif-watermark-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 900;
+  color: #00d4ff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.gif-watermark-row {
+  font-size: 15px;
+  color: #cbd5e1;
+  margin-top: 6px;
+}
+
+.gif-watermark-valid {
+  font-size: 17px;
+  color: #f8fafc;
+  font-weight: bold;
+  margin-top: 2px;
+}
+
+/* Animation Controls Card */
+.animation-controls-card {
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(51, 65, 85, 0.8);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.sidebar-animation-panel {
+  display: block;
+}
+
+.map-animation-panel {
+  display: none;
+}
+
 /* Media Queries for Mobile */
 @media (max-width: 1024px) {
+  .spaghetti-layout {
+    /* Account for the main site navbar on mobile so the page doesn't overflow */
+    height: calc(100dvh - 64px); 
+  }
+  
   .spaghetti-sidebar-container {
     position: fixed;
     top: 0;
@@ -814,24 +901,25 @@
     height: 100%;
     transform: translateX(-100%);
   }
-  
+
   .spaghetti-sidebar-container.open {
     transform: translateX(0);
   }
-  
+
   .mobile-overlay.open {
     display: block;
   }
-  
+
   .mobile-close-header {
     display: flex;
   }
-  
+
   .mobile-topbar {
     display: flex;
   }
-  
-  .map-loading-overlay, .map-container {
+
+  .map-loading-overlay,
+  .map-container {
     top: 44px;
   }
 
@@ -840,13 +928,59 @@
     margin-bottom: 1.5rem !important;
     margin-right: 0.75rem !important;
   }
+
   .leaflet-control-zoom a {
     width: 44px !important;
     height: 44px !important;
     line-height: 44px !important;
     font-size: 1.25rem !important;
   }
+
+  /* Mobile adjustments for GIF Watermark */
+  .gif-watermark {
+    top: 56px;
+    /* Below the 44px topbar */
+    left: 12px;
+    right: 12px;
+    /* Stretch across the screen */
+    padding: 10px 14px;
+  }
+
+  .gif-watermark-title {
+    font-size: 13px;
+    /* Prevent wrapping on narrow screens */
+  }
+
+  .gif-watermark-row {
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
+  .gif-watermark-valid {
+    font-size: 14px;
+    margin-top: 2px;
+  }
+
+  /* Show animation controls on map bottom instead of sidebar */
+  .sidebar-animation-panel {
+    display: none;
+  }
+  
+  .map-animation-panel {
+    display: block;
+    position: absolute;
+    bottom: 24px;
+    left: 12px;
+    right: 12px;
+    z-index: 1000;
+  }
+
+  .map-animation-panel .animation-controls-card {
+    margin-bottom: 0;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.8);
+  }
 }
+
 
 /* Leaflet zoom control styling (all viewports) */
 .leaflet-control-zoom {
