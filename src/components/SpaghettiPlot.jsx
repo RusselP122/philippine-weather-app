@@ -383,7 +383,7 @@ export default function SpaghettiPlot() {
         setStatusMsg("Parsing tracks…");
         const rawRows = rows.filter(r => (r.lead_time_hours !== undefined || r.lead_time !== undefined) && r.lat !== undefined);
         setRawRowCount(rawRows.length);
-        const maxHours = horizon === "5day" ? 120 : 360;
+        const maxHours = horizon === "5day" ? 120 : 312;
         setMaxAnimHour(maxHours);
 
         try {
