@@ -1266,23 +1266,24 @@ export default function SpaghettiPlot() {
         const mapEl = exportWrapperRef.current;
         const rect = mapEl.getBoundingClientRect();
         
-        // Render DOM at 1x native scale for crisp text and map lines
-        const renderScale = 1; 
+        // Use devicePixelRatio to ensure retina screens render sharp text
+        const dpr = window.devicePixelRatio || 2;
+        const renderScale = dpr; 
         
-        // Target GIF size (downscale if larger than 1200px to prevent massive file sizes)
-        const maxGifWidth = 1200;
-        let captureWidth = Math.floor(rect.width);
-        let captureHeight = Math.floor(rect.height);
+        // Target GIF size (scale up for retina, but cap at 1600px width)
+        let captureWidth = Math.floor(rect.width * dpr);
+        let captureHeight = Math.floor(rect.height * dpr);
+        const maxGifWidth = 1600;
         
-        if (rect.width > maxGifWidth) {
-            const ratio = maxGifWidth / rect.width;
+        if (captureWidth > maxGifWidth) {
+            const ratio = maxGifWidth / captureWidth;
             captureWidth = maxGifWidth;
-            captureHeight = Math.floor(rect.height * ratio);
+            captureHeight = Math.floor(captureHeight * ratio);
         }
 
         const gif = new GIF({
             workers: 2,
-            quality: 5, // Improved color quantization quality
+            quality: 2, // 1 is best, 10 is default. 2 gives excellent color accuracy for maps
             workerScript: gifWorkerUrl,
             width: captureWidth,
             height: captureHeight
@@ -1315,7 +1316,7 @@ export default function SpaghettiPlot() {
                     ignoreElements: (node) => node.classList && node.classList.contains('leaflet-control-container')
                 });
 
-                if (captureWidth !== Math.floor(rect.width)) {
+                if (canvas.width !== captureWidth || canvas.height !== captureHeight) {
                     // High-quality downsampling using Canvas 2D
                     const downscaledCanvas = document.createElement('canvas');
                     downscaledCanvas.width = captureWidth;
