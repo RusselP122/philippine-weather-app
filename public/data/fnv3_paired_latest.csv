@@ -5,6 +5,6 @@
 # Creative Commons Attribution International License, Version 4.0 (CC BY 4.0).
 # BEGIN DATA
 init_time,track_id,sample,valid_time,lead_time,lat,lon,minimum_sea_level_pressure_hpa,maximum_sustained_wind_speed_knots,radius_of_maximum_winds_km,radius_34_knot_winds_ne_km,radius_34_knot_winds_se_km,radius_34_knot_winds_sw_km,radius_34_knot_winds_nw_km,radius_50_knot_winds_ne_km,radius_50_knot_winds_se_km,radius_50_knot_winds_sw_km,radius_50_knot_winds_nw_km,radius_64_knot_winds_ne_km,radius_64_knot_winds_se_km,radius_64_knot_winds_sw_km,radius_64_knot_winds_nw_km
-2026-05-10 12:00:00,WP052026,-1,2026-05-10 12:00:00,0 days 00:00:00,10.3,131.0,1004.0,25.0,101.0,,,,,,,,,,,,
-2026-05-10 12:00:00,WP052026,-1,2026-05-10 18:00:00,0 days 06:00:00,10.5,131.23,1006.2,22.2,90.73770061677858,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
-2026-05-10 12:00:00,WP052026,-1,2026-05-11 00:00:00,0 days 12:00:00,10.99,130.81,1005.9,23.4,96.57042201968466,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-05-10 18:00:00,WP052026,-1,2026-05-10 18:00:00,0 days 00:00:00,10.7,130.5,1004.0,25.0,101.0,,,,,,,,,,,,
+2026-05-10 18:00:00,WP052026,-1,2026-05-11 00:00:00,0 days 06:00:00,11.0,130.85,1005.3,23.8,90.87250261819783,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-05-10 18:00:00,WP052026,-1,2026-05-11 06:00:00,0 days 12:00:00,11.23,130.32,1004.2,26.1,99.73685174686332,4.899619170779261,0.23145319317031213,0.0,0.007012054059985181,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
