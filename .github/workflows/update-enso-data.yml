@@ -8,7 +8,7 @@ on:
   # Run on a schedule — every 2nd Thursday of the month at 20:00 UTC (4:00 AM PHT next day)
   # The ENSO discussion page updates on the 2nd Thursday of each month
   schedule:
-    - cron: '0 20 8-14 * 4'  # Thursdays between the 8th-14th = 2nd Thursday
+    - cron: '0 20 * * 4'  # Runs every Thursday, but we filter to the 2nd Thursday in a step below
   
   # Allow manual trigger from GitHub Actions tab
   workflow_dispatch:
@@ -24,24 +24,43 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check if 2nd Thursday
+        id: check_date
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            DOM=$(date +%d)
+            if [ "$DOM" -ge 8 ] && [ "$DOM" -le 14 ]; then
+              echo "run_scraper=true" >> $GITHUB_OUTPUT
+            else
+              echo "run_scraper=false" >> $GITHUB_OUTPUT
+              echo "Today is not the 2nd Thursday of the month. Skipping."
+            fi
+          else
+            echo "run_scraper=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up Python
+        if: steps.check_date.outputs.run_scraper == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install Python dependencies
+        if: steps.check_date.outputs.run_scraper == 'true'
         run: pip install requests
 
       - name: Run ENSO scraper
+        if: steps.check_date.outputs.run_scraper == 'true'
         run: python enso_scrape.py
 
       - name: Check for data changes
+        if: steps.check_date.outputs.run_scraper == 'true'
         id: check_changes
         run: |
           git diff --quiet src/data/enso_data.json || echo "changed=true" >> $GITHUB_OUTPUT
 
       - name: Commit and push updated data
-        if: steps.check_changes.outputs.changed == 'true'
+        if: steps.check_date.outputs.run_scraper == 'true' && steps.check_changes.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

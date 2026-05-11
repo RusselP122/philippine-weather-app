@@ -890,7 +890,7 @@
   height: 12px;
   border-radius: 50%;
   border: 1px solid rgba(0, 0, 0, 0.5);
-  box-shadow: 0 0 4px rgba(0,0,0,0.3);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
 }
 
 /* Animation Controls Card */
@@ -917,9 +917,9 @@
 @media (max-width: 1024px) {
   .spaghetti-layout {
     /* Account for the main site navbar on mobile so the page doesn't overflow */
-    height: calc(100dvh - 64px); 
+    height: calc(100dvh - 64px);
   }
-  
+
   .spaghetti-sidebar-container {
     position: fixed;
     top: 0;
@@ -997,7 +997,7 @@
     font-size: 10px;
     gap: 3px;
   }
-  
+
   .gif-watermark-legend-color {
     width: 10px;
     height: 10px;
@@ -1007,7 +1007,7 @@
   .sidebar-animation-panel {
     display: none;
   }
-  
+
   .map-animation-panel {
     display: block;
     position: absolute;
@@ -1019,7 +1019,7 @@
 
   .map-animation-panel .animation-controls-card {
     margin-bottom: 0;
-    box-shadow: 0 -4px 24px rgba(0,0,0,0.8);
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.8);
   }
 }
 

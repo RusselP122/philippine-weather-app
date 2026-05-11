@@ -222,6 +222,7 @@ export default function SpaghettiPlot() {
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
     const [runInitDate, setRunInitDate] = useState(null);
+    const [showAnimControls, setShowAnimControls] = useState(true);
     const exportWrapperRef = useRef(null);
 
     // ── Init map once ─────────────────────────────────────────────────────
@@ -491,10 +492,8 @@ export default function SpaghettiPlot() {
                 }
 
                 // Animation objects
-                const animLine = L.polyline([], {
-                    color: "#00d4ff", weight: 2.5, opacity: 0.5,
-                    lineCap: "round", lineJoin: "round", noClip: true,
-                }).addTo(animLayerGroupRef.current);
+                // Animation objects - use a layer group for multi-colored animated segments
+                const animGroup = L.layerGroup().addTo(animLayerGroupRef.current);
 
                 const animMarker = L.circleMarker([0, 0], {
                     radius: 5, color: "white", weight: 1,
@@ -503,19 +502,27 @@ export default function SpaghettiPlot() {
 
                 animObjectsRef.current.push({
                     distId,
-                    line: animLine,
+                    group: animGroup,
                     marker: animMarker,
                     points: points
                 });
 
-                const line = L.polyline(latlngs, {
-                    color: "#00d4ff", weight: 2.5, opacity: 0.5,
-                    lineCap: "round", lineJoin: "round",
-                    noClip: true,
-                });
-                line.distId = distId;
-                line.defaultOpacity = 0.5;
-                line.addTo(layerGroupRef.current);
+                // Draw segments instead of a single polyline to allow multi-colored tracks
+                for (let i = 1; i < points.length; i++) {
+                    const p1 = points[i - 1];
+                    const p2 = points[i];
+                    const segment = L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
+                        color: windColor(p2.windKt), 
+                        weight: 2.5, 
+                        opacity: 0.5,
+                        lineCap: "round", 
+                        lineJoin: "round",
+                        noClip: true,
+                    });
+                    segment.distId = distId;
+                    segment.defaultOpacity = 0.5;
+                    segment.addTo(layerGroupRef.current);
+                }
 
                 for (const pt of points) {
                     const mark = L.circleMarker([pt.lat, pt.lon], {
@@ -1054,21 +1061,29 @@ export default function SpaghettiPlot() {
                         });
                     }
 
-                    // White outline for contrast
-                    const outline = L.polyline(meanLL, {
-                        color: "#ffffff", weight: 6, opacity: 0.3,
-                        lineCap: "round", lineJoin: "round", noClip: true,
-                    });
-                    outline.distId = dist.id;
-                    outline.addTo(meanLayerGroupRef.current);
+                    // Colored ensemble mean track segments
+                    for (let i = 1; i < meanPts.length; i++) {
+                        const p1 = meanPts[i - 1];
+                        const p2 = meanPts[i];
+                        
+                        // White outline for contrast (slightly wider than the colored line)
+                        L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
+                            color: "#ffffff", weight: 6, opacity: 0.3,
+                            lineCap: "round", lineJoin: "round", noClip: true,
+                        }).addTo(meanLayerGroupRef.current);
 
-                    // Black mean track line
-                    const meanLine = L.polyline(meanLL, {
-                        color: "#000000", weight: 4, opacity: 0.95,
-                        lineCap: "round", lineJoin: "round", noClip: true,
-                    });
-                    meanLine.distId = dist.id;
-                    meanLine.addTo(meanLayerGroupRef.current);
+                        // Colored segment
+                        const meanSeg = L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
+                            color: windColor(p2.windKt),
+                            weight: 4, 
+                            opacity: 0.95,
+                            lineCap: "round", 
+                            lineJoin: "round", 
+                            noClip: true,
+                        });
+                        meanSeg.distId = dist.id;
+                        meanSeg.addTo(meanLayerGroupRef.current);
+                    }
 
                     // Mean position dots colored by wind speed
                     for (const pt of meanPts) {
@@ -1238,14 +1253,28 @@ export default function SpaghettiPlot() {
             const hasEnded = animHour > maxTrackHour;
 
             const visiblePts = obj.points.filter(p => p.h <= animHour);
+            
+            // Clear existing segments in the group
+            obj.group.clearLayers();
+
             if (visiblePts.length === 0 || hidden || hasEnded) {
-                obj.line.setLatLngs([]);
                 obj.marker.setStyle({ opacity: 0, fillOpacity: 0 });
                 continue;
             }
 
-            const latlngs = visiblePts.map(p => [p.lat, p.lon]);
-            obj.line.setLatLngs(latlngs);
+            // Draw multi-colored segments for animation
+            for (let i = 1; i < visiblePts.length; i++) {
+                const p1 = visiblePts[i - 1];
+                const p2 = visiblePts[i];
+                L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
+                    color: windColor(p2.windKt),
+                    weight: 2.5,
+                    opacity: 0.5,
+                    lineCap: "round",
+                    lineJoin: "round",
+                    noClip: true,
+                }).addTo(obj.group);
+            }
 
             const lastPt = visiblePts[visiblePts.length - 1];
             obj.marker.setLatLng([lastPt.lat, lastPt.lon]);
@@ -1265,16 +1294,16 @@ export default function SpaghettiPlot() {
 
         const mapEl = exportWrapperRef.current;
         const rect = mapEl.getBoundingClientRect();
-        
+
         // Use devicePixelRatio to ensure retina screens render sharp text
         const dpr = window.devicePixelRatio || 2;
-        const renderScale = dpr; 
-        
+        const renderScale = dpr;
+
         // Target GIF size (scale up for retina, but cap at 1600px width)
         let captureWidth = Math.floor(rect.width * dpr);
         let captureHeight = Math.floor(rect.height * dpr);
         const maxGifWidth = 1600;
-        
+
         if (captureWidth > maxGifWidth) {
             const ratio = maxGifWidth / captureWidth;
             captureWidth = maxGifWidth;
@@ -1302,7 +1331,7 @@ export default function SpaghettiPlot() {
             for (let h = 0; h <= maxAnimHour; h += 6) {
                 setAnimHour(h);
                 // Wait for React to apply state, useEffect to run, and Leaflet to render
-                await new Promise(r => setTimeout(r, 200)); 
+                await new Promise(r => setTimeout(r, 200));
 
                 setExportProgress((h / maxAnimHour) * 0.5); // First 50% is capturing
 
@@ -1342,10 +1371,10 @@ export default function SpaghettiPlot() {
                 a.download = `fnv3-ensemble-${Date.now()}.gif`;
                 a.click();
                 URL.revokeObjectURL(url);
-                
+
                 setIsExporting(false);
                 setExportProgress(0);
-                
+
                 // Re-enable controls
                 mapInstanceRef.current.dragging.enable();
                 mapInstanceRef.current.scrollWheelZoom.enable();
@@ -1404,7 +1433,7 @@ export default function SpaghettiPlot() {
                 }}
                 style={{ width: "100%", accentColor: "#00d4ff", cursor: "pointer", marginBottom: "12px" }}
             />
-            
+
             <button
                 onClick={exportGif}
                 disabled={isExporting}
@@ -1437,7 +1466,7 @@ export default function SpaghettiPlot() {
                     </>
                 )}
             </button>
-            
+
             {isExporting && (
                 <div style={{ marginTop: "8px", height: "4px", background: "rgba(0,0,0,0.5)", borderRadius: "2px", overflow: "hidden" }}>
                     <div style={{ height: "100%", width: `${exportProgress * 100}%`, background: "#00d4ff", transition: "width 0.2s ease-out" }} />
@@ -1801,7 +1830,7 @@ export default function SpaghettiPlot() {
 
                 <div ref={exportWrapperRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
                     <div ref={mapRef} className="map-container" style={{ width: '100%', height: '100%', minHeight: '400px' }} />
-                    
+
                     {/* GIF Watermark Overlay (Visible in Animation Mode) */}
                     {(viewMode === "animation" || isExporting) && (
                         <div className="gif-watermark">
@@ -1814,7 +1843,7 @@ export default function SpaghettiPlot() {
                             <div className="gif-watermark-valid">
                                 <strong>Valid:</strong> {runInitDate ? new Date(runInitDate.getTime() + animHour * 3600000).toISOString().replace('T', ' ').substring(0, 19) + ' UTC' : 'Loading...'} <span style={{ color: '#38bdf8', marginLeft: '4px' }}>(+{animHour}h)</span>
                             </div>
-                            
+
                             <div className="gif-watermark-legend">
                                 {WIND_LEGEND.map(({ label, color }, idx) => {
                                     const acronyms = ["STY", "TY", "STS", "TS", "TD", "LPA"];
