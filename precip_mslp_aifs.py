@@ -155,12 +155,10 @@ def plot_frame(
     fig.text(left, y_top, "Philippine T/W", ha="left", va="bottom",
              fontsize=14, weight="bold", color="#888")
     fig.text(right, y_top,
-             "AIFS 6-hr Precip (mm), MSLP (hPa) & 1000\u2013500 mb Thickness (dam)",
+             "AIFS v2 6-hr Precip (mm), MSLP (hPa) & 1000\u2013500 mb Thickness (dam)",
              ha="right", va="bottom", fontsize=12, weight="bold", color="black")
-    fig.text(left, y_bottom, "Model: ECMWF AIFS (0.25\u00b0)", ha="left", va="bottom",
-             fontsize=11, color="black")
-    fig.text(left + 0.22, y_bottom, f"Forecast Hour: {fh_str}", ha="left",
-             va="bottom", fontsize=11, color="black")
+    fig.text(left, y_bottom, f"Model: ECMWF AIFS v2 (0.25\u00b0)   |   Forecast Hour: {fh_str}",
+             ha="left", va="bottom", fontsize=11, color="black")
     fig.text(right, y_bottom, f"Init: {init_str} / Valid: {valid_str}",
              ha="right", va="bottom", fontsize=11, color="black")
 
@@ -179,9 +177,9 @@ def plot_frame(
 # ═══════════════════════════════════════════════════════════════════════════
 
 def main():
-    print("\n=== AIFS 6-hr Precip Rate + MSLP + Thickness Generator ===\n")
+    print("\n=== AIFS v2 6-hr Precip Rate + MSLP + Thickness Generator ===\n")
 
-    client = Client(source="ecmwf", model="aifs-single", resol="0p25")
+    client = Client(source="azure", model="aifs-single", resol="0p25")
 
     steps = list(range(0, 361, 6))  # 0 … 360 (15 days)
 
@@ -250,7 +248,7 @@ def main():
             thick_grid = None
             pl_file = f"aifs_pl_{step:03d}.grib2"
             try:
-                client_pl = Client(source="ecmwf", model="aifs", resol="0p25")
+                client_pl = Client(source="azure", model="aifs-single", resol="0p25")
                 client_pl.retrieve(
                     step=step,
                     type="fc",
@@ -356,8 +354,8 @@ def main():
 
     # ── Metadata ──────────────────────────────────────────────────────────
     meta = {
-        "model": "ECMWF AIFS",
-        "source": "ECMWF Open Data",
+        "model": "ECMWF AIFS v2",
+        "source": "ECMWF Open Data via Azure",
         "generated_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
         "run_time": run_time_str,
         "animation_frames": valid_frames,

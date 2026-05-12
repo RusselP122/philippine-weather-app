@@ -501,11 +501,10 @@ def plot_rainfall(lons, lats, data, filename_id, init_time=None, valid_time_star
 
     # Top line
     fig.text(left, y_top, "Philippine T/W", ha='left', va='bottom', fontsize=14, weight='bold', color='#888')
-    fig.text(left + 0.22, y_top, title_center, ha='left', va='bottom', fontsize=14, weight='bold', color='black')
+    fig.text(right, y_top, title_center, ha='right', va='bottom', fontsize=14, weight='bold', color='black')
     
     # Bottom line
-    fig.text(left, y_bottom, sub_left, ha='left', va='bottom', fontsize=11, color='black')
-    fig.text(left + 0.22, y_bottom, sub_center, ha='left', va='bottom', fontsize=11, color='black')
+    fig.text(left, y_bottom, f"{sub_left}   |   {sub_center}", ha='left', va='bottom', fontsize=11, color='black')
     fig.text(right, y_bottom, sub_right, ha='right', va='bottom', fontsize=11, color='black')
     
     # Separator Line drawn perfectly from the left edge of the map to the right edge

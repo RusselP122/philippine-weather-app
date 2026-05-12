@@ -16,9 +16,9 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
 def fetch_and_plot_aifs():
-    print("--- Starting ECMWF AIFS Wind Generation (Cloud/Linux Mode) ---")
+    print("--- Starting ECMWF AIFS v2 Wind Generation (Cloud/Linux Mode) ---")
     try:
-        client = Client(source="ecmwf", model="aifs-single", resol="0p25")
+        client = Client(source="azure", model="aifs-single", resol="0p25")
 
         parameters = ['10u', '10v', 'msl']
         steps = list(range(0, 361, 6))  # 0, 6, 12, ..., 360 (15 days)
@@ -97,8 +97,8 @@ def fetch_and_plot_aifs():
 
         # Save Metadata
         meta_info = {
-            "model": "ECMWF AIFS",
-            "source": "ECMWF Open Data",
+            "model": "ECMWF AIFS v2",
+            "source": "ECMWF Open Data via Azure",
             "generated_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
             "run_time": run_time_str if 'run_time_str' in locals() else "Unknown",
             "animation_frames": valid_frames
@@ -155,8 +155,6 @@ def plot_wind_pressure(lats, lons, ws, u, v, msl, filename_id, init_time=None, v
     gl.ylabel_style = {'size': 10, 'color': '#333'}
 
     # --- Wind Speed Colormap ---
-    # 12 levels = 11 intervals. extend='max' adds 1 extension bin = 12 total.
-    # ListedColormap needs exactly 11 colors. set_over covers the extension.
     levels = [0, 20, 30, 40, 50, 60, 80, 100, 120, 150, 185, 220]
     cols = [
         '#ffffff00', '#dbeafe', '#93c5fd', '#3b82f6', '#22c55e',
@@ -204,7 +202,6 @@ def plot_wind_pressure(lats, lons, ws, u, v, msl, filename_id, init_time=None, v
     time_fmt = "%Hz %a, %b %d, %Y"
     init_str = init_time.strftime(time_fmt) if init_time else "Unknown"
     valid_str = valid_time.strftime(time_fmt) if valid_time else "Unknown"
-    fh_str = f"f{forecast_hour:03d}" if forecast_hour is not None else "f---"
 
     fig.canvas.draw()
     pos = ax.get_position()
@@ -213,10 +210,9 @@ def plot_wind_pressure(lats, lons, ws, u, v, msl, filename_id, init_time=None, v
     y_bottom = pos.y1 + 0.015
     y_line = pos.y1 + 0.005
 
-    fig.text(left, y_top, "Philippine T/W", ha='left', va='bottom', fontsize=14, weight='bold', color='#888888')
-    fig.text(right, y_top, "AIFS 10m Wind Speed (kph) & Mean Sea Level Pressure (hPa)", ha='right', va='bottom', fontsize=14, weight='bold', color='black')
-    fig.text(left, y_bottom, "Model: ECMWF AIFS (0.25\u00b0)", ha='left', va='bottom', fontsize=11, color='black')
-    fig.text(left + 0.22, y_bottom, f"Forecast Hour: {fh_str}", ha='left', va='bottom', fontsize=11, color='black')
+    fig.text(left, y_top, "Philippine T/W", ha='left', va='bottom', fontsize=16, weight='bold', color='#888')
+    fig.text(right, y_top, "AIFS v2 10m Wind Speed (kph) & Mean Sea Level Pressure (hPa)", ha='right', va='bottom', fontsize=14, weight='bold', color='black')
+    fig.text(left, y_bottom, f"Model: ECMWF AIFS v2 (0.25\u00b0)   |   Forecast Hour: f{forecast_hour:03d}", ha='left', va='bottom', fontsize=11, color='black')
     fig.text(right, y_bottom, f"Init: {init_str} / Valid: {valid_str}", ha='right', va='bottom', fontsize=11, color='black')
 
     sep = mlines.Line2D((left, right), (y_line, y_line), color='black', linewidth=1, transform=fig.transFigure)

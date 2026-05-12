@@ -216,10 +216,8 @@ def plot_frame(
     fig.text(right, y_top,
              "6-hr Precip (mm), MSLP (hPa) & 1000\u2013500 mb Thickness (dam)",
              ha="right", va="bottom", fontsize=12, weight="bold", color="black")
-    fig.text(left, y_bottom, "Model: GFS (0.25°)", ha="left", va="bottom",
-             fontsize=11, color="black")
-    fig.text(left + 0.22, y_bottom, f"Forecast Hour: {fh_str}", ha="left",
-             va="bottom", fontsize=11, color="black")
+    fig.text(left, y_bottom, f"Model: GFS (0.25\u00b0)   |   Forecast Hour: {fh_str}",
+             ha="left", va="bottom", fontsize=11, color="black")
     fig.text(right, y_bottom, f"Init: {init_str} / Valid: {valid_str}",
              ha="right", va="bottom", fontsize=11, color="black")
 

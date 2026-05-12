@@ -183,10 +183,8 @@ def plot_wind_frame(sub_lons, sub_lats, ws_kph, u_ms, v_ms, msl_hpa,
              ha="left",  va="bottom", fontsize=14, weight="bold", color="#888888")
     fig.text(right, y_top,    "GFS 10m Wind Speed (kph) & MSLP (hPa)",
              ha="right", va="bottom", fontsize=14, weight="bold", color="black")
-    fig.text(left,  y_bottom, "Model: GFS (0.25°)",
-             ha="left",  va="bottom", fontsize=11, color="black")
-    fig.text(left + 0.22, y_bottom, f"Forecast Hour: {fh_str}",
-             ha="left",  va="bottom", fontsize=11, color="black")
+    fig.text(left, y_bottom, f"Model: GFS (0.25\u00b0)   |   Forecast Hour: {fh_str}",
+             ha="left", va="bottom", fontsize=11, color="black")
     fig.text(right, y_bottom, f"Init: {init_str} / Valid: {valid_str}",
              ha="right", va="bottom", fontsize=11, color="black")
 
