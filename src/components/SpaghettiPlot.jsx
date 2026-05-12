@@ -223,6 +223,8 @@ export default function SpaghettiPlot() {
     const [exportProgress, setExportProgress] = useState(0);
     const [runInitDate, setRunInitDate] = useState(null);
     const [showAnimControls, setShowAnimControls] = useState(true);
+    const [showAllSystems, setShowAllSystems] = useState(false);
+    const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
     const exportWrapperRef = useRef(null);
 
     // ── Init map once ─────────────────────────────────────────────────────
@@ -312,6 +314,23 @@ export default function SpaghettiPlot() {
             mapInstanceRef.current = null;
         };
     }, []);
+
+    // Handle map resize when sidebar toggles
+    useEffect(() => {
+        if (!mapInstanceRef.current) return;
+        
+        // Invalidate immediately in case it's a fast jump
+        mapInstanceRef.current.invalidateSize();
+        
+        // And invalidate after the CSS transition (0.3s) finishes
+        const timeoutId = setTimeout(() => {
+            if (mapInstanceRef.current) {
+                mapInstanceRef.current.invalidateSize({ animate: true });
+            }
+        }, 300);
+
+        return () => clearTimeout(timeoutId);
+    }, [desktopSidebarOpen, sidebarOpen]);
 
     // ── Fetch + draw when horizon changes or map is ready ─────────────────
     const loadData = useCallback(async () => {
@@ -507,22 +526,14 @@ export default function SpaghettiPlot() {
                     points: points
                 });
 
-                // Draw segments instead of a single polyline to allow multi-colored tracks
-                for (let i = 1; i < points.length; i++) {
-                    const p1 = points[i - 1];
-                    const p2 = points[i];
-                    const segment = L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
-                        color: windColor(p2.windKt), 
-                        weight: 2.5, 
-                        opacity: 0.5,
-                        lineCap: "round", 
-                        lineJoin: "round",
-                        noClip: true,
-                    });
-                    segment.distId = distId;
-                    segment.defaultOpacity = 0.5;
-                    segment.addTo(layerGroupRef.current);
-                }
+                const line = L.polyline(latlngs, {
+                    color: "#00d4ff", weight: 2.5, opacity: 0.5,
+                    lineCap: "round", lineJoin: "round",
+                    noClip: true,
+                });
+                line.distId = distId;
+                line.defaultOpacity = 0.5;
+                line.addTo(layerGroupRef.current);
 
                 for (const pt of points) {
                     const mark = L.circleMarker([pt.lat, pt.lon], {
@@ -1491,14 +1502,23 @@ export default function SpaghettiPlot() {
                     <h1 className="spaghetti-title">
                         Ensemble Tracker
                     </h1>
-                    <span className={`spaghetti-status-badge ${status === "ok" ? "status-ok" :
-                        status === "loading" ? "status-loading" :
-                            status === "none" ? "status-none" :
-                                status === "error" ? "status-error" :
-                                    "status-none"
-                        }`}>
-                        {status === "ok" ? "Live" : status === "loading" ? "…" : status === "none" ? "Quiet" : status === "error" ? "Err" : "–"}
-                    </span>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <span className={`spaghetti-status-badge ${status === "ok" ? "status-ok" :
+                            status === "loading" ? "status-loading" :
+                                status === "none" ? "status-none" :
+                                    status === "error" ? "status-error" :
+                                        "status-none"
+                            }`}>
+                            {status === "ok" ? "Live" : status === "loading" ? "…" : status === "none" ? "Quiet" : status === "error" ? "Err" : "–"}
+                        </span>
+                        <button 
+                            className="desktop-sidebar-close-btn" 
+                            onClick={() => setDesktopSidebarOpen(false)}
+                            title="Hide Sidebar"
+                        >
+                            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+                        </button>
+                    </div>
                 </div>
                 <p className="spaghetti-subtitle">
                     {status === "loading" ? statusMsg :
@@ -1645,7 +1665,7 @@ export default function SpaghettiPlot() {
                         Systems ({disturbances.length})
                     </h2>
                     <div className="systems-list">
-                        {disturbances.map(d => (
+                        {(showAllSystems ? disturbances : disturbances.slice(0, 3)).map(d => (
                             <div
                                 key={d.id}
                                 onClick={() => {
@@ -1761,6 +1781,14 @@ export default function SpaghettiPlot() {
                                 </div>
                             </div>
                         ))}
+                        {disturbances.length > 3 && (
+                            <button 
+                                className="see-more-systems-btn"
+                                onClick={() => setShowAllSystems(!showAllSystems)}
+                            >
+                                {showAllSystems ? "See Less" : `See More (${disturbances.length - 3} more)`}
+                            </button>
+                        )}
                     </div>
                 </div>
             )}
@@ -1794,7 +1822,7 @@ export default function SpaghettiPlot() {
             <div className={`mobile-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
 
             {/* Sidebar */}
-            <aside className={`spaghetti-sidebar-container ${sidebarOpen ? 'open' : ''}`}>
+            <aside className={`spaghetti-sidebar-container ${sidebarOpen ? 'open' : ''} ${!desktopSidebarOpen ? 'desktop-collapsed' : ''}`}>
                 <div className="mobile-close-header">
                     <span className="mobile-close-title">Controls</span>
                     <button onClick={() => setSidebarOpen(false)} className="mobile-close-btn">
@@ -1808,6 +1836,16 @@ export default function SpaghettiPlot() {
 
             {/* Map */}
             <main className="spaghetti-main">
+                {!desktopSidebarOpen && (
+                    <button 
+                        className="desktop-sidebar-toggle-btn"
+                        onClick={() => setDesktopSidebarOpen(true)}
+                        title="Show Sidebar"
+                    >
+                        <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                    </button>
+                )}
+
                 {/* Mobile top bar */}
                 <div className="mobile-topbar">
                     <button onClick={() => setSidebarOpen(true)} className="mobile-menu-btn">

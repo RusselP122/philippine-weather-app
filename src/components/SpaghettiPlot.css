@@ -405,6 +405,26 @@
   overflow: hidden;
 }
 
+.see-more-systems-btn {
+  width: 100%;
+  padding: 0.5rem;
+  border-radius: 8px;
+  background: rgba(0, 212, 255, 0.1);
+  color: var(--text-accent);
+  border: 1px dashed var(--border-highlight);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  margin-top: 0.25rem;
+}
+
+.see-more-systems-btn:hover {
+  background: rgba(0, 212, 255, 0.2);
+  border-style: solid;
+}
+
 .system-card:hover {
   background: var(--bg-elevated);
   border-color: var(--border-highlight);
@@ -1058,4 +1078,64 @@
 /* Ensure pinch-zoom works on touch devices */
 .leaflet-container {
   touch-action: manipulation;
+}
+
+/* Desktop Sidebar Toggle */
+.desktop-sidebar-close-btn {
+  display: none;
+}
+
+.desktop-sidebar-toggle-btn {
+  display: none;
+}
+
+@media (min-width: 1025px) {
+  .desktop-sidebar-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .desktop-sidebar-close-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-main);
+  }
+
+  .desktop-sidebar-toggle-btn {
+    display: flex;
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    z-index: 1000;
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    color: var(--text-main);
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    transition: all 0.2s ease;
+  }
+  
+  .desktop-sidebar-toggle-btn:hover {
+    background: rgba(0, 212, 255, 0.15);
+    color: var(--text-accent);
+    border-color: var(--border-highlight);
+  }
+
+  .spaghetti-sidebar-container.desktop-collapsed {
+    margin-left: -320px;
+    visibility: hidden;
+  }
 }
