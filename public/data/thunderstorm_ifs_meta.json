@@ -1,0 +1,20 @@
+{
+  "model": "ECMWF IFS v2",
+  "source": "ECMWF Open Data via Azure",
+  "generated_at": "2026-05-13 02:11 PM",
+  "run_time": "2026-05-12 12:00 UTC",
+  "animation_frames": {
+    "ph": [
+      "ifs_thunderstorm_ph_024"
+    ],
+    "luzon": [
+      "ifs_thunderstorm_luzon_024"
+    ],
+    "visayas": [
+      "ifs_thunderstorm_visayas_024"
+    ],
+    "mindanao": [
+      "ifs_thunderstorm_mindanao_024"
+    ]
+  }
+}

@@ -1,0 +1,61 @@
+name: Update ECMWF IFS v2 Precipitation Maps
+
+on:
+  schedule:
+    # Runs at 02:30, 08:30, 14:30, 20:30 UTC
+    # ECMWF Open Data is typically available ~7-9h after initialization
+    - cron: '30 2,8,14,20 * * *'
+  workflow_dispatch:
+
+jobs:
+  update-ifs-precip:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libgeos-dev libproj-dev proj-data proj-bin libeccodes-dev
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install matplotlib cartopy numpy pandas scipy xarray cfgrib ecmwf-opendata
+
+      - name: Run ECMWF IFS Precipitation generator
+        run: python thunderstorm_ifs.py
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Stage output images and metadata
+          git add -f public/images/thunderstorm_ifs/*.png || true
+          git add -f public/data/thunderstorm_ifs_meta.json || true
+
+          # Commit only if something changed
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Auto-update ECMWF IFS v2 Precipitation maps [skip ci]"
+
+            # Retry push up to 5 times to handle transient GitHub errors
+            for i in 1 2 3 4 5; do
+              echo "Push attempt $i..."
+              git pull --rebase origin main
+              git push && echo "Push successful!" && break
+              echo "Push failed (attempt $i). Retrying..."
+              sleep $((15 * i))
+            done
+          fi

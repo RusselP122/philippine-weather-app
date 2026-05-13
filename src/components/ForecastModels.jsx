@@ -5,6 +5,7 @@ const ForecastModels = () => {
     const [activeParam, setActiveParam] = useState("rainfall");
     const [activeModel, setActiveModel] = useState("gfs"); // "gfs" | "aifs"
     const [rainfallView, setRainfallView] = useState("daily"); // 'daily' | '24h' | '3d' | '7d'
+    const [thunderstormRegion, setThunderstormRegion] = useState("ph");
     const [metadata, setMetadata] = useState(null);
     const [frameIndex, setFrameIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -17,6 +18,7 @@ const ForecastModels = () => {
         if (activeParam === "rainfall") url = "/data/rainfall_meta.json";
         else if (activeParam === "wind") url = "/data/wind_meta.json";
         else if (activeParam === "wind_gfs") url = "/data/wind_gfs_meta.json";
+        else if (activeParam === "thunderstorm") url = "/data/thunderstorm_ifs_meta.json";
         else if (activeParam === "precip_mslp")
             url = activeModel === "aifs" ? "/data/precip_mslp_aifs_meta.json" : "/data/precip_mslp_meta.json";
 
@@ -26,11 +28,16 @@ const ForecastModels = () => {
             .then(data => {
                 setMetadata(data);
                 if (data.animation_frames) {
-                    data.animation_frames.forEach(frame => {
+                    let framesList = data.animation_frames || [];
+                    if (activeParam === "thunderstorm") {
+                        framesList = data.animation_frames[thunderstormRegion] || [];
+                    }
+                    framesList.forEach(frame => {
                         const img = new Image();
                         let folder = "rainfall";
                         if (activeParam === "wind") folder = "wind";
                         else if (activeParam === "wind_gfs") folder = "wind_gfs";
+                        else if (activeParam === "thunderstorm") folder = "thunderstorm_ifs";
                         else if (activeParam === "precip_mslp")
                             folder = activeModel === "aifs" ? "precip_mslp_aifs" : "precip_mslp";
                         img.src = `/images/${folder}/${frame}.png?t=${imageTimestamp}`;
@@ -40,12 +47,16 @@ const ForecastModels = () => {
             .catch(err => console.error("Failed to load metadata", err));
         setFrameIndex(0);
         setIsPlaying(false);
-    }, [activeParam, activeModel, imageTimestamp]);
+    }, [activeParam, activeModel, imageTimestamp, thunderstormRegion]);
 
-    const frames = metadata?.animation_frames || [];
+    const frames = activeParam === "thunderstorm" 
+        ? (metadata?.animation_frames?.[thunderstormRegion] || []) 
+        : (metadata?.animation_frames || []);
     const currentFrameName = frames[frameIndex] || "";
 
     const isStaticRainfall = activeParam === "rainfall" && rainfallView !== "daily";
+    const isStaticPrecip = activeParam === "thunderstorm";
+    const isTimelineDisabled = isStaticRainfall || isStaticPrecip;
 
     let imagePath = "";
     if (isStaticRainfall) {
@@ -56,6 +67,8 @@ const ForecastModels = () => {
         imagePath = `/images/wind/${currentFrameName}.png`;
     } else if (activeParam === "wind_gfs" && currentFrameName) {
         imagePath = `/images/wind_gfs/${currentFrameName}.png`;
+    } else if (activeParam === "thunderstorm" && currentFrameName) {
+        imagePath = `/images/thunderstorm_ifs/${currentFrameName}.png`;
     } else if (activeParam === "precip_mslp" && currentFrameName) {
         const folder = activeModel === "aifs" ? "precip_mslp_aifs" : "precip_mslp";
         imagePath = `/images/${folder}/${currentFrameName}.png`;
@@ -63,7 +76,7 @@ const ForecastModels = () => {
 
     let stepHours = 0;
     let dayNum = 1;
-    if ((activeParam === "wind" || activeParam === "wind_gfs" || activeParam === "precip_mslp") && currentFrameName) {
+    if ((activeParam === "wind" || activeParam === "wind_gfs" || activeParam === "precip_mslp" || activeParam === "thunderstorm") && currentFrameName) {
         stepHours = parseInt(currentFrameName.split('_').pop(), 10) || 0;
         dayNum = Math.floor(stepHours / 24) + 1;
     } else if (activeParam === "rainfall" && currentFrameName) {
@@ -71,15 +84,15 @@ const ForecastModels = () => {
         dayNum = parseInt(parts[2], 10) || 1;
         stepHours = Math.min(dayNum * 24, 168);
     }
-    // Max days per param/model for slider labels
     const maxDays =
+        activeParam === "thunderstorm" ? 1 :
         activeParam === "wind_gfs" ? 16 :
             activeParam === "wind" ? 15 :
                 activeParam === "precip_mslp" ? (activeModel === "aifs" ? 15 : 16) : 7;
 
     useEffect(() => {
         let interval;
-        if (isPlaying && frames.length > 0 && !isStaticRainfall) {
+        if (isPlaying && frames.length > 0 && !isTimelineDisabled) {
             const fps = (activeParam === "wind" || activeParam === "wind_gfs") ? 5 : 2;
             interval = setInterval(() => {
                 setFrameIndex(prev => (prev + 1) % frames.length);
@@ -153,6 +166,38 @@ const ForecastModels = () => {
                                     <button onClick={() => { setActiveParam("precip_mslp"); setActiveModel("gfs"); setSidebarOpen(false); }} className={itemClass(activeParam === "precip_mslp" && activeModel === "gfs")}>
                                         🌀 6h Precip + MSLP
                                     </button>
+                                </div>
+                            )}
+
+                            <button
+                                onClick={() => setExpandedGroup(expandedGroup === "ifs" ? null : "ifs")}
+                                className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-slate-200 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer mt-1"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
+                                    </svg>
+                                    <span>ECMWF IFS v2</span>
+                                </div>
+                                <svg className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${expandedGroup === "ifs" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+
+                            {expandedGroup === "ifs" && (
+                                <div className="mt-1 ml-4 border-l border-slate-700 space-y-0.5 pb-1">
+                                    <button onClick={() => { setActiveParam("thunderstorm"); setActiveModel("ifs"); setSidebarOpen(false); }} className={itemClass(activeParam === "thunderstorm")}>
+                                        🌧️ Accumulated Precipitation
+                                    </button>
+                                    {activeParam === "thunderstorm" && (
+                                        <div className="ml-6 grid grid-cols-2 gap-1 py-1 pr-2">
+                                            {[{ id: "ph", label: "National" }, { id: "luzon", label: "Luzon" }, { id: "visayas", label: "Visayas" }, { id: "mindanao", label: "Mindanao" }].map(v => (
+                                                <button key={v.id} onClick={() => { setThunderstormRegion(v.id); setIsPlaying(false); }}
+                                                    className={`text-[9px] font-bold py-1 rounded cursor-pointer transition border ${thunderstormRegion === v.id ? "bg-cyan-600 text-white border-cyan-500" : "bg-slate-900 text-slate-500 border-slate-700 hover:text-white"}`}
+                                                >{v.label}</button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -248,7 +293,9 @@ const ForecastModels = () => {
                                 ? `6h Precip Rate + MSLP + Thickness · ${activeModel === "aifs" ? "ECMWF AIFS" : "GFS"}`
                                 : activeParam === "wind_gfs"
                                     ? "Wind & MSLP · GFS 0.25°"
-                                    : "Wind & MSLP · ECMWF AIFS"}
+                                    : activeParam === "thunderstorm"
+                                        ? "Accumulated Precipitation · ECMWF IFS v2"
+                                        : "Wind & MSLP · ECMWF AIFS"}
                     </span>
                 </div>
 
@@ -282,8 +329,8 @@ const ForecastModels = () => {
                     {/* Play Button */}
                     <button
                         onClick={togglePlay}
-                        disabled={isStaticRainfall}
-                        className={`w-10 h-10 lg:w-12 lg:h-12 rounded-full flex-shrink-0 flex items-center justify-center text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-transform hover:scale-105 cursor-pointer ${isStaticRainfall ? "bg-slate-700 opacity-40 cursor-not-allowed" : "bg-cyan-600 hover:bg-cyan-500"
+                        disabled={isTimelineDisabled}
+                        className={`w-10 h-10 lg:w-12 lg:h-12 rounded-full flex-shrink-0 flex items-center justify-center text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-transform hover:scale-105 cursor-pointer ${isTimelineDisabled ? "bg-slate-700 opacity-40 cursor-not-allowed" : "bg-cyan-600 hover:bg-cyan-500"
                             }`}
                     >
                         {isPlaying ? <Pause className="h-4 w-4 lg:h-5 lg:w-5" /> : <Play className="h-4 w-4 lg:h-5 lg:w-5 ml-0.5" />}
@@ -297,7 +344,7 @@ const ForecastModels = () => {
                                 : "Loading"}
                         </div>
                         <div className="text-[9px] lg:text-[10px] text-cyan-400 font-mono uppercase tracking-wider">
-                            T {(activeParam === "wind" || activeParam === "wind_gfs" || activeParam === "precip_mslp") ? `+${stepHours}h` : `day ${dayNum}`}
+                            T {(activeParam === "wind" || activeParam === "wind_gfs" || activeParam === "precip_mslp" || activeParam === "thunderstorm") ? `+${stepHours}h` : `day ${dayNum}`}
                         </div>
                     </div>
 
@@ -315,12 +362,12 @@ const ForecastModels = () => {
                             min="0"
                             max={Math.max(0, frames.length - 1)}
                             value={frameIndex}
-                            disabled={isStaticRainfall}
+                            disabled={isTimelineDisabled}
                             onChange={(e) => {
                                 setFrameIndex(parseInt(e.target.value));
                                 setIsPlaying(false);
                             }}
-                            className={`w-full h-2 lg:h-2.5 rounded-lg appearance-none focus:outline-none accent-cyan-500 transition-colors ${isStaticRainfall
+                            className={`w-full h-2 lg:h-2.5 rounded-lg appearance-none focus:outline-none accent-cyan-500 transition-colors ${isTimelineDisabled
                                 ? "bg-slate-800 opacity-30 cursor-not-allowed"
                                 : "bg-slate-700 cursor-pointer group-hover:bg-slate-600"
                                 }`}
