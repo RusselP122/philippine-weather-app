@@ -2,11 +2,11 @@
   "current_status": "Neutral",
   "phase": "Neutral",
   "intensity": "",
-  "alert_status": "Final La Ni\u00f1a Advisory /",
-  "latest_value": -0.2,
-  "trend": "Cooling",
-  "advisory": "Synopsis: ENSO-neutral conditions are present and are favored through April-June 2026 (80% chance). In May-July 2026, El Ni\u00f1o is likely to emerge (61% chance) and persist through at least the end of 2026.",
+  "alert_status": "El Ni\u00f1o Watch",
+  "latest_value": 0.4,
+  "trend": "Warming",
+  "advisory": "Synopsis: El Ni\u00f1o is likely to emerge soon (82% chance in May-July 2026) and continue through Northern Hemisphere winter 2026-27 (96% chance in December 2026-February 2027).",
   "forecast_image": "https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/figure07.gif",
-  "forecast_summary": "ENSO-neutral conditions are currently present with the Ni\u00f1o-3.4 index at -0.2\u00b0C. Models suggest a possibility of El Ni\u00f1o conditions developing later in the year. The probability chart below shows the seasonal forecast for La Ni\u00f1a (blue), Neutral (grey), and El Ni\u00f1o (red) conditions through the end of the year.",
-  "last_updated": "2026-05-13 06:29:28"
+  "forecast_summary": "ENSO-neutral conditions are currently present with the Ni\u00f1o-3.4 index at 0.4\u00b0C. Models suggest a possibility of El Ni\u00f1o conditions developing later in the year. The probability chart below shows the seasonal forecast for La Ni\u00f1a (blue), Neutral (grey), and El Ni\u00f1o (red) conditions through the end of the year.",
+  "last_updated": "2026-05-14 21:02:18"
 }
