@@ -74,6 +74,10 @@ const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
     const fnv3Large5Day = isMidnight ? `/assets/fnv3_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/fnv3_tropical_cyclone_5day_forecast_${modelTime}.png`;
     const fnv3Large15Day = isMidnight ? `/assets/fnv3_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/fnv3_tropical_cyclone_15day_forecast_${modelTime}.png`;
 
+    // ECMWF IFS Ensemble Tracks (ifs_ prefix)
+    const ifs5Day = isMidnight ? `/assets/ifs_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/ifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const ifs15Day = isMidnight ? `/assets/ifs_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/ifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
+
     return [
       {
         id: `fnv3-base-5day-${modelTime}`,
@@ -106,6 +110,22 @@ const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
         label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
         modelTime,
         imageSrc: fnv3Large15Day,
+      },
+      {
+        id: `ifs-5day-${modelTime}`,
+        type: "5day",
+        model: "ifs",
+        label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
+        modelTime,
+        imageSrc: ifs5Day,
+      },
+      {
+        id: `ifs-15day-${modelTime}`,
+        type: "15day",
+        model: "ifs",
+        label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
+        modelTime,
+        imageSrc: ifs15Day,
       },
     ];
   })
@@ -216,6 +236,15 @@ const Forecast = () => {
               >
                 FNV3 Large Ensemble
               </button>
+              <button
+                onClick={() => setSelectedModel("ifs")}
+                className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${selectedModel === "ifs"
+                  ? "bg-slate-700 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                  }`}
+              >
+                ECMWF IFS
+              </button>
             </div>
 
             <div className="w-full flex flex-col items-start md:items-end">
@@ -233,7 +262,7 @@ const Forecast = () => {
                 </select>
               ) : (
                 <span className="text-xs text-slate-500 py-2">
-                  No images available for {selectedModel === "fnv3_base" ? "GDM-FNV3" : "Large Ensemble"} today.
+                  No images available for {selectedModel === "fnv3_base" ? "GDM-FNV3" : selectedModel === "ifs" ? "ECMWF IFS" : "Large Ensemble"} today.
                 </span>
               )}
             </div>
@@ -285,7 +314,7 @@ const Forecast = () => {
                 <div className="flex justify-between gap-4">
                   <dt className="text-slate-500">Model source</dt>
                   <dd className="text-right">
-                    {selectedModel === "fnv3_base" ? "GDM-FNV3 Ensemble" : "GDM-FNV3 Large Ensemble"}
+                    {selectedModel === "fnv3_base" ? "GDM-FNV3 Ensemble" : selectedModel === "ifs" ? "ECMWF IFS Ensemble" : "GDM-FNV3 Large Ensemble"}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4">

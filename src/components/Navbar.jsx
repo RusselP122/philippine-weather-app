@@ -43,7 +43,6 @@ const Navbar = () => {
         { label: "Forecast Models", href: "/forecast-models" },
         { label: "Alert", href: "/alert" },
         { label: "ENSO Monitor", href: "/enso" },
-        { label: "Lightning Detection", href: "/lightning" },
       ]
     },
     {

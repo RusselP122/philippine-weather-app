@@ -64,6 +64,7 @@ const LOCAL_CSV = {
     large: "/data/fnv3_large_latest.csv",
     basePaired: "/data/fnv3_paired_latest.csv",
     largePaired: "/data/fnv3_large_paired_latest.csv",
+    ifs: "/data/ifs_tc_latest.csv",
 };
 
 // ── PAR boundary ──────────────────────────────────────────────────────────
@@ -399,7 +400,10 @@ export default function SpaghettiPlot() {
             runInitTime = rows[0].init_time;
         }
 
-        setRunLabel(isLarge ? `FNV3 Large Ensemble \u00b7 ${runInitTime}` : `FNV3 Base \u00b7 ${runInitTime}`);
+        let labelStr = "FNV3 Base";
+        if (isLarge) labelStr = "FNV3 Large Ens";
+        if (dataset === "ifs") labelStr = "ECMWF IFS Ens";
+        setRunLabel(`${labelStr} \u00b7 ${runInitTime}`);
         setStatusMsg("Parsing tracks…");
         const rawRows = rows.filter(r => (r.lead_time_hours !== undefined || r.lead_time !== undefined) && r.lat !== undefined);
         setRawRowCount(rawRows.length);
@@ -1583,11 +1587,12 @@ export default function SpaghettiPlot() {
             <div>
                 <h2 className="spaghetti-section-title">
                     <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
-                    FNV3 Dataset
+                    Dataset
                 </h2>
                 <div className="segmented-control">
-                    {[{ id: "base", label: "Base" },
-                    { id: "large", label: "Large Ens" }]
+                    {[{ id: "base", label: "FNV3 Base" },
+                    { id: "large", label: "FNV3 Large" },
+                    { id: "ifs", label: "ECMWF IFS" }]
                         .map(opt => (
                             <button
                                 key={opt.id}
@@ -1809,7 +1814,7 @@ export default function SpaghettiPlot() {
             <div className="spaghetti-footer">
                 <p className="spaghetti-footer-text">
                     Powered by <strong className="spaghetti-footer-highlight">Philippine Typhoon/Weather</strong><br />
-                    Data: GDM FNV3 Ensemble<br />
+                    Data: {dataset === "ifs" ? "ECMWF IFS Ensemble" : "GDM FNV3 Ensemble"}<br />
                     Consult official agencies for guidance.
                 </p>
             </div>
@@ -1854,7 +1859,7 @@ export default function SpaghettiPlot() {
                         </svg>
                     </button>
                     <span className="mobile-title">
-                        GDM FNV3 · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
+                        {dataset === "ifs" ? "ECMWF IFS" : "GDM FNV3"} · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
                     </span>
                 </div>
 
@@ -1873,7 +1878,7 @@ export default function SpaghettiPlot() {
                     {(viewMode === "animation" || isExporting) && (
                         <div className="gif-watermark">
                             <h3 className="gif-watermark-title">
-                                {dataset === 'large' ? 'Google Deepmind FNV3 1000 Ensemble Track' : 'Google Deepmind FNV3 50 Ensemble Track'}
+                                {dataset === 'ifs' ? 'ECMWF IFS Ensemble Track' : (dataset === 'large' ? 'Google Deepmind FNV3 1000 Ensemble Track' : 'Google Deepmind FNV3 50 Ensemble Track')}
                             </h3>
                             <div className="gif-watermark-row">
                                 <strong>Init:</strong> {runInitDate ? runInitDate.toISOString().replace('T', ' ').substring(0, 19) + ' UTC' : 'Loading...'}

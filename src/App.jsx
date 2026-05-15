@@ -18,7 +18,7 @@ import ForecastModels from "./components/ForecastModels";
 import SpaghettiPlot from "./components/SpaghettiPlot";
 import Footer from "./components/Footer";
 import EnsoMonitor from "./components/EnsoMonitor";
-import LightningDetection from "./components/LightningDetection";
+
 import StrikeProbability from "./components/StrikeProbability";
 import TropicalCyclonePrediction from "./components/TropicalCyclonePrediction";
 
@@ -208,17 +208,6 @@ function AppContent() {
     );
   }
 
-  if (path === "/lightning") {
-    return (
-      <div className="min-h-screen flex flex-col bg-slate-950">
-        <Navbar />
-        <main className="flex-grow">
-          <LightningDetection />
-        </main>
-        <Footer />
-      </div>
-    );
-  }
 
   if (path === "/strike-probability") {
     return (

@@ -139,31 +139,6 @@ const FEATURE_DATA = [
     linkText: "View Cyclone Info"
   },
   {
-    id: "lightning",
-    title: "Lightning Detection",
-    category: "Weather",
-    icon: "⚡",
-    iconColor: "text-amber-400",
-    iconBg: "bg-amber-500/20",
-    borderHover: "hover:border-amber-500/60 hover:shadow-amber-900/30",
-    buttonBg: "bg-amber-500 hover:bg-amber-400",
-    buttonText: "text-slate-950",
-    description: "Simulation of real-time lightning detections over the Philippine Area of Responsibility (PAR). Monitor strike intensity and live counts.",
-    customVisual: (
-      <div className="bg-slate-900 border border-amber-500/40 h-44 md:h-48 rounded-xl overflow-hidden flex items-center justify-center relative group">
-        <div className="absolute inset-0 bg-[#0f172a] opacity-80 transition-opacity group-hover:opacity-90" />
-        <div className="z-10 flex flex-col items-center gap-3">
-          <div className="w-12 h-12 rounded-full border border-dashed border-amber-500/50 flex flex-col items-center justify-center bg-amber-500/10 animate-pulse">
-            <span className="text-amber-400 text-xl drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]">⚡</span>
-          </div>
-          <span className="text-amber-200 text-xs font-bold tracking-wider uppercase">Live Scan</span>
-        </div>
-      </div>
-    ),
-    link: "/lightning",
-    linkText: "View Lightning Map"
-  },
-  {
     id: "earthquake",
     title: "Earthquake Map",
     category: "Seismology",

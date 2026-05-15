@@ -128,7 +128,7 @@ def main():
     print("\n=== ECMWF IFS v2 Accumulated Precipitation Generator ===\n")
 
     client = Client(source="azure", model="ifs", resol="0p25")
-    steps = [24]  # Only generate the 24-hour accumulation
+    steps = [12]  # Only generate the 12-hour accumulation
 
     valid_frames = {"ph": [], "luzon": [], "visayas": [], "mindanao": []}
     init_time = None
