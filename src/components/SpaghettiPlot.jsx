@@ -60,11 +60,11 @@ function parseCSV(text) {
 // Forcast3.py → public/data/fnv3_large_latest.csv       (large ensemble members)
 // FNV3 paired CSVs → official ensemble mean tracks (sample=-1) per dataset
 const LOCAL_CSV = {
-    base: "/data/fnv3_base_latest.csv",
-    large: "/data/fnv3_large_latest.csv",
-    basePaired: "/data/fnv3_paired_latest.csv",
-    largePaired: "/data/fnv3_large_paired_latest.csv",
-    ifs: "/data/ifs_tc_latest.csv",
+    base: "/data/fnv3_base_latest.dat",
+    large: "/data/fnv3_large_latest.dat",
+    basePaired: "/data/fnv3_paired_latest.dat",
+    largePaired: "/data/fnv3_large_paired_latest.dat",
+    ifs: "/data/ifs_tc_latest.dat",
 };
 
 // ── PAR boundary ──────────────────────────────────────────────────────────
@@ -333,6 +333,20 @@ export default function SpaghettiPlot() {
         return () => clearTimeout(timeoutId);
     }, [desktopSidebarOpen, sidebarOpen]);
 
+    // ── Decrypt obfuscated CSV data ─────────────────────────────────────────
+    const decryptXOR = (base64Str) => {
+        try {
+            const raw = atob(base64Str);
+            const bytes = new Uint8Array(raw.length);
+            for(let i = 0; i < raw.length; i++) {
+                bytes[i] = raw.charCodeAt(i) ^ 0xAA;
+            }
+            return new TextDecoder().decode(bytes);
+        } catch (e) {
+            return base64Str; // Fallback if it wasn't encrypted
+        }
+    };
+
     // ── Fetch + draw when horizon changes or map is ready ─────────────────
     const loadData = useCallback(async () => {
         if (!leafletReady) return;
@@ -358,7 +372,7 @@ export default function SpaghettiPlot() {
         setShowEnsembleMean(false);
         setMeanOnlyIds(new Set());
         setStatus("loading");
-        setStatusMsg("Loading latest FNV3 CSV\u2026");
+        setStatusMsg("Loading latest FNV3 Data\u2026");
         setTrackCount(0);
         setRunLabel("");
 
@@ -370,11 +384,12 @@ export default function SpaghettiPlot() {
         try {
             const res = await fetch(csvUrl);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            csvText = await res.text();
+            const rawText = await res.text();
+            csvText = decryptXOR(rawText);
         } catch (err) {
             setStatus("error");
             setStatusMsg(
-                `CSV not found at ${csvUrl}. ` +
+                `Data not found at ${csvUrl}. ` +
                 "Run the GitHub Action workflow first to generate it."
             );
             // Re-attach the layer group before returning
@@ -387,7 +402,10 @@ export default function SpaghettiPlot() {
         const pairedUrl = isLarge ? LOCAL_CSV.largePaired : LOCAL_CSV.basePaired;
         try {
             const pairedRes = await fetch(pairedUrl);
-            if (pairedRes.ok) pairedCsvText = await pairedRes.text();
+            if (pairedRes.ok) {
+                const rawPaired = await pairedRes.text();
+                pairedCsvText = decryptXOR(rawPaired);
+            }
         } catch (_) {
             // Silently skip — we fall back to computed median
         }

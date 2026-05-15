@@ -70,10 +70,12 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
+          python scripts/obfuscate_csvs.py
+          
           # Add forecast PNGs and the proxied CSVs for browser use
           git add public/assets/fnv3_*.png
-          git add -f public/data/fnv3_large_latest.csv || true
-          git add -f public/data/fnv3_large_paired_latest.csv || true
+          git add -f public/data/fnv3_large_latest.dat || true
+          git add -f public/data/fnv3_large_paired_latest.dat || true
           
           # Commit if there are changes
           if git diff --staged --quiet; then

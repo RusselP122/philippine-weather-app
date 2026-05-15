@@ -42,7 +42,8 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f public/data/ifs_tc_latest.csv || true
+          python scripts/obfuscate_csvs.py
+          git add -f public/data/ifs_tc_latest.dat || true
           git add public/assets/ifs_tropical_cyclone_* || true
           # Only commit if there are changes
           if git diff --staged --quiet; then
