@@ -1401,7 +1401,12 @@ export default function SpaghettiPlot() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `fnv3-ensemble-${Date.now()}.gif`;
+                
+                let fileNamePrefix = "GDM-FNV3-Ensemble";
+                if (dataset === "large") fileNamePrefix = "GDM-FNV3-Large-Ensemble";
+                if (dataset === "ifs") fileNamePrefix = "ECMWF-Ensemble";
+                
+                a.download = `${fileNamePrefix}-${Date.now()}.gif`;
                 a.click();
                 URL.revokeObjectURL(url);
 
