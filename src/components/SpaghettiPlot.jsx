@@ -319,10 +319,10 @@ export default function SpaghettiPlot() {
     // Handle map resize when sidebar toggles
     useEffect(() => {
         if (!mapInstanceRef.current) return;
-        
+
         // Invalidate immediately in case it's a fast jump
         mapInstanceRef.current.invalidateSize();
-        
+
         // And invalidate after the CSS transition (0.3s) finishes
         const timeoutId = setTimeout(() => {
             if (mapInstanceRef.current) {
@@ -338,7 +338,7 @@ export default function SpaghettiPlot() {
         try {
             const raw = atob(base64Str);
             const bytes = new Uint8Array(raw.length);
-            for(let i = 0; i < raw.length; i++) {
+            for (let i = 0; i < raw.length; i++) {
                 bytes[i] = raw.charCodeAt(i) ^ 0xAA;
             }
             return new TextDecoder().decode(bytes);
@@ -750,10 +750,23 @@ export default function SpaghettiPlot() {
                 };
             }
 
+            // --- Determine required member count for Ensemble Mean ---
+            const uniqueSamples = new Set();
+            for (const row of rawRows) {
+                if (row.sample !== undefined && row.sample !== "-1") {
+                    uniqueSamples.add(row.sample);
+                }
+            }
+            const totalMembersInDataset = uniqueSamples.size > 0 ? uniqueSamples.size : 50;
+            
+            const REQUIRED_MEMBERS = dataset === "large" 
+                ? 100 
+                : Math.max(30, Math.floor(totalMembersInDataset * 0.75));
+
             if (meanLayerGroupRef.current) {
                 for (const dist of disturbanceList) {
                     const tracks = tracksByDisturbance[dist.id] || [];
-                    if (tracks.length < 2) {
+                    if (tracks.length < REQUIRED_MEMBERS) {
                         dist.hasEnsembleMean = false;
                         dist.agreement = 0;
                         dist.spreadKm = 0;
@@ -1098,7 +1111,7 @@ export default function SpaghettiPlot() {
                     for (let i = 1; i < meanPts.length; i++) {
                         const p1 = meanPts[i - 1];
                         const p2 = meanPts[i];
-                        
+
                         // White outline for contrast (slightly wider than the colored line)
                         L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
                             color: "#ffffff", weight: 6, opacity: 0.3,
@@ -1108,10 +1121,10 @@ export default function SpaghettiPlot() {
                         // Colored segment
                         const meanSeg = L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
                             color: windColor(p2.windKt),
-                            weight: 4, 
+                            weight: 4,
                             opacity: 0.95,
-                            lineCap: "round", 
-                            lineJoin: "round", 
+                            lineCap: "round",
+                            lineJoin: "round",
                             noClip: true,
                         });
                         meanSeg.distId = dist.id;
@@ -1286,7 +1299,7 @@ export default function SpaghettiPlot() {
             const hasEnded = animHour > maxTrackHour;
 
             const visiblePts = obj.points.filter(p => p.h <= animHour);
-            
+
             // Clear existing segments in the group
             obj.group.clearLayers();
 
@@ -1401,11 +1414,11 @@ export default function SpaghettiPlot() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                
+
                 let fileNamePrefix = "GDM-FNV3-Ensemble";
                 if (dataset === "large") fileNamePrefix = "GDM-FNV3-Large-Ensemble";
                 if (dataset === "ifs") fileNamePrefix = "ECMWF-Ensemble";
-                
+
                 a.download = `${fileNamePrefix}-${Date.now()}.gif`;
                 a.click();
                 URL.revokeObjectURL(url);
@@ -1538,8 +1551,8 @@ export default function SpaghettiPlot() {
                             }`}>
                             {status === "ok" ? "Live" : status === "loading" ? "…" : status === "none" ? "Quiet" : status === "error" ? "Err" : "–"}
                         </span>
-                        <button 
-                            className="desktop-sidebar-close-btn" 
+                        <button
+                            className="desktop-sidebar-close-btn"
                             onClick={() => setDesktopSidebarOpen(false)}
                             title="Hide Sidebar"
                         >
@@ -1810,7 +1823,7 @@ export default function SpaghettiPlot() {
                             </div>
                         ))}
                         {disturbances.length > 3 && (
-                            <button 
+                            <button
                                 className="see-more-systems-btn"
                                 onClick={() => setShowAllSystems(!showAllSystems)}
                             >
@@ -1865,7 +1878,7 @@ export default function SpaghettiPlot() {
             {/* Map */}
             <main className="spaghetti-main">
                 {!desktopSidebarOpen && (
-                    <button 
+                    <button
                         className="desktop-sidebar-toggle-btn"
                         onClick={() => setDesktopSidebarOpen(true)}
                         title="Show Sidebar"
