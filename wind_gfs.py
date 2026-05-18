@@ -127,10 +127,11 @@ def plot_wind_frame(sub_lons, sub_lats, ws_kph, u_ms, v_ms, msl_hpa,
     gl.ylabel_style = {"size": 10, "color": "#333"}
 
     # ── Wind-speed colormap ───────────────────────────────────────────────────
-    levels = [0, 20, 30, 40, 50, 60, 80, 100, 120, 150, 185, 220]
+    levels = [0, 0.5, 1.5, 2.5, 5, 10, 20, 30, 40, 50, 60, 80, 100, 120, 150, 185, 220]
     colors = [
-        "#ffffff00", "#dbeafe", "#93c5fd", "#3b82f6", "#22c55e",
-        "#eab308",   "#f97316", "#ef4444", "#dc2626", "#a855f7", "#7e22ce",
+        "#ffffff00", "#ffffff", "#f8fafc", "#f1f5f9", "#f0f9ff", "#e0f2fe", 
+        "#dbeafe", "#93c5fd", "#3b82f6", "#22c55e", "#eab308",   
+        "#f97316", "#ef4444", "#dc2626", "#a855f7", "#7e22ce",
     ]
     cmap = ListedColormap(colors)
     cmap.set_over("#4b0082")
