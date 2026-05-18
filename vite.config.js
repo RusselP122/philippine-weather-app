@@ -7,12 +7,12 @@ export default defineConfig({
   server: {
     proxy: {
       '/api/earthquake-data': {
-        target: 'https://data.garbinwx.cloud',
+        target: 'https://data.garbinwx.org',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/earthquake-data/, '/api/earthquakes.json'),
       },
       '/api/cap-alerts': {
-        target: 'https://data.garbinwx.cloud',
+        target: 'https://data.garbinwx.org',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/cap-alerts/, '/api/cap-alerts.json'),
       },
