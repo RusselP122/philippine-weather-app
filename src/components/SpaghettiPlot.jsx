@@ -1917,7 +1917,7 @@ export default function SpaghettiPlot() {
                     {(viewMode === "animation" || isExporting) && (
                         <div className="gif-watermark">
                             <h3 className="gif-watermark-title">
-                                {dataset === 'ifs' ? 'ECMWF IFS Ensemble Track' : (dataset === 'large' ? 'Google Deepmind FNV3 1000 Ensemble Track' : 'Google Deepmind FNV3 50 Ensemble Track')}
+                                {dataset === 'ifs' ? 'ECMWF IFS Ensemble Track' : dataset === 'aifs' ? 'ECMWF AIFS Ensemble Track' : (dataset === 'large' ? 'Google Deepmind FNV3 1000 Ensemble Track' : 'Google Deepmind FNV3 50 Ensemble Track')}
                             </h3>
                             <div className="gif-watermark-row">
                                 <strong>Init:</strong> {runInitDate ? runInitDate.toISOString().replace('T', ' ').substring(0, 19) + ' UTC' : 'Loading...'}
