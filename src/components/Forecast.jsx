@@ -78,6 +78,10 @@ const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
     const ifs5Day = isMidnight ? `/assets/ifs_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/ifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
     const ifs15Day = isMidnight ? `/assets/ifs_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/ifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
 
+    // ECMWF AIFS Ensemble Tracks (aifs_ prefix)
+    const aifs5Day = isMidnight ? `/assets/aifs_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/aifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const aifs15Day = isMidnight ? `/assets/aifs_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/aifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
+
     return [
       {
         id: `fnv3-base-5day-${modelTime}`,
@@ -126,6 +130,22 @@ const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
         label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
         modelTime,
         imageSrc: ifs15Day,
+      },
+      {
+        id: `aifs-5day-${modelTime}`,
+        type: "5day",
+        model: "aifs",
+        label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
+        modelTime,
+        imageSrc: aifs5Day,
+      },
+      {
+        id: `aifs-15day-${modelTime}`,
+        type: "15day",
+        model: "aifs",
+        label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`,
+        modelTime,
+        imageSrc: aifs15Day,
       },
     ];
   })
@@ -245,6 +265,15 @@ const Forecast = () => {
               >
                 ECMWF IFS
               </button>
+              <button
+                onClick={() => setSelectedModel("aifs")}
+                className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${selectedModel === "aifs"
+                  ? "bg-slate-700 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                  }`}
+              >
+                ECMWF AIFS
+              </button>
             </div>
 
             <div className="w-full flex flex-col items-start md:items-end">
@@ -262,7 +291,7 @@ const Forecast = () => {
                 </select>
               ) : (
                 <span className="text-xs text-slate-500 py-2">
-                  No images available for {selectedModel === "fnv3_base" ? "GDM-FNV3" : selectedModel === "ifs" ? "ECMWF IFS" : "Large Ensemble"} today.
+                  No images available for {selectedModel === "fnv3_base" ? "GDM-FNV3" : selectedModel === "ifs" ? "ECMWF IFS" : selectedModel === "aifs" ? "ECMWF AIFS" : "Large Ensemble"} today.
                 </span>
               )}
             </div>
@@ -314,7 +343,7 @@ const Forecast = () => {
                 <div className="flex justify-between gap-4">
                   <dt className="text-slate-500">Model source</dt>
                   <dd className="text-right">
-                    {selectedModel === "fnv3_base" ? "GDM-FNV3 Ensemble" : selectedModel === "ifs" ? "ECMWF IFS Ensemble" : "GDM-FNV3 Large Ensemble"}
+                    {selectedModel === "fnv3_base" ? "GDM-FNV3 Ensemble" : selectedModel === "ifs" ? "ECMWF IFS Ensemble" : selectedModel === "aifs" ? "ECMWF AIFS Ensemble" : "GDM-FNV3 Large Ensemble"}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4">

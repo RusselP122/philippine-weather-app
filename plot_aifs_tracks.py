@@ -109,7 +109,7 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
 
-    legend_text = f"Forecast: ECMWF IFS Tropical Cyclone Tracks\nRuntime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
+    legend_text = f"Forecast: ECMWF AIFS Tropical Cyclone Tracks\nRuntime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
     plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right', bbox=dict(facecolor='white', alpha=0.8, edgecolor='black', boxstyle='round,pad=0.3'))
     
     ax.set_title(title, fontsize=16, weight='bold')
@@ -123,8 +123,8 @@ if __name__ == "__main__":
     import io
     import base64
     
-    csv_file = "public/data/ifs_tc_latest.csv"
-    dat_file = "public/data/ifs_tc_latest.dat"
+    csv_file = "public/data/aifs_tc_latest.csv"
+    dat_file = "public/data/aifs_tc_latest.dat"
     
     if os.path.exists(csv_file):
         data = pd.read_csv(csv_file)
@@ -149,9 +149,8 @@ if __name__ == "__main__":
         exit()
 
     latest_init = init_times[-1]
-    # init_time is something like '2026-05-14 06:00:00'
     dt = datetime.strptime(latest_init, "%Y-%m-%d %H:%M:%S")
-    init_time_str = dt.strftime("%Y-%m-%dT%H%M%S") # 2026-05-14T060000
+    init_time_str = dt.strftime("%Y-%m-%dT%H%M%S")
 
     latest_utc = dt.replace(tzinfo=timezone.utc)
     ph_zone = timezone(timedelta(hours=8))
@@ -161,14 +160,12 @@ if __name__ == "__main__":
 
     forecast_start = latest_ph.strftime("%Y-%m-%d")
 
-    # 5-day plot
     end_5day = (latest_ph + timedelta(days=5)).strftime("%Y-%m-%d")
-    title_5day = f"5-Day Forecast Tropical Cyclone Tracks - ECMWF IFS ({forecast_start} to {end_5day})"
-    out_5day = f"public/assets/ifs_tropical_cyclone_5day_forecast_{init_time_str}.png"
+    title_5day = f"5-Day Forecast Tropical Cyclone Tracks - ECMWF AIFS ({forecast_start} to {end_5day})"
+    out_5day = f"public/assets/aifs_tropical_cyclone_5day_forecast_{init_time_str}.png"
     generate_plot(data, 120, out_5day, title_5day, runtime_text)
 
-    # 15-day (actually IFS only goes to 10 or 15 days, max_lead_time 360)
     end_15day = (latest_ph + timedelta(days=15)).strftime("%Y-%m-%d")
-    title_15day = f"15-Day Forecast Tropical Cyclone Tracks - ECMWF IFS ({forecast_start} to {end_15day})"
-    out_15day = f"public/assets/ifs_tropical_cyclone_15day_forecast_{init_time_str}.png"
+    title_15day = f"15-Day Forecast Tropical Cyclone Tracks - ECMWF AIFS ({forecast_start} to {end_15day})"
+    out_15day = f"public/assets/aifs_tropical_cyclone_15day_forecast_{init_time_str}.png"
     generate_plot(data, 360, out_15day, title_15day, runtime_text)

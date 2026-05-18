@@ -65,6 +65,7 @@ const LOCAL_CSV = {
     basePaired: "/data/fnv3_paired_latest.dat",
     largePaired: "/data/fnv3_large_paired_latest.dat",
     ifs: "/data/ifs_tc_latest.dat",
+    aifs: "/data/aifs_tc_latest.dat",
 };
 
 // ── PAR boundary ──────────────────────────────────────────────────────────
@@ -1418,6 +1419,7 @@ export default function SpaghettiPlot() {
                 let fileNamePrefix = "GDM-FNV3-Ensemble";
                 if (dataset === "large") fileNamePrefix = "GDM-FNV3-Large-Ensemble";
                 if (dataset === "ifs") fileNamePrefix = "ECMWF-Ensemble";
+                if (dataset === "aifs") fileNamePrefix = "ECMWF-AIFS-Ensemble";
 
                 a.download = `${fileNamePrefix}-${Date.now()}.gif`;
                 a.click();
@@ -1628,7 +1630,8 @@ export default function SpaghettiPlot() {
                 <div className="segmented-control">
                     {[{ id: "base", label: "FNV3 Base" },
                     { id: "large", label: "FNV3 Large" },
-                    { id: "ifs", label: "ECMWF IFS" }]
+                    { id: "ifs", label: "ECMWF IFS" },
+                    { id: "aifs", label: "ECMWF AIFS" }]
                         .map(opt => (
                             <button
                                 key={opt.id}
