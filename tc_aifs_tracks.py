@@ -13,45 +13,96 @@ import urllib.request
 import urllib.error
 
 def download_latest_aifs_tc():
+    import time as _time
     print("Downloading latest AIFS TC Tracks from ECMWF Open Data directly...")
-    
+
     now_utc = datetime.now(timezone.utc)
     run_times = [18, 12, 6, 0]
-    
+
+    # --- Step 1: Find the latest cycle URL that actually exists (skip 404s only) ---
+    latest_url = None
+    latest_bufr_file = None
+    latest_date_str = None
+    latest_rt = None
+    latest_step = None
+
     for day_offset in range(3):
+        if latest_url:
+            break
         check_date = (now_utc - timedelta(days=day_offset))
         date_str = check_date.strftime('%Y%m%d')
-        
+
         for rt in run_times:
             step = 360 if rt in (0, 12) else 144
-            bufr_file = f"temp_data/aifs_tc_{date_str}_{rt:02d}.bufr"
-            os.makedirs("temp_data", exist_ok=True)
-            
-            # https://data.ecmwf.int/forecasts/20260518/00z/aifs-ens/0p25/enfo/20260518000000-360h-enfo-tf.bufr
             url = f"https://data.ecmwf.int/forecasts/{date_str}/{rt:02d}z/aifs-ens/0p25/enfo/{date_str}{rt:02d}0000-{step}h-enfo-tf.bufr"
-            
+
             try:
-                print(f"Trying {url}...")
-                
-                # We can add a User-Agent to avoid some basic 403s
-                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req) as response, open(bufr_file, 'wb') as out_file:
-                    out_file.write(response.read())
-                    
-                if os.path.exists(bufr_file) and os.path.getsize(bufr_file) > 0:
-                    print(f"Successfully downloaded AIFS to {bufr_file}")
-                    return bufr_file, check_date.strftime("%Y-%m-%d"), f"{rt:02d}:00:00"
+                req = urllib.request.Request(url, method='HEAD', headers={'User-Agent': 'Mozilla/5.0'})
+                urllib.request.urlopen(req, timeout=10)
+                # HEAD succeeded — this cycle exists
+                latest_url = url
+                latest_bufr_file = f"temp_data/aifs_tc_{date_str}_{rt:02d}.bufr"
+                latest_date_str = check_date.strftime("%Y-%m-%d")
+                latest_rt = rt
+                latest_step = step
+                print(f"Latest available cycle found: {url}")
+                break
             except urllib.error.HTTPError as e:
-                if e.code != 404:
-                    print(f"HTTP Error: {e.code}")
-                if os.path.exists(bufr_file):
-                    os.remove(bufr_file)
+                if e.code == 429:
+                    # Server is busy but the file EXISTS — use this as the target
+                    print(f"429 on HEAD {url} — file exists but server busy, will retry download.")
+                    latest_url = url
+                    latest_bufr_file = f"temp_data/aifs_tc_{date_str}_{rt:02d}.bufr"
+                    latest_date_str = check_date.strftime("%Y-%m-%d")
+                    latest_rt = rt
+                    latest_step = step
+                    break
+                elif e.code == 404:
+                    continue   # This cycle simply doesn't exist yet
+                else:
+                    print(f"HEAD check HTTP {e.code}: {url}")
+                    continue
             except Exception as e:
-                print(f"Error: {e}")
-                if os.path.exists(bufr_file):
-                    os.remove(bufr_file)
-                
-    raise RuntimeError("Failed to find any recent AIFS TC track data directly from ECMWF.")
+                print(f"HEAD check error: {e}")
+                continue
+
+    if not latest_url:
+        raise RuntimeError("Could not find any available AIFS TC cycle after checking 3 days.")
+
+    # --- Step 2: Retry the SAME (latest) URL with exponential back-off on 429 ---
+    os.makedirs("temp_data", exist_ok=True)
+    max_retries = 12
+    wait_seconds = 30
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"Attempt {attempt}/{max_retries}: downloading {latest_url} ...")
+            req = urllib.request.Request(latest_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=120) as response, open(latest_bufr_file, 'wb') as out_file:
+                out_file.write(response.read())
+
+            if os.path.exists(latest_bufr_file) and os.path.getsize(latest_bufr_file) > 0:
+                print(f"Successfully downloaded AIFS to {latest_bufr_file}")
+                return latest_bufr_file, latest_date_str, f"{latest_rt:02d}:00:00"
+            else:
+                print("Downloaded file is empty, retrying...")
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                print(f"429 Too Many Requests — waiting {wait_seconds}s before retry {attempt}/{max_retries}...")
+                _time.sleep(wait_seconds)
+                wait_seconds = min(wait_seconds * 2, 300)   # cap at 5 min
+            else:
+                print(f"HTTP {e.code} on download — aborting retries.")
+                break
+        except Exception as e:
+            print(f"Download error: {e} — retrying in {wait_seconds}s...")
+            _time.sleep(wait_seconds)
+        finally:
+            # Clean up partial file if it exists and is empty
+            if os.path.exists(latest_bufr_file) and os.path.getsize(latest_bufr_file) == 0:
+                os.remove(latest_bufr_file)
+
+    raise RuntimeError(f"Failed to download AIFS TC data from {latest_url} after {max_retries} attempts.")
 
 def extract_tc_data(filename, force_init_time=None):
     cnt = 0
