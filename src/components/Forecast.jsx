@@ -75,12 +75,12 @@ const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
     const fnv3Large15Day = isMidnight ? `/assets/fnv3_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/fnv3_tropical_cyclone_15day_forecast_${modelTime}.png`;
 
     // ECMWF IFS Ensemble Tracks (ifs_ prefix)
-    const ifs5Day = isMidnight ? `/assets/ifs_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/ifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
-    const ifs15Day = isMidnight ? `/assets/ifs_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/ifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
+    const ifs5Day = `/assets/ifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const ifs15Day = `/assets/ifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
 
     // ECMWF AIFS Ensemble Tracks (aifs_ prefix)
-    const aifs5Day = isMidnight ? `/assets/aifs_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/aifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
-    const aifs15Day = isMidnight ? `/assets/aifs_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/aifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
+    const aifs5Day = `/assets/aifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const aifs15Day = `/assets/aifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
 
     return [
       {
