@@ -1,8 +1,8 @@
 {
   "model": "ECMWF AIFS v2",
   "source": "ECMWF Open Data via Azure",
-  "generated_at": "2026-05-19 03:57 AM",
-  "run_time": "2026-05-18 18:00 UTC",
+  "generated_at": "2026-05-19 10:03 AM",
+  "run_time": "2026-05-19 00:00 UTC",
   "animation_frames": [
     "aifs_precip_mslp_006",
     "aifs_precip_mslp_012",
