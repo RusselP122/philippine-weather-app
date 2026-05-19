@@ -216,26 +216,18 @@ for init_time in init_times:
                 alpha=0.7,  # Reduced opacity for clarity
                 transform=ccrs.PlateCarree()
             )
-            # Plot colored markers
+            # Plot donut markers at each point
             for i in range(len(lons)):
                 color = get_pressure_color(pressures[i])
                 if color is None:
                     continue
-                ax.plot(
-                    lons[i], lats[i],
-                    color='white',
-                    marker='o',
-                    markersize=8,
-                    markeredgewidth=0,
-                    transform=ccrs.PlateCarree()
-                )
-                ax.plot(
-                    lons[i], lats[i],
-                    color=color,
-                    marker='o',
-                    markersize=6,
-                    transform=ccrs.PlateCarree()
-                )
+                # Shadow
+                ax.plot(lons[i], lats[i], color='black', marker='o', markersize=8,
+                        markeredgewidth=0, alpha=0.2, transform=ccrs.PlateCarree())
+                # Colored donut ring (transparent center)
+                ax.plot(lons[i], lats[i], markerfacecolor='none', markeredgecolor=color,
+                        marker='o', markersize=5, markeredgewidth=1.5,
+                        transform=ccrs.PlateCarree())
             plotted_tracks += 1
 
 # Define pressure ranges with custom colors (only pressure ranges, no category labels)
@@ -251,8 +243,9 @@ pressure_ranges = [
 # Create legend elements with only pressure ranges
 legend_elements = [
     plt.Line2D(
-        [0], [0], marker='o', color='#404040', markerfacecolor=range_info['color'],
-        markersize=10, label=range_info['pressure_range']
+        [0], [0], marker='o', color='none', markerfacecolor='none',
+        markeredgecolor=range_info['color'], markeredgewidth=2,
+        markersize=8, label=range_info['pressure_range']
     )
     for range_info in pressure_ranges
 ]

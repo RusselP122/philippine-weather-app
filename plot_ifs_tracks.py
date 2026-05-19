@@ -85,12 +85,17 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
                     skipped_tracks += 1
                     continue
 
-                ax.plot(lons, lats, color='#404040', linewidth=2.5, alpha=0.7, transform=ccrs.PlateCarree())
+                ax.plot(lons, lats, color='#1a1a1a', linewidth=2.0, alpha=0.55, transform=ccrs.PlateCarree())
                 for i in range(len(lons)):
                     color = get_pressure_color(pressures[i])
                     if color is None: continue
-                    ax.plot(lons[i], lats[i], color='white', marker='o', markersize=8, markeredgewidth=0, transform=ccrs.PlateCarree())
-                    ax.plot(lons[i], lats[i], color=color, marker='o', markersize=6, transform=ccrs.PlateCarree())
+                    # Shadow
+                    ax.plot(lons[i], lats[i], color='black', marker='o', markersize=8,
+                            markeredgewidth=0, alpha=0.2, transform=ccrs.PlateCarree(), zorder=4)
+                    # Colored donut ring (transparent center)
+                    ax.plot(lons[i], lats[i], markerfacecolor='none', markeredgecolor=color,
+                            marker='o', markersize=5, markeredgewidth=1.5,
+                            transform=ccrs.PlateCarree(), zorder=5)
                 plotted_tracks += 1
 
     pressure_ranges = [
@@ -102,7 +107,8 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
         {'pressure_range': '> 1005 hPa', 'color': '#3498DB'}
     ]
     legend_elements = [
-        plt.Line2D([0], [0], marker='o', color='#404040', markerfacecolor=r['color'], markersize=10, label=r['pressure_range'])
+        plt.Line2D([0], [0], marker='o', color='none', markerfacecolor='none',
+                   markeredgecolor=r['color'], markeredgewidth=2, markersize=8, label=r['pressure_range'])
         for r in pressure_ranges
     ]
     legend = ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0.02, 0.98), frameon=True, fancybox=True, shadow=True, fontsize=10)

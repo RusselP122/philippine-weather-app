@@ -538,8 +538,8 @@ export default function SpaghettiPlot() {
                 const animGroup = L.layerGroup().addTo(animLayerGroupRef.current);
 
                 const animMarker = L.circleMarker([0, 0], {
-                    radius: 5, color: "white", weight: 1,
-                    fillColor: "transparent", fillOpacity: 0.9, opacity: 0
+                    radius: 7, color: "#38bdf8", weight: 2,
+                    fillColor: "transparent", fillOpacity: 0, opacity: 0
                 }).addTo(animLayerGroupRef.current);
 
                 animObjectsRef.current.push({
@@ -560,13 +560,13 @@ export default function SpaghettiPlot() {
 
                 for (const pt of points) {
                     const mark = L.circleMarker([pt.lat, pt.lon], {
-                        radius: 3.5, color: "white", weight: 0.8,
-                        fillColor: windColor(pt.windKt), fillOpacity: 0.9,
-                        opacity: 1
+                        radius: 4, color: windColor(pt.windKt), weight: 1.5,
+                        fillColor: "transparent", fillOpacity: 0,
+                        opacity: 0.9
                     });
                     mark.distId = distId;
-                    mark.defaultFillOpacity = 0.9;
-                    mark.defaultStrokeOpacity = 1;
+                    mark.defaultFillOpacity = 0;
+                    mark.defaultStrokeOpacity = 0.9;
                     mark.addTo(layerGroupRef.current);
                 }
 
@@ -1135,8 +1135,8 @@ export default function SpaghettiPlot() {
                     // Mean position dots colored by wind speed
                     for (const pt of meanPts) {
                         const mk = L.circleMarker([pt.lat, pt.lon], {
-                            radius: 5, color: "#000000", weight: 2,
-                            fillColor: windColor(pt.windKt), fillOpacity: 1, opacity: 1
+                            radius: 6, color: windColor(pt.windKt), weight: 2,
+                            fillColor: "transparent", fillOpacity: 0, opacity: 1
                         });
                         mk.distId = dist.id;
 
@@ -1228,7 +1228,7 @@ export default function SpaghettiPlot() {
                 } else if (layer instanceof L.Polyline && !(layer instanceof L.CircleMarker)) {
                     layer.setStyle({ opacity: isSelected ? 0.95 : 0.05 });
                 } else if (layer instanceof L.CircleMarker) {
-                    layer.setStyle({ fillOpacity: isSelected ? 1 : 0.05, opacity: isSelected ? 1 : 0.05 });
+                    layer.setStyle({ fillOpacity: 0, opacity: isSelected ? 1 : 0.05 });
                 }
             });
         }
@@ -1326,9 +1326,9 @@ export default function SpaghettiPlot() {
             const lastPt = visiblePts[visiblePts.length - 1];
             obj.marker.setLatLng([lastPt.lat, lastPt.lon]);
             obj.marker.setStyle({
-                fillColor: windColor(lastPt.windKt),
+                color: windColor(lastPt.windKt),
                 opacity: 1,
-                fillOpacity: 0.9
+                fillOpacity: 0
             });
         }
     }, [animHour, viewMode, activeDisturbanceId, status, meanOnlyIds]);
