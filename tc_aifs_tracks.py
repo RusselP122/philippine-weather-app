@@ -33,7 +33,7 @@ def download_latest_aifs_tc():
         date_str = check_date.strftime('%Y%m%d')
 
         for rt in run_times:
-            step = 360 if rt in (0, 12) else 144
+            step = 360
             url = f"https://data.ecmwf.int/forecasts/{date_str}/{rt:02d}z/aifs-ens/0p25/enfo/{date_str}{rt:02d}0000-{step}h-enfo-tf.bufr"
 
             try:
