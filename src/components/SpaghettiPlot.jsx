@@ -70,12 +70,11 @@ const LOCAL_CSV = {
 };
 
 // ── Base64 + XOR Decryptor ──────────────────────────────────────────────
-function decodeObfuscatedData(base64Str, key = "CalauanWeather2026") {
+function decodeObfuscatedData(base64Str) {
     const binaryStr = atob(base64Str);
-    const keyBytes = new TextEncoder().encode(key);
     const decryptedBytes = new Uint8Array(binaryStr.length);
     for (let i = 0; i < binaryStr.length; i++) {
-        decryptedBytes[i] = binaryStr.charCodeAt(i) ^ keyBytes[i % keyBytes.length];
+        decryptedBytes[i] = binaryStr.charCodeAt(i) ^ 0xAA;
     }
     return new TextDecoder().decode(decryptedBytes);
 }
