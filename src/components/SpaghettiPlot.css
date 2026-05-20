@@ -742,11 +742,13 @@
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border-color);
-  position: absolute;
-  top: 0;
+  position: fixed;
+  top: 56px; /* Offset to sit exactly below the 56px tall sticky Navbar */
   left: 0;
   right: 0;
-  z-index: 20;
+  z-index: 1000;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 .mobile-menu-btn {

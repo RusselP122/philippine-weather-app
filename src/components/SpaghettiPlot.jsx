@@ -57,16 +57,16 @@ function parseCSV(text) {
 }
 
 // ── Local CSV paths served as static assets (committed by GitHub Actions) ──
-// Forcast.py  → public/data/fnv3_base_latest.enc       (base ensemble members)
-// Forcast3.py → public/data/fnv3_large_latest.enc       (large ensemble members)
+// Forcast.py  → public/data/fnv3_base_latest.dat       (base ensemble members)
+// Forcast3.py → public/data/fnv3_large_latest.dat       (large ensemble members)
 // FNV3 paired CSVs → official ensemble mean tracks (sample=-1) per dataset
 const LOCAL_CSV = {
-    base: "/data/fnv3_base_latest.enc",
-    large: "/data/fnv3_large_latest.enc",
-    basePaired: "/data/fnv3_paired_latest.enc",
-    largePaired: "/data/fnv3_large_paired_latest.enc",
-    ifs: "/data/ifs_tc_latest.enc",
-    aifs: "/data/aifs_tc_latest.enc",
+    base: "/data/fnv3_base_latest.dat",
+    large: "/data/fnv3_large_latest.dat",
+    basePaired: "/data/fnv3_paired_latest.dat",
+    largePaired: "/data/fnv3_large_paired_latest.dat",
+    ifs: "/data/ifs_tc_latest.dat",
+    aifs: "/data/aifs_tc_latest.dat",
 };
 
 // ── Base64 + XOR Decryptor ──────────────────────────────────────────────
