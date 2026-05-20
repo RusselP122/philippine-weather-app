@@ -913,6 +913,14 @@
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
 }
 
+.filter-watermark {
+  top: 20px;
+  left: auto;
+  right: 20px;
+  bottom: auto;
+  min-width: 220px;
+}
+
 /* Animation Controls Card */
 .animation-controls-card {
   padding: 12px;
@@ -936,8 +944,8 @@
 /* Media Queries for Mobile */
 @media (max-width: 1024px) {
   .spaghetti-layout {
-    /* Account for the main site navbar on mobile so the page doesn't overflow */
-    height: calc(100dvh - 64px);
+    /* Full viewport height on mobile to prevent empty space at bottom */
+    height: 100dvh;
   }
 
   .spaghetti-sidebar-container {
@@ -982,7 +990,7 @@
     font-size: 1.25rem !important;
   }
 
-  /* Mobile adjustments for GIF Watermark */
+  /* Mobile adjustments for Watermarks */
   .gif-watermark {
     top: 56px;
     /* Below the 44px topbar */
@@ -990,6 +998,14 @@
     right: 12px;
     /* Stretch across the screen */
     padding: 10px 14px;
+  }
+
+  .filter-watermark {
+    top: 56px;
+    left: 12px;
+    right: 12px;
+    bottom: auto;
+    min-width: 0;
   }
 
   .gif-watermark-title {
@@ -1127,7 +1143,7 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     transition: all 0.2s ease;
   }
-  
+
   .desktop-sidebar-toggle-btn:hover {
     background: rgba(0, 212, 255, 0.15);
     color: var(--text-accent);

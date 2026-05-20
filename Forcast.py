@@ -161,7 +161,7 @@ def get_pressure_color(pressure):
     if np.isnan(pressure):
         return None
     if pressure < 920:
-        return '#5B0E2D'  # Super Typhoon
+        return '#FF007F'  # Super Typhoon
     elif 920 <= pressure <= 945:
         return '#A83232'  # Typhoon
     elif 945 < pressure <= 970:
@@ -232,7 +232,7 @@ for init_time in init_times:
 
 # Define pressure ranges with custom colors (only pressure ranges, no category labels)
 pressure_ranges = [
-    {'pressure_range': '< 920 hPa', 'color': '#5B0E2D'},
+    {'pressure_range': '< 920 hPa', 'color': '#FF007F'},
     {'pressure_range': '920–945 hPa', 'color': '#A83232'},
     {'pressure_range': '945–970 hPa', 'color': '#E67E22'},
     {'pressure_range': '970–990 hPa', 'color': '#F1C40F'},

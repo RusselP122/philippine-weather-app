@@ -3,6 +3,7 @@ import * as turf from "@turf/turf";
 import html2canvas from "html2canvas";
 import GIF from "gif.js";
 import gifWorkerUrl from "gif.js/dist/gif.worker.js?url";
+import EnsembleFilter from "./EnsembleFilter";
 import "./SpaghettiPlot.css";
 
 // ── Leaflet asset injection ───────────────────────────────────────────────
@@ -24,14 +25,14 @@ const loadLeaflet = () =>
         document.head.appendChild(s);
     });
 
-// ── Wind → colour (PAGASA Scale) ────────────────────
+// ── Wind → colour (PAGASA Scale in km/h) ────────────────────
 function windColor(w) {
     if (isNaN(w)) return "#3498DB";
-    if (w >= 100) return "#5B0E2D";   // Super Typhoon
-    if (w >= 64) return "#A83232";    // Typhoon
-    if (w >= 48) return "#E67E22";    // Severe Tropical Storm
-    if (w >= 34) return "#F1C40F";    // Tropical Storm
-    if (w >= 22) return "#2ECC71";    // Tropical Depression
+    if (w >= 185) return "#FF007F";   // Super Typhoon
+    if (w >= 118) return "#A83232";   // Typhoon
+    if (w >= 89) return "#E67E22";    // Severe Tropical Storm
+    if (w >= 62) return "#F1C40F";    // Tropical Storm
+    if (w >= 39) return "#2ECC71";    // Tropical Depression
     return "#3498DB";                 // Low Pressure Area
 }
 
@@ -56,17 +57,28 @@ function parseCSV(text) {
 }
 
 // ── Local CSV paths served as static assets (committed by GitHub Actions) ──
-// Forcast.py  → public/data/fnv3_base_latest.csv       (base ensemble members)
-// Forcast3.py → public/data/fnv3_large_latest.csv       (large ensemble members)
+// Forcast.py  → public/data/fnv3_base_latest.enc       (base ensemble members)
+// Forcast3.py → public/data/fnv3_large_latest.enc       (large ensemble members)
 // FNV3 paired CSVs → official ensemble mean tracks (sample=-1) per dataset
 const LOCAL_CSV = {
-    base: "/data/fnv3_base_latest.dat",
-    large: "/data/fnv3_large_latest.dat",
-    basePaired: "/data/fnv3_paired_latest.dat",
-    largePaired: "/data/fnv3_large_paired_latest.dat",
-    ifs: "/data/ifs_tc_latest.dat",
-    aifs: "/data/aifs_tc_latest.dat",
+    base: "/data/fnv3_base_latest.enc",
+    large: "/data/fnv3_large_latest.enc",
+    basePaired: "/data/fnv3_paired_latest.enc",
+    largePaired: "/data/fnv3_large_paired_latest.enc",
+    ifs: "/data/ifs_tc_latest.enc",
+    aifs: "/data/aifs_tc_latest.enc",
 };
+
+// ── Base64 + XOR Decryptor ──────────────────────────────────────────────
+function decodeObfuscatedData(base64Str, key = "CalauanWeather2026") {
+    const binaryStr = atob(base64Str);
+    const keyBytes = new TextEncoder().encode(key);
+    const decryptedBytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+        decryptedBytes[i] = binaryStr.charCodeAt(i) ^ keyBytes[i % keyBytes.length];
+    }
+    return new TextDecoder().decode(decryptedBytes);
+}
 
 // ── PAR boundary ──────────────────────────────────────────────────────────
 const PAR = [[5, 115], [15, 115], [21, 120], [25, 120], [25, 135], [5, 135], [5, 115]];
@@ -82,24 +94,24 @@ const BASINS = [
     { id: "natl", label: "North Atlantic", center: [25, -60], zoom: 4, latMin: 0, latMax: 60, lonMin: -100, lonMax: -10 },
 ];
 
-// ── Wind legend entries (PAGASA Scale) ───────────────────────────────────────────────
+// ── Wind legend entries (PAGASA Scale in km/h) ───────────────────────────────
 const WIND_LEGEND = [
-    { label: "≥ 100 kt", color: "#5B0E2D" },
-    { label: "64–99 kt", color: "#A83232" },
-    { label: "48–63 kt", color: "#E67E22" },
-    { label: "34–47 kt", color: "#F1C40F" },
-    { label: "22–33 kt", color: "#2ECC71" },
-    { label: "< 22 kt", color: "#3498DB" },
+    { label: "≥ 185 km/h", color: "#FF007F" },
+    { label: "118–184 km/h", color: "#A83232" },
+    { label: "89–117 km/h", color: "#E67E22" },
+    { label: "62–88 km/h", color: "#F1C40F" },
+    { label: "39–61 km/h", color: "#2ECC71" },
+    { label: "< 39 km/h", color: "#3498DB" },
 ];
 
-// ── Wind → category name ──────────────────────────────────────────────
+// ── Wind → category name (in km/h) ──────────────────────────────────────────────
 function windCategory(w) {
     if (isNaN(w)) return "Unknown";
-    if (w >= 100) return "Super Typhoon";
-    if (w >= 64) return "Typhoon";
-    if (w >= 48) return "Sev. Tropical Storm";
-    if (w >= 34) return "Tropical Storm";
-    if (w >= 22) return "Tropical Depression";
+    if (w >= 185) return "Super Typhoon";
+    if (w >= 118) return "Typhoon";
+    if (w >= 89) return "Sev. Tropical Storm";
+    if (w >= 62) return "Tropical Storm";
+    if (w >= 39) return "Tropical Depression";
     return "LPA";
 }
 
@@ -229,6 +241,10 @@ export default function SpaghettiPlot() {
     const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
     const exportWrapperRef = useRef(null);
 
+    const [allTracks, setAllTracks] = useState([]);
+    const [filteredTrackIds, setFilteredTrackIds] = useState(null);
+    const [filterStats, setFilterStats] = useState(null);
+
     // ── Init map once ─────────────────────────────────────────────────────
     useEffect(() => {
         let cancelled = false;
@@ -334,20 +350,6 @@ export default function SpaghettiPlot() {
         return () => clearTimeout(timeoutId);
     }, [desktopSidebarOpen, sidebarOpen]);
 
-    // ── Decrypt obfuscated CSV data ─────────────────────────────────────────
-    const decryptXOR = (base64Str) => {
-        try {
-            const raw = atob(base64Str);
-            const bytes = new Uint8Array(raw.length);
-            for (let i = 0; i < raw.length; i++) {
-                bytes[i] = raw.charCodeAt(i) ^ 0xAA;
-            }
-            return new TextDecoder().decode(bytes);
-        } catch (e) {
-            return base64Str; // Fallback if it wasn't encrypted
-        }
-    };
-
     // ── Fetch + draw when horizon changes or map is ready ─────────────────
     const loadData = useCallback(async () => {
         if (!leafletReady) return;
@@ -372,8 +374,11 @@ export default function SpaghettiPlot() {
 
         setShowEnsembleMean(false);
         setMeanOnlyIds(new Set());
+        setFilteredTrackIds(null);
+        setFilterStats(null);
+        setAllTracks([]);
         setStatus("loading");
-        setStatusMsg("Loading latest FNV3 Data\u2026");
+        setStatusMsg("Loading latest FNV3 CSV\u2026");
         setTrackCount(0);
         setRunLabel("");
 
@@ -385,12 +390,12 @@ export default function SpaghettiPlot() {
         try {
             const res = await fetch(csvUrl);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const rawText = await res.text();
-            csvText = decryptXOR(rawText);
+            const encryptedText = await res.text();
+            csvText = decodeObfuscatedData(encryptedText);
         } catch (err) {
             setStatus("error");
             setStatusMsg(
-                `Data not found at ${csvUrl}. ` +
+                `CSV not found at ${csvUrl}. ` +
                 "Run the GitHub Action workflow first to generate it."
             );
             // Re-attach the layer group before returning
@@ -404,8 +409,8 @@ export default function SpaghettiPlot() {
         try {
             const pairedRes = await fetch(pairedUrl);
             if (pairedRes.ok) {
-                const rawPaired = await pairedRes.text();
-                pairedCsvText = decryptXOR(rawPaired);
+                const encPairedText = await pairedRes.text();
+                pairedCsvText = decodeObfuscatedData(encPairedText);
             }
         } catch (_) {
             // Silently skip — we fall back to computed median
@@ -422,6 +427,7 @@ export default function SpaghettiPlot() {
         let labelStr = "FNV3 Base";
         if (isLarge) labelStr = "FNV3 Large Ens";
         if (dataset === "ifs") labelStr = "ECMWF IFS Ens";
+        if (dataset === "aifs") labelStr = "ECMWF AIFS Ens";
         setRunLabel(`${labelStr} \u00b7 ${runInitTime}`);
         setStatusMsg("Parsing tracks…");
         const rawRows = rows.filter(r => (r.lead_time_hours !== undefined || r.lead_time !== undefined) && r.lat !== undefined);
@@ -451,11 +457,12 @@ export default function SpaghettiPlot() {
                 const lon = parseFloat(row.lon);
                 const pres = parseFloat(row.minimum_sea_level_pressure_hpa);
                 const windKt = parseFloat(row.maximum_sustained_wind_speed_knots);
+                const windKmh = isNaN(windKt) ? NaN : Math.round(windKt * 1.852);
                 if (isNaN(lat) || isNaN(lon)) continue;
                 const llon = lon > 180 ? lon - 360 : lon;
                 const key = `${row.track_id}__${row.sample}`;
                 if (!grouped[key]) grouped[key] = [];
-                grouped[key].push({ lat, lon: llon, p: pres, windKt, h: leadH });
+                grouped[key].push({ lat, lon: llon, p: pres, windKmh, h: leadH });
             }
 
             // Keep only tracks whose origin point falls inside the selected basin
@@ -465,6 +472,8 @@ export default function SpaghettiPlot() {
                 return origin.lat >= b.latMin && origin.lat <= b.latMax &&
                     origin.lon >= b.lonMin && origin.lon <= b.lonMax;
             });
+
+            setAllTracks(basinFiltered);
 
             let drawn = 0;
             const tracksByOriginKey = {};  // oKey → array of tracks
@@ -499,7 +508,8 @@ export default function SpaghettiPlot() {
             const tracksByDisturbance = {};
 
             // Pass 2: Draw tracks and attach cluster IDs
-            for (const points of basinFiltered) {
+            for (let trackIndex = 0; trackIndex < basinFiltered.length; trackIndex++) {
+                const points = basinFiltered[trackIndex];
                 if (points.length < 2) continue;
                 points.sort((a, b) => a.h - b.h);
                 const latlngs = points.map(pt => [pt.lat, pt.lon]);
@@ -538,12 +548,13 @@ export default function SpaghettiPlot() {
                 const animGroup = L.layerGroup().addTo(animLayerGroupRef.current);
 
                 const animMarker = L.circleMarker([0, 0], {
-                    radius: 7, color: "#38bdf8", weight: 2,
-                    fillColor: "transparent", fillOpacity: 0, opacity: 0
+                    radius: 5, color: "#38bdf8", weight: 2,
+                    fillColor: 'transparent', fillOpacity: 0, opacity: 0
                 }).addTo(animLayerGroupRef.current);
 
                 animObjectsRef.current.push({
                     distId,
+                    trackIndex,
                     group: animGroup,
                     marker: animMarker,
                     points: points
@@ -555,18 +566,19 @@ export default function SpaghettiPlot() {
                     noClip: true,
                 });
                 line.distId = distId;
+                line.trackIndex = trackIndex;
                 line.defaultOpacity = 0.5;
                 line.addTo(layerGroupRef.current);
 
                 for (const pt of points) {
                     const mark = L.circleMarker([pt.lat, pt.lon], {
-                        radius: 4, color: windColor(pt.windKt), weight: 1.5,
-                        fillColor: "transparent", fillOpacity: 0,
-                        opacity: 0.9
+                        radius: 4, color: windColor(pt.windKmh), weight: 2,
+                        fillColor: 'transparent', fillOpacity: 0, opacity: 0.9
                     });
                     mark.distId = distId;
-                    mark.defaultFillOpacity = 0;
-                    mark.defaultStrokeOpacity = 0.9;
+                    mark.trackIndex = trackIndex;
+                    mark.defaultFillOpacity = 0.9;
+                    mark.defaultStrokeOpacity = 1;
                     mark.addTo(layerGroupRef.current);
                 }
 
@@ -575,7 +587,7 @@ export default function SpaghettiPlot() {
                     tracksByOriginKey[oKey] = [];
                 }
                 // Store the max wind across all points in this track
-                const maxW = Math.max(...points.map(pt => isNaN(pt.windKt) ? 0 : pt.windKt));
+                const maxW = Math.max(...points.map(pt => isNaN(pt.windKmh) ? 0 : pt.windKmh));
                 if (tracksByOriginKey[oKey]) {
                     tracksByOriginKey[oKey].push(maxW);
                 }
@@ -601,7 +613,7 @@ export default function SpaghettiPlot() {
 
                 // Compute peak wind from actual tracks assigned to this disturbance
                 const allMaxW = distTracks.map(pts => {
-                    const winds = pts.map(pt => isNaN(pt.windKt) ? 0 : pt.windKt);
+                    const winds = pts.map(pt => isNaN(pt.windKmh) ? 0 : pt.windKmh);
                     return winds.length > 0 ? Math.max(...winds) : 0;
                 });
 
@@ -691,12 +703,13 @@ export default function SpaghettiPlot() {
                     const lon = parseFloat(row.lon);
                     const pres = parseFloat(row.minimum_sea_level_pressure_hpa);
                     const windKt = parseFloat(row.maximum_sustained_wind_speed_knots);
+                    const windKmh = isNaN(windKt) ? NaN : Math.round(windKt * 1.852);
                     if (isNaN(lat) || isNaN(lon)) continue;
 
                     if (!pairedMeanByTrackId[trackId]) pairedMeanByTrackId[trackId] = { points: [], trackId };
                     pairedMeanByTrackId[trackId].points.push({
                         lat, lon: lon > 180 ? lon - 360 : lon,
-                        p: pres, windKt, h: leadH
+                        p: pres, windKmh, h: leadH
                     });
                 }
 
@@ -751,23 +764,12 @@ export default function SpaghettiPlot() {
                 };
             }
 
-            // --- Determine required member count for Ensemble Mean ---
-            const uniqueSamples = new Set();
-            for (const row of rawRows) {
-                if (row.sample !== undefined && row.sample !== "-1") {
-                    uniqueSamples.add(row.sample);
-                }
-            }
-            const totalMembersInDataset = uniqueSamples.size > 0 ? uniqueSamples.size : 50;
-            
-            const REQUIRED_MEMBERS = dataset === "large" 
-                ? 100 
-                : Math.max(30, Math.floor(totalMembersInDataset * 0.75));
-
             if (meanLayerGroupRef.current) {
                 for (const dist of disturbanceList) {
                     const tracks = tracksByDisturbance[dist.id] || [];
-                    if (tracks.length < REQUIRED_MEMBERS) {
+                    const minRequiredMembers = dataset === "large" ? 100 : 25;
+
+                    if (tracks.length < minRequiredMembers) {
                         dist.hasEnsembleMean = false;
                         dist.agreement = 0;
                         dist.spreadKm = 0;
@@ -793,7 +795,7 @@ export default function SpaghettiPlot() {
                             byHour[pt.h].lats.push(pt.lat);
                             byHour[pt.h].lons.push(pt.lon);
                             byHour[pt.h].ps.push(!isNaN(pt.p) ? pt.p : NaN);
-                            byHour[pt.h].winds.push(!isNaN(pt.windKt) ? pt.windKt : NaN);
+                            byHour[pt.h].winds.push(!isNaN(pt.windKmh) ? pt.windKmh : NaN);
                             byHour[pt.h].trackIndices.push(tIdx);
                         }
                     }
@@ -901,7 +903,7 @@ export default function SpaghettiPlot() {
                             if (Math.abs(pairedPt.h - h) <= 3) {
                                 mLat = pairedPt.lat;
                                 mLon = pairedPt.lon;
-                                mW = pairedPt.windKt;
+                                mW = pairedPt.windKmh;
                             } else {
                                 // Paired data ended, stop drawing the mean track
                                 continue;
@@ -937,12 +939,12 @@ export default function SpaghettiPlot() {
                                 }
                             }
 
-                            // Dead members (Decay Curve)
+                            // Dead members (Decay Curve in km/h)
                             const activeCount = windVals.length;
                             const deadCount = tracks.length - activeCount;
                             for (let i = 0; i < deadCount; i++) {
-                                // Spread dead values from 10 to 20 knots (Decay "Smear")
-                                const decayVal = deadCount > 1 ? 10 + (i / (deadCount - 1)) * 10 : 15;
+                                // Spread dead values from 19 to 37 km/h (Decay "Smear")
+                                const decayVal = deadCount > 1 ? 19 + (i / (deadCount - 1)) * 18 : 28;
                                 windVals.push(decayVal);
                                 windWeights.push(1.0); // Full weight for penalty
                             }
@@ -955,7 +957,7 @@ export default function SpaghettiPlot() {
                                 const top10Count = Math.max(1, Math.floor(sortedActive.length * 0.1));
                                 const top10Mean = sortedActive.slice(0, top10Count).reduce((a, b) => a + b, 0) / top10Count;
 
-                                if (top10Mean - mW > 40) {
+                                if (top10Mean - mW > 74) {
                                     dist.highIntensityUncertainty = true;
                                 }
                             }
@@ -991,7 +993,7 @@ export default function SpaghettiPlot() {
                         const activeMembers = n;
                         const totalMembers = tracks.length;
 
-                        meanPts.push({ lat: mLat, lon: mLon, windKt: mW, h, sdKm, r67km, activeMembers, totalMembers });
+                        meanPts.push({ lat: mLat, lon: mLon, windKmh: mW, h, sdKm, r67km, activeMembers, totalMembers });
                     }
 
                     // Tag disturbance with source info
@@ -1121,7 +1123,7 @@ export default function SpaghettiPlot() {
 
                         // Colored segment
                         const meanSeg = L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
-                            color: windColor(p2.windKt),
+                            color: windColor(p2.windKmh),
                             weight: 4,
                             opacity: 0.95,
                             lineCap: "round",
@@ -1135,8 +1137,8 @@ export default function SpaghettiPlot() {
                     // Mean position dots colored by wind speed
                     for (const pt of meanPts) {
                         const mk = L.circleMarker([pt.lat, pt.lon], {
-                            radius: 6, color: windColor(pt.windKt), weight: 2,
-                            fillColor: "transparent", fillOpacity: 0, opacity: 1
+                            radius: 5, color: windColor(pt.windKmh), weight: 2.5,
+                            fillColor: 'transparent', fillOpacity: 0, opacity: 1
                         });
                         mk.distId = dist.id;
 
@@ -1146,7 +1148,7 @@ export default function SpaghettiPlot() {
                                 Hour ${pt.h}
                             </div>
                             <div style="font-size: 11px;">
-                                Wind: ${isNaN(pt.windKt) ? 'N/A' : pt.windKt.toFixed(0) + ' kt'}<br/>
+                                Wind: ${isNaN(pt.windKmh) ? 'N/A' : pt.windKmh.toFixed(0) + ' km/h'}<br/>
                                 Survivorship: ${pt.activeMembers}/${pt.totalMembers} members (${survRate}%)
                             </div>
                         `;
@@ -1179,7 +1181,7 @@ export default function SpaghettiPlot() {
         } finally {
             // Re-attach the correct layer group based on the active view mode
             if (map) {
-                if (viewModeRef.current === "tracker") {
+                if (viewModeRef.current === "tracker" || viewModeRef.current === "filter") {
                     if (layerGroupRef.current) layerGroupRef.current.addTo(map);
                     // The showEnsembleMean effect will handle re-attaching the mean layer if needed
                 } else if (viewModeRef.current === "animation") {
@@ -1207,14 +1209,26 @@ export default function SpaghettiPlot() {
         layerGroupRef.current.eachLayer(layer => {
             const isSelected = activeDisturbanceId === null || layer.distId === activeDisturbanceId;
             const isMeanOnly = layer.distId != null && meanOnlyIds.has(layer.distId);
+            const isFiltered = filteredTrackIds === null || (layer.trackIndex != null && filteredTrackIds.has(layer.trackIndex));
+
+            let polyOpacity = 0.05;
+            let markFill = 0.05;
+            let markStroke = 0.05;
+
+            if (isMeanOnly) {
+                polyOpacity = 0.03; markFill = 0.03; markStroke = 0.03;
+            } else if (!isFiltered) {
+                polyOpacity = 0; markFill = 0; markStroke = 0;
+            } else if (isSelected) {
+                polyOpacity = layer.defaultOpacity;
+                markFill = layer.defaultFillOpacity;
+                markStroke = layer.defaultStrokeOpacity;
+            }
 
             if (layer instanceof L.Polyline && !(layer instanceof L.CircleMarker)) {
-                layer.setStyle({ opacity: isMeanOnly ? 0.03 : (isSelected ? layer.defaultOpacity : 0.05) });
+                layer.setStyle({ opacity: polyOpacity });
             } else if (layer instanceof L.CircleMarker) {
-                layer.setStyle({
-                    fillOpacity: isMeanOnly ? 0.03 : (isSelected ? layer.defaultFillOpacity : 0.05),
-                    opacity: isMeanOnly ? 0.03 : (isSelected ? layer.defaultStrokeOpacity : 0.05)
-                });
+                layer.setStyle({ fillOpacity: markFill, opacity: markStroke });
             }
         });
 
@@ -1228,7 +1242,7 @@ export default function SpaghettiPlot() {
                 } else if (layer instanceof L.Polyline && !(layer instanceof L.CircleMarker)) {
                     layer.setStyle({ opacity: isSelected ? 0.95 : 0.05 });
                 } else if (layer instanceof L.CircleMarker) {
-                    layer.setStyle({ fillOpacity: 0, opacity: isSelected ? 1 : 0.05 });
+                    layer.setStyle({ fillOpacity: isSelected ? 1 : 0.05, opacity: isSelected ? 1 : 0.05 });
                 }
             });
         }
@@ -1240,7 +1254,7 @@ export default function SpaghettiPlot() {
                 mapInstanceRef.current.flyTo([dist.lat, dist.lon], 5, { duration: 1.5 });
             }
         }
-    }, [activeDisturbanceId, disturbances, meanOnlyIds]);
+    }, [activeDisturbanceId, disturbances, meanOnlyIds, filteredTrackIds]);
 
     // Toggle ensemble mean layer visibility
     useEffect(() => {
@@ -1258,7 +1272,7 @@ export default function SpaghettiPlot() {
         const map = mapInstanceRef.current;
         if (!map || !layerGroupRef.current || !animLayerGroupRef.current) return;
 
-        if (viewMode === "tracker") {
+        if (viewMode === "tracker" || viewMode === "filter") {
             map.removeLayer(animLayerGroupRef.current);
             layerGroupRef.current.addTo(map);
             if (showEnsembleMean) meanLayerGroupRef.current.addTo(map);
@@ -1294,7 +1308,8 @@ export default function SpaghettiPlot() {
         for (const obj of animObjectsRef.current) {
             const isSelected = activeDisturbanceId === null || obj.distId === activeDisturbanceId;
             const isMeanOnly = obj.distId != null && meanOnlyIds.has(obj.distId);
-            const hidden = isMeanOnly || !isSelected;
+            const isFiltered = filteredTrackIds === null || filteredTrackIds.has(obj.trackIndex);
+            const hidden = isMeanOnly || !isSelected || !isFiltered;
 
             const maxTrackHour = obj.points[obj.points.length - 1].h;
             const hasEnded = animHour > maxTrackHour;
@@ -1314,7 +1329,7 @@ export default function SpaghettiPlot() {
                 const p1 = visiblePts[i - 1];
                 const p2 = visiblePts[i];
                 L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
-                    color: windColor(p2.windKt),
+                    color: windColor(p2.windKmh),
                     weight: 2.5,
                     opacity: 0.5,
                     lineCap: "round",
@@ -1326,12 +1341,12 @@ export default function SpaghettiPlot() {
             const lastPt = visiblePts[visiblePts.length - 1];
             obj.marker.setLatLng([lastPt.lat, lastPt.lon]);
             obj.marker.setStyle({
-                color: windColor(lastPt.windKt),
+                fillColor: windColor(lastPt.windKmh),
                 opacity: 1,
-                fillOpacity: 0
+                fillOpacity: 0.9
             });
         }
-    }, [animHour, viewMode, activeDisturbanceId, status, meanOnlyIds]);
+    }, [animHour, viewMode, activeDisturbanceId, status, meanOnlyIds, filteredTrackIds]);
 
     const exportGif = async () => {
         if (!mapInstanceRef.current || !exportWrapperRef.current) return;
@@ -1375,6 +1390,10 @@ export default function SpaghettiPlot() {
         if (mapInstanceRef.current.keyboard) mapInstanceRef.current.keyboard.disable();
 
         try {
+            if (!exportWrapperRef.current) throw new Error("No map wrapper found for capture.");
+
+            const modelPrefix = dataset === 'ifs' ? 'ECMWF' : dataset === 'aifs' ? 'ECMWF-AIFS' : dataset === 'large' ? 'GDM-FNV3-Large' : 'GDM-FNV3';
+            let exportFilename = `${modelPrefix}-Ensemble-${new Date().toISOString().replace(/[:.]/g, '-')}.gif`;
             for (let h = 0; h <= maxAnimHour; h += 6) {
                 setAnimHour(h);
                 // Wait for React to apply state, useEffect to run, and Leaflet to render
@@ -1415,13 +1434,7 @@ export default function SpaghettiPlot() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-
-                let fileNamePrefix = "GDM-FNV3-Ensemble";
-                if (dataset === "large") fileNamePrefix = "GDM-FNV3-Large-Ensemble";
-                if (dataset === "ifs") fileNamePrefix = "ECMWF-Ensemble";
-                if (dataset === "aifs") fileNamePrefix = "ECMWF-AIFS-Ensemble";
-
-                a.download = `${fileNamePrefix}-${Date.now()}.gif`;
+                a.download = exportFilename;
                 a.click();
                 URL.revokeObjectURL(url);
 
@@ -1544,23 +1557,6 @@ export default function SpaghettiPlot() {
                     <h1 className="spaghetti-title">
                         Ensemble Tracker
                     </h1>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <span className={`spaghetti-status-badge ${status === "ok" ? "status-ok" :
-                            status === "loading" ? "status-loading" :
-                                status === "none" ? "status-none" :
-                                    status === "error" ? "status-error" :
-                                        "status-none"
-                            }`}>
-                            {status === "ok" ? "Live" : status === "loading" ? "…" : status === "none" ? "Quiet" : status === "error" ? "Err" : "–"}
-                        </span>
-                        <button
-                            className="desktop-sidebar-close-btn"
-                            onClick={() => setDesktopSidebarOpen(false)}
-                            title="Hide Sidebar"
-                        >
-                            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
-                        </button>
-                    </div>
                 </div>
                 <p className="spaghetti-subtitle">
                     {status === "loading" ? statusMsg :
@@ -1601,7 +1597,8 @@ export default function SpaghettiPlot() {
                 </h2>
                 <div className="segmented-control">
                     {[{ id: "tracker", label: "Tracker" },
-                    { id: "animation", label: "Animation" }]
+                    { id: "animation", label: "Animation" },
+                    { id: "filter", label: "Filter" }]
                         .map(opt => (
                             <button
                                 key={opt.id}
@@ -1616,6 +1613,16 @@ export default function SpaghettiPlot() {
                         ))}
                 </div>
             </div>
+
+            <EnsembleFilter
+                isActive={viewMode === "filter"}
+                isLocked={dataset !== "large"}
+                tracks={allTracks}
+                onFilterChange={(ids, stats) => {
+                    setFilteredTrackIds(ids);
+                    setFilterStats(stats);
+                }}
+            />
 
             {/* Animation Controls (Desktop) */}
             <div className="sidebar-animation-panel">
@@ -1632,15 +1639,21 @@ export default function SpaghettiPlot() {
                     { id: "large", label: "FNV3 Large" },
                     { id: "ifs", label: "ECMWF IFS" },
                     { id: "aifs", label: "ECMWF AIFS" }]
-                        .map(opt => (
-                            <button
-                                key={opt.id}
-                                onClick={() => setDataset(opt.id)}
-                                className={`segment-btn ${dataset === opt.id ? "active" : ""}`}
-                            >
-                                <span className="segment-label">{opt.label}</span>
-                            </button>
-                        ))}
+                        .map(opt => {
+                            const isLocked = viewMode === "filter" && opt.id !== "large";
+                            return (
+                                <button
+                                    key={opt.id}
+                                    onClick={() => {
+                                        if (!isLocked) setDataset(opt.id);
+                                    }}
+                                    className={`segment-btn ${dataset === opt.id ? "active" : ""} ${isLocked ? "opacity-30 cursor-not-allowed" : ""}`}
+                                    title={isLocked ? "Switch to Tracker mode to view other datasets" : ""}
+                                >
+                                    <span className="segment-label">{opt.label}</span>
+                                </button>
+                            );
+                        })}
                 </div>
             </div>
 
@@ -1680,7 +1693,7 @@ export default function SpaghettiPlot() {
             </button>
 
             {/* Ensemble Mean Toggle */}
-            {disturbances.some(d => d.hasEnsembleMean) && (
+            {viewMode !== "filter" && disturbances.some(d => d.hasEnsembleMean) && (
                 <div style={{ opacity: viewMode === "animation" ? 0.4 : 1, pointerEvents: viewMode === "animation" ? "none" : "auto", transition: "all 0.2s" }}>
                     <h2 className="spaghetti-section-title">
                         <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
@@ -1702,7 +1715,7 @@ export default function SpaghettiPlot() {
             )}
 
             {/* Detected disturbances */}
-            {disturbances.length > 0 && (
+            {viewMode !== "filter" && disturbances.length > 0 && (
                 <div style={{ opacity: viewMode === "animation" ? 0.4 : 1, pointerEvents: viewMode === "animation" ? "none" : "auto", transition: "all 0.2s" }}>
                     <h2 className="spaghetti-section-title">
                         <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
@@ -1755,7 +1768,7 @@ export default function SpaghettiPlot() {
                                     </div>
                                     <div className="system-detail-row system-detail-divider">
                                         <span>Peak Wind:</span>
-                                        <span className="system-peak-value" style={{ color: d.peakColor }}>{d.peakW > 0 ? `${d.peakW.toFixed(0)} kt` : "N/A"}</span>
+                                        <span className="system-peak-value" style={{ color: d.peakColor }}>{d.peakW > 0 ? `${d.peakW.toFixed(0)} km/h` : "N/A"}</span>
                                     </div>
                                     {d.highIntensityUncertainty && (
                                         <div style={{
@@ -1801,11 +1814,11 @@ export default function SpaghettiPlot() {
                                         <div className="system-intensity-breakdown">
                                             {WIND_LEGEND.map(({ label, color }) => {
                                                 const cat = windCategory(
-                                                    label.includes("≥ 100") ? 100 :
-                                                        label.includes("64") ? 64 :
-                                                            label.includes("48") ? 48 :
-                                                                label.includes("34") ? 34 :
-                                                                    label.includes("22–33") ? 22 : 10
+                                                    label.includes("≥ 185") ? 185 :
+                                                        label.includes("118") ? 118 :
+                                                            label.includes("89") ? 89 :
+                                                                label.includes("62") ? 62 :
+                                                                    label.includes("39–61") ? 39 : 10
                                                 );
                                                 const count = d.catCounts[cat] || 0;
                                                 if (count === 0) return null;
@@ -1839,7 +1852,7 @@ export default function SpaghettiPlot() {
 
             {/* Global Intensity Legend */}
             <div className="spaghetti-legend">
-                <div className="spaghetti-legend-title">Wind Intensity Scale (kt)</div>
+                <div className="spaghetti-legend-title">Wind Intensity Scale (km/h)</div>
                 <div className="spaghetti-legend-grid">
                     {WIND_LEGEND.map(({ label, color }) => (
                         <div key={label} className="spaghetti-legend-item">
@@ -1898,7 +1911,7 @@ export default function SpaghettiPlot() {
                         </svg>
                     </button>
                     <span className="mobile-title">
-                        {dataset === "ifs" ? "ECMWF IFS" : "GDM FNV3"} · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
+                        {dataset === "ifs" ? "ECMWF IFS" : dataset === "aifs" ? "ECMWF AIFS" : "GDM FNV3"} · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
                     </span>
                 </div>
 
@@ -1937,6 +1950,47 @@ export default function SpaghettiPlot() {
                                     );
                                 })}
                             </div>
+                        </div>
+                    )}
+
+                    {/* Filter Stats Overlay (Visible in Filter Mode) */}
+                    {viewMode === "filter" && dataset === "large" && filterStats && (
+                        <div className="gif-watermark filter-watermark">
+                            <h3 className="gif-watermark-title" style={{ color: '#d946ef' }}>
+                                Filter Active
+                            </h3>
+                            <div className="gif-watermark-row" style={{ fontSize: '15px', marginBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <strong>Matched:</strong> <span style={{ color: '#00d4ff' }}>{filteredTrackIds ? filteredTrackIds.size : 0} / {allTracks.length}</span>
+                                </div>
+                                {allTracks.length > 0 && filteredTrackIds && (
+                                    (() => {
+                                        const pct = Math.round((filteredTrackIds.size / allTracks.length) * 100);
+                                        const color = pct >= 70 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444';
+                                        const label = pct >= 70 ? 'HIGH' : pct >= 40 ? 'MEDIUM' : 'LOW';
+                                        return (
+                                            <div style={{ background: `${color}25`, border: `1px solid ${color}50`, color: color, padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', marginLeft: '12px' }}>
+                                                {pct}% {label}
+                                            </div>
+                                        );
+                                    })()
+                                )}
+                            </div>
+                            {filterStats.intensities && (
+                                <div className="gif-watermark-valid" style={{ fontSize: '13px', marginTop: '6px' }}>
+                                    <span style={{ color: '#94a3b8' }}>Intensity:</span> {filterStats.intensities}
+                                </div>
+                            )}
+                            {filterStats.region && (
+                                <div className="gif-watermark-valid" style={{ fontSize: '13px', marginTop: '4px' }}>
+                                    <span style={{ color: '#94a3b8' }}>Landfall Region:</span> {filterStats.region}
+                                </div>
+                            )}
+                            {filterStats.trajectory && (
+                                <div className="gif-watermark-valid" style={{ fontSize: '13px', marginTop: '4px' }}>
+                                    <span style={{ color: '#94a3b8' }}>Path:</span> {filterStats.trajectory}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
