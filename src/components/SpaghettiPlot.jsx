@@ -1635,7 +1635,6 @@ export default function SpaghettiPlot() {
                         Ensemble Tracker
                     </h1>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <NewsNotification />
                         <span className={`spaghetti-status-badge ${status === "ok" ? "status-ok" :
                             status === "loading" ? "status-loading" :
                                 status === "none" ? "status-none" :
@@ -1708,6 +1707,31 @@ export default function SpaghettiPlot() {
                         ))}
                 </div>
             </div>
+
+            {/* Plot Style selector */}
+            {viewMode !== "animation" && (
+                <div>
+                    <h2 className="spaghetti-section-title">
+                        <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                        Plot Style
+                    </h2>
+                    <div className="segmented-control">
+                        <button
+                            onClick={() => setShowPlotPoints(true)}
+                            className={`segment-btn ${showPlotPoints ? "active primary" : ""}`}
+                        >
+                            <span className="segment-label">With Plot</span>
+                        </button>
+                        <button
+                            onClick={() => setShowPlotPoints(false)}
+                            className={`segment-btn ${!showPlotPoints ? "active primary" : ""}`}
+                        >
+                            <span className="segment-label">Line Only</span>
+                        </button>
+                    </div>
+                </div>
+            )}
+
 
             <EnsembleFilter
                 isActive={viewMode === "filter"}
@@ -2010,9 +2034,6 @@ export default function SpaghettiPlot() {
                     <span className="mobile-title">
                         {dataset === "ifs" ? "ECMWF IFS" : dataset === "aifs" ? "ECMWF AIFS" : "GDM FNV3"} · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
                     </span>
-                    <div style={{ marginLeft: 'auto', marginRight: '8px' }}>
-                        <NewsNotification />
-                    </div>
                 </div>
 
                 {/* Loading overlay on the map */}
