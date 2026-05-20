@@ -459,9 +459,10 @@ export default function SpaghettiPlot() {
                 const windKmh = isNaN(windKt) ? NaN : Math.round(windKt * 1.852);
                 if (isNaN(lat) || isNaN(lon)) continue;
                 const llon = lon > 180 ? lon - 360 : lon;
-                const key = `${row.track_id}__${row.sample}`;
+                const initTime = row.init_time || "latest";
+                const key = `${initTime}__${row.track_id}__${row.sample}`;
                 if (!grouped[key]) grouped[key] = [];
-                grouped[key].push({ lat, lon: llon, p: pres, windKmh, h: leadH });
+                grouped[key].push({ lat, lon: llon, p: pres, windKmh, h: leadH, initTime });
             }
 
             // Keep only tracks whose origin point falls inside the selected basin
