@@ -45,7 +45,7 @@ const PH_BOX = turf.polygon([[
     [117.0, 5.0]
 ]]);
 
-export default function EnsembleFilter({ tracks, onFilterChange, isActive, isLocked }) {
+export default function EnsembleFilter({ tracks, onFilterChange, isActive, isLocked, showPlotPoints, setShowPlotPoints }) {
     const [selectedIntensities, setSelectedIntensities] = useState(new Set());
     const [selectedRegion, setSelectedRegion] = useState("");
     const [trajectory, setTrajectory] = useState(""); // "landfall", "graze", "recurve"
@@ -177,6 +177,26 @@ export default function EnsembleFilter({ tracks, onFilterChange, isActive, isLoc
             )}
 
             <div className={`bg-[#1e293b] p-3 rounded-xl border border-[rgba(255,255,255,0.1)] shadow-lg mt-2 ${isLocked ? 'opacity-40 pointer-events-none' : ''}`}>
+                <div className="mb-3">
+                    <div className="text-[10px] text-slate-400 mb-1.5 uppercase font-bold tracking-wider">Plot Style</div>
+                    <div className="segmented-control" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px', background: 'rgba(0,0,0,0.3)' }}>
+                        <button
+                            onClick={() => setShowPlotPoints(true)}
+                            className={`segment-btn ${showPlotPoints ? "active primary" : ""}`}
+                            style={{ padding: '6px 4px' }}
+                        >
+                            <span className="segment-label" style={{ fontSize: '10px' }}>With Plot</span>
+                        </button>
+                        <button
+                            onClick={() => setShowPlotPoints(false)}
+                            className={`segment-btn ${!showPlotPoints ? "active primary" : ""}`}
+                            style={{ padding: '6px 4px' }}
+                        >
+                            <span className="segment-label" style={{ fontSize: '10px' }}>Line Only</span>
+                        </button>
+                    </div>
+                </div>
+
                 <div className="mb-3">
                     <div className="text-[10px] text-slate-400 mb-1.5 uppercase font-bold tracking-wider">Peak Intensity Reached</div>
                     <div className="segmented-control" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px', background: 'rgba(0,0,0,0.3)' }}>

@@ -220,6 +220,7 @@ export default function SpaghettiPlot() {
     const [leafletReady, setLeafletReady] = useState(false);
     const [showEnsembleMean, setShowEnsembleMean] = useState(false);
     const [meanOnlyIds, setMeanOnlyIds] = useState(new Set());
+    const [showPlotPoints, setShowPlotPoints] = useState(true);
 
     const [viewModeState, setViewModeState] = useState("tracker");
     const viewModeRef = useRef("tracker");
@@ -560,15 +561,23 @@ export default function SpaghettiPlot() {
                     points: points
                 });
 
-                const line = L.polyline(latlngs, {
-                    color: "#00d4ff", weight: 2.5, opacity: 0.5,
-                    lineCap: "round", lineJoin: "round",
-                    noClip: true,
-                });
-                line.distId = distId;
-                line.trackIndex = trackIndex;
-                line.defaultOpacity = 0.5;
-                line.addTo(layerGroupRef.current);
+                // Draw line segment-by-segment to color by wind speed
+                for (let i = 1; i < points.length; i++) {
+                    const p1 = points[i - 1];
+                    const p2 = points[i];
+                    const segment = L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
+                        color: windColor(p2.windKmh),
+                        weight: 2.5,
+                        opacity: 0.5,
+                        lineCap: "round",
+                        lineJoin: "round",
+                        noClip: true,
+                    });
+                    segment.distId = distId;
+                    segment.trackIndex = trackIndex;
+                    segment.defaultOpacity = 0.5;
+                    segment.addTo(layerGroupRef.current);
+                }
 
                 for (const pt of points) {
                     const mark = L.circleMarker([pt.lat, pt.lon], {
@@ -1216,13 +1225,15 @@ export default function SpaghettiPlot() {
             let markStroke = 0.05;
 
             if (isMeanOnly) {
-                polyOpacity = 0.03; markFill = 0.03; markStroke = 0.03;
+                polyOpacity = 0.03;
+                markFill = showPlotPoints ? 0.03 : 0;
+                markStroke = showPlotPoints ? 0.03 : 0;
             } else if (!isFiltered) {
                 polyOpacity = 0; markFill = 0; markStroke = 0;
             } else if (isSelected) {
                 polyOpacity = layer.defaultOpacity;
-                markFill = layer.defaultFillOpacity;
-                markStroke = layer.defaultStrokeOpacity;
+                markFill = showPlotPoints ? layer.defaultFillOpacity : 0;
+                markStroke = showPlotPoints ? layer.defaultStrokeOpacity : 0;
             }
 
             if (layer instanceof L.Polyline && !(layer instanceof L.CircleMarker)) {
@@ -1242,7 +1253,9 @@ export default function SpaghettiPlot() {
                 } else if (layer instanceof L.Polyline && !(layer instanceof L.CircleMarker)) {
                     layer.setStyle({ opacity: isSelected ? 0.95 : 0.05 });
                 } else if (layer instanceof L.CircleMarker) {
-                    layer.setStyle({ fillOpacity: isSelected ? 1 : 0.05, opacity: isSelected ? 1 : 0.05 });
+                    const fill = showPlotPoints ? (isSelected ? 1 : 0.05) : 0;
+                    const stroke = showPlotPoints ? (isSelected ? 1 : 0.05) : 0;
+                    layer.setStyle({ fillOpacity: fill, opacity: stroke });
                 }
             });
         }
@@ -1254,7 +1267,7 @@ export default function SpaghettiPlot() {
                 mapInstanceRef.current.flyTo([dist.lat, dist.lon], 5, { duration: 1.5 });
             }
         }
-    }, [activeDisturbanceId, disturbances, meanOnlyIds, filteredTrackIds]);
+    }, [activeDisturbanceId, disturbances, meanOnlyIds, filteredTrackIds, showPlotPoints]);
 
     // Toggle ensemble mean layer visibility
     useEffect(() => {
@@ -1347,6 +1360,70 @@ export default function SpaghettiPlot() {
             });
         }
     }, [animHour, viewMode, activeDisturbanceId, status, meanOnlyIds, filteredTrackIds]);
+
+    const exportScreenshot = async () => {
+        if (!exportWrapperRef.current) return;
+        setIsExporting(true);
+
+        try {
+            const mapEl = exportWrapperRef.current;
+            const dpr = window.devicePixelRatio || 2;
+
+            const canvas = await html2canvas(mapEl, {
+                useCORS: true,
+                allowTaint: false,
+                scale: dpr,
+                backgroundColor: "#0f172a",
+                logging: false,
+                ignoreElements: (node) => node.classList && (node.classList.contains('leaflet-control-container') || node.classList.contains('no-export'))
+            });
+
+            // Draw '@ Philippine Typoon/Weather' watermark
+            const ctx = canvas.getContext('2d');
+
+            // CRITICAL FIX: html2canvas leaves the context scaled by dpr.
+            // Reset the transform matrix so our coordinates map 1:1 to canvas pixels!
+            ctx.resetTransform();
+
+            // Tasteful proportional size (1.5% of canvas width), clamped to sensible physical pixel limits
+            const fontSize = Math.max(16, Math.min(32, canvas.width * 0.015));
+
+            // CRITICAL: Canvas ctx.font does NOT support CSS var(). It must be a valid font string!
+            ctx.font = `900 ${fontSize}px "Inter", system-ui, -apple-system, sans-serif`;
+            ctx.fillStyle = "rgba(255, 255, 255, 1)";
+            ctx.textAlign = "right";
+            ctx.textBaseline = "bottom";
+
+            // Add a thick black outline (stroke) and a strong drop shadow
+            ctx.shadowColor = "rgba(0, 0, 0, 1)";
+            ctx.shadowBlur = Math.max(2, fontSize * 0.2);
+            ctx.shadowOffsetX = 1;
+            ctx.shadowOffsetY = 1;
+
+            const paddingX = Math.max(16, canvas.width * 0.015);
+            const paddingY = Math.max(16, canvas.width * 0.015);
+
+            // Draw the stroke first, then the fill on top
+            ctx.lineWidth = Math.max(2, fontSize * 0.15);
+            ctx.strokeStyle = "rgba(0, 0, 0, 0.9)";
+            ctx.strokeText("@ Philippine Typoon/Weather", canvas.width - paddingX, canvas.height - paddingY);
+            ctx.fillText("@ Philippine Typoon/Weather", canvas.width - paddingX, canvas.height - paddingY);
+
+            // Reset shadow before continuing
+            ctx.shadowColor = "transparent";
+
+            const url = canvas.toDataURL("image/png");
+            const a = document.createElement('a');
+            a.href = url;
+            const modelPrefix = dataset === 'ifs' ? 'ECMWF' : dataset === 'aifs' ? 'ECMWF-AIFS' : dataset === 'large' ? 'GDM-FNV3-Large' : 'GDM-FNV3';
+            a.download = `${modelPrefix}-Snapshot-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+            a.click();
+        } catch (err) {
+            console.error("Screenshot failed:", err);
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     const exportGif = async () => {
         if (!mapInstanceRef.current || !exportWrapperRef.current) return;
@@ -1557,6 +1634,24 @@ export default function SpaghettiPlot() {
                     <h1 className="spaghetti-title">
                         Ensemble Tracker
                     </h1>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <NewsNotification />
+                        <span className={`spaghetti-status-badge ${status === "ok" ? "status-ok" :
+                            status === "loading" ? "status-loading" :
+                                status === "none" ? "status-none" :
+                                    status === "error" ? "status-error" :
+                                        "status-none"
+                            }`}>
+                            {status === "ok" ? "Live" : status === "loading" ? "…" : status === "none" ? "Quiet" : status === "error" ? "Err" : "–"}
+                        </span>
+                        <button
+                            className="desktop-sidebar-close-btn"
+                            onClick={() => setDesktopSidebarOpen(false)}
+                            title="Hide Sidebar"
+                        >
+                            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+                        </button>
+                    </div>
                 </div>
                 <p className="spaghetti-subtitle">
                     {status === "loading" ? statusMsg :
@@ -1618,6 +1713,8 @@ export default function SpaghettiPlot() {
                 isActive={viewMode === "filter"}
                 isLocked={dataset !== "large"}
                 tracks={allTracks}
+                showPlotPoints={showPlotPoints}
+                setShowPlotPoints={setShowPlotPoints}
                 onFilterChange={(ids, stats) => {
                     setFilteredTrackIds(ids);
                     setFilterStats(stats);
@@ -1865,7 +1962,7 @@ export default function SpaghettiPlot() {
 
             <div className="spaghetti-footer">
                 <p className="spaghetti-footer-text">
-                    Powered by <strong className="spaghetti-footer-highlight">Philippine Typhoon/Weather</strong><br />
+                    Powered by <strong className="spaghetti-footer-highlight">Philippine Typoon/Weather</strong><br />
                     Data: {dataset === "ifs" ? "ECMWF IFS Ensemble" : "GDM FNV3 Ensemble"}<br />
                     Consult official agencies for guidance.
                 </p>
@@ -1913,6 +2010,9 @@ export default function SpaghettiPlot() {
                     <span className="mobile-title">
                         {dataset === "ifs" ? "ECMWF IFS" : dataset === "aifs" ? "ECMWF AIFS" : "GDM FNV3"} · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
                     </span>
+                    <div style={{ marginLeft: 'auto', marginRight: '8px' }}>
+                        <NewsNotification />
+                    </div>
                 </div>
 
                 {/* Loading overlay on the map */}
@@ -1925,6 +2025,43 @@ export default function SpaghettiPlot() {
 
                 <div ref={exportWrapperRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
                     <div ref={mapRef} className="map-container" style={{ width: '100%', height: '100%', minHeight: '400px' }} />
+
+                    {/* Screenshot Button */}
+                    {(viewMode === "tracker" || viewMode === "filter") && (
+                        <button
+                            className="no-export"
+                            onClick={exportScreenshot}
+                            disabled={isExporting}
+                            style={{
+                                position: 'absolute',
+                                bottom: '24px',
+                                left: '24px',
+                                zIndex: 1000,
+                                backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                                backdropFilter: 'blur(4px)',
+                                border: '1px solid rgba(0, 212, 255, 0.4)',
+                                color: '#00d4ff',
+                                padding: '10px',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                transition: 'all 0.2s',
+                            }}
+                            title="Screenshot Map"
+                        >
+                            {isExporting ? (
+                                <div className="map-spinner" style={{ width: '22px', height: '22px', borderWidth: '2px' }} />
+                            ) : (
+                                <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                            )}
+                        </button>
+                    )}
 
                     {/* GIF Watermark Overlay (Visible in Animation Mode) */}
                     {(viewMode === "animation" || isExporting) && (
