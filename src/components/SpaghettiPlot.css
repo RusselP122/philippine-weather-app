@@ -742,11 +742,11 @@
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border-color);
-  position: fixed;
-  top: 56px; /* Offset to sit exactly below the 56px tall sticky Navbar */
+  position: absolute;
+  top: 0;
   left: 0;
   right: 0;
-  z-index: 1000;
+  z-index: 9999;
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
 }
@@ -974,9 +974,14 @@
     display: flex;
   }
 
+  .spaghetti-main {
+    padding-top: 56px;
+    box-sizing: border-box;
+  }
+
   .map-loading-overlay,
   .map-container {
-    top: 44px;
+    top: 0;
   }
 
   /* Larger zoom controls for touch targets on mobile/tablet */
@@ -994,8 +999,8 @@
 
   /* Mobile adjustments for Watermarks */
   .gif-watermark {
-    top: 56px;
-    /* Below the 44px topbar */
+    top: 12px;
+    /* Relative to the new map container padding */
     left: 12px;
     right: 12px;
     /* Stretch across the screen */
@@ -1003,7 +1008,7 @@
   }
 
   .filter-watermark {
-    top: 56px;
+    top: 12px;
     left: 12px;
     right: 12px;
     bottom: auto;
