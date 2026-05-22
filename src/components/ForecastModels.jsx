@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Play, Pause, X, SlidersHorizontal } from "lucide-react";
+import { Play, Pause, X, SlidersHorizontal, Video } from "lucide-react";
+import GIF from "gif.js";
+import gifWorkerUrl from "gif.js/dist/gif.worker.js?url";
 
 const ForecastModels = () => {
     const [activeParam, setActiveParam] = useState("rainfall");
@@ -12,6 +14,12 @@ const ForecastModels = () => {
     const [imageTimestamp] = useState(Date.now());
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [expandedGroup, setExpandedGroup] = useState("gfs"); // 'gfs' | 'ecmwf' | null
+    const [showGifModal, setShowGifModal] = useState(false);
+    const [gifStartIdx, setGifStartIdx] = useState(0);
+    const [gifEndIdx, setGifEndIdx] = useState(0);
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportProgress, setExportProgress] = useState(0);
+    const [gifFps, setGifFps] = useState(2);
 
     useEffect(() => {
         let url = "";
@@ -243,6 +251,97 @@ const ForecastModels = () => {
     };
 
 
+    const getFrameLabel = (frameName) => {
+        if (!frameName) return "";
+        if (activeParam === "rainfall") {
+            const parts = frameName.split('_');
+            return `Day ${parts[2] || 1}`;
+        } else {
+            return `Hour +${frameName.split('_').pop()}`;
+        }
+    };
+
+    const handleExportGif = async () => {
+        if (gifStartIdx > gifEndIdx || frames.length === 0) return;
+        setIsExporting(true);
+        setExportProgress(0);
+
+        try {
+            // Load the first image to determine native dimensions
+            const firstFrameName = frames[gifStartIdx];
+            let folder = "rainfall";
+            if (activeParam === "wind") folder = "wind";
+            else if (activeParam === "wind_gfs") folder = "wind_gfs";
+            else if (activeParam === "thunderstorm") folder = "thunderstorm_ifs";
+            else if (activeParam === "precip_mslp") folder = activeModel === "aifs" ? "precip_mslp_aifs" : "precip_mslp";
+
+            const firstImg = await new Promise((resolve, reject) => {
+                const image = new Image();
+                image.crossOrigin = "Anonymous";
+                image.onload = () => resolve(image);
+                image.onerror = reject;
+                image.src = `/images/${folder}/${firstFrameName}.png?t=${imageTimestamp}`;
+            });
+
+            const nativeW = firstImg.naturalWidth;
+            const nativeH = firstImg.naturalHeight;
+            const frameDelay = Math.round(1000 / gifFps);
+
+            const gif = new GIF({
+                workers: 2,
+                quality: 10,
+                workerScript: gifWorkerUrl,
+                width: nativeW,
+                height: nativeH,
+                transparent: null
+            });
+
+            gif.on("progress", (p) => setExportProgress(p));
+
+            const canvas = document.createElement("canvas");
+            canvas.width = nativeW;
+            canvas.height = nativeH;
+            const ctx = canvas.getContext("2d");
+
+            for (let i = gifStartIdx; i <= gifEndIdx; i++) {
+                const frameName = frames[i];
+                const imgSrc = `/images/${folder}/${frameName}.png?t=${imageTimestamp}`;
+
+                const img = i === gifStartIdx ? firstImg : await new Promise((resolve, reject) => {
+                    const image = new Image();
+                    image.crossOrigin = "Anonymous";
+                    image.onload = () => resolve(image);
+                    image.onerror = reject;
+                    image.src = imgSrc;
+                });
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, nativeW, nativeH);
+
+                gif.addFrame(ctx, { copy: true, delay: frameDelay });
+            }
+
+            gif.on("finished", (blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `forecast_${activeModel}_${activeParam}_${frames[gifStartIdx]}_to_${frames[gifEndIdx]}.gif`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                setIsExporting(false);
+                setShowGifModal(false);
+            });
+
+            gif.render();
+
+        } catch (err) {
+            console.error("GIF export failed", err);
+            setIsExporting(false);
+        }
+    };
+
     return (
         <div className="bg-slate-900 text-slate-200 font-sans flex overflow-hidden selection:bg-cyan-500 selection:text-white" style={{ height: "calc(100vh - 64px)" }}>
 
@@ -336,6 +435,21 @@ const ForecastModels = () => {
                         {isPlaying ? <Pause className="h-4 w-4 lg:h-5 lg:w-5" /> : <Play className="h-4 w-4 lg:h-5 lg:w-5 ml-0.5" />}
                     </button>
 
+                    {/* GIF Export Button */}
+                    {!isTimelineDisabled && frames.length > 0 && (
+                        <button
+                            onClick={() => {
+                                setGifStartIdx(0);
+                                setGifEndIdx(frames.length - 1);
+                                setShowGifModal(true);
+                            }}
+                            className="w-10 h-10 lg:w-12 lg:h-12 rounded-full flex-shrink-0 flex items-center justify-center text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 transition-colors cursor-pointer"
+                            title="Export GIF"
+                        >
+                            <Video className="w-4 h-4 lg:w-5 lg:h-5" />
+                        </button>
+                    )}
+
                     {/* Day/Time Badge — hidden on very small screens */}
                     <div className="hidden sm:block text-center min-w-[100px] lg:min-w-[140px] bg-slate-800 rounded p-1.5 lg:p-2 border border-slate-700 flex-shrink-0">
                         <div className="text-xs lg:text-sm font-bold text-white uppercase">
@@ -375,6 +489,85 @@ const ForecastModels = () => {
                     </div>
                 </div>
             </main>
+
+            {/* ── GIF Export Modal ── */}
+            {showGifModal && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-sm w-full shadow-2xl relative">
+                        <button onClick={() => !isExporting && setShowGifModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white cursor-pointer">
+                            <X className="w-5 h-5" />
+                        </button>
+                        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                            <Video className="w-5 h-5 text-cyan-400" /> Export Forecast GIF
+                        </h2>
+                        
+                        <div className="space-y-4 mb-6">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Start Frame</label>
+                                <select 
+                                    value={gifStartIdx}
+                                    onChange={(e) => setGifStartIdx(parseInt(e.target.value))}
+                                    disabled={isExporting}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-slate-200 text-sm outline-none focus:border-cyan-500 cursor-pointer"
+                                >
+                                    {frames.map((f, i) => (
+                                        <option key={`start-${i}`} value={i} disabled={i > gifEndIdx}>{getFrameLabel(f)}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase mb-1">End Frame</label>
+                                <select 
+                                    value={gifEndIdx}
+                                    onChange={(e) => setGifEndIdx(parseInt(e.target.value))}
+                                    disabled={isExporting}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-slate-200 text-sm outline-none focus:border-cyan-500 cursor-pointer"
+                                >
+                                    {frames.map((f, i) => (
+                                        <option key={`end-${i}`} value={i} disabled={i < gifStartIdx}>{getFrameLabel(f)}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="mb-6">
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Speed: {gifFps} FPS</label>
+                            <input
+                                type="range"
+                                min="1"
+                                max="10"
+                                value={gifFps}
+                                onChange={(e) => setGifFps(parseInt(e.target.value))}
+                                disabled={isExporting}
+                                className="w-full h-2 rounded-lg appearance-none bg-slate-700 accent-cyan-500 cursor-pointer"
+                            />
+                            <div className="flex justify-between text-[9px] text-slate-500 mt-1">
+                                <span>Slow (1)</span>
+                                <span>Fast (10)</span>
+                            </div>
+                        </div>
+
+                        {isExporting ? (
+                            <div className="space-y-2">
+                                <div className="flex justify-between text-xs text-slate-300 font-semibold uppercase">
+                                    <span>Generating...</span>
+                                    <span>{Math.round(exportProgress * 100)}%</span>
+                                </div>
+                                <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                                    <div className="bg-cyan-500 h-full transition-all duration-300 ease-out" style={{ width: `${exportProgress * 100}%` }}></div>
+                                </div>
+                            </div>
+                        ) : (
+                            <button 
+                                onClick={handleExportGif}
+                                className="w-full py-2.5 rounded-lg font-bold text-white bg-cyan-600 hover:bg-cyan-500 transition-colors shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:shadow-[0_0_20px_rgba(6,182,212,0.5)] cursor-pointer"
+                            >
+                                Generate GIF
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
