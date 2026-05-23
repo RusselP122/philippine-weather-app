@@ -232,6 +232,8 @@
 /* Segmented Control (Dataset, Horizon) */
 .segmented-control {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
   padding: 0.25rem;
   background: rgba(0, 0, 0, 0.2);
   border-radius: 12px;
@@ -239,7 +241,7 @@
 }
 
 .segment-btn {
-  flex: 1;
+  flex: 1 1 30%;
   padding: 0.375rem 0.5rem;
   text-align: center;
   border-radius: 8px;
@@ -248,6 +250,7 @@
   background: transparent;
   border: none;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .segment-btn:hover {
@@ -742,7 +745,7 @@
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border-color);
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
@@ -898,6 +901,27 @@
   border-top: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+/* Outdated Warning Banner */
+.outdated-warning-banner {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background-color: rgba(220, 38, 38, 0.9);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  max-width: 90%;
+  text-align: left;
+}
+
 .gif-watermark-legend-item {
   display: flex;
   align-items: center;
@@ -1013,6 +1037,13 @@
     right: 12px;
     bottom: auto;
     min-width: 0;
+  }
+
+  .outdated-warning-banner {
+    top: auto;
+    bottom: 80px;
+    width: 90%;
+    padding: 10px 14px;
   }
 
   .gif-watermark-title {

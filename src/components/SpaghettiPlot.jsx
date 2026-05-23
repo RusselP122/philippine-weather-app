@@ -67,6 +67,7 @@ const LOCAL_CSV = {
     largePaired: "/data/fnv3_large_paired_latest.dat",
     ifs: "/data/ifs_tc_latest.dat",
     aifs: "/data/aifs_tc_latest.dat",
+    aigefs: "/data/aigefs_tc_latest.dat",
 };
 
 // ── Base64 + XOR Decryptor ──────────────────────────────────────────────
@@ -238,6 +239,7 @@ export default function SpaghettiPlot() {
     const [runInitDate, setRunInitDate] = useState(null);
     const [showAnimControls, setShowAnimControls] = useState(true);
     const [showAllSystems, setShowAllSystems] = useState(false);
+    const [isAigefsOutdated, setIsAigefsOutdated] = useState(false);
     const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
     const exportWrapperRef = useRef(null);
 
@@ -424,10 +426,22 @@ export default function SpaghettiPlot() {
             runInitTime = rows[0].init_time;
         }
 
+        let isOutdated = false;
+        if (dataset === "aigefs" && runInitTime !== "latest") {
+            try {
+                const dt = new Date(runInitTime.replace(" ", "T") + "Z");
+                const now = new Date();
+                const diffHours = (now - dt) / (1000 * 60 * 60);
+                if (diffHours > 24) isOutdated = true;
+            } catch (e) { }
+        }
+        setIsAigefsOutdated(isOutdated);
+
         let labelStr = "FNV3 Base";
         if (isLarge) labelStr = "FNV3 Large Ens";
         if (dataset === "ifs") labelStr = "ECMWF IFS Ens";
         if (dataset === "aifs") labelStr = "ECMWF AIFS Ens";
+        if (dataset === "aigefs") labelStr = "AI-GEFS Ens";
         setRunLabel(`${labelStr} \u00b7 ${runInitTime}`);
         setStatusMsg("Parsing tracks…");
         const rawRows = rows.filter(r => (r.lead_time_hours !== undefined || r.lead_time !== undefined) && r.lat !== undefined);
@@ -1415,7 +1429,7 @@ export default function SpaghettiPlot() {
             const url = canvas.toDataURL("image/png");
             const a = document.createElement('a');
             a.href = url;
-            const modelPrefix = dataset === 'ifs' ? 'ECMWF' : dataset === 'aifs' ? 'ECMWF-AIFS' : dataset === 'large' ? 'GDM-FNV3-Large' : 'GDM-FNV3';
+            const modelPrefix = dataset === 'ifs' ? 'ECMWF' : dataset === 'aifs' ? 'ECMWF-AIFS' : dataset === 'aigefs' ? 'NOAA-AIGEFS' : dataset === 'large' ? 'GDM-FNV3-Large' : 'GDM-FNV3';
             a.download = `${modelPrefix}-Snapshot-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
             a.click();
         } catch (err) {
@@ -1469,7 +1483,7 @@ export default function SpaghettiPlot() {
         try {
             if (!exportWrapperRef.current) throw new Error("No map wrapper found for capture.");
 
-            const modelPrefix = dataset === 'ifs' ? 'ECMWF' : dataset === 'aifs' ? 'ECMWF-AIFS' : dataset === 'large' ? 'GDM-FNV3-Large' : 'GDM-FNV3';
+            const modelPrefix = dataset === 'ifs' ? 'ECMWF' : dataset === 'aifs' ? 'ECMWF-AIFS' : dataset === 'aigefs' ? 'NOAA-AIGEFS' : dataset === 'large' ? 'GDM-FNV3-Large' : 'GDM-FNV3';
             let exportFilename = `${modelPrefix}-Ensemble-${new Date().toISOString().replace(/[:.]/g, '-')}.gif`;
             for (let h = 0; h <= maxAnimHour; h += 6) {
                 setAnimHour(h);
@@ -1759,7 +1773,8 @@ export default function SpaghettiPlot() {
                     {[{ id: "base", label: "FNV3 Base" },
                     { id: "large", label: "FNV3 Large" },
                     { id: "ifs", label: "ECMWF IFS" },
-                    { id: "aifs", label: "ECMWF AIFS" }]
+                    { id: "aifs", label: "ECMWF AIFS" },
+                    { id: "aigefs", label: "AI-GEFS" }]
                         .map(opt => {
                             const isLocked = viewMode === "filter" && opt.id !== "large";
                             return (
@@ -2032,7 +2047,7 @@ export default function SpaghettiPlot() {
                         </svg>
                     </button>
                     <span className="mobile-title">
-                        {dataset === "ifs" ? "ECMWF IFS" : dataset === "aifs" ? "ECMWF AIFS" : "GDM FNV3"} · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
+                        {dataset === "ifs" ? "ECMWF IFS" : dataset === "aifs" ? "ECMWF AIFS" : dataset === "aigefs" ? "NOAA AI-GEFS" : "GDM FNV3"} · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
                     </span>
                 </div>
 
@@ -2088,7 +2103,7 @@ export default function SpaghettiPlot() {
                     {(viewMode === "animation" || isExporting) && (
                         <div className="gif-watermark">
                             <h3 className="gif-watermark-title">
-                                {dataset === 'ifs' ? 'ECMWF IFS Ensemble Track' : dataset === 'aifs' ? 'ECMWF AIFS Ensemble Track' : (dataset === 'large' ? 'Google Deepmind FNV3 1000 Ensemble Track' : 'Google Deepmind FNV3 50 Ensemble Track')}
+                                {dataset === 'ifs' ? 'ECMWF IFS Ensemble Track' : dataset === 'aifs' ? 'ECMWF AIFS Ensemble Track' : dataset === 'aigefs' ? 'AI-GEFS Ensemble Track' : (dataset === 'large' ? 'Google Deepmind FNV3 1000 Ensemble Track' : 'Google Deepmind FNV3 50 Ensemble Track')}
                             </h3>
                             <div className="gif-watermark-row">
                                 <strong>Init:</strong> {runInitDate ? runInitDate.toISOString().replace('T', ' ').substring(0, 19) + ' UTC' : 'Loading...'}
