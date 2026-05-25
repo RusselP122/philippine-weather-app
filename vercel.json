@@ -13,6 +13,10 @@
             "destination": "http://www.ogimet.com/cgi-bin/:path*"
         },
         {
+            "source": "/api/zoom-earth/:path*",
+            "destination": "https://tiles.zoom.earth/:path*"
+        },
+        {
             "source": "/((?!data/).*)",
             "destination": "/index.html"
         }

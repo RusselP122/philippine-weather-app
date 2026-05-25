@@ -23,6 +23,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/ogimet/, '/cgi-bin'),
       },
+      '/api/zoom-earth': {
+        target: 'https://tiles.zoom.earth',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api\/zoom-earth/, ''),
+      },
     },
   },
 });

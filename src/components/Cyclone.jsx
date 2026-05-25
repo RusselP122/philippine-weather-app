@@ -648,7 +648,7 @@ const CycloneMapLogic = () => {
           const hour = String(d.getUTCHours()).padStart(2, "0");
           const minute = String(d.getUTCMinutes()).padStart(2, "0");
           // Zoom Earth uses {z}/{y}/{x} tile order (lat/lon reversed from standard)
-          const zeUrl = `https://tiles.zoom.earth/geocolor/himawari/${year}-${month}-${day}/${hour}${minute}/{z}/{y}/{x}.jpg`;
+          const zeUrl = `/api/zoom-earth/geocolor/himawari/${year}-${month}-${day}/${hour}${minute}/{z}/{y}/{x}.jpg`;
           source = new L.TileLayer(zeUrl, {
             tileSize: 256,
             opacity: 0.01,
