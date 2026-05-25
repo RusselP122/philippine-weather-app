@@ -9,11 +9,13 @@ export default defineConfig({
       '/api/earthquake-data': {
         target: 'https://data.garbinwx.org',
         changeOrigin: true,
+        secure: false,
         rewrite: (path) => path.replace(/^\/api\/earthquake-data/, '/api/earthquakes.json'),
       },
       '/api/cap-alerts': {
         target: 'https://data.garbinwx.org',
         changeOrigin: true,
+        secure: false,
         rewrite: (path) => path.replace(/^\/api\/cap-alerts/, '/api/cap-alerts.json'),
       },
       '/api/ogimet': {

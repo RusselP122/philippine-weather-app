@@ -2,11 +2,11 @@
     "rewrites": [
         {
             "source": "/api/earthquake-data",
-            "destination": "https://data.garbinwx.cloud/api/earthquakes.json"
+            "destination": "https://data.garbinwx.org/api/earthquakes.json"
         },
         {
             "source": "/api/cap-alerts",
-            "destination": "https://data.garbinwx.cloud/api/cap-alerts.json"
+            "destination": "https://data.garbinwx.org/api/cap-alerts.json"
         },
         {
             "source": "/api/ogimet/:path*",
