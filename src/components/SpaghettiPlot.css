@@ -737,7 +737,7 @@
 
 /* Mobile top bar */
 .mobile-topbar {
-  display: none;
+  display: none !important;
   align-items: center;
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
@@ -745,13 +745,10 @@
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border-color);
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 9999;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  z-index: 100;
 }
 
 .mobile-menu-btn {
@@ -980,6 +977,7 @@
     left: 0;
     height: 100%;
     transform: translateX(-100%);
+    z-index: 9999;
   }
 
   .spaghetti-sidebar-container.open {
@@ -988,6 +986,7 @@
 
   .mobile-overlay.open {
     display: block;
+    z-index: 9998;
   }
 
   .mobile-close-header {
@@ -995,15 +994,18 @@
   }
 
   .mobile-topbar {
-    display: flex;
+    display: flex !important;
   }
 
   .spaghetti-main {
-    padding-top: 56px;
+    padding-top: 0;
     box-sizing: border-box;
   }
 
-  .map-loading-overlay,
+  .map-loading-overlay {
+    top: 48px;
+  }
+
   .map-container {
     top: 0;
   }

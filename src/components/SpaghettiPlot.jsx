@@ -2040,13 +2040,56 @@ export default function SpaghettiPlot() {
                 )}
 
                 {/* Mobile top bar */}
-                <div className="mobile-topbar">
-                    <button onClick={() => setSidebarOpen(true)} className="mobile-menu-btn">
-                        <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div 
+                    className="mobile-topbar"
+                    style={{
+                        position: "fixed",
+                        top: "56px",
+                        left: 0,
+                        right: 0,
+                        width: "100%",
+                        minHeight: "48px",
+                        boxSizing: "border-box",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        padding: "0.5rem 0.75rem",
+                        background: "rgba(13, 24, 42, 0.95)",
+                        backdropFilter: "blur(10px)",
+                        WebkitBackdropFilter: "blur(10px)",
+                        borderBottom: "2px solid #00d4ff",
+                        zIndex: 99999
+                    }}
+                >
+                    <button 
+                        onClick={() => setSidebarOpen(true)} 
+                        className="mobile-menu-btn"
+                        style={{
+                            padding: "0.5rem",
+                            borderRadius: "8px",
+                            backgroundColor: "rgba(30, 41, 59, 0.8)",
+                            color: "#f8fafc",
+                            border: "1px solid rgba(255, 255, 255, 0.1)",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center"
+                        }}
+                    >
+                        <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: "14px", height: "14px" }}>
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                         </svg>
                     </button>
-                    <span className="mobile-title">
+                    <span 
+                        className="mobile-title"
+                        style={{
+                            fontSize: "0.75rem",
+                            fontWeight: "600",
+                            color: "#f8fafc",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis"
+                        }}
+                    >
                         {dataset === "ifs" ? "ECMWF IFS" : dataset === "aifs" ? "ECMWF AIFS" : dataset === "aigefs" ? "NOAA AI-GEFS" : "GDM FNV3"} · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
                     </span>
                 </div>
