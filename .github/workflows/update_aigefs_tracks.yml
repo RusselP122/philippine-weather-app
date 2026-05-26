@@ -44,7 +44,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           # Stage files first so they are not untracked
-          git add -f public/data/aigefs_tc_latest.enc || true
+          git add -f public/data/aigefs_tc_latest.dat || true
           git add public/assets/aigefs_tropical_cyclone_* || true
           
           # Only commit if there are changes
