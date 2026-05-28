@@ -265,7 +265,7 @@ plt.text(
 # Add title
 start_date = forecast_start_date_text or "Start"
 end_date = forecast_end_date_text or "End"
-ax.set_title(f"5-Day Forecast Tropical Cyclone Tracks - Western Pacific ({start_date} to {end_date})", fontsize=16, weight='bold')
+ax.set_title(f"FNV3 1000 Ensemble 5-Day Forecast Tropical Cyclone Tracks - Western Pacific ({start_date} to {end_date})", fontsize=16, weight='bold')
 
 # Save the plot to a file
 try:
