@@ -316,7 +316,7 @@ const Forecast = () => {
               }`}
             >
               <Grid className="w-4 h-4" />
-              <span>COMPARISON GRID</span>
+              <span>{compareMode ? "SINGLE MODEL MODE" : "COMPARISON GRID"}</span>
             </button>
           </div>
         </header>

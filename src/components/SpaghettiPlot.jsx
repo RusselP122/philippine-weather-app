@@ -206,6 +206,9 @@ export default function SpaghettiPlot() {
     const meanLayerGroupRef = useRef(null);
     const animLayerGroupRef = useRef(null);
     const animObjectsRef = useRef([]);
+    const selectedMarkerRef = useRef(null);
+    const selectedBadgeRef = useRef(null);
+    const [selectedMeanPoint, setSelectedMeanPoint] = useState(null);
 
     const [horizon, setHorizon] = useState("5day");
     const [dataset, setDataset] = useState("base");
@@ -246,6 +249,81 @@ export default function SpaghettiPlot() {
     const [allTracks, setAllTracks] = useState([]);
     const [filteredTrackIds, setFilteredTrackIds] = useState(null);
     const [filterStats, setFilterStats] = useState(null);
+
+    const handleMeanPointClick = useCallback((pt, distId, distRegion) => {
+        const map = mapInstanceRef.current;
+        if (!map) return;
+
+        // Clear existing pulsing marker and badge if any
+        if (selectedMarkerRef.current) {
+            map.removeLayer(selectedMarkerRef.current);
+            selectedMarkerRef.current = null;
+        }
+        if (selectedBadgeRef.current) {
+            map.removeLayer(selectedBadgeRef.current);
+            selectedBadgeRef.current = null;
+        }
+
+        // Determine model label
+        let modelLabel = "GDM FNV3";
+        if (dataset === "large") modelLabel = "FNV3 Large Ens";
+        else if (dataset === "ifs") modelLabel = "ECMWF IFS Ens";
+        else if (dataset === "aifs") modelLabel = "ECMWF AIFS Ens";
+        else if (dataset === "aigefs") modelLabel = "NOAA AI-GEFS Ens";
+
+        // Determine dynamic displayName matching storm naming standards (Invest vs TC)
+        const distObj = disturbances.find(d => d.id === distId);
+        let displayName = `Disturbance ${distId}`;
+        if (distObj && distObj.pairedTrackName) {
+            const isInvest = parseInt(distObj.pairedTrackName) >= 90;
+            displayName = isInvest ? `Invest ${distObj.pairedTrackName}` : `TC ${distObj.pairedTrackName}`;
+        }
+
+        setSelectedMeanPoint({
+            distId,
+            displayName,
+            h: pt.h,
+            lat: pt.lat,
+            lon: pt.lon,
+            windKmh: pt.windKmh,
+            p: pt.p || NaN,
+            activeMembers: pt.activeMembers,
+            totalMembers: pt.totalMembers,
+            region: distRegion,
+            modelLabel
+        });
+
+        // Add a pulsing lock-on marker
+        const L = window.L;
+        const marker = L.circleMarker([pt.lat, pt.lon], {
+            radius: 9,
+            color: "#00f0ff",
+            weight: 2,
+            fillColor: "#00f0ff",
+            fillOpacity: 0.15,
+            className: "mean-selected-pulse"
+        }).addTo(map);
+
+        selectedMarkerRef.current = marker;
+
+        // (Removed custom purple badge as requested)
+
+        // Smoothly center and pan map to the coordinate
+        map.panTo([pt.lat, pt.lon]);
+    }, [dataset, disturbances]);
+
+    // Clear selection state on view changes
+    useEffect(() => {
+        setSelectedMeanPoint(null);
+        if (selectedMarkerRef.current && mapInstanceRef.current) {
+            mapInstanceRef.current.removeLayer(selectedMarkerRef.current);
+            selectedMarkerRef.current = null;
+        }
+        if (selectedBadgeRef.current && mapInstanceRef.current) {
+            mapInstanceRef.current.removeLayer(selectedBadgeRef.current);
+            selectedBadgeRef.current = null;
+        }
+    }, [dataset, activeDisturbanceId, horizon, basin]);
 
     // ── Init map once ─────────────────────────────────────────────────────
     useEffect(() => {
@@ -914,7 +992,7 @@ export default function SpaghettiPlot() {
                         const n = d.lats.length;
 
                         // ── Mean position: prefer official paired track if available ──
-                        let mLat, mLon, mW;
+                        let mLat, mLon, mW, mP;
                         const usePaired = matchedPaired !== null;
 
                         if (usePaired) {
@@ -927,6 +1005,7 @@ export default function SpaghettiPlot() {
                                 mLat = pairedPt.lat;
                                 mLon = pairedPt.lon;
                                 mW = pairedPt.windKmh;
+                                mP = pairedPt.p;
                             } else {
                                 // Paired data ended, stop drawing the mean track
                                 continue;
@@ -974,6 +1053,10 @@ export default function SpaghettiPlot() {
 
                             mW = weightedMedian(windVals, windWeights);
 
+                            // Median central pressure
+                            const validPs = d.ps.filter(p => !isNaN(p));
+                            mP = validPs.length > 0 ? median(validPs) : NaN;
+
                             // Integrated "RI" Check (Secondary High-End Mean)
                             if (activeCount > 0) {
                                 const sortedActive = [...windVals.slice(0, activeCount)].sort((a, b) => b - a);
@@ -1016,7 +1099,7 @@ export default function SpaghettiPlot() {
                         const activeMembers = n;
                         const totalMembers = tracks.length;
 
-                        meanPts.push({ lat: mLat, lon: mLon, windKmh: mW, h, sdKm, r67km, activeMembers, totalMembers });
+                        meanPts.push({ lat: mLat, lon: mLon, windKmh: mW, p: mP, h, sdKm, r67km, activeMembers, totalMembers });
                     }
 
                     // Tag disturbance with source info
@@ -1025,6 +1108,7 @@ export default function SpaghettiPlot() {
                     dist.agreement = agreementSteps > 0 ? Math.round((totalAgreement / agreementSteps) * 100) : 0;
                     const avgSdKm = meanPts.reduce((s, p) => s + p.sdKm, 0) / (meanPts.length || 1);
                     dist.spreadKm = Math.round(avgSdKm);
+                    dist.meanPoints = meanPts;
 
                     if (meanPts.length < 2) continue;
                     const meanLL = meanPts.map(pt => [pt.lat, pt.lon]);
@@ -1154,6 +1238,9 @@ export default function SpaghettiPlot() {
                             noClip: true,
                         });
                         meanSeg.distId = dist.id;
+                        meanSeg.on('click', () => {
+                            handleMeanPointClick(p2, dist.id, dist.region);
+                        });
                         meanSeg.addTo(meanLayerGroupRef.current);
                     }
 
@@ -1165,17 +1252,43 @@ export default function SpaghettiPlot() {
                         });
                         mk.distId = dist.id;
 
-                        const survRate = Math.round((pt.activeMembers / pt.totalMembers) * 100);
+                        // Calculate localized date and time for the premium hover tooltip
+                        const d = initDate ? new Date(initDate.getTime() + pt.h * 3600000) : null;
+                        const dateStr = d ? d.toLocaleDateString("en-US", { day: "numeric", month: "short", timeZone: "Asia/Manila" }) : "N/A";
+                        let hr = d ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Manila" }) : "N/A";
+                        
+                        const windVal = isNaN(pt.windKmh) ? 'N/A' : `${pt.windKmh.toFixed(0)} km/h`;
+                        const windColorVal = windColor(pt.windKmh);
+
                         const tooltipHtml = `
-                            <div style="text-align: center; font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #ccc; padding-bottom: 4px;">
-                                Hour ${pt.h}
-                            </div>
-                            <div style="font-size: 11px;">
-                                Wind: ${isNaN(pt.windKmh) ? 'N/A' : pt.windKmh.toFixed(0) + ' km/h'}<br/>
-                                Survivorship: ${pt.activeMembers}/${pt.totalMembers} members (${survRate}%)
+                            <div style="display: flex; flex-direction: column; gap: 4px; font-family: 'Inter', sans-serif;">
+                                <div style="font-size: 11px; font-weight: 800; color: #ffffff; display: flex; align-items: center; gap: 6px; line-height: 1.2;">
+                                    <span>${dateStr}</span>
+                                    <span style="color: rgba(255, 255, 255, 0.35); font-weight: 400;">|</span>
+                                    <span>${hr}</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 6px; margin-top: 2px; line-height: 1.2;">
+                                    <span style="width: 8px; height: 8px; border-radius: 50%; background-color: ${windColorVal}; box-shadow: 0 0 6px ${windColorVal}80; display: inline-block;"></span>
+                                    <span style="font-size: 11px; font-weight: 700; color: ${windColorVal};">
+                                        ${windVal}
+                                    </span>
+                                    <span style="font-size: 9px; color: rgba(255, 255, 255, 0.4); font-family: monospace;">(+${pt.h}h)</span>
+                                </div>
                             </div>
                         `;
-                        mk.bindTooltip(tooltipHtml, { direction: 'top', offset: [0, -5] });
+
+                        mk.bindTooltip(tooltipHtml, {
+                            direction: 'top',
+                            offset: [0, -8],
+                            className: 'mean-dot-tooltip',
+                            permanent: false,
+                            sticky: false,
+                            opacity: 0.95
+                        });
+
+                        mk.on('click', () => {
+                            handleMeanPointClick(pt, dist.id, dist.region);
+                        });
 
                         mk.addTo(meanLayerGroupRef.current);
                     }
@@ -1274,13 +1387,13 @@ export default function SpaghettiPlot() {
             });
         }
 
-        // Fly to disturbance center if selected
-        if (activeDisturbanceId !== null && mapInstanceRef.current) {
-            const dist = disturbances.find(d => d.id === activeDisturbanceId);
-            if (dist) {
-                mapInstanceRef.current.flyTo([dist.lat, dist.lon], 5, { duration: 1.5 });
-            }
-        }
+        // Automatic zooming disabled as per user request
+        // if (activeDisturbanceId !== null && mapInstanceRef.current) {
+        //     const dist = disturbances.find(d => d.id === activeDisturbanceId);
+        //     if (dist) {
+        //         mapInstanceRef.current.flyTo([dist.lat, dist.lon], 5, { duration: 1.5 });
+        //     }
+        // }
     }, [activeDisturbanceId, disturbances, meanOnlyIds, filteredTrackIds, showPlotPoints]);
 
     // Toggle ensemble mean layer visibility
@@ -2104,6 +2217,139 @@ export default function SpaghettiPlot() {
 
                 <div ref={exportWrapperRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
                     <div ref={mapRef} className="map-container" style={{ width: '100%', height: '100%', minHeight: '400px' }} />
+
+                    {/* Floating Ensemble Mean Details Card */}
+                    {selectedMeanPoint && (
+                        <div className="mean-details-card no-export">
+                            <div className="mean-details-header">
+                                <h3 className="mean-details-title">
+                                    {selectedMeanPoint.displayName}
+                                </h3>
+                                <button
+                                    className="mean-details-close-btn"
+                                    onClick={() => {
+                                        setSelectedMeanPoint(null);
+                                        if (selectedMarkerRef.current && mapInstanceRef.current) {
+                                            mapInstanceRef.current.removeLayer(selectedMarkerRef.current);
+                                            selectedMarkerRef.current = null;
+                                        }
+                                        if (selectedBadgeRef.current && mapInstanceRef.current) {
+                                            mapInstanceRef.current.removeLayer(selectedBadgeRef.current);
+                                            selectedBadgeRef.current = null;
+                                        }
+                                    }}
+                                    title="Close details"
+                                >
+                                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+
+                            {/* Chronological Table of Adjacent Track Points */}
+                            {(() => {
+                                const meanTrackObj = disturbances.find(m => m.id === selectedMeanPoint.distId);
+                                if (!meanTrackObj) return null;
+
+                                const pts = meanTrackObj.meanPoints || [];
+                                const activeIndex = pts.findIndex(pt => pt.h === selectedMeanPoint.h);
+                                if (activeIndex === -1) return null;
+
+                                // Select up to 5 points centered around the activeIndex
+                                let windowPts = [];
+                                if (pts.length <= 5) {
+                                    windowPts = [...pts];
+                                } else {
+                                    let start = activeIndex - 2;
+                                    let end = activeIndex + 2;
+                                    if (start < 0) {
+                                        end -= start;
+                                        start = 0;
+                                    }
+                                    if (end >= pts.length) {
+                                        start -= (end - pts.length + 1);
+                                        end = pts.length - 1;
+                                    }
+                                    start = Math.max(0, start);
+                                    windowPts = pts.slice(start, end + 1);
+                                }
+                                
+                                // Reverse so newer/latest are at the top (descending by lead time)
+                                const selectedPts = [...windowPts].reverse();
+
+                                // Format date/time helper relative to runInitDate
+                                const formatDateTime = (h) => {
+                                    if (!runInitDate || isNaN(runInitDate.getTime())) return { date: "N/A", time: "N/A" };
+                                    const d = new Date(runInitDate.getTime() + h * 3600000);
+                                    const dateStr = d.toLocaleDateString("en-US", { day: "numeric", month: "short", timeZone: "Asia/Manila" });
+                                    const timeStr = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Manila" });
+                                    return { date: dateStr, time: timeStr };
+                                };
+
+                                return (
+                                    <div className="mean-details-table-wrap">
+                                        <table className="mean-details-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>DATE <span className="sub-th">UTC+8</span></th>
+                                                    <th>TIME</th>
+                                                    <th>WIND <span className="sub-th">km/h</span></th>
+                                                    <th>PRESSURE <span className="sub-th">hPa</span></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {selectedPts.map(pt => {
+                                                    const isActive = pt.h === selectedMeanPoint.h;
+                                                    const { date, time } = formatDateTime(pt.h);
+                                                    return (
+                                                        <tr 
+                                                            key={pt.h} 
+                                                            className={isActive ? "active-row" : ""}
+                                                            onClick={() => handleMeanPointClick(pt, selectedMeanPoint.distId, selectedMeanPoint.region)}
+                                                            style={{ cursor: 'pointer' }}
+                                                        >
+                                                            <td>{date}</td>
+                                                            <td>{time}</td>
+                                                            <td style={{ color: windColor(pt.windKmh), fontWeight: 'bold' }}>
+                                                                {pt.windKmh.toFixed(0)}
+                                                            </td>
+                                                            <td style={{ color: '#38bdf8' }}>
+                                                                {isNaN(pt.p) ? '–' : pt.p.toFixed(0)}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Card Footer displaying agreement and zoom trigger */}
+                            <div className="mean-details-footer">
+                                {(() => {
+                                    const pct = Math.round((selectedMeanPoint.activeMembers / selectedMeanPoint.totalMembers) * 100);
+                                    const rating = pct >= 70 ? "HIGH" : pct >= 40 ? "MEDIUM" : "LOW";
+                                    const ratingColor = pct >= 70 ? "#10b981" : pct >= 40 ? "#f59e0b" : "#ef4444";
+                                    return (
+                                        <div className="mean-details-chance-badge">
+                                            <span className="badge-pill" style={{ backgroundColor: ratingColor }}>{rating}</span>
+                                            <span className="badge-label">{pct}% member agreement</span>
+                                        </div>
+                                    );
+                                })()}
+                                <button
+                                    className="mean-details-info-btn"
+                                    onClick={() => {
+                                        if (mapInstanceRef.current) {
+                                            mapInstanceRef.current.flyTo([selectedMeanPoint.lat, selectedMeanPoint.lon], 6, { duration: 1 });
+                                        }
+                                    }}
+                                    title="Center map on coordinates"
+                                >
+                                    Zoom &gt;
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Screenshot Button */}
                     {(viewMode === "tracker" || viewMode === "filter") && (
