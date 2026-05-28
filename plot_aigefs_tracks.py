@@ -38,20 +38,20 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
     init_times = wp_data['init_time'].unique()
 
-    fig = plt.figure(figsize=(12, 12), facecolor='#0f172a')
+    fig = plt.figure(figsize=(12, 12))
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
-    ax.add_feature(cfeature.LAND, facecolor='#1e293b')
-    ax.add_feature(cfeature.COASTLINE, edgecolor='#475569', linewidth=1.5)
-    ax.add_feature(cfeature.BORDERS, edgecolor='#475569', linestyle=':', linewidth=1)
-    ax.add_feature(cfeature.OCEAN, facecolor='#0f172a')
+    ax.add_feature(cfeature.LAND, facecolor='lightgray')
+    ax.add_feature(cfeature.COASTLINE, linewidth=1.5)
+    ax.add_feature(cfeature.BORDERS, linestyle=':', linewidth=1)
+    ax.add_feature(cfeature.OCEAN, facecolor='aliceblue')
 
-    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='#334155', alpha=0.8, linestyle='--')
+    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
     gl.xlocator = plt.FixedLocator(np.arange(105, 156, 5))
     gl.ylocator = plt.FixedLocator(np.arange(0, 41, 5))
-    gl.xlabel_style = {'size': 12, 'weight': 'bold', 'color': '#cbd5e1'}
-    gl.ylabel_style = {'size': 12, 'weight': 'bold', 'color': '#cbd5e1'}
+    gl.xlabel_style = {'size': 12, 'weight': 'bold'}
+    gl.ylabel_style = {'size': 12, 'weight': 'bold'}
     gl.top_labels = False
     gl.right_labels = False
 
@@ -60,7 +60,7 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
         (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
     ]
     par_path = Path(par_vertices)
-    par_patch = PathPatch(par_path, edgecolor='red', linestyle='-', linewidth=2, facecolor='none', transform=ccrs.PlateCarree())
+    par_patch = PathPatch(par_path, edgecolor='blue', linestyle='--', linewidth=2, facecolor='none', transform=ccrs.PlateCarree())
     ax.add_patch(par_patch)
 
     for init_time in init_times:
@@ -85,14 +85,17 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
                     skipped_tracks += 1
                     continue
 
-                ax.plot(lons, lats, color='#404040', linewidth=2.5, alpha=0.7, transform=ccrs.PlateCarree())
+                ax.plot(lons, lats, color='#1a1a1a', linewidth=2.0, alpha=0.55, transform=ccrs.PlateCarree())
                 for i in range(len(lons)):
                     color = get_pressure_color(pressures[i])
                     if color is None: continue
                     # Shadow
-                    ax.plot(lons[i], lats[i], color='#000000', marker='o', markersize=8, alpha=0.2, markeredgewidth=0, transform=ccrs.PlateCarree(), zorder=3)
+                    ax.plot(lons[i], lats[i], color='black', marker='o', markersize=8,
+                            markeredgewidth=0, alpha=0.2, transform=ccrs.PlateCarree(), zorder=4)
                     # Colored donut ring
-                    ax.plot(lons[i], lats[i], markerfacecolor='none', markeredgecolor=color, marker='o', markersize=5, markeredgewidth=1.5, transform=ccrs.PlateCarree(), zorder=5)
+                    ax.plot(lons[i], lats[i], markerfacecolor='none', markeredgecolor=color,
+                            marker='o', markersize=5, markeredgewidth=1.5,
+                            transform=ccrs.PlateCarree(), zorder=5)
                 plotted_tracks += 1
 
     pressure_ranges = [
@@ -104,20 +107,21 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
         {'pressure_range': '> 1005 hPa', 'color': '#3498DB'}
     ]
     legend_elements = [
-        plt.Line2D([0], [0], marker='o', color='none', markerfacecolor='none', markeredgecolor=r['color'], markeredgewidth=2, markersize=8, label=r['pressure_range'])
+        plt.Line2D([0], [0], marker='o', color='none', markerfacecolor='none',
+                   markeredgecolor=r['color'], markeredgewidth=2, markersize=8, label=r['pressure_range'])
         for r in pressure_ranges
     ]
-    legend = ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0.02, 0.98), frameon=False, fontsize=10)
-    for text in legend.get_texts():
-        text.set_color('#cbd5e1')
+    legend = ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0.02, 0.98), frameon=True, fancybox=True, shadow=True, fontsize=10)
+    legend.get_frame().set_facecolor('white')
+    legend.get_frame().set_alpha(0.9)
 
-    legend_text = f"Runtime: {runtime_text}\nProcessed By: Calauan Weather"
-    plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right', bbox=dict(facecolor='#1e293b', alpha=0.9, edgecolor='#475569', boxstyle='round,pad=0.3'), color='#cbd5e1')
+    legend_text = f"Forecast: NOAA AI-GEFS Tropical Cyclone Tracks\nRuntime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
+    plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right', bbox=dict(facecolor='white', alpha=0.8, edgecolor='black', boxstyle='round,pad=0.3'))
     
-    ax.set_title(title, fontsize=16, weight='bold', color='#cbd5e1')
+    ax.set_title(title, fontsize=16, weight='bold')
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor(), edgecolor='none')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Plot saved to {output_file} ({plotted_tracks} plotted, {skipped_tracks} skipped)")
     plt.close()
 
