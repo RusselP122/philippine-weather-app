@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { 
-  CloudRain, 
-  AlertTriangle, 
-  ChevronRight, 
-  Info, 
-  Compass, 
-  Maximize2, 
-  Layers, 
-  MapPin, 
-  TrendingUp, 
+import {
+  CloudRain,
+  AlertTriangle,
+  ChevronRight,
+  Info,
+  Compass,
+  Maximize2,
+  Layers,
+  MapPin,
+  TrendingUp,
   ShieldAlert,
-  Smartphone
+  Smartphone,
+  Download
 } from "lucide-react";
 
 const WeatherAdvisory = () => {
@@ -55,17 +56,189 @@ const WeatherAdvisory = () => {
       .catch((err) => console.error("Failed to load advisory data:", err));
   }, []);
 
+  const exportMapAsPNG = () => {
+    const svgElement = mapContainerRef.current?.querySelector("svg");
+    if (!svgElement) return;
+
+    try {
+      // 1. Compile the lists of provinces under each category dynamically
+      const redProvinces = [];
+      const orangeProvinces = [];
+      const yellowProvinces = [];
+
+      Object.entries(advisoryData.provinces).forEach(([name, p]) => {
+        const mm = p.rainfall_mm || 0;
+        if (mm >= 300) redProvinces.push(name);
+        else if (mm >= 100) orangeProvinces.push(name);
+        else if (mm >= 50) yellowProvinces.push(name);
+      });
+
+      redProvinces.sort();
+      orangeProvinces.sort();
+      yellowProvinces.sort();
+
+      // Helper function to render a clean vertical list of province names
+      const renderProvinceList = (provinces, xPos, startY, color) => {
+        if (provinces.length === 0) {
+          return `<text x="${xPos}" y="${startY}" fill="#475569" font-size="9.5" text-anchor="middle" font-style="italic">None</text>`;
+        }
+
+        let markup = "";
+        const maxLines = 10; // Allow up to 10 provinces listed in the expanded card space
+        for (let i = 0; i < provinces.length; i++) {
+          if (i >= maxLines) {
+            markup += `<text x="${xPos}" y="${startY + i * 11.5}" fill="${color}" font-size="8.5" font-weight="bold" text-anchor="middle">+ ${provinces.length - maxLines} more</text>`;
+            break;
+          }
+          markup += `<text x="${xPos}" y="${startY + i * 11.5}" fill="#e2e8f0" font-size="9" text-anchor="middle">${provinces[i]}</text>`;
+        }
+        return markup;
+      };
+
+      // Clone the SVG so we can force a full 1400x1400 canvas without affecting on-screen zoom state
+      const clonedSvg = svgElement.cloneNode(true);
+      clonedSvg.setAttribute("viewBox", "0 0 1400 1400");
+      clonedSvg.setAttribute("width", "1400");
+      clonedSvg.setAttribute("height", "1400");
+      clonedSvg.removeAttribute("style");
+
+      // Dynamic Title, Legend, and Metrics injection programmatically (so they only appear on the saved image)
+      const svgNS = "http://www.w3.org/2000/svg";
+
+      // 1. Dynamic Map Title Block (Scaled Up for High Readability)
+      const titleGroup = document.createElementNS(svgNS, "g");
+      titleGroup.setAttribute("transform", "translate(1010, 60)");
+      titleGroup.setAttribute("font-family", "monospace");
+      titleGroup.innerHTML = `
+        <rect x="0" y="0" width="370" height="240" rx="14" fill="rgba(9, 13, 22, 0.9)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.2" />
+        <text x="25" y="40" fill="#38bdf8" font-size="15" font-weight="bold" letter-spacing="1.5">24-HOUR RAINFALL FORECAST</text>
+        <text x="25" y="65" fill="#f1f5f9" font-size="13" font-weight="bold" font-family="sans-serif">ECMWF IFS High Resolution</text>
+        <line x1="25" y1="80" x2="345" y2="80" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1" />
+        <text x="25" y="108" fill="#e2e8f0" font-size="11" font-weight="bold" font-family="sans-serif">FORECAST VALIDITY WINDOW:</text>
+        <text x="25" y="132" fill="#38bdf8" font-size="11.5" font-weight="bold">${advisoryData.validity.split(" to ")[0]}</text>
+        <text x="25" y="152" fill="#64748b" font-size="10.5" font-weight="bold">to</text>
+        <text x="25" y="172" fill="#38bdf8" font-size="11.5" font-weight="bold">${advisoryData.validity.split(" to ")[1]}</text>
+        <line x1="25" y1="192" x2="345" y2="192" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1" />
+        <text x="25" y="215" fill="#64748b" font-size="10.5">Model Run: ${advisoryData.init_time}</text>
+      `;
+      clonedSvg.appendChild(titleGroup);
+
+      // 2. Warning Level Legend Box (Scaled Up for High Readability)
+      const legendGroup = document.createElementNS(svgNS, "g");
+      legendGroup.setAttribute("transform", "translate(1010, 320)");
+      legendGroup.setAttribute("font-family", "sans-serif");
+      legendGroup.innerHTML = `
+        <rect x="0" y="0" width="370" height="320" rx="14" fill="rgba(9, 13, 22, 0.9)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.2" />
+        <text x="25" y="38" fill="#38bdf8" font-size="13" font-weight="bold" letter-spacing="1.5" font-family="monospace">WARNING LEVEL LEGEND</text>
+        <line x1="25" y1="50" x2="345" y2="50" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1" />
+        <rect x="25" y="68" width="24" height="24" rx="6" fill="#DC2626" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
+        <text x="62" y="85" fill="#f1f5f9" font-size="13" font-weight="bold">Red Warning (300+ mm)</text>
+        <text x="62" y="102" fill="#94a3b8" font-size="10.5">Severe widespread flooding & landslides</text>
+        <rect x="25" y="128" width="24" height="24" rx="6" fill="#F97316" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
+        <text x="62" y="145" fill="#f1f5f9" font-size="13" font-weight="bold">Orange Alert (100 - 300 mm)</text>
+        <text x="62" y="162" fill="#94a3b8" font-size="10.5">High risk of flooding & soil slides</text>
+        <rect x="25" y="188" width="24" height="24" rx="6" fill="#EAB308" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
+        <text x="62" y="205" fill="#f1f5f9" font-size="13" font-weight="bold">Yellow Advisory (50 - 100 mm)</text>
+        <text x="62" y="222" fill="#94a3b8" font-size="10.5">Localized pooling & minor flooding</text>
+        <rect x="25" y="248" width="24" height="24" rx="6" fill="#334155" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
+        <text x="62" y="265" fill="#cbd5e1" font-size="13" font-weight="bold">Light / No Warning (&lt; 50 mm)</text>
+        <text x="62" y="282" fill="#64748b" font-size="10.5">Isolated light rains or clear skies</text>
+      `;
+      clonedSvg.appendChild(legendGroup);
+
+      // 3. Warning Metrics Summary Box (Scaled Up and Expanded to List Province Names)
+      const metricsGroup = document.createElementNS(svgNS, "g");
+      metricsGroup.setAttribute("transform", "translate(1010, 660)");
+      metricsGroup.setAttribute("font-family", "sans-serif");
+
+      const redListMarkup = renderProvinceList(redProvinces, 47.5, 92, "#ef4444");
+      const orangeListMarkup = renderProvinceList(orangeProvinces, 47.5, 92, "#fb923c");
+      const yellowListMarkup = renderProvinceList(yellowProvinces, 47.5, 92, "#facc15");
+
+      metricsGroup.innerHTML = `
+        <rect x="0" y="0" width="370" height="290" rx="14" fill="rgba(9, 13, 22, 0.9)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.2" />
+        <text x="25" y="38" fill="#38bdf8" font-size="13" font-weight="bold" letter-spacing="1.5" font-family="monospace">PROVINCIAL WARNING METRICS</text>
+        <line x1="25" y1="50" x2="345" y2="50" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1" />
+        
+        <g transform="translate(25, 70)">
+          <!-- Red Column -->
+          <g>
+            <rect x="0" y="0" width="95" height="65" rx="10" fill="rgba(220, 38, 38, 0.12)" stroke="rgba(220, 38, 38, 0.25)" stroke-width="1" />
+            <text x="47.5" y="35" fill="#DC2626" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.red}</text>
+            <text x="47.5" y="52" fill="#ef4444" font-size="10" font-weight="bold" text-anchor="middle" letter-spacing="0.5">RED</text>
+            <line x1="10" y1="78" x2="85" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
+            ${redListMarkup}
+          </g>
+
+          <!-- Orange Column -->
+          <g transform="translate(112.5, 0)">
+            <rect x="0" y="0" width="95" height="65" rx="10" fill="rgba(249, 115, 22, 0.12)" stroke="rgba(249, 115, 22, 0.25)" stroke-width="1" />
+            <text x="47.5" y="35" fill="#F97316" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.orange}</text>
+            <text x="47.5" y="52" fill="#fb923c" font-size="10" font-weight="bold" text-anchor="middle" letter-spacing="0.5">ORANGE</text>
+            <line x1="10" y1="78" x2="85" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
+            ${orangeListMarkup}
+          </g>
+
+          <!-- Yellow Column -->
+          <g transform="translate(225, 0)">
+            <rect x="0" y="0" width="95" height="65" rx="10" fill="rgba(234, 179, 8, 0.12)" stroke="rgba(234, 179, 8, 0.25)" stroke-width="1" />
+            <text x="47.5" y="35" fill="#EAB308" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.yellow}</text>
+            <text x="47.5" y="52" fill="#facc15" font-size="10" font-weight="bold" text-anchor="middle" letter-spacing="0.5">YELLOW</text>
+            <line x1="10" y1="78" x2="85" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
+            ${yellowListMarkup}
+          </g>
+        </g>
+      `;
+      clonedSvg.appendChild(metricsGroup);
+
+      const serializer = new XMLSerializer();
+      let svgString = serializer.serializeToString(clonedSvg);
+
+      const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+      const URL = window.URL || window.webkitURL || window;
+      const blobURL = URL.createObjectURL(svgBlob);
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1400;
+        canvas.height = 1400;
+        const ctx = canvas.getContext("2d");
+
+        // Premium deep dark slate canvas background
+        ctx.fillStyle = "#020617";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const pngURL = canvas.toDataURL("image/png");
+        const downloadLink = document.createElement("a");
+        downloadLink.href = pngURL;
+        downloadLink.download = `PH_Weather_Advisory_${new Date().toISOString().split('T')[0]}.png`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+
+        URL.revokeObjectURL(blobURL);
+      };
+
+      img.src = blobURL;
+    } catch (err) {
+      console.error("Failed to export SVG map as PNG:", err);
+    }
+  };
+
   const getIslandGroup = (region) => {
     if (!region) return "Luzon";
     const r = region.toLowerCase();
     if (r.includes("visayas")) return "Visayas";
     if (
-      r.includes("zamboanga") || 
-      r.includes("mindanao") || 
-      r.includes("davao") || 
-      r.includes("soccsksargen") || 
-      r.includes("caraga") || 
-      r.includes("bangsamoro") || 
+      r.includes("zamboanga") ||
+      r.includes("mindanao") ||
+      r.includes("davao") ||
+      r.includes("soccsksargen") ||
+      r.includes("caraga") ||
+      r.includes("bangsamoro") ||
       r.includes("muslim")
     ) {
       return "Mindanao";
@@ -163,9 +336,9 @@ const WeatherAdvisory = () => {
       };
     });
 
-    // Regional coordinate bounds in SVG canvas space
+    // Regional coordinate bounds in SVG canvas space (kept to 1000px wide for screen, only PNG export expands to 1400px)
     const bounds = {
-      All: { minX: 0, maxX: canvasWidth, minY: 0, maxY: canvasHeight },
+      All: { minX: 0, maxX: 1000, minY: 0, maxY: canvasHeight },
       Luzon: { minX: canvasWidth, maxX: 0, minY: canvasHeight, maxY: 0 },
       Visayas: { minX: canvasWidth, maxX: 0, minY: canvasHeight, maxY: 0 },
       Mindanao: { minX: canvasWidth, maxX: 0, minY: canvasHeight, maxY: 0 }
@@ -175,8 +348,8 @@ const WeatherAdvisory = () => {
     projectedFeatures.forEach((f) => {
       const g = f.group;
       const originalFeature = geoData.features.find(
-        (orig) => 
-          (orig.properties.ID_1 || orig.properties.PROV_NAME || orig.properties.PROVINCE || orig.properties.NAME_1) === f.id || 
+        (orig) =>
+          (orig.properties.ID_1 || orig.properties.PROV_NAME || orig.properties.PROVINCE || orig.properties.NAME_1) === f.id ||
           orig.properties.PROV_NAME === f.name
       );
 
@@ -246,12 +419,57 @@ const WeatherAdvisory = () => {
     return { red, orange, yellow, normal };
   }, [advisoryData]);
 
+  // Warning provinces lists
+  const warningProvinces = useMemo(() => {
+    const red = [];
+    const orange = [];
+    const yellow = [];
+
+    if (advisoryData && advisoryData.provinces) {
+      Object.entries(advisoryData.provinces).forEach(([name, p]) => {
+        const mm = p.rainfall_mm || 0;
+        if (mm >= 300) red.push(name);
+        else if (mm >= 100) orange.push(name);
+        else if (mm >= 50) yellow.push(name);
+      });
+      red.sort();
+      orange.sort();
+      yellow.sort();
+    }
+
+    return { red, orange, yellow };
+  }, [advisoryData]);
+
   const handleMouseMove = (e) => {
     if (mapContainerRef.current) {
       const rect = mapContainerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Tooltip dimensions: width is 288px (w-72), estimated height is 210px
+      const tooltipWidth = 290;
+      const tooltipHeight = 210;
+
+      let finalX = x + 15;
+      let finalY = y + 15;
+
+      // Check right boundary collision
+      if (x + tooltipWidth > rect.width) {
+        finalX = x - tooltipWidth - 15;
+      }
+
+      // Check bottom boundary collision
+      if (y + tooltipHeight > rect.height) {
+        finalY = y - tooltipHeight - 15;
+      }
+
+      // Keep within bounds
+      finalX = Math.max(10, finalX);
+      finalY = Math.max(10, finalY);
+
       setTooltipPos({
-        x: e.clientX - rect.left + 15,
-        y: e.clientY - rect.top + 15,
+        x: finalX,
+        y: finalY,
       });
     }
   };
@@ -287,23 +505,27 @@ const WeatherAdvisory = () => {
 
   return (
     <div className="relative h-[calc(100vh-64px)] w-full bg-slate-950 font-sans overflow-hidden flex flex-col md:flex-row">
-      
+
       {/* ── INTERACTIVE DYNAMIC MAP CONTAINER ── */}
-      <div 
+      <div
         ref={mapContainerRef}
         onMouseMove={handleMouseMove}
         className="relative w-full h-[45vh] md:h-full md:flex-1 bg-[#020617] overflow-hidden flex items-center justify-center border-b md:border-b-0 border-slate-800"
       >
         {/* Radar-like background grid lines */}
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,rgba(15,23,42,0.6)_0%,rgba(2,6,23,1)_95%)]" />
-        
+
         {/* Dynamic Zooming SVG Map Canvas */}
         {mapData && (
           <svg
             className="w-auto h-full max-h-full max-w-full aspect-[1000/1400] relative z-10 select-none cursor-crosshair transition-all duration-[1200ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]"
             viewBox={activeViewBox}
-            style={{ 
+            style={{
               filter: "drop-shadow(0 25px 50px rgba(0, 0, 0, 0.4))",
+            }}
+            onClick={() => {
+              setHoveredProvince(null);
+              setIsTooltipVisible(false);
             }}
           >
             {/* Fine Technical Grid Lines */}
@@ -331,13 +553,13 @@ const WeatherAdvisory = () => {
               <circle r="40" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="0.8" strokeDasharray="2 3" />
               <line x1="0" y1="-55" x2="0" y2="55" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
               <line x1="-55" y1="0" x2="55" y2="0" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
-              
+
               {/* North Arrow Pointer */}
               <polygon points="0,-52 4,-12 0,0 -4,-12" fill="rgba(255,255,255,0.4)" />
               <polygon points="0,52 3,12 0,0 -3,12" fill="rgba(255,255,255,0.15)" />
               <polygon points="52,0 12,3 0,0 12,-3" fill="rgba(255,255,255,0.15)" />
               <polygon points="-52,0 -12,3 0,0 -12,-3" fill="rgba(255,255,255,0.15)" />
-              
+
               <text x="0" y="-60" textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="10" fontWeight="bold">N</text>
               <text x="64" y="3" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="8">E</text>
               <text x="0" y="69" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="8">S</text>
@@ -360,7 +582,7 @@ const WeatherAdvisory = () => {
                     strokeWidth={isHovered ? 2.5 : 0.8}
                     strokeLinejoin="round"
                     className="transition-all duration-300 cursor-pointer"
-                    style={{ 
+                    style={{
                       opacity: hoveredProvince && !isHovered ? 0.35 : 1,
                       filter: isHovered ? "drop-shadow(0 0 8px rgba(255,255,255,0.4)) brightness(1.15)" : "none"
                     }}
@@ -375,6 +597,21 @@ const WeatherAdvisory = () => {
                     onMouseLeave={() => {
                       setHoveredProvince(null);
                       setIsTooltipVisible(false);
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const currentProv = {
+                        ...feature,
+                        rainfall,
+                        alert: getAlertLevel(rainfall)
+                      };
+                      if (hoveredProvince?.id === feature.id) {
+                        setHoveredProvince(null);
+                        setIsTooltipVisible(false);
+                      } else {
+                        setHoveredProvince(currentProv);
+                        setIsTooltipVisible(true);
+                      }
                     }}
                   />
                 );
@@ -392,15 +629,15 @@ const WeatherAdvisory = () => {
                   return (
                     <g key={`lbl-${feature.id}`} transform={`translate(${feature.centroid[0]}, ${feature.centroid[1]})`}>
                       {/* High-visibility label backdrop */}
-                      <rect 
-                        x={-(feature.name.length * 3.2 + 6)} 
-                        y="-15" 
-                        width={feature.name.length * 6.4 + 12} 
-                        height="18" 
-                        rx="4" 
-                        fill="rgba(15, 23, 42, 0.85)" 
-                        stroke="rgba(255,255,255,0.15)" 
-                        strokeWidth="0.5" 
+                      <rect
+                        x={-(feature.name.length * 3.2 + 6)}
+                        y="-15"
+                        width={feature.name.length * 6.4 + 12}
+                        height="18"
+                        rx="4"
+                        fill="rgba(15, 23, 42, 0.85)"
+                        stroke="rgba(255,255,255,0.15)"
+                        strokeWidth="0.5"
                       />
                       <text
                         y="-3"
@@ -428,11 +665,10 @@ const WeatherAdvisory = () => {
               <button
                 key={region}
                 onClick={() => setActiveRegion(region)}
-                className={`px-2.5 py-1 rounded-md text-[10px] sm:text-xs font-bold tracking-wide uppercase transition-all duration-300 ${
-                  activeRegion === region 
-                    ? "bg-sky-500 text-white shadow-md shadow-sky-500/10 scale-105" 
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
-                }`}
+                className={`px-2.5 py-1 rounded-md text-[10px] sm:text-xs font-bold tracking-wide uppercase cursor-pointer transition-all duration-300 ${activeRegion === region
+                  ? "bg-sky-500 text-white shadow-md shadow-sky-500/10 scale-105"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
+                  }`}
               >
                 {region}
               </button>
@@ -442,26 +678,23 @@ const WeatherAdvisory = () => {
           {/* Toggle Map Labels Label overlay */}
           <button
             onClick={() => setShowLabels(!showLabels)}
-            className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold backdrop-blur-md border shadow-lg flex items-center justify-center gap-1.5 pointer-events-auto transition-all duration-300 ${
-              showLabels 
-                ? "bg-emerald-600/80 text-white border-emerald-500" 
-                : "bg-slate-950/80 text-slate-400 border-slate-800 hover:bg-slate-900/80"
-            }`}
+            className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold backdrop-blur-md border shadow-lg flex items-center justify-center gap-1.5 pointer-events-auto cursor-pointer transition-all duration-300 ${showLabels
+              ? "bg-emerald-600/80 text-white border-emerald-500"
+              : "bg-slate-950/80 text-slate-400 border-slate-800 hover:bg-slate-900/80"
+              }`}
           >
             <Layers className="w-3.5 h-3.5" />
             <span>{showLabels ? "Hide Names" : "Show Names"}</span>
           </button>
-        </div>
 
-        {/* Map Bounding Indicators */}
-        <div className="absolute bottom-6 left-6 z-20 pointer-events-none select-none flex flex-col gap-1 font-mono text-[10px] text-slate-500 bg-slate-950/60 backdrop-blur-sm px-3 py-2 rounded-lg border border-slate-900/50 shadow-md">
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span className="text-slate-400 font-semibold uppercase tracking-wider">Met-System Online</span>
-          </div>
-          <div>Scale: 1:1,850,000</div>
-          <div>Projection: Equirectangular (WGS84)</div>
-          <div className="text-[9px] text-slate-600">Active Zoom: Region {activeRegion}</div>
+          {/* Export PNG Button */}
+          <button
+            onClick={exportMapAsPNG}
+            className="px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold backdrop-blur-md border shadow-lg flex items-center justify-center gap-1.5 pointer-events-auto cursor-pointer bg-slate-950/80 text-slate-400 border-slate-800 hover:bg-slate-900/80 hover:text-sky-400 transition-all duration-300"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export PNG</span>
+          </button>
         </div>
 
         {/* ── DYNAMIC CURSOR FLOATING GLASS TOOLTIP (DESKTOP ONLY) ── */}
@@ -543,7 +776,7 @@ const WeatherAdvisory = () => {
 
       {/* ── SIDEBAR PANEL (PAGASA WEATHER ALERT DESK STYLE) ── */}
       <div className="w-full md:w-80 lg:w-96 flex-1 md:flex-none bg-[#090d16]/95 md:bg-[#050811]/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-slate-800/80 flex flex-col z-20 overflow-hidden shadow-[-15px_0_35px_rgba(0,0,0,0.6)]">
-        
+
         {/* PAGASA Style Header */}
         <div className="bg-gradient-to-r from-sky-950/80 to-blue-950/80 p-5 border-b border-sky-800/40 text-center relative overflow-hidden flex-shrink-0">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(14,165,233,0.1)_0%,transparent_70%)] pointer-events-none" />
@@ -574,17 +807,18 @@ const WeatherAdvisory = () => {
 
         {/* Advisory Action Tables */}
         <div className="p-5 flex-1 overflow-y-auto space-y-5">
+
           <h2 className="text-slate-400 font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5 border-b border-slate-800/80 pb-2 mb-4">
             <TrendingUp className="w-3.5 h-3.5 text-sky-400" />
             <span>Threat Warning Categories</span>
           </h2>
-          
+
           {/* Red Level */}
           <div className="bg-slate-950/40 rounded-xl overflow-hidden border border-red-950 shadow-lg group transition-all duration-300 hover:border-red-900/60">
             <div className="bg-gradient-to-r from-red-700 to-red-600 px-4 py-2 flex justify-between items-center text-white text-xs font-bold tracking-widest uppercase">
               <span>Red Level (300+ mm)</span>
               {warningMetrics.red > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-red-950/80 text-[10px] text-red-100 animate-pulse border border-red-700">
+                <span className="px-1.5 py-0.5 rounded-full bg-slate-950 text-[10px] text-red-400 border border-red-500/35 font-bold shadow-md animate-pulse">
                   {warningMetrics.red} Provinces
                 </span>
               )}
@@ -602,6 +836,20 @@ const WeatherAdvisory = () => {
                 <ChevronRight className="w-3 h-3 text-red-500 mt-0.5 flex-shrink-0" />
                 <p><strong className="text-slate-200">Action:</strong> Evacuate hazard-exposed residences. Seek high shelter immediately.</p>
               </div>
+
+              {/* Affected Provinces Name List */}
+              {warningProvinces.red.length > 0 && (
+                <div className="pt-3 mt-3 border-t border-slate-900/60">
+                  <span className="text-[9.5px] font-bold text-red-400 uppercase tracking-wider block mb-1.5 text-left">Affected Provinces:</span>
+                  <div className="flex flex-wrap gap-1 justify-start">
+                    {warningProvinces.red.map(p => (
+                      <span key={p} className="px-1.5 py-0.5 bg-red-950/60 text-red-300 border border-red-900/60 rounded text-[9.5px] font-mono">
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -610,7 +858,7 @@ const WeatherAdvisory = () => {
             <div className="bg-gradient-to-r from-orange-600 to-orange-500 px-4 py-2 flex justify-between items-center text-white text-xs font-bold tracking-widest uppercase">
               <span>Orange Level (100-200 mm)</span>
               {warningMetrics.orange > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-orange-950/80 text-[10px] text-orange-200 border border-orange-700">
+                <span className="px-1.5 py-0.5 rounded-full bg-slate-950 text-[10px] text-orange-400 border border-orange-500/35 font-bold shadow-md">
                   {warningMetrics.orange} Provinces
                 </span>
               )}
@@ -628,6 +876,20 @@ const WeatherAdvisory = () => {
                 <ChevronRight className="w-3 h-3 text-orange-500 mt-0.5 flex-shrink-0" />
                 <p><strong className="text-slate-200">Action:</strong> Prepare grab-bags and emergency supplies. Be on standby alert to evacuate.</p>
               </div>
+
+              {/* Affected Provinces Name List */}
+              {warningProvinces.orange.length > 0 && (
+                <div className="pt-3 mt-3 border-t border-slate-900/60">
+                  <span className="text-[9.5px] font-bold text-orange-400 uppercase tracking-wider block mb-1.5 text-left">Affected Provinces:</span>
+                  <div className="flex flex-wrap gap-1 justify-start">
+                    {warningProvinces.orange.map(p => (
+                      <span key={p} className="px-1.5 py-0.5 bg-orange-950/60 text-orange-300 border border-orange-900/60 rounded text-[9.5px] font-mono">
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -636,7 +898,7 @@ const WeatherAdvisory = () => {
             <div className="bg-gradient-to-r from-yellow-500 to-yellow-400 px-4 py-2 flex justify-between items-center text-slate-900 text-xs font-extrabold tracking-widest uppercase">
               <span>Yellow Level (50-100 mm)</span>
               {warningMetrics.yellow > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-yellow-950/85 text-[10px] text-yellow-900 border border-yellow-400 font-bold">
+                <span className="px-1.5 py-0.5 rounded-full bg-slate-950 text-[10px] text-yellow-400 border border-yellow-500/35 font-bold shadow-md">
                   {warningMetrics.yellow} Provinces
                 </span>
               )}
@@ -654,9 +916,23 @@ const WeatherAdvisory = () => {
                 <ChevronRight className="w-3 h-3 text-yellow-500 mt-0.5 flex-shrink-0" />
                 <p><strong className="text-slate-200">Action:</strong> Stay tuned to warnings. Clear yard debris and monitor channel flows.</p>
               </div>
+
+              {/* Affected Provinces Name List */}
+              {warningProvinces.yellow.length > 0 && (
+                <div className="pt-3 mt-3 border-t border-slate-900/60">
+                  <span className="text-[9.5px] font-bold text-yellow-400 uppercase tracking-wider block mb-1.5 text-left">Affected Provinces:</span>
+                  <div className="flex flex-wrap gap-1 justify-start">
+                    {warningProvinces.yellow.map(p => (
+                      <span key={p} className="px-1.5 py-0.5 bg-yellow-950/50 text-yellow-300 border border-yellow-900/40 rounded text-[9.5px] font-mono">
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-          
+
         </div>
 
         {/* Meteorological Footer info */}
@@ -668,7 +944,7 @@ const WeatherAdvisory = () => {
             <div className="flex items-center justify-center gap-3 mt-1 pb-1">
               <img src="/images/logo.png" alt="Logo" className="h-7 w-7 opacity-85 object-contain" />
               <div className="text-[9px] text-slate-500 font-mono leading-tight">
-                ECMWF IFS High Resolution Model<br/>
+                ECMWF IFS High Resolution Model<br />
                 Weather Analysis & Forecasting Desk
               </div>
             </div>
@@ -710,7 +986,7 @@ const WeatherAdvisory = () => {
                   localStorage.setItem("ph_weather_mobile_notice_dismissed_date", todayStr);
                 }
               }}
-              className="w-full mt-2 py-3 rounded-xl bg-sky-500 hover:bg-sky-600 active:scale-[0.98] text-white text-xs font-bold uppercase tracking-wider shadow-lg shadow-sky-500/25 transition-all duration-200 pointer-events-auto"
+              className="w-full mt-2 py-3 rounded-xl bg-sky-500 hover:bg-sky-600 active:scale-[0.98] text-white text-xs font-bold uppercase tracking-wider shadow-lg shadow-sky-500/25 transition-all duration-200 pointer-events-auto cursor-pointer"
             >
               Understand & Proceed
             </button>
