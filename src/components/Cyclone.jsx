@@ -316,10 +316,27 @@ const CycloneMapLogic = () => {
             .getPopup()
             .getContent()
             .replace(
-              /id="popup-location-text">\d+\.\d+°N, \d+\.\d+°E<\/div>/,
-              `id="popup-location-text">${newLat.toFixed(2)}°N, ${newLon.toFixed(2)}°E</div>`
+              /id="popup-location-text">[\s\S]*?<\/div>/,
+              `id="popup-location-text">${newLat.toFixed(2)}°N,<br class="sm:hidden"/> ${newLon.toFixed(2)}°E</div>`
             );
           s.marker.setPopupContent(popupContent);
+        }
+      }
+    }
+
+    function updateSliderUI() {
+      const slider = document.getElementById("radar-slider");
+      if (slider) {
+        slider.max = (mapFrames.length > 0 ? mapFrames.length - 1 : 0).toString();
+        if (slider.value !== animationPosition.toString()) {
+          slider.value = animationPosition.toString();
+        }
+        if (mapFrames.length > 0) {
+          slider.removeAttribute("disabled");
+          slider.style.opacity = "1";
+        } else {
+          slider.setAttribute("disabled", "true");
+          slider.style.opacity = "0.5";
         }
       }
     }
@@ -399,54 +416,54 @@ const CycloneMapLogic = () => {
 
         marker.bindPopup(
           `
-            <div class="popup-tail relative z-20 w-80 bg-slate-900/90 backdrop-blur-md border border-slate-700 shadow-[0_10px_40px_rgba(0,0,0,0.5)] rounded-2xl p-5">
+            <div class="popup-tail relative z-20 w-[270px] sm:w-80 bg-slate-900/90 backdrop-blur-md border border-slate-700 shadow-[0_10px_40px_rgba(0,0,0,0.5)] rounded-2xl p-3.5 sm:p-5">
                 
-                <div class="border-b border-slate-700/60 pb-3 flex justify-between items-start">
+                <div class="border-b border-slate-700/60 pb-2 sm:pb-3 flex justify-between items-start">
                     <div>
-                        <div class="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-800 text-[10px] font-bold uppercase tracking-wider border border-slate-700 mb-2" style="color: ${categoryInfo.color}; border-color: ${categoryInfo.color}40; background: ${categoryInfo.color}10;">
+                        <div class="inline-flex items-center gap-1 px-1.5 py-0.5 sm:gap-1.5 sm:px-2 sm:py-1 rounded bg-slate-800 text-[8px] sm:text-[10px] font-bold uppercase tracking-wider border border-slate-700 mb-1.5 sm:mb-2" style="color: ${categoryInfo.color}; border-color: ${categoryInfo.color}40; background: ${categoryInfo.color}10;">
                             <span class="w-1.5 h-1.5 rounded-full animate-pulse shadow-[0_0_5px_currentColor]" style="background-color: ${categoryInfo.color};"></span>
                             ${categoryInfo.category}
                         </div>
-                        <h3 class="text-2xl font-black text-white tracking-tight">${displayName}</h3>
+                        <h3 class="text-lg sm:text-2xl font-black text-white tracking-tight leading-tight">${displayName}</h3>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-3 py-4">
-                    <div class="bg-slate-950/50 rounded-xl p-3 border border-slate-800 hover:border-slate-600 transition-colors">
-                        <div class="text-slate-400 text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1.5 font-medium">
+                <div class="grid grid-cols-2 gap-2 sm:gap-3 py-3 sm:py-4">
+                    <div class="bg-slate-950/50 rounded-xl p-2 sm:p-3 border border-slate-800 hover:border-slate-600 transition-colors">
+                        <div class="text-slate-400 text-[9px] sm:text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1 font-medium">
                             <span class="text-blue-400">💨</span> Wind (10m)
                         </div>
-                        <div class="text-white font-bold text-lg">${winds10MinKph} <span class="text-xs text-slate-500 font-normal">km/h</span></div>
+                        <div class="text-white font-bold text-sm sm:text-lg">${winds10MinKph} <span class="text-[10px] sm:text-xs text-slate-500 font-normal">km/h</span></div>
                     </div>
                     
-                    <div class="bg-slate-950/50 rounded-xl p-3 border border-slate-800 hover:border-slate-600 transition-colors">
-                        <div class="text-slate-400 text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1.5 font-medium">
+                    <div class="bg-slate-950/50 rounded-xl p-2 sm:p-3 border border-slate-800 hover:border-slate-600 transition-colors">
+                        <div class="text-slate-400 text-[9px] sm:text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1 font-medium">
                             <span class="text-rose-400">🌪️</span> Max Gust
                         </div>
-                        <div class="text-white font-bold text-lg">${gustKph} <span class="text-xs text-slate-500 font-normal">km/h</span></div>
+                        <div class="text-white font-bold text-sm sm:text-lg">${gustKph} <span class="text-[10px] sm:text-xs text-slate-500 font-normal">km/h</span></div>
                     </div>
                     
-                    <div class="bg-slate-950/50 rounded-xl p-3 border border-slate-800 hover:border-slate-600 transition-colors">
-                        <div class="text-slate-400 text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1.5 font-medium">
+                    <div class="bg-slate-950/50 rounded-xl p-2 sm:p-3 border border-slate-800 hover:border-slate-600 transition-colors">
+                        <div class="text-slate-400 text-[9px] sm:text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1 font-medium">
                             <span class="text-emerald-400">⏲️</span> Pressure
                         </div>
-                        <div class="text-white font-bold text-lg">${pressure} <span class="text-xs text-slate-500 font-normal">hPa</span></div>
+                        <div class="text-white font-bold text-sm sm:text-lg">${pressure} <span class="text-[10px] sm:text-xs text-slate-500 font-normal">hPa</span></div>
                     </div>
                     
-                    <div class="bg-slate-950/50 rounded-xl p-3 border border-slate-800 hover:border-slate-600 transition-colors">
-                        <div class="text-slate-400 text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1.5 font-medium">
+                    <div class="bg-slate-950/50 rounded-xl p-2 sm:p-3 border border-slate-800 hover:border-slate-600 transition-colors">
+                        <div class="text-slate-400 text-[9px] sm:text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1 font-medium">
                             <span class="text-amber-400">📍</span> Location
                         </div>
-                        <div class="text-white font-bold text-sm mt-1 tracking-wide" id="popup-location-text">${latitude.toFixed(2)}°N, ${longitude.toFixed(2)}°E</div>
+                        <div class="text-white font-bold text-[10px] sm:text-sm mt-0.5 sm:mt-1 tracking-wide leading-tight" id="popup-location-text">${latitude.toFixed(2)}°N,<br class="sm:hidden"/> ${longitude.toFixed(2)}°E</div>
                     </div>
                 </div>
-                ${movementHtml ? `<div class="bg-slate-950/50 rounded-xl p-3 border border-slate-800 mb-3 text-sm text-slate-300">
+                ${movementHtml ? `<div class="bg-slate-950/50 rounded-xl p-2 sm:p-3 border border-slate-800 mb-2 sm:mb-3 text-[11px] sm:text-sm text-slate-300">
                   <span class="text-slate-400">🧭</span> ${movementHtml.replace(/<[^>]+>/g, '')}
                 </div>` : ''}
-                <div class="border-t border-slate-700/60 pt-3 flex items-center justify-between">
+                <div class="border-t border-slate-700/60 pt-2 sm:pt-3 flex items-center justify-between">
                     <div class="flex flex-col">
-                        <span class="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Last Updated</span>
-                        <span class="text-xs text-slate-400">${new Date(storm.last_updated).toLocaleString()}</span>
+                        <span class="text-[8px] sm:text-[9px] text-slate-500 uppercase tracking-widest font-bold">Last Updated</span>
+                        <span class="text-[10px] sm:text-xs text-slate-400">${new Date(storm.last_updated).toLocaleString()}</span>
                     </div>
                 </div>
 
@@ -605,7 +622,7 @@ const CycloneMapLogic = () => {
       const frames = [];
       const intervalMinutes = 10;
       const historyHours = 3;
-      const lagMinutes = 40;
+      const lagMinutes = 60;
 
       let current = new Date(serverTime.getTime());
       const minutes = current.getUTCMinutes();
@@ -735,6 +752,8 @@ const CycloneMapLogic = () => {
       timestampEl.innerHTML = `${pastOrForecast}: ${new Date(
         nextFrame.time * 1000
       ).toLocaleString()}`;
+      
+      updateSliderUI();
     }
 
     function showFrame(nextPosition, force) {
@@ -749,17 +768,10 @@ const CycloneMapLogic = () => {
         clearTimeout(animationTimer);
         animationTimer = false;
       }
-      // Restore latest frame as the current view when stopped
-      if (latestFrameIndex >= 0 && latestFrameIndex < mapFrames.length) {
-        animationPosition = latestFrameIndex;
-        showFrame(animationPosition, true);
-      }
       if (satOverlayLayer) {
         satOverlayLayer.setOpacity(0.6);
       }
       if (btnPlay) btnPlay.textContent = "Play";
-      // Ensure we switch back to live/latest time for markers
-      updateStormPositions();
       return true;
     }
 
@@ -774,9 +786,9 @@ const CycloneMapLogic = () => {
       const endIndex =
         latestFrameIndex > 0 && latestFrameIndex <= mapFrames.length - 1
           ? latestFrameIndex
-          : mapFrames.length;
+          : mapFrames.length - 1;
       let next = animationPosition + 1;
-      if (next >= endIndex || next < 0) {
+      if (next > endIndex || next < 0) {
         next = 0;
       }
 
@@ -833,6 +845,7 @@ const CycloneMapLogic = () => {
       clearRadarLayers();
       stop();
       animationPosition = 0;
+      updateSliderUI();
 
       radarControls.style.display = "flex";
 
@@ -865,24 +878,30 @@ const CycloneMapLogic = () => {
         // Zoom Earth true-color Himawari satellite tiles
         optionKind = "satellite";
         if (btnPlay) btnPlay.style.display = "block";
+        if (loadingIndicator) loadingIndicator.classList.remove("hidden");
         fetchZoomEarthTimestamps().then((frames) => {
+          if (loadingIndicator) loadingIndicator.classList.add("hidden");
           mapFrames = frames;
           lastPastFramePosition = frames.length - 1;
           latestFrameIndex = frames.length - 1;
           animationPosition = latestFrameIndex;
           showFrame(animationPosition, true);
+          updateSliderUI();
         });
         return; // async – return early, frames will come from promise
       } else if (kind === "satellite_ir") {
         // Meteored Infrared satellite tiles
         optionKind = "satellite";
         if (btnPlay) btnPlay.style.display = "block";
+        if (loadingIndicator) loadingIndicator.classList.remove("hidden");
         fetchInfraredTimestamps().then((frames) => {
+          if (loadingIndicator) loadingIndicator.classList.add("hidden");
           mapFrames = frames;
           lastPastFramePosition = frames.length - 1;
           latestFrameIndex = frames.length - 1;
           animationPosition = latestFrameIndex;
           showFrame(animationPosition, true);
+          updateSliderUI();
         });
         return;
       } else if (kind === "radar") {
@@ -900,6 +919,7 @@ const CycloneMapLogic = () => {
           latestFrameIndex = mapFrames.length - 1;
           animationPosition = latestFrameIndex;
           showFrame(animationPosition, true);
+          updateSliderUI();
         }
       } else if (kind === "both") {
         // Combined: animate radar, overlay latest satellite infrared frame
@@ -912,6 +932,7 @@ const CycloneMapLogic = () => {
           // When stopped, we will show latestFrameIndex; animation will loop 0..latestFrameIndex-1
           animationPosition = latestFrameIndex;
           showFrame(animationPosition, true);
+          updateSliderUI();
         }
         if (api.satellite && api.satellite.infrared && api.satellite.infrared.length) {
           const latestSat = api.satellite.infrared[api.satellite.infrared.length - 1];
@@ -969,8 +990,8 @@ const CycloneMapLogic = () => {
     apiRequest.onload = () => {
       apiData = JSON.parse(apiRequest.response);
       // Only call setKind if we're not already in satellite mode
-      // (satellite mode is self-contained via Zoom Earth)
-      if (displayMode !== "satellite") {
+      // (satellite mode is self-contained via Zoom Earth/Meteored)
+      if (displayMode !== "satellite" && displayMode !== "satellite_ir") {
         setKind(displayMode);
       }
     };
@@ -1009,6 +1030,7 @@ const CycloneMapLogic = () => {
       latestFrameIndex = freshFrames.length - 1;
       animationPosition = latestFrameIndex;
       showFrame(animationPosition, true);
+      updateSliderUI();
     }, 600000); // every 10 minutes
 
     // Also refresh immediately when the user comes back to this browser tab.
@@ -1038,6 +1060,7 @@ const CycloneMapLogic = () => {
       latestFrameIndex = freshFrames.length - 1;
       animationPosition = latestFrameIndex;
       showFrame(animationPosition, true);
+      updateSliderUI();
     }
 
     document.addEventListener("visibilitychange", () => {
@@ -1091,6 +1114,29 @@ const CycloneMapLogic = () => {
       btnPlay.addEventListener("click", () => playStop());
     }
 
+    const slider = document.getElementById("radar-slider");
+    const onSliderInput = (e) => {
+      stop();
+      const pos = parseInt(e.target.value, 10);
+      showFrame(pos, true);
+    };
+    if (slider) {
+      slider.addEventListener("input", onSliderInput);
+      slider.addEventListener("change", onSliderInput);
+    }
+
+    const sliderDock = document.querySelector(".timeline-dock");
+    const blockDrag = (e) => {
+      e.stopPropagation();
+    };
+    if (sliderDock) {
+      L.DomEvent.disableClickPropagation(sliderDock);
+      L.DomEvent.disableScrollPropagation(sliderDock);
+      sliderDock.addEventListener("mousedown", blockDrag);
+      sliderDock.addEventListener("touchstart", blockDrag, { passive: true });
+      sliderDock.addEventListener("pointerdown", blockDrag);
+    }
+
     return () => {
       clearInterval(stormInterval);
       clearInterval(positionInterval);
@@ -1098,6 +1144,15 @@ const CycloneMapLogic = () => {
       map.removeLayer(stormLayer);
       map.removeLayer(parLayer);
       clearRadarLayers();
+      if (slider) {
+        slider.removeEventListener("input", onSliderInput);
+        slider.removeEventListener("change", onSliderInput);
+      }
+      if (sliderDock) {
+        sliderDock.removeEventListener("mousedown", blockDrag);
+        sliderDock.removeEventListener("touchstart", blockDrag);
+        sliderDock.removeEventListener("pointerdown", blockDrag);
+      }
       if (btnRadar) btnRadar.replaceWith(btnRadar.cloneNode(true));
       if (btnSatellite) btnSatellite.replaceWith(btnSatellite.cloneNode(true));
       if (btnBoth) btnBoth.replaceWith(btnBoth.cloneNode(true));
@@ -1284,6 +1339,7 @@ const Cyclone = () => {
   };
 
   const [showEnsemble, setShowEnsemble] = useState(true);
+  const [showTimelineControls, setShowTimelineControls] = useState(true);
 
   // ── Ensemble Track JSON ──────────────────────────────────────────────────────
   const [ensembleData, setEnsembleData] = useState(null);
@@ -1314,7 +1370,7 @@ const Cyclone = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      <div className="max-w-6xl mx-auto px-4 py-8 w-full">
+      <div className="w-full max-w-[96%] xl:max-w-[94%] mx-auto px-4 py-6">
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">
           Tropical Cyclone Track
         </h1>
@@ -1339,8 +1395,8 @@ const Cyclone = () => {
             maxBounds={[[-85, -180], [85, 180]]}
             maxBoundsViscosity={1.0}
             minZoom={2}
-            className={isFullscreen ? "w-full h-full" : "w-full h-[60vh]"}
-            style={{ height: isFullscreen ? "100vh" : "60vh", width: "100%" }}
+            className={isFullscreen ? "w-full h-full" : "w-full h-[76vh]"}
+            style={{ height: isFullscreen ? "100vh" : "76vh", width: "100%" }}
           >
             <ResizeOnFullscreen isFullscreen={isFullscreen} />
             <FullscreenControl
@@ -1438,7 +1494,7 @@ const Cyclone = () => {
                     Wind
                   </button>
                   <div className="h-px bg-slate-700 my-1"></div>
-                  <button
+                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setShowEnsemble(!showEnsemble);
@@ -1458,21 +1514,71 @@ const Cyclone = () => {
             <EnsembleLayerLogic data={showEnsemble ? ensembleData : null} />
           </MapContainer>
 
-          <div className="absolute bottom-4 left-4 z-[500] rounded-lg bg-slate-900/80 p-2 text-xs text-slate-200 backdrop-blur-sm shadow-xl border border-slate-700 font-mono" id="radar-timestamp"></div>
+          {/* Unified Glassmorphic Timeline Seek Bar Dock */}
+          <div 
+            className={`absolute bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-3xl z-[500] flex-col rounded-2xl bg-slate-950/85 backdrop-blur-lg border border-slate-700/80 p-3 sm:p-4 shadow-[0_12px_40px_rgba(0,0,0,0.6)] timeline-dock ${
+              showTimelineControls ? "flex" : "hidden"
+            }`}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex w-full items-center justify-between mb-2 sm:mb-3 px-1">
+              <button
+                id="btn-play"
+                className="flex items-center justify-center gap-1.5 min-w-[85px] rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold uppercase tracking-widest text-white shadow-lg transition active:scale-95 border border-emerald-500/50 cursor-pointer"
+              >
+                Play
+              </button>
+
+              <div
+                id="radar-timestamp"
+                className="text-xs sm:text-sm text-emerald-300 font-mono font-semibold tracking-wide flex-1 text-center truncate px-2 block"
+              >
+                Select layers to start
+              </div>
+
+              {/* Hide Dock Button */}
+              <button
+                onClick={() => setShowTimelineControls(false)}
+                className="flex items-center justify-center rounded-lg p-1.5 sm:p-2 text-xs transition cursor-pointer flex-shrink-0 text-slate-400 hover:text-white hover:bg-slate-800/60"
+                title="Hide Timeline Dock"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                  <line x1="1" y1="1" x2="23" y2="23"></line>
+                </svg>
+              </button>
+            </div>
+
+            <div className="w-full flex items-center px-1">
+              <input
+                type="range"
+                id="radar-slider"
+                className="w-full h-2 rounded-lg bg-slate-800 appearance-none cursor-pointer accent-emerald-500 hover:accent-emerald-400 focus:outline-none transition"
+              />
+            </div>
+          </div>
+
+          {/* Show Timeline Dock Button (when hidden) */}
+          {!showTimelineControls && (
+            <button
+              onClick={() => setShowTimelineControls(true)}
+              className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[500] flex items-center gap-2 rounded-full bg-slate-950/85 backdrop-blur-lg border border-slate-700/80 px-4 py-2 shadow-[0_8px_20px_rgba(0,0,0,0.5)] text-slate-300 hover:text-white hover:bg-slate-900 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+              <span className="text-xs font-semibold uppercase tracking-wider">Show Timeline</span>
+            </button>
+          )}
+
           <div id="cyclone-loading" className="absolute top-1/2 left-1/2 z-[1000] -translate-x-1/2 -translate-y-1/2 transform rounded-lg bg-slate-950/90 px-4 py-2 text-sm text-white shadow-2xl border border-slate-700 flex items-center gap-2 hidden">
             <svg className="animate-spin h-4 w-4 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             Loading data...
-          </div>
-          <div className="absolute bottom-4 right-4 z-[500]">
-            <button
-              id="btn-play"
-              className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-lg transition hover:bg-emerald-500 active:scale-95 border border-emerald-500/50 cursor-pointer"
-            >
-              Play
-            </button>
           </div>
         </div>
 
