@@ -3,7 +3,7 @@
   "validity": "08:00 PM, 29 May 2026 to 08:00 PM, 30 May 2026",
   "system": "ECMWF IFS 24-Hour Rainfall Forecast",
   "init_time": "2026-05-29 02:00 PM (PHT)",
-  "generated_at": "2026-05-29 10:15 PM (PHT)",
+  "generated_at": "2026-05-30 01:58 AM (PHT)",
   "provinces": {
     "Abra": {
       "rainfall_mm": 4.1
