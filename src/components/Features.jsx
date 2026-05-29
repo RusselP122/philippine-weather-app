@@ -180,6 +180,25 @@ const FEATURE_DATA = [
     ),
     link: "/volcanoes",
     linkText: "View Volcanoes"
+  },
+  {
+    id: "weather-advisory",
+    title: "Weather Advisory",
+    category: "Alerts",
+    icon: "WA",
+    iconColor: "text-sky-300",
+    iconBg: "bg-sky-500/15",
+    borderHover: "hover:border-sky-500/60 hover:shadow-sky-900/30",
+    buttonBg: "bg-sky-500 hover:bg-sky-400",
+    buttonText: "text-slate-950",
+    description: "View weather advisories mapped by province. See 24-HR rainfall forecasts for weather systems like Monsoons and Shear Lines using ECMWF IFS data.",
+    customVisual: (
+      <div className="bg-slate-900 border border-sky-500/40 h-44 md:h-48 rounded-xl overflow-hidden flex items-center justify-center relative group">
+        <div className="px-4 text-center text-xs text-slate-300 z-10 transition-transform group-hover:scale-105">Interactive rainfall map.<br />Data via ECMWF IFS.</div>
+      </div>
+    ),
+    link: "/weather-advisory",
+    linkText: "View Advisories"
   }
 ];
 

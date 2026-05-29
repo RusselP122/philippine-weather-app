@@ -21,14 +21,12 @@ import EnsoMonitor from "./components/EnsoMonitor";
 
 import StrikeProbability from "./components/StrikeProbability";
 import TropicalCyclonePrediction from "./components/TropicalCyclonePrediction";
+import WeatherAdvisory from "./components/WeatherAdvisory";
 
 function AppContent() {
   const path = window.location.pathname;
 
   if (path === "/about") {
-    // ... (trimmed for brevity, tool only applies the diff)
-    // Actually I need to target the imports and the specific route block.
-
     return (
       <div className="min-h-screen flex flex-col bg-slate-950">
         <Navbar />
@@ -36,6 +34,17 @@ function AppContent() {
           <About />
         </main>
         <Footer />
+      </div>
+    );
+  }
+
+  if (path === "/weather-advisory") {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <WeatherAdvisory />
+        </main>
       </div>
     );
   }
