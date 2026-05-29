@@ -161,7 +161,7 @@ def fetch_real_ecmwf_precipitation(centroids):
         import gc
     except ImportError as e:
         print(f"Warning: Missing required libraries for direct ECMWF download (ecmwf-opendata or eccodes): {e}")
-        return None, None
+        return None, None, None
         
     target_file = os.path.join(PUBLIC_DIR, "ifs_precip_24.grib2")
     if not os.path.exists(PUBLIC_DIR):
