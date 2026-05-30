@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
+import matplotlib.patches as mpatches
 from datetime import datetime, timedelta, timezone
 
 def get_pressure_color(pressure):
@@ -42,11 +43,12 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
-    ax.add_feature(cfeature.LAND, facecolor='lightgray')
-    ax.add_feature(cfeature.COASTLINE, linewidth=1.5)
-    ax.add_feature(cfeature.BORDERS, linestyle=':', linewidth=1)
-    ax.add_feature(cfeature.OCEAN, facecolor='aliceblue')
+    # Add land, ocean, and coastlines
+    ax.set_facecolor('#87CEEB')
+    ax.add_feature(cfeature.LAND, facecolor='#DEB887', edgecolor='#8B4513', linewidth=0.8)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.8, alpha=0.7, color='#654321')
 
+    # Add gridlines
     gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
     gl.xlocator = plt.FixedLocator(np.arange(105, 156, 5))
     gl.ylocator = plt.FixedLocator(np.arange(0, 41, 5))
@@ -55,13 +57,23 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     gl.top_labels = False
     gl.right_labels = False
 
+    ax.text(
+        118, 13, 'West Philippine\nSea', fontsize=5, color='navy', weight='bold',
+        transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5
+    )
+    ax.text(
+        130, 20, 'Philippine\nSea', fontsize=9, color='navy', weight='bold',
+        transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5
+    )
+
+    # Add Philippine Area of Responsibility (PAR) boundary
     par_vertices = [
         (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
         (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
     ]
-    par_path = Path(par_vertices)
-    par_patch = PathPatch(par_path, edgecolor='blue', linestyle='--', linewidth=2, facecolor='none', transform=ccrs.PlateCarree())
-    ax.add_patch(par_patch)
+    ax.add_patch(mpatches.Polygon(par_vertices, facecolor='none', edgecolor='#FF6B35', 
+                                 linestyle='-', linewidth=3, alpha=0.8, 
+                                 transform=ccrs.PlateCarree()))
 
     for init_time in init_times:
         init_data = wp_data[wp_data['init_time'] == init_time]
@@ -111,12 +123,10 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
                    markeredgecolor=r['color'], markeredgewidth=2, markersize=8, label=r['pressure_range'])
         for r in pressure_ranges
     ]
-    legend = ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0.02, 0.98), frameon=True, fancybox=True, shadow=True, fontsize=10)
-    legend.get_frame().set_facecolor('white')
-    legend.get_frame().set_alpha(0.9)
+    legend = ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0.02, 0.98), frameon=False, fontsize=10)
 
-    legend_text = f"Forecast: NOAA AI-GEFS Tropical Cyclone Tracks\nRuntime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
-    plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right', bbox=dict(facecolor='white', alpha=0.8, edgecolor='black', boxstyle='round,pad=0.3'))
+    legend_text = f"Runtime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
+    plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
     
     ax.set_title(title, fontsize=16, weight='bold')
 

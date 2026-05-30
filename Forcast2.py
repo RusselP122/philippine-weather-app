@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
+import matplotlib.patches as mpatches
 import requests
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -121,15 +122,14 @@ print(f"Found {len(init_times)} forecast initialization times: {init_times}")
 # Set up the figure and map projection
 fig = plt.figure(figsize=(12, 12))
 ax = plt.axes(projection=ccrs.PlateCarree())
-ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())  # Wider Western Pacific view
+ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
 # Add land, ocean, and coastlines
-ax.add_feature(cfeature.LAND, facecolor='lightgray')
-ax.add_feature(cfeature.COASTLINE, linewidth=1.5)
-ax.add_feature(cfeature.BORDERS, linestyle=':', linewidth=1)
-ax.add_feature(cfeature.OCEAN, facecolor='aliceblue')
+ax.set_facecolor('#87CEEB')
+ax.add_feature(cfeature.LAND, facecolor='#DEB887', edgecolor='#8B4513', linewidth=0.8)
+ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.8, alpha=0.7, color='#654321')
 
-# Add gridlines with emphasized labels at 5° intervals
+# Add gridlines
 gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
 gl.xlocator = plt.FixedLocator(np.arange(105, 156, 5))
 gl.ylocator = plt.FixedLocator(np.arange(0, 41, 5))
@@ -138,14 +138,23 @@ gl.ylabel_style = {'size': 12, 'weight': 'bold'}
 gl.top_labels = False
 gl.right_labels = False
 
+ax.text(
+    118, 13, 'West Philippine\nSea', fontsize=5, color='navy', weight='bold',
+    transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5
+)
+ax.text(
+    130, 20, 'Philippine\nSea', fontsize=9, color='navy', weight='bold',
+    transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5
+)
+
 # Add Philippine Area of Responsibility (PAR) boundary
 par_vertices = [
     (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
     (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
 ]
-par_path = Path(par_vertices)
-par_patch = PathPatch(par_path, edgecolor='blue', linestyle='--', linewidth=2, facecolor='none', transform=ccrs.PlateCarree())
-ax.add_patch(par_patch)
+ax.add_patch(mpatches.Polygon(par_vertices, facecolor='none', edgecolor='#FF6B35', 
+                             linestyle='-', linewidth=3, alpha=0.8, 
+                             transform=ccrs.PlateCarree()))
 
 # Define function to assign custom colors based on pressure
 def get_pressure_color(pressure):
@@ -244,22 +253,18 @@ legend_elements = [
 # Position the legend in the top-left corner
 legend = ax.legend(
     handles=legend_elements, loc='upper left', bbox_to_anchor=(0.02, 0.98),
-    frameon=True, fancybox=True, shadow=True, fontsize=10
+    frameon=False, fontsize=10
 )
-legend.get_frame().set_facecolor('white')
-legend.get_frame().set_alpha(0.9)
 
 # Update legend text with current date and time
 runtime_text = latest_runtime_text or "Runtime unavailable"
 legend_text = (
-    "Forecast: All Tropical Cyclone Tracks (5-Day)\n"
     f"Runtime: {runtime_text}\n"
     "Processed By: Philippine Typhoon/Weather"
 )
 plt.text(
     0.98, 0.02, legend_text,
-    transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right',
-    bbox=dict(facecolor='white', alpha=0.8, edgecolor='black', boxstyle='round,pad=0.3')
+    transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right'
 )
 
 # Add title
