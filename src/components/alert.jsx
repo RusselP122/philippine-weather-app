@@ -725,60 +725,7 @@ const Alert = () => {
     setFitTrigger(prev => prev + 1);
   };
 
-  // 9. Free Pan & Zoom Navigation Mouse & Wheel event handlers
-  const handleMouseDown = (e) => {
-    if (e.button !== 0) return;
-    setIsDragging(true);
-    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const handleWheel = (e) => {
-    e.preventDefault();
-    const zoomIntensity = 0.08;
-    const zoomFactor = e.deltaY < 0 ? (1 + zoomIntensity) : (1 - zoomIntensity);
-    const newZoom = Math.min(Math.max(zoom * zoomFactor, 0.4), 15);
-    
-    const svgRect = e.currentTarget.getBoundingClientRect();
-    const mouseX = e.clientX - svgRect.left;
-    const mouseY = e.clientY - svgRect.top;
-    
-    const dx = mouseX - pan.x;
-    const dy = mouseY - pan.y;
-    
-    setZoom(newZoom);
-    setPan({
-      x: mouseX - dx * (newZoom / zoom),
-      y: mouseY - dy * (newZoom / zoom)
-    });
-  };
-
-  const handleZoomIn = () => {
-    setZoom(prev => Math.min(prev * 1.3, 15));
-  };
-
-  const handleZoomOut = () => {
-    setZoom(prev => Math.max(prev / 1.3, 0.4));
-  };
-
-  const handleReset = () => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-  };
-
   const handleMouseMove = (e) => {
-    // A. Handle active dragging/panning
-    if (isDragging) {
-      setPan({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y
-      });
-    }
-
-    // B. Handle high-performance dynamic floating tooltip tracking
     if (mapContainerRef.current) {
       const rect = mapContainerRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -1000,7 +947,11 @@ const Alert = () => {
           mobileTab !== "map" ? "hidden md:flex" : "flex flex-1 h-full w-full"
         }`}
         onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={() => {
+          setIsTooltipVisible(false);
+          setHoveredProvince(null);
+          setHoveredAlertProv(null);
+        }}
       >
         {/* Radar-like background grid lines */}
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,rgba(15,23,42,0.6)_0%,rgba(2,6,23,1)_95%)]" />

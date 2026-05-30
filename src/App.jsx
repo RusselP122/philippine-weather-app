@@ -127,7 +127,6 @@ function AppContent() {
         <main className="flex-grow">
           <Warning />
         </main>
-        <Footer />
       </div>
     );
   }
