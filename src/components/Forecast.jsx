@@ -464,7 +464,7 @@ const Forecast = () => {
               </div>
               
               <div className="h-80 md:h-[28rem] flex items-center justify-center bg-slate-950 border border-white/5 rounded-2xl overflow-hidden relative mt-1.5 shadow-inner">
-                {current ? (
+                {current && imageSrc ? (
                   <>
                     <img
                       src={imageSrc}
@@ -482,7 +482,7 @@ const Forecast = () => {
                 ) : (
                   <div className="text-center p-8 flex flex-col items-center gap-3">
                     <Database className="w-10 h-10 text-slate-700 animate-pulse" />
-                    <span className="text-xs md:text-sm text-slate-500 font-bold">No forecast image available.</span>
+                    <span className="text-xs md:text-sm text-slate-500 font-bold">No forecast image available as of the moment.</span>
                   </div>
                 )}
               </div>
