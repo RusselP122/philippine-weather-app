@@ -128,8 +128,8 @@ def get_system_and_advisory():
     pht_tz = timezone(timedelta(hours=8))
     now = datetime.now(pht_tz)
     
-    title = "ECMWF IFS 24-Hour Rainfall Forecast"
-    system = "ECMWF IFS 24-Hour Rainfall Forecast"
+    title = "ECMWF Blended Consensus Rainfall Forecast"
+    system = "ECMWF Consensus Blend"
     init_time = get_model_init_time()
         
     # Align dynamically to the closest preceding standard forecast run in PHT (08:00, 14:00, 20:00, 02:00)
@@ -153,8 +153,10 @@ def get_system_and_advisory():
     return title, validity, system, init_time
 
 def fetch_real_ecmwf_precipitation(centroids):
-    """Downloads step=24 accumulated precipitation GRIB2 from ECMWF Open Data and extracts province values."""
-    print("Retrieving official ECMWF IFS forecast from Open Data Azure mirror...")
+    """Downloads step=24 accumulated precipitation GRIB2 from ECMWF Open Data for both IFS and AIFS,
+    and returns a blended (60% AIFS + 40% IFS) result.
+    """
+    print("Retrieving official ECMWF IFS & AIFS forecasts from Open Data Azure mirror...")
     try:
         from ecmwf.opendata import Client
         from eccodes import codes_grib_new_from_file, codes_get, codes_get_double_array, codes_release
@@ -163,98 +165,140 @@ def fetch_real_ecmwf_precipitation(centroids):
         print(f"Warning: Missing required libraries for direct ECMWF download (ecmwf-opendata or eccodes): {e}")
         return None, None, None
         
-    target_file = os.path.join(PUBLIC_DIR, "ifs_precip_24.grib2")
+    ifs_file = os.path.join(PUBLIC_DIR, "ifs_precip_24.grib2")
+    aifs_file = os.path.join(PUBLIC_DIR, "aifs_precip_24.grib2")
     if not os.path.exists(PUBLIC_DIR):
         os.makedirs(PUBLIC_DIR)
         
+    ifs_values = None
+    aifs_values = None
+    init_time_str = None
+    validity_str = None
+    
+    # 1. Download and Parse IFS
     try:
-        # 1. Download
-        client = Client(source="azure", model="ifs", resol="0p25")
-        client.retrieve(
+        client_ifs = Client(source="azure", model="ifs", resol="0p25")
+        client_ifs.retrieve(
             step=24,
             type="fc",
             param="tp",
-            target=target_file
+            target=ifs_file
         )
-        print(f"ECMWF GRIB2 downloaded successfully. Size: {os.path.getsize(target_file)} bytes")
+        print(f"IFS GRIB2 downloaded successfully. Size: {os.path.getsize(ifs_file)} bytes")
         
-        # 2. Parse using eccodes
-        f = open(target_file, "rb")
-        gid = codes_grib_new_from_file(f)
-        if gid is None:
-            print("Error: Failed to open GRIB2 message.")
-            f.close()
-            return None, None
-            
-        # Fetch model run metadata
-        data_date = str(codes_get(gid, "dataDate"))  # e.g. "20260529"
-        data_time = int(codes_get(gid, "dataTime"))  # e.g. 0 or 1200
-        
-        # Format init_time
-        dt_str = f"{data_date} {data_time:04d}"
-        try:
-            init_dt = datetime.strptime(dt_str, "%Y%m%d %H%M").replace(tzinfo=timezone.utc)
-            # Convert to Philippine Standard Time (PHT = UTC+8)
-            init_time_pht = init_dt.astimezone(timezone(timedelta(hours=8)))
-            init_time_str = init_time_pht.strftime("%Y-%m-%d %I:%M %p (PHT)")
-            
-            # Offset validity by exactly +6 hours from model run initialization:
-            # 00z (8am PHT) -> 2pm to 2pm
-            # 06z (2pm PHT) -> 8pm to 8pm
-            # 12z (8pm PHT) -> 2am to 2am (next day)
-            # 18z (2am PHT) -> 8am to 8am
-            validity_start = init_time_pht + timedelta(hours=6)
-            validity_end = validity_start + timedelta(days=1)
-            fmt = "%I:%M %p, %d %B %Y"
-            validity_str = f"{validity_start.strftime(fmt)} to {validity_end.strftime(fmt)}"
-        except Exception:
-            init_time_str = f"{data_date} {data_time:02d}:00 UTC"
-            validity_str = None
-            
-        values = codes_get_double_array(gid, "values")
-        codes_release(gid)
-        f.close()
-        
-        # Clean up references and run garbage collector to release file lock on Windows
-        del gid
-        del f
-        gc.collect()
-        
-        # 3. Map centroids using Direct Grid Indexing
-        # Grid details: Lat (90 to -90, step=0.25), Lon (-180 to 179.75, step=0.25)
-        results = {}
-        for name, coords in centroids.items():
-            lat = coords["lat"]
-            lon = coords["lon"]
-            
-            # Map lat/lon to regular grid indices
-            lat_idx = round((90.0 - lat) / 0.25)
-            lon_idx = round((lon - (-180.0)) / 0.25) % 1440
-            idx = lat_idx * 1440 + lon_idx
-            
-            if 0 <= idx < len(values):
-                # Total precipitation in GRIB2 is in meters, convert to millimeters
-                rainfall = values[idx] * 1000.0
-                results[name] = round(max(0.0, rainfall), 1)
-            else:
-                results[name] = 0.0
+        with open(ifs_file, "rb") as f_ifs:
+            gid = codes_grib_new_from_file(f_ifs)
+            if gid is not None:
+                data_date = str(codes_get(gid, "dataDate"))  # e.g. "20260529"
+                data_time = int(codes_get(gid, "dataTime"))  # e.g. 0 or 1200
                 
-        return results, init_time_str, validity_str
+                # Format init_time and validity based on IFS message
+                dt_str = f"{data_date} {data_time:04d}"
+                try:
+                    init_dt = datetime.strptime(dt_str, "%Y%m%d %H%M").replace(tzinfo=timezone.utc)
+                    init_time_pht = init_dt.astimezone(timezone(timedelta(hours=8)))
+                    init_time_str = init_time_pht.strftime("%Y-%m-%d %I:%M %p (PHT)")
+                    
+                    validity_start = init_time_pht + timedelta(hours=6)
+                    validity_end = validity_start + timedelta(days=1)
+                    fmt = "%I:%M %p, %d %B %Y"
+                    validity_str = f"{validity_start.strftime(fmt)} to {validity_end.strftime(fmt)}"
+                except Exception:
+                    init_time_str = f"{data_date} {data_time:02d}:00 UTC"
+                    
+                ifs_values = codes_get_double_array(gid, "values")
+                codes_release(gid)
         
+        del gid
+        gc.collect()
     except Exception as e:
-        print(f"Warning: Failed to fetch/parse direct forecast from ECMWF Open Data: {e}")
-        return None, None, None
-    finally:
-        # Extra cleanup safety net for file locks on Windows
-        if 'f' in locals() and not f.closed:
-            f.close()
-        if os.path.exists(target_file):
-            try:
-                os.remove(target_file)
-                print("Temporary GRIB2 file deleted.")
-            except Exception as ex:
-                print(f"Warning: Could not remove temporary GRIB2 file: {ex}")
+        print(f"Warning: Failed to fetch/parse IFS forecast: {e}")
 
+    # 2. Download and Parse AIFS
+    try:
+        client_aifs = Client(source="azure", model="aifs", resol="0p25")
+        client_aifs.retrieve(
+            step=24,
+            type="fc",
+            param="tp",
+            target=aifs_file
+        )
+        print(f"AIFS GRIB2 downloaded successfully. Size: {os.path.getsize(aifs_file)} bytes")
+        
+        with open(aifs_file, "rb") as f_aifs:
+            gid = codes_grib_new_from_file(f_aifs)
+            if gid is not None:
+                # If we couldn't get it from IFS, parse metadata from AIFS
+                if not init_time_str:
+                    data_date = str(codes_get(gid, "dataDate"))
+                    data_time = int(codes_get(gid, "dataTime"))
+                    dt_str = f"{data_date} {data_time:04d}"
+                    try:
+                        init_dt = datetime.strptime(dt_str, "%Y%m%d %H%M").replace(tzinfo=timezone.utc)
+                        init_time_pht = init_dt.astimezone(timezone(timedelta(hours=8)))
+                        init_time_str = init_time_pht.strftime("%Y-%m-%d %I:%M %p (PHT)")
+                        
+                        validity_start = init_time_pht + timedelta(hours=6)
+                        validity_end = validity_start + timedelta(days=1)
+                        fmt = "%I:%M %p, %d %B %Y"
+                        validity_str = f"{validity_start.strftime(fmt)} to {validity_end.strftime(fmt)}"
+                    except Exception:
+                        init_time_str = f"{data_date} {data_time:02d}:00 UTC"
+                
+                aifs_values = codes_get_double_array(gid, "values")
+                codes_release(gid)
+                
+        del gid
+        gc.collect()
+    except Exception as e:
+        print(f"Warning: Failed to fetch/parse AIFS forecast: {e}")
+
+    # Cleanup temporary files safely
+    for filepath in (ifs_file, aifs_file):
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+                print(f"Temporary file {os.path.basename(filepath)} deleted.")
+            except Exception as ex:
+                print(f"Warning: Could not remove temporary file {filepath}: {ex}")
+
+    # 3. Perform Blending
+    if ifs_values is None and aifs_values is None:
+        return None, None, None
+        
+    results = {}
+    for name, coords in centroids.items():
+        lat = coords["lat"]
+        lon = coords["lon"]
+        
+        # Map lat/lon to regular grid indices
+        lat_idx = round((90.0 - lat) / 0.25)
+        lon_idx = round((lon - (-180.0)) / 0.25) % 1440
+        idx = lat_idx * 1440 + lon_idx
+        
+        # Fetch individual grid point values (converted to millimeters)
+        val_ifs = 0.0
+        if ifs_values is not None and 0 <= idx < len(ifs_values):
+            val_ifs = max(0.0, ifs_values[idx] * 1000.0)
+            
+        val_aifs = 0.0
+        if aifs_values is not None and 0 <= idx < len(aifs_values):
+            val_aifs = max(0.0, aifs_values[idx] * 1000.0)
+            
+        # Blend values
+        if ifs_values is not None and aifs_values is not None:
+            # 60% AIFS + 40% IFS
+            rainfall = (0.6 * val_aifs) + (0.4 * val_ifs)
+        elif aifs_values is not None:
+            # Fallback to pure AIFS
+            rainfall = val_aifs
+        else:
+            # Fallback to pure IFS
+            rainfall = val_ifs
+            
+        results[name] = round(rainfall, 1)
+        
+    return results, init_time_str, validity_str
 
 def generate_offline_fallback(centroids):
     """Offline fallback that generates realistic rainfall distributions if internet is unavailable."""
@@ -275,14 +319,14 @@ def generate_offline_fallback(centroids):
     for name in centroids.keys():
         rainfall = 0
         if name in extreme_rain_provinces:
-            rainfall = random.uniform(300, 450)
+            rainfall = random.uniform(200, 380)  # aligned with new 200mm Red Warning threshold
         elif name in heavy_rain_provinces:
-            rainfall = random.uniform(100, 280)
+            rainfall = random.uniform(100, 199.9)  # aligned with new 100-200mm Orange Alert range
         elif name in moderate_rain_provinces:
-            rainfall = random.uniform(50, 99)
+            rainfall = random.uniform(50, 99.9)  # aligned with new 50-100mm Yellow Advisory range
         else:
             if random.random() < 0.4:
-                rainfall = random.uniform(5, 45)
+                rainfall = random.uniform(5, 49.9)
         results[name] = round(rainfall, 1)
     return results
 
@@ -330,7 +374,7 @@ def generate_advisory_data():
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
         json.dump(advisory_data, f, indent=2)
         
-    print(f"Successfully generated dynamic, accurate ECMWF IFS weather advisory data at {OUTPUT_PATH}")
+    print(f"Successfully generated dynamic, blended consensus weather advisory data at {OUTPUT_PATH}")
 
 if __name__ == "__main__":
     generate_advisory_data()
