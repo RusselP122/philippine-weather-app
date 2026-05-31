@@ -65,17 +65,20 @@ const WeatherAdvisory = () => {
       const redProvinces = [];
       const orangeProvinces = [];
       const yellowProvinces = [];
+      const lightBlueProvinces = [];
 
       Object.entries(advisoryData.provinces).forEach(([name, p]) => {
         const mm = p.rainfall_mm || 0;
         if (mm >= 200) redProvinces.push(name);
         else if (mm >= 100) orangeProvinces.push(name);
         else if (mm >= 50) yellowProvinces.push(name);
+        else if (mm >= 25) lightBlueProvinces.push(name);
       });
 
       redProvinces.sort();
       orangeProvinces.sort();
       yellowProvinces.sort();
+      lightBlueProvinces.sort();
 
       // Helper function to render a clean vertical list of province names
       const renderProvinceList = (provinces, xPos, startY, color) => {
@@ -128,32 +131,36 @@ const WeatherAdvisory = () => {
       legendGroup.setAttribute("transform", "translate(1010, 320)");
       legendGroup.setAttribute("font-family", "sans-serif");
       legendGroup.innerHTML = `
-        <rect x="0" y="0" width="370" height="320" rx="14" fill="rgba(9, 13, 22, 0.9)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.2" />
+        <rect x="0" y="0" width="370" height="370" rx="14" fill="rgba(9, 13, 22, 0.9)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.2" />
         <text x="25" y="38" fill="#38bdf8" font-size="13" font-weight="bold" letter-spacing="1.5" font-family="monospace">WARNING LEVEL LEGEND</text>
         <line x1="25" y1="50" x2="345" y2="50" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1" />
         <rect x="25" y="68" width="24" height="24" rx="6" fill="#DC2626" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
         <text x="62" y="85" fill="#f1f5f9" font-size="13" font-weight="bold">Red Warning (200+ mm)</text>
         <text x="62" y="102" fill="#94a3b8" font-size="10.5">Severe widespread flooding & landslides</text>
-        <rect x="25" y="128" width="24" height="24" rx="6" fill="#F97316" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="145" fill="#f1f5f9" font-size="13" font-weight="bold">Orange Alert (100 - 200 mm)</text>
-        <text x="62" y="162" fill="#94a3b8" font-size="10.5">High risk of flooding & soil slides</text>
-        <rect x="25" y="188" width="24" height="24" rx="6" fill="#EAB308" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="205" fill="#f1f5f9" font-size="13" font-weight="bold">Yellow Advisory (50 - 100 mm)</text>
-        <text x="62" y="222" fill="#94a3b8" font-size="10.5">Localized pooling & minor flooding</text>
-        <rect x="25" y="248" width="24" height="24" rx="6" fill="#334155" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="265" fill="#cbd5e1" font-size="13" font-weight="bold">Light / No Warning (&lt; 50 mm)</text>
-        <text x="62" y="282" fill="#64748b" font-size="10.5">Isolated light rains or clear skies</text>
+        <rect x="25" y="124" width="24" height="24" rx="6" fill="#F97316" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
+        <text x="62" y="141" fill="#f1f5f9" font-size="13" font-weight="bold">Orange Alert (100 - 200 mm)</text>
+        <text x="62" y="158" fill="#94a3b8" font-size="10.5">High risk of flooding & soil slides</text>
+        <rect x="25" y="180" width="24" height="24" rx="6" fill="#EAB308" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
+        <text x="62" y="197" fill="#f1f5f9" font-size="13" font-weight="bold">Yellow Advisory (50 - 100 mm)</text>
+        <text x="62" y="214" fill="#94a3b8" font-size="10.5">Localized pooling & minor flooding</text>
+        <rect x="25" y="236" width="24" height="24" rx="6" fill="#38BDF8" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
+        <text x="62" y="253" fill="#f1f5f9" font-size="13" font-weight="bold">Light Blue Alert (25 - 50 mm)</text>
+        <text x="62" y="270" fill="#94a3b8" font-size="10.5">Localized minor ponding & wet roads</text>
+        <rect x="25" y="292" width="24" height="24" rx="6" fill="#334155" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
+        <text x="62" y="309" fill="#cbd5e1" font-size="13" font-weight="bold">Light / No Warning (&lt; 25 mm)</text>
+        <text x="62" y="326" fill="#64748b" font-size="10.5">Isolated light rains or clear skies</text>
       `;
       clonedSvg.appendChild(legendGroup);
 
       // 3. Warning Metrics Summary Box (Scaled Up and Expanded to List Province Names)
       const metricsGroup = document.createElementNS(svgNS, "g");
-      metricsGroup.setAttribute("transform", "translate(1010, 660)");
+      metricsGroup.setAttribute("transform", "translate(1010, 710)");
       metricsGroup.setAttribute("font-family", "sans-serif");
 
-      const redListMarkup = renderProvinceList(redProvinces, 47.5, 92, "#ef4444");
-      const orangeListMarkup = renderProvinceList(orangeProvinces, 47.5, 92, "#fb923c");
-      const yellowListMarkup = renderProvinceList(yellowProvinces, 47.5, 92, "#facc15");
+      const redListMarkup = renderProvinceList(redProvinces, 38, 92, "#ef4444");
+      const orangeListMarkup = renderProvinceList(orangeProvinces, 38, 92, "#fb923c");
+      const yellowListMarkup = renderProvinceList(yellowProvinces, 38, 92, "#facc15");
+      const lightBlueListMarkup = renderProvinceList(lightBlueProvinces, 38, 92, "#38bdf8");
 
       metricsGroup.innerHTML = `
         <rect x="0" y="0" width="370" height="290" rx="14" fill="rgba(9, 13, 22, 0.9)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.2" />
@@ -163,29 +170,38 @@ const WeatherAdvisory = () => {
         <g transform="translate(25, 70)">
           <!-- Red Column -->
           <g>
-            <rect x="0" y="0" width="95" height="65" rx="10" fill="rgba(220, 38, 38, 0.12)" stroke="rgba(220, 38, 38, 0.25)" stroke-width="1" />
-            <text x="47.5" y="35" fill="#DC2626" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.red}</text>
-            <text x="47.5" y="52" fill="#ef4444" font-size="10" font-weight="bold" text-anchor="middle" letter-spacing="0.5">RED</text>
-            <line x1="10" y1="78" x2="85" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
+            <rect x="0" y="0" width="76" height="65" rx="10" fill="rgba(220, 38, 38, 0.12)" stroke="rgba(220, 38, 38, 0.25)" stroke-width="1" />
+            <text x="38" y="35" fill="#DC2626" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.red}</text>
+            <text x="38" y="52" fill="#ef4444" font-size="9" font-weight="bold" text-anchor="middle" letter-spacing="0.5">RED</text>
+            <line x1="8" y1="78" x2="68" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
             ${redListMarkup}
           </g>
 
           <!-- Orange Column -->
-          <g transform="translate(112.5, 0)">
-            <rect x="0" y="0" width="95" height="65" rx="10" fill="rgba(249, 115, 22, 0.12)" stroke="rgba(249, 115, 22, 0.25)" stroke-width="1" />
-            <text x="47.5" y="35" fill="#F97316" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.orange}</text>
-            <text x="47.5" y="52" fill="#fb923c" font-size="10" font-weight="bold" text-anchor="middle" letter-spacing="0.5">ORANGE</text>
-            <line x1="10" y1="78" x2="85" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
+          <g transform="translate(81, 0)">
+            <rect x="0" y="0" width="76" height="65" rx="10" fill="rgba(249, 115, 22, 0.12)" stroke="rgba(249, 115, 22, 0.25)" stroke-width="1" />
+            <text x="38" y="35" fill="#F97316" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.orange}</text>
+            <text x="38" y="52" fill="#fb923c" font-size="9" font-weight="bold" text-anchor="middle" letter-spacing="0.5">ORANGE</text>
+            <line x1="8" y1="78" x2="68" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
             ${orangeListMarkup}
           </g>
 
           <!-- Yellow Column -->
-          <g transform="translate(225, 0)">
-            <rect x="0" y="0" width="95" height="65" rx="10" fill="rgba(234, 179, 8, 0.12)" stroke="rgba(234, 179, 8, 0.25)" stroke-width="1" />
-            <text x="47.5" y="35" fill="#EAB308" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.yellow}</text>
-            <text x="47.5" y="52" fill="#facc15" font-size="10" font-weight="bold" text-anchor="middle" letter-spacing="0.5">YELLOW</text>
-            <line x1="10" y1="78" x2="85" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
+          <g transform="translate(162, 0)">
+            <rect x="0" y="0" width="76" height="65" rx="10" fill="rgba(234, 179, 8, 0.12)" stroke="rgba(234, 179, 8, 0.25)" stroke-width="1" />
+            <text x="38" y="35" fill="#EAB308" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.yellow}</text>
+            <text x="38" y="52" fill="#facc15" font-size="9" font-weight="bold" text-anchor="middle" letter-spacing="0.5">YELLOW</text>
+            <line x1="8" y1="78" x2="68" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
             ${yellowListMarkup}
+          </g>
+
+          <!-- Light Blue Column -->
+          <g transform="translate(243, 0)">
+            <rect x="0" y="0" width="76" height="65" rx="10" fill="rgba(56, 189, 248, 0.12)" stroke="rgba(56, 189, 248, 0.25)" stroke-width="1" />
+            <text x="38" y="35" fill="#38BDF8" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.lightBlue}</text>
+            <text x="38" y="52" fill="#38bdf8" font-size="9" font-weight="bold" text-anchor="middle" letter-spacing="0.5">LT BLUE</text>
+            <line x1="8" y1="78" x2="68" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
+            ${lightBlueListMarkup}
           </g>
         </g>
       `;
@@ -407,16 +423,17 @@ const WeatherAdvisory = () => {
 
   // Warning metrics summary
   const warningMetrics = useMemo(() => {
-    if (!advisoryData || !advisoryData.provinces) return { red: 0, orange: 0, yellow: 0, normal: 0 };
-    let red = 0, orange = 0, yellow = 0, normal = 0;
+    if (!advisoryData || !advisoryData.provinces) return { red: 0, orange: 0, yellow: 0, lightBlue: 0, normal: 0 };
+    let red = 0, orange = 0, yellow = 0, lightBlue = 0, normal = 0;
     Object.values(advisoryData.provinces).forEach((p) => {
       const mm = p.rainfall_mm || 0;
       if (mm >= 200) red++;
       else if (mm >= 100) orange++;
       else if (mm >= 50) yellow++;
+      else if (mm >= 25) lightBlue++;
       else normal++;
     });
-    return { red, orange, yellow, normal };
+    return { red, orange, yellow, lightBlue, normal };
   }, [advisoryData]);
 
   // Warning provinces lists
@@ -424,6 +441,7 @@ const WeatherAdvisory = () => {
     const red = [];
     const orange = [];
     const yellow = [];
+    const lightBlue = [];
 
     if (advisoryData && advisoryData.provinces) {
       Object.entries(advisoryData.provinces).forEach(([name, p]) => {
@@ -431,13 +449,15 @@ const WeatherAdvisory = () => {
         if (mm >= 200) red.push(name);
         else if (mm >= 100) orange.push(name);
         else if (mm >= 50) yellow.push(name);
+        else if (mm >= 25) lightBlue.push(name);
       });
       red.sort();
       orange.sort();
       yellow.sort();
+      lightBlue.sort();
     }
 
-    return { red, orange, yellow };
+    return { red, orange, yellow, lightBlue };
   }, [advisoryData]);
 
   const handleMouseMove = (e) => {
@@ -478,6 +498,7 @@ const WeatherAdvisory = () => {
     if (mm >= 200) return "#DC2626"; // Red (Severe)
     if (mm >= 100) return "#F97316"; // Orange (Heavy)
     if (mm >= 50) return "#EAB308";  // Yellow (Moderate)
+    if (mm >= 25) return "#38BDF8";  // Light Blue (Light-Moderate)
     return "#334155"; // Default Slate
   };
 
@@ -485,6 +506,7 @@ const WeatherAdvisory = () => {
     if (mm >= 200) return { title: "Severe Red Warning", style: "bg-red-500/20 text-red-400 border-red-500/30", text: "Severe flooding and widespread landslides are expected. Move to safe high grounds immediately." };
     if (mm >= 100) return { title: "Heavy Orange Alert", style: "bg-orange-500/20 text-orange-400 border-orange-500/30", text: "Flooding is highly likely. Residents near rivers and hills should prepare to evacuate." };
     if (mm >= 50) return { title: "Moderate Yellow Advisory", style: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", text: "Localized minor flooding is possible in low-lying and urban areas." };
+    if (mm >= 25) return { title: "Light Blue Alert", style: "bg-sky-500/20 text-sky-400 border-sky-500/30", text: "Localized minor ponding and wet roads possible. Exercise standard caution." };
     return { title: "No Warnings Active", style: "bg-slate-800 text-slate-400 border-slate-700/30", text: "Standard background levels. Scattered light rains possible." };
   };
 
@@ -924,6 +946,46 @@ const WeatherAdvisory = () => {
                   <div className="flex flex-wrap gap-1 justify-start">
                     {warningProvinces.yellow.map(p => (
                       <span key={p} className="px-1.5 py-0.5 bg-yellow-950/50 text-yellow-300 border border-yellow-900/40 rounded text-[9.5px] font-mono">
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Light Blue Level */}
+          <div className="bg-slate-950/40 rounded-xl overflow-hidden border border-sky-950 shadow-lg group transition-all duration-300 hover:border-sky-900/60">
+            <div className="bg-gradient-to-r from-sky-600 to-sky-500 px-4 py-2 flex justify-between items-center text-white text-xs font-bold tracking-widest uppercase">
+              <span>Light Blue Level (25-50 mm)</span>
+              {warningMetrics.lightBlue > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-slate-950 text-[10px] text-sky-400 border border-sky-500/35 font-bold shadow-md">
+                  {warningMetrics.lightBlue} Provinces
+                </span>
+              )}
+            </div>
+            <div className="p-4 text-xs text-slate-400 leading-relaxed space-y-2">
+              <div className="flex items-start gap-2">
+                <ChevronRight className="w-3 h-3 text-sky-500 mt-0.5 flex-shrink-0" />
+                <p><strong className="text-slate-200">Flooding:</strong> Low localized ponding on streets and urban low points.</p>
+              </div>
+              <div className="flex items-start gap-2">
+                <ChevronRight className="w-3 h-3 text-sky-500 mt-0.5 flex-shrink-0" />
+                <p><strong className="text-slate-200">Landslides:</strong> Very low risk. Minor cut bank precautions.</p>
+              </div>
+              <div className="flex items-start gap-2">
+                <ChevronRight className="w-3 h-3 text-sky-500 mt-0.5 flex-shrink-0" />
+                <p><strong className="text-slate-200">Action:</strong> Stay alert, monitor weather updates, and observe standard road safety rules.</p>
+              </div>
+
+              {/* Affected Provinces Name List */}
+              {warningProvinces.lightBlue.length > 0 && (
+                <div className="pt-3 mt-3 border-t border-slate-900/60">
+                  <span className="text-[9.5px] font-bold text-sky-400 uppercase tracking-wider block mb-1.5 text-left">Affected Provinces:</span>
+                  <div className="flex flex-wrap gap-1 justify-start">
+                    {warningProvinces.lightBlue.map(p => (
+                      <span key={p} className="px-1.5 py-0.5 bg-sky-950/60 text-sky-300 border border-sky-900/60 rounded text-[9.5px] font-mono">
                         {p}
                       </span>
                     ))}

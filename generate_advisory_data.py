@@ -327,6 +327,11 @@ def generate_offline_fallback(centroids):
         "Aklan", "Antique", "Capiz", "Iloilo", "Negros Occidental", "Samar", "Northern Samar", "Eastern Samar",
         "Romblon", "Marinduque", "Palawan", "Camarines Norte", "Camarines Sur", "Albay", "Sorsogon", "Catanduanes"
     ]
+    light_rain_provinces = [
+        "Leyte", "Southern Leyte", "Bohol", "Cebu", "Negros Oriental", "Siquijor",
+        "Zamboanga del Norte", "Zamboanga del Sur", "Zamboanga Sibugay", "Misamis Occidental",
+        "Misamis Oriental", "Lanao del Norte", "Bukidnon", "Camiguin"
+    ]
     
     results = {}
     for name in centroids.keys():
@@ -337,9 +342,11 @@ def generate_offline_fallback(centroids):
             rainfall = random.uniform(100, 199.9)  # aligned with new 100-200mm Orange Alert range
         elif name in moderate_rain_provinces:
             rainfall = random.uniform(50, 99.9)  # aligned with new 50-100mm Yellow Advisory range
+        elif name in light_rain_provinces:
+            rainfall = random.uniform(25, 49.9)  # aligned with new 25-50mm Light Blue Alert range
         else:
             if random.random() < 0.4:
-                rainfall = random.uniform(5, 49.9)
+                rainfall = random.uniform(0.1, 24.9)  # aligned with normal/no warning <25mm range
         results[name] = round(rainfall, 1)
     return results
 
