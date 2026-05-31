@@ -155,83 +155,52 @@ def get_system_and_advisory():
 def fetch_real_ecmwf_precipitation(centroids):
     """Downloads step=24 accumulated precipitation GRIB2 from ECMWF Open Data for both IFS and AIFS,
     and returns a blended (60% AIFS + 40% IFS) result.
+    Enforces that BOTH models must be successfully retrieved before proceeding.
+    If either is missing, it sleeps and retries.
     """
-    print("Retrieving official ECMWF IFS & AIFS forecasts from Open Data Azure mirror...")
-    try:
-        from ecmwf.opendata import Client
-        from eccodes import codes_grib_new_from_file, codes_get, codes_get_double_array, codes_release
-        import gc
-    except ImportError as e:
-        print(f"Warning: Missing required libraries for direct ECMWF download (ecmwf-opendata or eccodes): {e}")
-        return None, None, None
-        
-    ifs_file = os.path.join(PUBLIC_DIR, "ifs_precip_24.grib2")
-    aifs_file = os.path.join(PUBLIC_DIR, "aifs_precip_24.grib2")
-    if not os.path.exists(PUBLIC_DIR):
-        os.makedirs(PUBLIC_DIR)
-        
-    ifs_values = None
-    aifs_values = None
-    init_time_str = None
-    validity_str = None
+    import time
+    retry_delay_seconds = 300  # 5 minutes
     
-    # 1. Download and Parse IFS
-    try:
-        client_ifs = Client(source="azure", model="ifs", resol="0p25")
-        client_ifs.retrieve(
-            step=24,
-            type="fc",
-            param="tp",
-            target=ifs_file
-        )
-        print(f"IFS GRIB2 downloaded successfully. Size: {os.path.getsize(ifs_file)} bytes")
+    while True:
+        print("Retrieving official ECMWF IFS & AIFS forecasts from Open Data Azure mirror...")
+        try:
+            from ecmwf.opendata import Client
+            from eccodes import codes_grib_new_from_file, codes_get, codes_get_double_array, codes_release
+            import gc
+        except ImportError as e:
+            print(f"Error: Missing required libraries for direct ECMWF download (ecmwf-opendata or eccodes): {e}")
+            print("Cannot proceed without required dependencies. Exiting.")
+            return None, None, None
+            
+        ifs_file = os.path.join(PUBLIC_DIR, "ifs_precip_24.grib2")
+        aifs_file = os.path.join(PUBLIC_DIR, "aifs_precip_24.grib2")
+        if not os.path.exists(PUBLIC_DIR):
+            os.makedirs(PUBLIC_DIR)
+            
+        ifs_values = None
+        aifs_values = None
+        init_time_str = None
+        validity_str = None
+        data_date = None
+        data_time = None
         
-        with open(ifs_file, "rb") as f_ifs:
-            gid = codes_grib_new_from_file(f_ifs)
-            if gid is not None:
-                data_date = str(codes_get(gid, "dataDate"))  # e.g. "20260529"
-                data_time = int(codes_get(gid, "dataTime"))  # e.g. 0 or 1200
-                
-                # Format init_time and validity based on IFS message
-                dt_str = f"{data_date} {data_time:04d}"
-                try:
-                    init_dt = datetime.strptime(dt_str, "%Y%m%d %H%M").replace(tzinfo=timezone.utc)
-                    init_time_pht = init_dt.astimezone(timezone(timedelta(hours=8)))
-                    init_time_str = init_time_pht.strftime("%Y-%m-%d %I:%M %p (PHT)")
+        # 1. Download and Parse IFS
+        try:
+            client_ifs = Client(source="azure", model="ifs", resol="0p25")
+            client_ifs.retrieve(
+                step=24,
+                type="fc",
+                param="tp",
+                target=ifs_file
+            )
+            print(f"IFS GRIB2 downloaded successfully. Size: {os.path.getsize(ifs_file)} bytes")
+            
+            with open(ifs_file, "rb") as f_ifs:
+                gid = codes_grib_new_from_file(f_ifs)
+                if gid is not None:
+                    data_date = str(codes_get(gid, "dataDate"))  # e.g. "20260529"
+                    data_time = int(codes_get(gid, "dataTime"))  # e.g. 0 or 1200
                     
-                    validity_start = init_time_pht + timedelta(hours=6)
-                    validity_end = validity_start + timedelta(days=1)
-                    fmt = "%I:%M %p, %d %B %Y"
-                    validity_str = f"{validity_start.strftime(fmt)} to {validity_end.strftime(fmt)}"
-                except Exception:
-                    init_time_str = f"{data_date} {data_time:02d}:00 UTC"
-                    
-                ifs_values = codes_get_double_array(gid, "values")
-                codes_release(gid)
-        
-        del gid
-        gc.collect()
-    except Exception as e:
-        print(f"Warning: Failed to fetch/parse IFS forecast: {e}")
-
-    # 2. Download and Parse AIFS
-    try:
-        client_aifs = Client(source="azure", model="aifs", resol="0p25")
-        client_aifs.retrieve(
-            step=24,
-            type="fc",
-            param="tp",
-            target=aifs_file
-        )
-        print(f"AIFS GRIB2 downloaded successfully. Size: {os.path.getsize(aifs_file)} bytes")
-        
-        with open(aifs_file, "rb") as f_aifs:
-            gid = codes_grib_new_from_file(f_aifs)
-            if gid is not None:
-                # If we couldn't get it from IFS, parse metadata from AIFS
-                if not init_time_str:
-                    data_date = str(codes_get(gid, "dataDate"))
-                    data_time = int(codes_get(gid, "dataTime"))
                     dt_str = f"{data_date} {data_time:04d}"
                     try:
                         init_dt = datetime.strptime(dt_str, "%Y%m%d %H%M").replace(tzinfo=timezone.utc)
@@ -244,28 +213,86 @@ def fetch_real_ecmwf_precipitation(centroids):
                         validity_str = f"{validity_start.strftime(fmt)} to {validity_end.strftime(fmt)}"
                     except Exception:
                         init_time_str = f"{data_date} {data_time:02d}:00 UTC"
-                
-                aifs_values = codes_get_double_array(gid, "values")
-                codes_release(gid)
-                
-        del gid
-        gc.collect()
-    except Exception as e:
-        print(f"Warning: Failed to fetch/parse AIFS forecast: {e}")
+                        
+                    ifs_values = codes_get_double_array(gid, "values")
+                    codes_release(gid)
+            
+            del gid
+            gc.collect()
+        except Exception as e:
+            print(f"Warning: Failed to fetch/parse IFS forecast: {e}")
 
-    # Cleanup temporary files safely
-    for filepath in (ifs_file, aifs_file):
-        if os.path.exists(filepath):
-            try:
-                os.remove(filepath)
-                print(f"Temporary file {os.path.basename(filepath)} deleted.")
-            except Exception as ex:
-                print(f"Warning: Could not remove temporary file {filepath}: {ex}")
+        # 2. Download and Parse AIFS
+        try:
+            client_aifs = Client(source="azure", model="aifs-single", resol="0p25")
+            
+            retrieve_params = {
+                "step": 24,
+                "type": "fc",
+                "param": "tp",
+                "target": aifs_file
+            }
+            if data_date is not None and data_time is not None:
+                try:
+                    retrieve_params["date"] = int(data_date)
+                    retrieve_params["time"] = data_time // 100
+                    print(f"Explicitly requesting AIFS forecast for date={retrieve_params['date']}, time={retrieve_params['time']}...")
+                except Exception as ex:
+                    print(f"Warning: Could not format IFS date/time for AIFS parameters: {ex}")
+                    
+            client_aifs.retrieve(**retrieve_params)
+            print(f"AIFS GRIB2 downloaded successfully. Size: {os.path.getsize(aifs_file)} bytes")
+            
+            with open(aifs_file, "rb") as f_aifs:
+                gid = codes_grib_new_from_file(f_aifs)
+                if gid is not None:
+                    if not init_time_str:
+                        data_date = str(codes_get(gid, "dataDate"))
+                        data_time = int(codes_get(gid, "dataTime"))
+                        dt_str = f"{data_date} {data_time:04d}"
+                        try:
+                            init_dt = datetime.strptime(dt_str, "%Y%m%d %H%M").replace(tzinfo=timezone.utc)
+                            init_time_pht = init_dt.astimezone(timezone(timedelta(hours=8)))
+                            init_time_str = init_time_pht.strftime("%Y-%m-%d %I:%M %p (PHT)")
+                            
+                            validity_start = init_time_pht + timedelta(hours=6)
+                            validity_end = validity_start + timedelta(days=1)
+                            fmt = "%I:%M %p, %d %B %Y"
+                            validity_str = f"{validity_start.strftime(fmt)} to {validity_end.strftime(fmt)}"
+                        except Exception:
+                            init_time_str = f"{data_date} {data_time:02d}:00 UTC"
+                    
+                    aifs_values = codes_get_double_array(gid, "values")
+                    codes_release(gid)
+                    
+            del gid
+            gc.collect()
+        except Exception as e:
+            print(f"Warning: Failed to fetch/parse AIFS forecast: {e}")
+
+        # Cleanup temporary files safely
+        for filepath in (ifs_file, aifs_file):
+            if os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                    print(f"Temporary file {os.path.basename(filepath)} deleted.")
+                except Exception as ex:
+                    print(f"Warning: Could not remove temporary file {filepath}: {ex}")
+
+        # Verify that BOTH models are fully loaded
+        if ifs_values is not None and aifs_values is not None:
+            print("Successfully retrieved both IFS and AIFS models! Proceeding to blend...")
+            break
+        else:
+            missing = []
+            if ifs_values is None: missing.append("IFS")
+            if aifs_values is None: missing.append("AIFS")
+            print(f"Strict consensus blending policy: missing {', '.join(missing)} forecast data.")
+            print(f"Waiting for all required data runs to be released by ECMWF. Retrying in {retry_delay_seconds} seconds...")
+            time.sleep(retry_delay_seconds)
+            print("-" * 60)
 
     # 3. Perform Blending
-    if ifs_values is None and aifs_values is None:
-        return None, None, None
-        
     results = {}
     for name, coords in centroids.items():
         lat = coords["lat"]
@@ -277,25 +304,11 @@ def fetch_real_ecmwf_precipitation(centroids):
         idx = lat_idx * 1440 + lon_idx
         
         # Fetch individual grid point values (converted to millimeters)
-        val_ifs = 0.0
-        if ifs_values is not None and 0 <= idx < len(ifs_values):
-            val_ifs = max(0.0, ifs_values[idx] * 1000.0)
-            
-        val_aifs = 0.0
-        if aifs_values is not None and 0 <= idx < len(aifs_values):
-            val_aifs = max(0.0, aifs_values[idx] * 1000.0)
-            
-        # Blend values
-        if ifs_values is not None and aifs_values is not None:
-            # 60% AIFS + 40% IFS
-            rainfall = (0.6 * val_aifs) + (0.4 * val_ifs)
-        elif aifs_values is not None:
-            # Fallback to pure AIFS
-            rainfall = val_aifs
-        else:
-            # Fallback to pure IFS
-            rainfall = val_ifs
-            
+        val_ifs = max(0.0, ifs_values[idx] * 1000.0)  # IFS is in meters (m), convert to mm
+        val_aifs = max(0.0, aifs_values[idx])         # AIFS is in kg/m^2 (mm equivalent), no scale needed
+        
+        # 60% AIFS + 40% IFS
+        rainfall = (0.6 * val_aifs) + (0.4 * val_ifs)
         results[name] = round(rainfall, 1)
         
     return results, init_time_str, validity_str
