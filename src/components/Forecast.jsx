@@ -158,54 +158,75 @@ const Forecast = () => {
     });
   }, []);
 
-  const availableOptionsForModel = useMemo(() => {
-    return FORECAST_OPTIONS.filter(
-      (opt) => availableIds.includes(opt.id) && opt.model === selectedModel
-    );
-  }, [availableIds, selectedModel]);
+  const allAvailableOptions = useMemo(() => {
+    return FORECAST_OPTIONS.filter((opt) => availableIds.includes(opt.id));
+  }, [availableIds]);
 
   const latestConfigurations = useMemo(() => {
     return Array.from(
-      new Set(availableOptionsForModel.map((opt) => `${opt.type}-${opt.modelTime}`))
+      new Set(allAvailableOptions.map((opt) => `${opt.type}-${opt.modelTime}`))
     ).sort((a, b) => {
       const timeA = a.substring(a.indexOf('-') + 1);
       const timeB = b.substring(b.indexOf('-') + 1);
       if (timeA !== timeB) return timeA < timeB ? 1 : -1;
       return a.startsWith("15day") ? -1 : 1;
     });
-  }, [availableOptionsForModel]);
+  }, [allAvailableOptions]);
 
-  const visibleOptions = useMemo(() => {
+  const timelineConfigs = useMemo(() => {
     return latestConfigurations.map((configId) => {
-      return availableOptionsForModel.find(opt => `${opt.type}-${opt.modelTime}` === configId);
-    }).filter(Boolean);
-  }, [latestConfigurations, availableOptionsForModel]);
+      const parts = configId.split('-');
+      const type = parts[0];
+      const modelTime = parts.slice(1).join('-');
+      // Find any option that matches this config to get a nice formatted label / cycleText
+      const opt = allAvailableOptions.find(o => o.type === type && o.modelTime === modelTime);
+      return {
+        configId,
+        type,
+        modelTime,
+        label: opt ? opt.label : `${type} forecast (${modelTime})`,
+      };
+    });
+  }, [latestConfigurations, allAvailableOptions]);
 
-  const effectiveSelectedId = useMemo(() => {
-    return selectedTimeId && visibleOptions.some((opt) => `${opt.type}-${opt.modelTime}` === selectedTimeId)
-      ? visibleOptions.find(opt => `${opt.type}-${opt.modelTime}` === selectedTimeId)?.id
-      : visibleOptions.length
-        ? visibleOptions[0].id
-        : null;
-  }, [selectedTimeId, visibleOptions]);
+  const activeConfigId = useMemo(() => {
+    if (selectedTimeId && latestConfigurations.includes(selectedTimeId)) {
+      return selectedTimeId;
+    }
+    return latestConfigurations.length ? latestConfigurations[0] : null;
+  }, [selectedTimeId, latestConfigurations]);
 
   const current = useMemo(() => {
-    return effectiveSelectedId
-      ? visibleOptions.find((opt) => opt.id === effectiveSelectedId)
-      : null;
-  }, [effectiveSelectedId, visibleOptions]);
+    if (!activeConfigId) return null;
+    const parts = activeConfigId.split('-');
+    const type = parts[0];
+    const modelTime = parts.slice(1).join('-');
+    const opt = FORECAST_OPTIONS.find(
+      (o) => o.model === selectedModel && o.type === type && o.modelTime === modelTime
+    );
+    const isAvailable = opt ? availableIds.includes(opt.id) : false;
+    return {
+      id: opt ? opt.id : `fallback-${selectedModel}-${activeConfigId}`,
+      type,
+      modelTime,
+      model: selectedModel,
+      label: opt ? opt.label : `${type} forecast (${modelTime})`,
+      imageSrc: isAvailable ? opt.imageSrc : null,
+    };
+  }, [activeConfigId, selectedModel, availableIds]);
 
-  const imageSrc = current ? current.imageSrc : "";
+  const imageSrc = current ? current.imageSrc : null;
 
   // Dynamic values representing the comparative grid for selected date/hour cycle
   const gridModelData = useMemo(() => {
-    if (!current) return [];
-    const currentTime = current.modelTime;
-    const currentType = current.type; // 5day or 15day
+    if (!activeConfigId) return [];
+    const parts = activeConfigId.split('-');
+    const type = parts[0];
+    const modelTime = parts.slice(1).join('-');
 
     return Object.keys(MODEL_INFO).map((modelKey) => {
       const opt = FORECAST_OPTIONS.find(
-        (o) => o.model === modelKey && o.type === currentType && o.modelTime === currentTime
+        (o) => o.model === modelKey && o.type === type && o.modelTime === modelTime
       );
       const isAvailable = opt ? availableIds.includes(opt.id) : false;
       return {
@@ -215,7 +236,7 @@ const Forecast = () => {
         label: opt ? opt.label : ""
       };
     });
-  }, [current, availableIds]);
+  }, [activeConfigId, availableIds]);
 
   // Handle zooming & panning interactive lightbox
   const handleWheel = (e) => {
@@ -341,21 +362,21 @@ const Forecast = () => {
         )}
 
         {/* Timeline selecting slider nodes (replacing old dropdown) */}
-        {visibleOptions.length > 0 ? (
+        {timelineConfigs.length > 0 ? (
           <div className="flex flex-col gap-2">
             <span className="text-[10px] uppercase font-black tracking-widest text-slate-500 flex items-center gap-1.5 pl-1">
               <Calendar className="w-3.5 h-3.5" />
               <span>Select Model Run Cycle</span>
             </span>
             <div className="flex overflow-x-auto gap-2.5 custom-scroll pb-2 w-full">
-              {visibleOptions.map((opt) => {
-                const isActive = (current && current.id === opt.id);
+              {timelineConfigs.map((opt) => {
+                const isActive = (activeConfigId === opt.configId);
                 const cycleText = opt.label.substring(opt.label.indexOf('(') + 1, opt.label.indexOf(')'));
                 
                 return (
                   <button
-                    key={opt.id}
-                    onClick={() => setSelectedTimeId(`${opt.type}-${opt.modelTime}`)}
+                    key={opt.configId}
+                    onClick={() => setSelectedTimeId(opt.configId)}
                     className={`px-3.5 py-2.5 rounded-xl text-xs transition-all border flex flex-col items-start gap-1 cursor-pointer shrink-0 text-left ${
                       isActive 
                         ? "bg-cyan-500/10 border-cyan-400/40 text-white shadow-lg shadow-black/35 scale-102"
@@ -371,7 +392,7 @@ const Forecast = () => {
           </div>
         ) : (
           <div className="p-5 rounded-2xl custom-glass text-center text-xs text-slate-500">
-            No track forecasts found in active directories for {MODEL_INFO[selectedModel]?.name || "selected model"} today.
+            No track forecasts found in active directories for any model today.
           </div>
         )}
 
