@@ -186,7 +186,7 @@ def fetch_real_ecmwf_precipitation(centroids):
         
         # 1. Download and Parse IFS
         try:
-            client_ifs = Client(source="azure", model="ifs", resol="0p25")
+            client_ifs = Client(source="azure", model="ifs", resol="0p25", infer_stream_keyword=False)
             client_ifs.retrieve(
                 step=24,
                 type="fc",
@@ -224,7 +224,7 @@ def fetch_real_ecmwf_precipitation(centroids):
 
         # 2. Download and Parse AIFS
         try:
-            client_aifs = Client(source="azure", model="aifs-single", resol="0p25")
+            client_aifs = Client(source="azure", model="aifs-single", resol="0p25", infer_stream_keyword=False)
             
             retrieve_params = {
                 "step": 24,
