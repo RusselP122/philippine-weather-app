@@ -59,21 +59,35 @@ def plot_thunderstorm_frame(lons, lats, precip_grid, region_id, filename_id,
     gl.xlabel_style = {"size": 10, "color": "#333"}
     gl.ylabel_style = {"size": 10, "color": "#333"}
 
-    # ── Precipitation colormap (Main Layer) ──────────────────────────────────
-    precip_levels = [0.5, 1.0, 2, 5, 10, 20, 50, 100, 250]
+    # ── Precipitation colormap (Main Layer - High Resolution) ────────────────
+    precip_levels = [0.1, 0.5, 1.0, 1.5, 2.5, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 125.0, 150.0, 175.0, 200.0, 250.0]
     precip_colors = [
-        "#ffffff00", # <0.5 transparent
-        "#a0c8f0",   # 0.5 - 1.0 (light blue, distinct from white)
-        "#87bbf0",   # 1.0 - 2
-        "#4792f0",   # 2 - 5
-        "#1763eb",   # 5 - 10
-        "#269b26",   # 10 - 20
-        "#ffc800",   # 20 - 50
-        "#ff0000",   # 50 - 100
-        "#ff00ff",   # 100 - 250
+        "#F0F8FF",   # 0.1 - 0.5 (White / Ice Blue)
+        "#C8E6FF",   # 0.5 - 1.0 (Very Light Cyan)
+        "#A0D0FF",   # 1.0 - 1.5 (Light Cyan)
+        "#78BAFF",   # 1.5 - 2.5 (Light Blue)
+        "#4A9EFF",   # 2.5 - 5.0 (Soft Blue)
+        "#1E7EFF",   # 5.0 - 10.0 (Medium Blue)
+        "#0066DD",   # 10.0 - 15.0 (Deep Blue)
+        "#008F8F",   # 15.0 - 20.0 (Teal / Blue-Green)
+        "#00B366",   # 20.0 - 25.0 (Green)
+        "#4CC700",   # 25.0 - 30.0 (Yellow-Green)
+        "#8CDB00",   # 30.0 - 35.0 (Light Yellow-Green)
+        "#C8E600",   # 35.0 - 40.0 (Yellow)
+        "#FFEA00",   # 40.0 - 50.0 (Bright Yellow)
+        "#FFCC00",   # 50.0 - 60.0 (Golden Yellow)
+        "#FF9F00",   # 60.0 - 70.0 (Orange)
+        "#FF6A00",   # 70.0 - 80.0 (Dark Orange)
+        "#FF3A00",   # 80.0 - 90.0 (Orange-Red)
+        "#FF1A00",   # 90.0 - 100.0 (Red)
+        "#E6006E",   # 100.0 - 125.0 (Red-Magenta)
+        "#C8009E",   # 125.0 - 150.0 (Magenta)
+        "#A600C8",   # 150.0 - 175.0 (Purple-Magenta)
+        "#8500E6",   # 175.0 - 200.0 (Purple)
+        "#5F00E6"    # 200.0 - 250.0 (Deep Purple)
     ]
     p_cmap = ListedColormap(precip_colors)
-    p_cmap.set_over("#800080")
+    p_cmap.set_over("#3F00B3")  # >= 250 (Dark Violet)
     p_norm = BoundaryNorm(precip_levels, ncolors=len(precip_colors), clip=False)
 
     LONS, LATS = np.meshgrid(lons, lats)
@@ -81,8 +95,9 @@ def plot_thunderstorm_frame(lons, lats, precip_grid, region_id, filename_id,
                      extend="max", transform=ccrs.PlateCarree(), zorder=2)
 
     cb = fig.colorbar(cf, ax=ax, orientation="vertical", pad=0.02, shrink=0.85, aspect=25)
-    cb.set_ticks(precip_levels)
-    cb.ax.tick_params(labelsize=10)
+    cb_ticks = [0.1, 1.0, 2.5, 5.0, 10.0, 15.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 150.0, 200.0, 250.0]
+    cb.set_ticks(cb_ticks)
+    cb.ax.tick_params(labelsize=9)
     cb.set_label("Accumulated Precip (mm)", fontsize=10)
     cb.outline.set_edgecolor("black")
     cb.outline.set_linewidth(1)
