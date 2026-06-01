@@ -23,6 +23,7 @@ import StrikeProbability from "./components/StrikeProbability";
 import TropicalCyclonePrediction from "./components/TropicalCyclonePrediction";
 import WeatherAdvisory from "./components/WeatherAdvisory";
 import Lightning from "./components/Lightning";
+import LiveRadar from "./components/LiveRadar";
 
 function AppContent() {
   const path = window.location.pathname;
@@ -33,6 +34,17 @@ function AppContent() {
         <Navbar />
         <main className="flex-grow">
           <Lightning />
+        </main>
+      </div>
+    );
+  }
+
+  if (path === "/radar") {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <LiveRadar />
         </main>
       </div>
     );

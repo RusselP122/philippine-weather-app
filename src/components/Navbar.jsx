@@ -44,6 +44,7 @@ const Navbar = () => {
         { label: "Alert", href: "/alert" },
         { label: "Weather Advisory", href: "/weather-advisory" },
         { label: "Lightning Detection", href: "/lightning" },
+        { label: "Live Doppler Radar", href: "/radar" },
         { label: "ENSO Monitor", href: "/enso" },
       ]
     },

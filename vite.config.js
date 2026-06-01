@@ -35,6 +35,12 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/lightning/, '/api/v1/lightning'),
       },
+      '/api/radar': {
+        target: 'https://www.panahon.gov.ph',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api\/radar/, '/api/v1/radar/timeline'),
+      },
     },
   },
 });

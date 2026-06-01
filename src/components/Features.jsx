@@ -218,6 +218,25 @@ const FEATURE_DATA = [
     ),
     link: "/lightning",
     linkText: "View Lightning Map"
+  },
+  {
+    id: "radar",
+    title: "Live Doppler Radar",
+    category: "Weather",
+    icon: "📡",
+    iconColor: "text-emerald-300",
+    iconBg: "bg-emerald-500/20",
+    borderHover: "hover:border-emerald-500/60 hover:shadow-emerald-900/30",
+    buttonBg: "bg-emerald-500 hover:bg-emerald-400",
+    buttonText: "text-slate-950",
+    description: "Monitor near real-time radar imagery from the PAGASA Doppler Radar network. View precipitation intensity, track storm systems, and animate radar loops.",
+    customVisual: (
+      <div className="bg-slate-900 border border-emerald-500/40 h-44 md:h-48 rounded-xl overflow-hidden flex items-center justify-center relative group">
+        <div className="px-4 text-center text-xs text-slate-300 z-10 transition-transform group-hover:scale-105">Live PAGASA Doppler Radar loop.<br />Updates as new frames are released.</div>
+      </div>
+    ),
+    link: "/radar",
+    linkText: "View Live Radar"
   }
 ];
 
