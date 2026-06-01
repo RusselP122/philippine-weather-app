@@ -476,13 +476,13 @@ const LiveRadar = () => {
         img.crossOrigin = "anonymous";
         img.src = getFrameImageSrc(frame, index);
 
-        // Safety timeout of 3.5 seconds to prevent hanging loader overlays
+        // Safety timeout of 10 seconds to prevent hanging loader overlays on slow mobile devices
         const timeoutId = setTimeout(() => {
           if (active) {
             currentCache[cacheKey] = img.src;
           }
           resolve();
-        }, 3500);
+        }, 10000);
 
         img.onload = () => {
           clearTimeout(timeoutId);
@@ -787,14 +787,14 @@ const LiveRadar = () => {
             )}
 
             {/* Bottom-Left dBZ Reflectivity Scale */}
-            <div className="absolute bottom-4 left-4 z-30 bg-slate-950/80 backdrop-blur-sm border border-slate-800/40 rounded-xl p-2.5 flex flex-col select-none pointer-events-none text-[9px] text-slate-300 shadow-xl">
-              <div className="flex gap-2 items-center">
+            <div className="absolute bottom-2 left-2 md:bottom-4 md:left-4 z-30 bg-slate-950/80 backdrop-blur-sm border border-slate-800/30 rounded-lg md:rounded-xl p-1.5 md:p-2.5 flex flex-col select-none pointer-events-none text-[7.5px] md:text-[9px] text-slate-300 shadow-xl leading-none">
+              <div className="flex gap-1.5 md:gap-2 items-center">
                 {/* Visual Gradient scale */}
                 <div
-                  className="w-2 h-28 rounded-full"
+                  className="w-1.5 md:w-2 h-16 md:h-28 rounded-full"
                   style={{ background: getLegendGradientStyle(colorTheme) }}
                 ></div>
-                <div className="flex flex-col justify-between h-28 leading-none py-0.5 font-mono text-[8px]">
+                <div className="flex flex-col justify-between h-16 md:h-28 leading-none font-mono text-[6.5px] md:text-[8px]">
                   <span>65</span>
                   <span>60</span>
                   <span>45</span>
@@ -802,17 +802,17 @@ const LiveRadar = () => {
                   <span>20</span>
                   <span>15</span>
                   <span>3</span>
-                  <span className="text-[7px]">1 mm/h</span>
+                  <span className="text-[5.5px] md:text-[7px]">1 mm/h</span>
                 </div>
               </div>
-              <div className="mt-2 flex flex-col gap-0.5 text-[7px] text-slate-400 leading-none">
+              <div className="mt-1.5 md:mt-2 flex flex-col gap-0.5 text-[6.5px] md:text-[7px] text-slate-400 leading-none">
                 <span className="font-bold">dBZ</span>
                 <span>Radar Clutter</span>
               </div>
             </div>
 
             {/* Bottom-Right Imagery Credits */}
-            <div className="absolute bottom-4 right-4 z-30 flex flex-col items-end text-[8px] md:text-[9px] text-slate-400 font-medium leading-normal pointer-events-none select-none drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+            <div className="absolute bottom-2 right-2 md:bottom-4 md:right-4 z-30 flex flex-col items-end text-[6.5px] md:text-[9px] text-slate-400 opacity-65 md:opacity-100 font-medium leading-tight md:leading-normal pointer-events-none select-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">
               <span>Imagery from PAGASA PANAHON</span>
               <span>Data processed by PT/W</span>
               <span>Licensed under CC BY-SA 4.0</span>
