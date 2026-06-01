@@ -164,10 +164,10 @@ const LiveRadar = () => {
   }, []);
 
   // Strict bounding coordinates of PAGASA's Doppler Radar Composite Canvas
-  const minLon = 115.4154914129329;
-  const maxLon = 129.51727937415484;
-  const minLat = 3.8016540706290445;
-  const maxLat = 22.458510294136033;
+  const minLon = 115.5; // Official PAGASA Composite bounds
+  const maxLon = 129.5; // Official PAGASA Composite bounds
+  const minLat = 4.0;   // Official PAGASA Composite bounds
+  const maxLat = 22.5;  // Official PAGASA Composite bounds
   const canvasWidth = 1020;
   const canvasHeight = 1393;
 
@@ -244,8 +244,8 @@ const LiveRadar = () => {
     });
   }, [geoData]);
 
-  // Memoize the heavy SVG province map layer to prevent re-rendering 80+ complex paths on every slider frame change
-  const svgMapLayer = useMemo(() => {
+  // Memoize the background filled landmass SVG (Layer 1) to establish dark land vs black water contrast
+  const svgBaseMap = useMemo(() => {
     return (
       <svg
         className="absolute inset-0 w-full h-full pointer-events-none select-none"
@@ -256,8 +256,27 @@ const LiveRadar = () => {
             key={idx}
             d={prov.d}
             fill="#111625"
-            stroke="#1e293b"
-            strokeWidth="0.3"
+            stroke="none"
+          />
+        ))}
+      </svg>
+    );
+  }, [projectedFeatures]);
+
+  // Memoize the foreground province borders overlay SVG (Layer 3) to render crisp lines ON TOP of the rain
+  const svgBordersOverlay = useMemo(() => {
+    return (
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none select-none z-20"
+        viewBox="0 0 1020 1393"
+      >
+        {projectedFeatures.map((prov, idx) => (
+          <path
+            key={idx}
+            d={prov.d}
+            fill="none"
+            stroke="#334155" // High-contrast, crisp slate color intersecting weather cells
+            strokeWidth="0.4"
           />
         ))}
       </svg>
@@ -837,18 +856,22 @@ const LiveRadar = () => {
                 }}
               >
                 {/* Layer 1: Perfect-aligned SVG Base Map of the Philippines */}
-                {svgMapLayer}
-
+                {svgBaseMap}
+ 
                 {/* Layer 2: Transparent Radar Reflectivity PNG */}
                 <img
                   src={cachedFrameUrls[frames[activeFrameIndex]?.observed_at] || getFrameImageSrc(frames[activeFrameIndex], activeFrameIndex)}
                   alt={`Doppler Radar Composite Frame ${activeFrameIndex}`}
                   draggable="false"
-                  className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none"
+                  className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-10"
                   style={{
                     imageRendering: "pixelated", // Render radar cells with infinite HD grid sharpness
+                    transform: "translate(-2px, -4.5px)", // Micro-adjust the radar image slightly right and upward for perfect alignment
                   }}
                 />
+ 
+                {/* Layer 3: Foreground Province Borders Overlay (drawn on top of the rain) */}
+                {svgBordersOverlay}
               </div>
             )}
           </div>
