@@ -429,8 +429,15 @@ const LiveRadar = () => {
       const mergedMap = new Map();
       // Add existing accumulated frames
       prev.forEach(f => mergedMap.set(f.observed_at, f));
-      // Add new frames from the rawTimeline
-      rawTimeline.forEach(f => mergedMap.set(f.observed_at, f));
+      // Add new frames from the rawTimeline, preserving cached rawBase64 properties
+      rawTimeline.forEach(f => {
+        if (!mergedMap.has(f.observed_at)) {
+          mergedMap.set(f.observed_at, f);
+        } else {
+          const existing = mergedMap.get(f.observed_at);
+          mergedMap.set(f.observed_at, { ...f, rawBase64: existing.rawBase64, dataUrl: existing.dataUrl });
+        }
+      });
 
       // Convert to array and sort chronologically
       const merged = Array.from(mergedMap.values())
@@ -503,7 +510,13 @@ const LiveRadar = () => {
       return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = "anonymous";
-        img.src = getFrameImageSrc(frame, index);
+        
+        // If we already have the raw base64 data cached, load it instantly without network requests!
+        if (frame.rawBase64) {
+          img.src = frame.rawBase64;
+        } else {
+          img.src = getFrameImageSrc(frame, index);
+        }
 
         // Safety timeout of 10 seconds to prevent hanging loader overlays on slow mobile devices
         const timeoutId = setTimeout(() => {
@@ -519,6 +532,21 @@ const LiveRadar = () => {
             resolve();
             return;
           }
+
+          // Convert raw image to base64 if not already cached
+          if (!frame.rawBase64) {
+            try {
+              const canvas = document.createElement("canvas");
+              canvas.width = img.naturalWidth || img.width || 1020;
+              canvas.height = img.naturalHeight || img.height || 1393;
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(img, 0, 0);
+              frame.rawBase64 = canvas.toDataURL("image/png");
+            } catch (e) {
+              console.error("Failed to extract raw base64 data:", e);
+            }
+          }
+
           const dataUrl = recolorRadarImage(img, colorTheme);
           currentCache[cacheKey] = dataUrl;
           resolve();
@@ -547,6 +575,28 @@ const LiveRadar = () => {
 
       // Update cached URLs
       setCachedFrameUrls(prunedCache);
+
+      // Save rawBase64 to accumulatedTimeline to persist it forever offline!
+      setAccumulatedTimeline((prev) => {
+        let updated = false;
+        const next = prev.map((f) => {
+          const match = preloadingFrames.find((pf) => pf.observed_at === f.observed_at);
+          if (match && match.rawBase64 && f.rawBase64 !== match.rawBase64) {
+            updated = true;
+            return { ...f, rawBase64: match.rawBase64 };
+          }
+          return f;
+        });
+
+        if (updated) {
+          try {
+            window.localStorage.setItem("radar_accumulated_timeline", JSON.stringify(next));
+          } catch (e) {
+            console.error("Failed to save updated timeline with base64 cache:", e);
+          }
+        }
+        return next;
+      });
 
       // Update the active frames list for playback only after everything is cached!
       const isInitialLoad = frames.length === 0;
@@ -867,7 +917,7 @@ const LiveRadar = () => {
               >
                 {/* Layer 1: Perfect-aligned SVG Base Map of the Philippines */}
                 {svgBaseMap}
- 
+
                 {/* Layer 2: Transparent Radar Reflectivity PNG */}
                 <img
                   src={cachedFrameUrls[frames[activeFrameIndex]?.observed_at] || getFrameImageSrc(frames[activeFrameIndex], activeFrameIndex)}
@@ -879,7 +929,7 @@ const LiveRadar = () => {
                     transform: "translate(-2px, -4.5px)", // Micro-adjust the radar image slightly right and upward for perfect alignment
                   }}
                 />
- 
+
                 {/* Layer 3: Foreground Province Borders Overlay (drawn on top of the rain) */}
                 {svgBordersOverlay}
               </div>
