@@ -85,6 +85,13 @@ const recolorRadarImage = (imgElement, theme) => {
         else if (colorType === "yellow") targetHex = "#22c55e";
         else if (colorType === "red") targetHex = "#4ade80";
         else if (colorType === "purple") targetHex = "#86efac";
+      } else if (theme === "custom") {
+        // High-fidelity custom color palette provided by user (mapping classes to customized levels)
+        if (colorType === "blue") targetHex = "#0a6f87";      // 10 dBZ: rgb(10, 111, 135)
+        else if (colorType === "green") targetHex = "#31ab12";   // 20 dBZ: rgb(49, 171, 18)
+        else if (colorType === "yellow") targetHex = "#f0ec00";  // 35 dBZ: rgb(240, 236, 0)
+        else if (colorType === "red") targetHex = "#ff0000";     // 50 dBZ: rgb(255, 0, 0)
+        else if (colorType === "purple") targetHex = "#dcbae6";  // 65 dBZ: rgb(220, 186, 230) for extreme core
       }
 
       if (targetHex) {
@@ -149,7 +156,7 @@ const LiveRadar = () => {
   const [error, setError] = useState(null);
 
   // Custom Radar Color Palette Themes State
-  const [colorTheme, setColorTheme] = useState("default");
+  const [colorTheme, setColorTheme] = useState("custom");
   const [cachedFrameUrls, setCachedFrameUrls] = useState({});
 
   // Map GeoJSON data for aligned background projection
@@ -396,6 +403,9 @@ const LiveRadar = () => {
     }
     if (theme === "retro") {
       return "linear-gradient(to top, #041f0f 0%, #14532d 20%, #15803d 40%, #22c55e 60%, #4ade80 80%, #86efac 100%)";
+    }
+    if (theme === "custom") {
+      return "linear-gradient(to top, #075163 0%, #0a6f87 20%, #31ab12 40%, #f0ec00 60%, #ff0000 80%, #dcbae6 100%)";
     }
     return "linear-gradient(to top, #1d4ed8 0%, #059669 20%, #facc15 40%, #f97316 60%, #dc2626 80%, #d01cc3 100%)";
   };
@@ -1038,10 +1048,8 @@ const LiveRadar = () => {
                   }}
                   className="w-full bg-slate-950/80 border border-slate-800/80 text-xs font-semibold rounded-xl p-2.5 text-slate-300 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
                 >
+                  <option value="custom">Custom Smooth dBZ</option>
                   <option value="default">Default PAGASA</option>
-                  <option value="vaporwave">Vaporwave Neon</option>
-                  <option value="storm">Storm Watch Alert</option>
-                  <option value="retro">Retro Matrix Terminal</option>
                 </select>
               </div>
 
