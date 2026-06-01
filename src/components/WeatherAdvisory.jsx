@@ -68,7 +68,7 @@ const WeatherAdvisory = () => {
       const lightBlueProvinces = [];
 
       Object.entries(advisoryData.provinces).forEach(([name, p]) => {
-        const mm = p.rainfall_mm || 0;
+        const mm = Math.round(p.rainfall_mm || 0);
         if (mm >= 200) redProvinces.push(name);
         else if (mm >= 100) orangeProvinces.push(name);
         else if (mm >= 50) yellowProvinces.push(name);
@@ -426,7 +426,7 @@ const WeatherAdvisory = () => {
     if (!advisoryData || !advisoryData.provinces) return { red: 0, orange: 0, yellow: 0, lightBlue: 0, normal: 0 };
     let red = 0, orange = 0, yellow = 0, lightBlue = 0, normal = 0;
     Object.values(advisoryData.provinces).forEach((p) => {
-      const mm = p.rainfall_mm || 0;
+      const mm = Math.round(p.rainfall_mm || 0);
       if (mm >= 200) red++;
       else if (mm >= 100) orange++;
       else if (mm >= 50) yellow++;
@@ -445,7 +445,7 @@ const WeatherAdvisory = () => {
 
     if (advisoryData && advisoryData.provinces) {
       Object.entries(advisoryData.provinces).forEach(([name, p]) => {
-        const mm = p.rainfall_mm || 0;
+        const mm = Math.round(p.rainfall_mm || 0);
         if (mm >= 200) red.push(name);
         else if (mm >= 100) orange.push(name);
         else if (mm >= 50) yellow.push(name);
@@ -495,18 +495,20 @@ const WeatherAdvisory = () => {
   };
 
   const getRainfallColor = (mm) => {
-    if (mm >= 200) return "#DC2626"; // Red (Severe)
-    if (mm >= 100) return "#F97316"; // Orange (Heavy)
-    if (mm >= 50) return "#EAB308";  // Yellow (Moderate)
-    if (mm >= 25) return "#38BDF8";  // Light Blue (Light-Moderate)
+    const roundedMm = Math.round(mm);
+    if (roundedMm >= 200) return "#DC2626"; // Red (Severe)
+    if (roundedMm >= 100) return "#F97316"; // Orange (Heavy)
+    if (roundedMm >= 50) return "#EAB308";  // Yellow (Moderate)
+    if (roundedMm >= 25) return "#38BDF8";  // Light Blue (Light-Moderate)
     return "#334155"; // Default Slate
   };
 
   const getAlertLevel = (mm) => {
-    if (mm >= 200) return { title: "Severe Red Warning", style: "bg-red-500/20 text-red-400 border-red-500/30", text: "Severe flooding and widespread landslides are expected. Move to safe high grounds immediately." };
-    if (mm >= 100) return { title: "Heavy Orange Alert", style: "bg-orange-500/20 text-orange-400 border-orange-500/30", text: "Flooding is highly likely. Residents near rivers and hills should prepare to evacuate." };
-    if (mm >= 50) return { title: "Moderate Yellow Advisory", style: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", text: "Localized minor flooding is possible in low-lying and urban areas." };
-    if (mm >= 25) return { title: "Light Blue Alert", style: "bg-sky-500/20 text-sky-400 border-sky-500/30", text: "Localized minor ponding and wet roads possible. Exercise standard caution." };
+    const roundedMm = Math.round(mm);
+    if (roundedMm >= 200) return { title: "Severe Red Warning", style: "bg-red-500/20 text-red-400 border-red-500/30", text: "Severe flooding and widespread landslides are expected. Move to safe high grounds immediately." };
+    if (roundedMm >= 100) return { title: "Heavy Orange Alert", style: "bg-orange-500/20 text-orange-400 border-orange-500/30", text: "Flooding is highly likely. Residents near rivers and hills should prepare to evacuate." };
+    if (roundedMm >= 50) return { title: "Moderate Yellow Advisory", style: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", text: "Localized minor flooding is possible in low-lying and urban areas." };
+    if (roundedMm >= 25) return { title: "Light Blue Alert", style: "bg-sky-500/20 text-sky-400 border-sky-500/30", text: "Localized minor ponding and wet roads possible. Exercise standard caution." };
     return { title: "No Warnings Active", style: "bg-slate-800 text-slate-400 border-slate-700/30", text: "Standard background levels. Scattered light rains possible." };
   };
 

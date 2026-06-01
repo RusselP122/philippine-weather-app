@@ -320,7 +320,7 @@ def generate_offline_fallback(centroids):
         "Ilocos Norte", "Pangasinan", "Zambales", "Bataan", "Cagayan", "Isabela", "Aurora"
     ]
     heavy_rain_provinces = [
-        "Metro Manila", "Cavite", "Batangas", "Laguna", "Rizal", "Quezon", "Bulacan", "Pampanga",
+        "Metropolitan Manila", "Cavite", "Batangas", "Laguna", "Rizal", "Quezon", "Bulacan", "Pampanga",
         "Tarlac", "Nueva Ecija", "Ilocos Sur", "La Union", "Benguet", "Mindoro Occidental", "Mindoro Oriental"
     ]
     moderate_rain_provinces = [
