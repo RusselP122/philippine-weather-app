@@ -22,9 +22,21 @@ import EnsoMonitor from "./components/EnsoMonitor";
 import StrikeProbability from "./components/StrikeProbability";
 import TropicalCyclonePrediction from "./components/TropicalCyclonePrediction";
 import WeatherAdvisory from "./components/WeatherAdvisory";
+import Lightning from "./components/Lightning";
 
 function AppContent() {
   const path = window.location.pathname;
+
+  if (path === "/lightning") {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <Lightning />
+        </main>
+      </div>
+    );
+  }
 
   if (path === "/about") {
     return (

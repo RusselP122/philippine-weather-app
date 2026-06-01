@@ -17,6 +17,10 @@
             "destination": "https://tiles.zoom.earth/:path*"
         },
         {
+            "source": "/api/lightning",
+            "destination": "https://panahon.gov.ph/api/v1/lightning"
+        },
+        {
             "source": "/((?!data/).*)",
             "destination": "/index.html"
         }

@@ -29,6 +29,12 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/zoom-earth/, ''),
       },
+      '/api/lightning': {
+        target: 'https://panahon.gov.ph',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api\/lightning/, '/api/v1/lightning'),
+      },
     },
   },
 });

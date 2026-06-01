@@ -199,6 +199,25 @@ const FEATURE_DATA = [
     ),
     link: "/weather-advisory",
     linkText: "View Advisories"
+  },
+  {
+    id: "lightning",
+    title: "Lightning Detection",
+    category: "Weather",
+    icon: "⚡",
+    iconColor: "text-amber-300",
+    iconBg: "bg-amber-500/25",
+    borderHover: "hover:border-amber-500/60 hover:shadow-amber-900/30",
+    buttonBg: "bg-amber-500 hover:bg-amber-400",
+    buttonText: "text-slate-950",
+    description: "Monitor real-time lightning strikes across the Philippines. Track intracloud (C-to-C) and ground (C-to-G) strokes to identify forming severe thunderstorms.",
+    customVisual: (
+      <div className="bg-slate-900 border border-amber-500/40 h-44 md:h-48 rounded-xl overflow-hidden flex items-center justify-center relative group">
+        <div className="px-4 text-center text-xs text-slate-300 z-10 transition-transform group-hover:scale-105">Real-time lightning coordinates.<br />Updates every 30 seconds.</div>
+      </div>
+    ),
+    link: "/lightning",
+    linkText: "View Lightning Map"
   }
 ];
 
