@@ -177,12 +177,24 @@ if __name__ == "__main__":
 
     forecast_start = latest_ph.strftime("%Y-%m-%d")
 
-    end_5day = (latest_ph + timedelta(days=5)).strftime("%Y-%m-%d")
-    title_5day = f"5-Day Forecast Tropical Cyclone Tracks - NOAA AI-GEFS ({forecast_start} to {end_5day})"
+    max_hours_in_data = int(data['lead_time_hours'].max()) if not data.empty and 'lead_time_hours' in data else 0
+
+    # 5-day plot (max 120h)
+    actual_5day_hours = min(120, max_hours_in_data) if max_hours_in_data > 0 else 120
+    actual_5day_days = actual_5day_hours / 24
+    days_5day_str = f"{int(actual_5day_days)}" if actual_5day_hours % 24 == 0 else f"{actual_5day_days:.3g}"
+    
+    end_5day = (latest_ph + timedelta(hours=actual_5day_hours)).strftime("%Y-%m-%d")
+    title_5day = f"{days_5day_str}-Day Forecast Tropical Cyclone Tracks - NOAA AI-GEFS ({forecast_start} to {end_5day})"
     out_5day = f"public/assets/aigefs_tropical_cyclone_5day_forecast_{init_time_str}.png"
     generate_plot(data, 120, out_5day, title_5day, runtime_text)
 
-    end_15day = (latest_ph + timedelta(days=15)).strftime("%Y-%m-%d")
-    title_15day = f"15-Day Forecast Tropical Cyclone Tracks - NOAA AI-GEFS ({forecast_start} to {end_15day})"
+    # 15-day plot (max 360h)
+    actual_15day_hours = min(360, max_hours_in_data) if max_hours_in_data > 0 else 360
+    actual_15day_days = actual_15day_hours / 24
+    days_15day_str = f"{int(actual_15day_days)}" if actual_15day_hours % 24 == 0 else f"{actual_15day_days:.3g}"
+    
+    end_15day = (latest_ph + timedelta(hours=actual_15day_hours)).strftime("%Y-%m-%d")
+    title_15day = f"{days_15day_str}-Day Forecast Tropical Cyclone Tracks - NOAA AI-GEFS ({forecast_start} to {end_15day})"
     out_15day = f"public/assets/aigefs_tropical_cyclone_15day_forecast_{init_time_str}.png"
     generate_plot(data, 360, out_15day, title_15day, runtime_text)
