@@ -748,7 +748,7 @@ const WeatherAdvisory = () => {
               <div>
                 <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">Forecast Rainfall</p>
                 <p className="text-base font-bold text-white tracking-wide">
-                  {hoveredProvince.rainfall} <span className="text-xs font-normal text-slate-400">mm / 24h</span>
+                  {Math.round(hoveredProvince.rainfall)} <span className="text-xs font-normal text-slate-400">mm / 24h</span>
                 </p>
               </div>
             </div>
@@ -783,7 +783,7 @@ const WeatherAdvisory = () => {
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Rainfall:</span>
               </div>
               <p className="text-sm font-bold text-white tracking-wide">
-                {hoveredProvince.rainfall} <span className="text-[10px] font-normal text-slate-400">mm / 24h</span>
+                {Math.round(hoveredProvince.rainfall)} <span className="text-[10px] font-normal text-slate-400">mm / 24h</span>
               </p>
             </div>
 
@@ -866,7 +866,7 @@ const WeatherAdvisory = () => {
                   <div className="flex flex-wrap gap-1 justify-start">
                     {warningProvinces.red.map(p => (
                       <span key={p} className="px-1.5 py-0.5 bg-red-950/60 text-red-300 border border-red-900/60 rounded text-[9.5px] font-mono">
-                        {p}
+                        {p} ({Math.round(advisoryData.provinces[p]?.rainfall_mm || 0)}mm)
                       </span>
                     ))}
                   </div>
@@ -906,7 +906,7 @@ const WeatherAdvisory = () => {
                   <div className="flex flex-wrap gap-1 justify-start">
                     {warningProvinces.orange.map(p => (
                       <span key={p} className="px-1.5 py-0.5 bg-orange-950/60 text-orange-300 border border-orange-900/60 rounded text-[9.5px] font-mono">
-                        {p}
+                        {p} ({Math.round(advisoryData.provinces[p]?.rainfall_mm || 0)}mm)
                       </span>
                     ))}
                   </div>
@@ -946,7 +946,7 @@ const WeatherAdvisory = () => {
                   <div className="flex flex-wrap gap-1 justify-start">
                     {warningProvinces.yellow.map(p => (
                       <span key={p} className="px-1.5 py-0.5 bg-yellow-950/50 text-yellow-300 border border-yellow-900/40 rounded text-[9.5px] font-mono">
-                        {p}
+                        {p} ({Math.round(advisoryData.provinces[p]?.rainfall_mm || 0)}mm)
                       </span>
                     ))}
                   </div>
@@ -986,7 +986,7 @@ const WeatherAdvisory = () => {
                   <div className="flex flex-wrap gap-1 justify-start">
                     {warningProvinces.lightBlue.map(p => (
                       <span key={p} className="px-1.5 py-0.5 bg-sky-950/60 text-sky-300 border border-sky-900/60 rounded text-[9.5px] font-mono">
-                        {p}
+                        {p} ({Math.round(advisoryData.provinces[p]?.rainfall_mm || 0)}mm)
                       </span>
                     ))}
                   </div>
