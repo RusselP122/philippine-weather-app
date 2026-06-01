@@ -13,10 +13,10 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/earthquake-data/, '/api/earthquakes.json'),
       },
       '/api/cap-alerts': {
-        target: 'https://data.garbinwx.org',
+        target: 'https://www.panahon.gov.ph',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api\/cap-alerts/, '/api/cap-alerts.json'),
+        rewrite: (path) => path.replace(/^\/api\/cap-alerts/, '/api/v1/cap-alerts?token=sH2S6zIL6jKA7lgffdgyI3kGTZgPjGdiHCsIocAW'),
       },
       '/api/ogimet': {
         target: 'http://www.ogimet.com',

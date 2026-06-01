@@ -6,7 +6,7 @@
         },
         {
             "source": "/api/cap-alerts",
-            "destination": "https://data.garbinwx.org/api/cap-alerts.json"
+            "destination": "https://www.panahon.gov.ph/api/v1/cap-alerts?token=sH2S6zIL6jKA7lgffdgyI3kGTZgPjGdiHCsIocAW"
         },
         {
             "source": "/api/ogimet/:path*",
