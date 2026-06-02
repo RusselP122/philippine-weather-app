@@ -80,8 +80,14 @@ def archive_radar():
             # Retrieve the public URL of the uploaded image
             public_url = supabase.storage.from_("radar-archives").get_public_url(storage_path)
         except Exception as e:
-            print(f"Failed to upload image to Supabase Storage: {e}")
-            continue
+            err_msg = str(e)
+            # If the error is a duplicate (409), the file is already there! We can proceed to database insertion.
+            if "409" in err_msg or "Duplicate" in err_msg or "already exists" in err_msg:
+                print(f"File already exists in storage: {storage_path}. Proceeding to database registration...")
+                public_url = supabase.storage.from_("radar-archives").get_public_url(storage_path)
+            else:
+                print(f"Failed to upload image to Supabase Storage: {e}")
+                continue
 
         # Insert record into database with timezone offset explicitly set
         try:
