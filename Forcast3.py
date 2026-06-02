@@ -133,7 +133,7 @@ ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.8, alpha=0.7, color=
 
 # Add gridlines
 gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
-gl.xlocator = plt.FixedLocator(list(range(105, 181, 5)) + [-175, -170])
+gl.xlocator = plt.FixedLocator(list(range(110, 181, 10)) + [-170])
 gl.ylocator = plt.FixedLocator(np.arange(0, 41, 5))
 gl.xlabel_style = {'size': 12, 'weight': 'bold'}
 gl.ylabel_style = {'size': 12, 'weight': 'bold'}
