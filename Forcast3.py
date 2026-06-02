@@ -121,9 +121,10 @@ if len(init_times) == 0:
 print(f"Found {len(init_times)} forecast initialization times: {init_times}")
 
 # Set up the figure and map projection
+projection = ccrs.PlateCarree(central_longitude=180)
 fig = plt.figure(figsize=(12, 12))
-ax = plt.axes(projection=ccrs.PlateCarree())
-ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
+ax = plt.axes(projection=projection)
+ax.set_extent([-75, 10, 0, 40], crs=projection)
 
 # Add land, ocean, and coastlines
 ax.set_facecolor('#87CEEB')
@@ -132,7 +133,7 @@ ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.8, alpha=0.7, color=
 
 # Add gridlines
 gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
-gl.xlocator = plt.FixedLocator(np.arange(105, 156, 5))
+gl.xlocator = plt.FixedLocator(list(range(105, 181, 5)) + [-175, -170])
 gl.ylocator = plt.FixedLocator(np.arange(0, 41, 5))
 gl.xlabel_style = {'size': 12, 'weight': 'bold'}
 gl.ylabel_style = {'size': 12, 'weight': 'bold'}
@@ -140,22 +141,22 @@ gl.top_labels = False
 gl.right_labels = False
 
 ax.text(
-    118, 13, 'West Philippine\nSea', fontsize=5, color='navy', weight='bold',
-    transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5
+    118 - 180, 13, 'West Philippine\nSea', fontsize=5, color='navy', weight='bold',
+    transform=projection, ha='center', va='center', style='italic', alpha=0.5
 )
 ax.text(
-    130, 20, 'Philippine\nSea', fontsize=9, color='navy', weight='bold',
-    transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5
+    130 - 180, 20, 'Philippine\nSea', fontsize=9, color='navy', weight='bold',
+    transform=projection, ha='center', va='center', style='italic', alpha=0.5
 )
 
 # Add Philippine Area of Responsibility (PAR) boundary
 par_vertices = [
-    (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
-    (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
+    (115.0 - 180, 5.0), (115.0 - 180, 15.0), (120.0 - 180, 21.0), (120.0 - 180, 25.0),
+    (135.0 - 180, 25.0), (135.0 - 180, 5.0), (115.0 - 180, 5.0)
 ]
 ax.add_patch(mpatches.Polygon(par_vertices, facecolor='none', edgecolor='#FF6B35', 
                              linestyle='-', linewidth=3, alpha=0.8, 
-                             transform=ccrs.PlateCarree()))
+                             transform=projection))
 
 # Define function to assign custom colors based on pressure
 def get_pressure_color(pressure):
@@ -189,20 +190,29 @@ for init_time in init_times:
             sample_data = track_data[track_data['sample'] == sample]
             if sample_data.empty:
                 continue
-            # Filter within map extent
-            sample_data = sample_data[(sample_data['lon'] >= 105) & (sample_data['lon'] <= 155) & (sample_data['lat'] >= 0) & (sample_data['lat'] <= 40)]
-            lons = sample_data['lon'].values
+            # Convert negative longitudes to 0-360 range first
+            raw_lons = sample_data['lon'].values
+            raw_lons = np.where(raw_lons < 0, raw_lons + 360, raw_lons)
+            
+            # Now filter using the 0-360 longitudes
+            mask = (raw_lons >= 105) & (raw_lons <= 190) & (sample_data['lat'] >= 0) & (sample_data['lat'] <= 40)
+            sample_data = sample_data[mask]
+            if sample_data.empty:
+                continue
+            lons = raw_lons[mask]
             lats = sample_data['lat'].values
             pressures = sample_data['minimum_sea_level_pressure_hpa'].values
-            # Handle longitude wraparound
-            lons = np.where(lons > 180, lons - 360, lons)
+            
+            # Shift longitudes by 180 for projection=ccrs.PlateCarree(central_longitude=180)
+            lons_shifted = lons - 180.0
+            
             # Validate data
-            if len(lons) < 2 or np.any(np.isnan(lons)) or np.any(np.isnan(lats)):
+            if len(lons_shifted) < 2 or np.any(np.isnan(lons_shifted)) or np.any(np.isnan(lats)):
                 print(f"Warning: Invalid data for track_id {track_id}, sample {sample}, init_time {init_time}. Skipping.")
                 skipped_tracks += 1
                 skipped_details.append(f"track_id {track_id}, sample {sample}, init_time {init_time}")
                 continue
-            lon_diffs = np.abs(np.diff(lons))
+            lon_diffs = np.abs(np.diff(lons_shifted))
             lat_diffs = np.abs(np.diff(lats))
             if np.any(lon_diffs > 10) or np.any(lat_diffs > 10):
                 print(f"Warning: Large jump in track_id {track_id}, sample {sample}, init_time {init_time}. Skipping.")
@@ -211,24 +221,24 @@ for init_time in init_times:
                 continue
             # Plot gray lines for segments
             ax.plot(
-                lons, lats,
+                lons_shifted, lats,
                 color='#404040',
                 linewidth=2.5,
                 alpha=0.7,
-                transform=ccrs.PlateCarree()
+                transform=projection
             )
             # Plot donut markers at each point
-            for i in range(len(lons)):
+            for i in range(len(lons_shifted)):
                 color = get_pressure_color(pressures[i])
                 if color is None:
                     continue
                 # Shadow
-                ax.plot(lons[i], lats[i], color='black', marker='o', markersize=8,
-                        markeredgewidth=0, alpha=0.2, transform=ccrs.PlateCarree())
+                ax.plot(lons_shifted[i], lats[i], color='black', marker='o', markersize=8,
+                        markeredgewidth=0, alpha=0.2, transform=projection)
                 # Colored donut ring (transparent center)
-                ax.plot(lons[i], lats[i], markerfacecolor='none', markeredgecolor=color,
+                ax.plot(lons_shifted[i], lats[i], markerfacecolor='none', markeredgecolor=color,
                         marker='o', markersize=5, markeredgewidth=1.5,
-                        transform=ccrs.PlateCarree())
+                        transform=projection)
             plotted_tracks += 1
 
 # Define pressure ranges with custom colors
