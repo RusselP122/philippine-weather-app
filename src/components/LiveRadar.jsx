@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Loader2
 } from "lucide-react";
+import { supabase } from "../supabaseClient";
 
 // High-fidelity dynamic pixel color swapping helper
 const recolorRadarImage = (imgElement, theme) => {
@@ -364,7 +365,7 @@ const LiveRadar = () => {
   const mapContainerRef = useRef(null);
   const touchStartDistRef = useRef(0);
 
-  // Fetch Radar Timeline Data
+  // Fetch Radar Timeline Data from Supabase
   const fetchTimeline = async (isBackground = false) => {
     if (!isBackground) {
       setIsLoading(true);
@@ -372,19 +373,31 @@ const LiveRadar = () => {
       setError(null);
     }
     try {
-      const response = await fetch(
-        "/api/radar?token=vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k&sublayer=hybrid-reflectivity"
-      );
-      const json = await response.json();
-      if (json.success && json.data && json.data.timeline) {
-        setRawTimeline(json.data.timeline);
+      // Query the latest radar frames from the Supabase database
+      const { data, error } = await supabase
+        .from("radar_frames")
+        .select("observed_at, observed_at_unix, public_url")
+        .order("observed_at_unix", { ascending: false })
+        .limit(playbackFramesCount);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const formatted = data.map((f) => ({
+          observed_at: f.observed_at.split("+")[0].replace("T", " "), // Format "YYYY-MM-DD HH:mm:ss"
+          observed_at_unix: parseInt(f.observed_at_unix, 10),
+          image_url: f.public_url,
+          rawBase64: null // Direct CORS support from Supabase Storage skips canvas taint issues!
+        }));
+        // Sort chronologically for timeline display
+        setRawTimeline(formatted.reverse());
       } else if (!isBackground) {
-        setError("Failed to retrieve radar timeline data.");
+        setError("No radar history records found in database.");
       }
     } catch (err) {
-      console.error(err);
+      console.error("Supabase fetch error:", err);
       if (!isBackground) {
-        setError("Failed to connect to the radar server. Please try again later.");
+        setError("Failed to connect to the radar archive database.");
       }
     } finally {
       if (!isBackground) {
@@ -808,6 +821,10 @@ const LiveRadar = () => {
   // Get the modern, high-res radar-image endpoint URL dynamically
   const getFrameImageSrc = (frame, indexInTimeline) => {
     if (!frame) return "";
+    // If it's already a direct Supabase Storage public URL, return it directly
+    if (frame.image_url && (frame.image_url.includes("supabase.co") || frame.image_url.includes("radar-archives") || !frame.image_url.includes("id="))) {
+      return frame.image_url;
+    }
     const idMatch = frame.image_url.match(/[&?]id=(\d+)/);
     const index = idMatch ? idMatch[1] : indexInTimeline;
     return `https://panahon.gov.ph/api/v1/radar-image?token=vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k&sublayer=hybrid-reflectivity&index=${index}`;

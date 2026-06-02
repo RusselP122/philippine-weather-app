@@ -24,7 +24,8 @@
     "react-scripts": "5.0.1",
     "recharts": "^3.7.0",
     "tailwindcss": "^4.1.14",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "@supabase/supabase-js": "^2.43.0"
   },
   "scripts": {
     "dev": "vite",

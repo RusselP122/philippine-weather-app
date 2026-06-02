@@ -1,0 +1,27 @@
+name: Archive PAGASA Radar Frames
+on:
+  schedule:
+    - cron: '*/20 * * * *' # Run every 20 minutes
+  workflow_dispatch: # Allows manual triggering from the GitHub UI
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests supabase
+
+      - name: Run Archiver
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python archive_radar.py
