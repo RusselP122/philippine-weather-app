@@ -424,7 +424,8 @@ const Forecast = () => {
                           <img
                             src={image}
                             alt={`Grid compare track for ${info.name}`}
-                            className="w-full h-full object-contain"
+                            className="w-full h-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => setEnlargedImage(image)}
                           />
                           <button
                             onClick={() => setEnlargedImage(image)}
@@ -469,7 +470,8 @@ const Forecast = () => {
                     <img
                       src={imageSrc}
                       alt={`Forecast track for ${current.label}`}
-                      className="h-full w-full object-contain cursor-pointer transition-opacity"
+                      className="h-full w-full object-contain cursor-pointer transition-opacity hover:opacity-90"
+                      onClick={() => setEnlargedImage(imageSrc)}
                     />
                     <button
                       onClick={() => setEnlargedImage(imageSrc)}
