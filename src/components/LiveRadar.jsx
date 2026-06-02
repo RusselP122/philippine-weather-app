@@ -439,9 +439,37 @@ const LiveRadar = () => {
         }
       });
 
+      // Helper to safely obtain Unix timestamp for chronological sorting & gap detection
+      const getUnixTimestamp = (f) => {
+        if (f.observed_at_unix) return f.observed_at_unix;
+        try {
+          const d = new Date(f.observed_at.replace(" ", "T") + "+08:00");
+          return Math.floor(d.getTime() / 1000);
+        } catch (e) {
+          return 0;
+        }
+      };
+
       // Convert to array and sort chronologically
-      const merged = Array.from(mergedMap.values())
-        .sort((a, b) => a.observed_at_unix - b.observed_at_unix);
+      let merged = Array.from(mergedMap.values())
+        .sort((a, b) => getUnixTimestamp(a) - getUnixTimestamp(b));
+
+      // Prune large gaps: if there is a gap of > 2 hours (7200 seconds) between consecutive frames,
+      // discard older frames to prevent jarring jumps in the loop animation.
+      const GAP_THRESHOLD_SECONDS = 2 * 60 * 60; // 2 hours
+      if (merged.length > 0) {
+        const contiguousFromLatest = [merged[merged.length - 1]];
+        for (let i = merged.length - 2; i >= 0; i--) {
+          const current = merged[i];
+          const next = merged[i + 1];
+          const gap = getUnixTimestamp(next) - getUnixTimestamp(current);
+          if (gap > GAP_THRESHOLD_SECONDS) {
+            break; // Stop accumulating older frames beyond the data outage gap
+          }
+          contiguousFromLatest.push(current);
+        }
+        merged = contiguousFromLatest.reverse();
+      }
 
       // Keep only up to the maximum possible depth (36 frames) to optimize RAM
       const sliced = merged.slice(-36);
