@@ -1,16 +1,26 @@
 import { createClient } from "@supabase/supabase-js";
 
-// Initialize Supabase using Vercel server-side environment variables
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
 export default async function handler(req, res) {
   // Simple token authorization check to prevent malicious spamming of the endpoint
   const { auth } = req.query;
   if (auth !== "vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k") {
     return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    return res.status(500).json({ 
+      error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in your Vercel project environment settings. Please configure them in the Vercel Dashboard!"
+    });
+  }
+
+  let supabase;
+  try {
+    supabase = createClient(supabaseUrl, supabaseKey);
+  } catch (err) {
+    return res.status(500).json({ error: `Failed to initialize Supabase client: ${err.message}` });
   }
 
   try {
@@ -48,12 +58,14 @@ export default async function handler(req, res) {
 
       console.log(`New Frame Detected: ${observed_at}. Archiving...`);
 
-      // 3. Download the raw PNG image from PAGASA as a Blob
+      // 3. Download the raw PNG image from PAGASA as an ArrayBuffer
       const imgRes = await fetch(
         `https://panahon.gov.ph/api/v1/radar-image?token=vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k&sublayer=hybrid-reflectivity&index=${pagasaIndex}`
       );
       if (!imgRes.ok) continue;
-      const imgBlob = await imgRes.blob();
+      
+      // Convert to ArrayBuffer which has maximum node serverless runtime compatibility
+      const imgBuffer = await imgRes.arrayBuffer();
 
       // 4. Upload image to Supabase Storage (public/radar-archives)
       const dateFolder = observed_at.split(" ")[0];
@@ -61,7 +73,7 @@ export default async function handler(req, res) {
 
       const { error: uploadError } = await supabase.storage
         .from("radar-archives")
-        .upload(storagePath, imgBlob, {
+        .upload(storagePath, imgBuffer, {
           contentType: "image/png",
           upsert: true // Handles duplicate uploads cleanly
         });
