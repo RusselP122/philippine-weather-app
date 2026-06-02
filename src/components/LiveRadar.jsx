@@ -383,8 +383,26 @@ const LiveRadar = () => {
       if (error) throw error;
 
       if (data && data.length > 0) {
+        // Helper to convert DB ISO timestamp (stored as UTC) to standard PHT (UTC+8) format
+        const formatToPHT = (isoStr) => {
+          try {
+            const d = new Date(isoStr);
+            const phtOffsetMs = 8 * 60 * 60 * 1000; // +8 hours
+            const phtDate = new Date(d.getTime() + phtOffsetMs);
+            const year = phtDate.getUTCFullYear();
+            const month = String(phtDate.getUTCMonth() + 1).padStart(2, "0");
+            const day = String(phtDate.getUTCDate()).padStart(2, "0");
+            const hours = String(phtDate.getUTCHours()).padStart(2, "0");
+            const minutes = String(phtDate.getUTCMinutes()).padStart(2, "0");
+            const seconds = String(phtDate.getUTCSeconds()).padStart(2, "0");
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+          } catch (e) {
+            return isoStr.split("+")[0].replace("T", " ");
+          }
+        };
+
         const formatted = data.map((f) => ({
-          observed_at: f.observed_at.split("+")[0].replace("T", " "), // Format "YYYY-MM-DD HH:mm:ss"
+          observed_at: formatToPHT(f.observed_at), // Convert database timestamp to PHT (UTC+8)
           observed_at_unix: parseInt(f.observed_at_unix, 10),
           image_url: f.public_url,
           rawBase64: null // Direct CORS support from Supabase Storage skips canvas taint issues!
