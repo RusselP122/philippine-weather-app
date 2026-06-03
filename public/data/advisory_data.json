@@ -3,7 +3,7 @@
   "validity": "02:00 AM, 04 June 2026 to 02:00 AM, 05 June 2026",
   "system": "ECMWF Consensus Blend",
   "init_time": "2026-06-03 08:00 PM (PHT)",
-  "generated_at": "2026-06-04 06:18 AM (PHT)",
+  "generated_at": "2026-06-04 06:55 AM (PHT)",
   "provinces": {
     "Abra": {
       "rainfall_mm": 15.4
