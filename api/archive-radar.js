@@ -26,7 +26,13 @@ export default async function handler(req, res) {
   try {
     // 1. Fetch current timeline from PAGASA
     const timelineRes = await fetch(
-      "https://www.panahon.gov.ph/api/v1/radar/timeline?token=vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k&sublayer=hybrid-reflectivity"
+      "https://www.panahon.gov.ph/api/v1/radar/timeline?token=vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k&sublayer=hybrid-reflectivity",
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Referer": "https://www.panahon.gov.ph/"
+        }
+      }
     );
     const data = await timelineRes.json();
     if (!data.success || !data.data || !data.data.timeline) {
@@ -60,7 +66,13 @@ export default async function handler(req, res) {
 
       // 3. Download the raw PNG image from PAGASA as an ArrayBuffer
       const imgRes = await fetch(
-        `https://panahon.gov.ph/api/v1/radar-image?token=vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k&sublayer=hybrid-reflectivity&index=${pagasaIndex}`
+        `https://www.panahon.gov.ph/api/v1/radar-image?token=vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k&sublayer=hybrid-reflectivity&index=${pagasaIndex}`,
+        {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.panahon.gov.ph/"
+          }
+        }
       );
       if (!imgRes.ok) continue;
       

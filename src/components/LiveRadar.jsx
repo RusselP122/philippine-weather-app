@@ -55,40 +55,46 @@ const recolorRadarImage = (imgElement, theme) => {
 
       // Classify PAGASA storm cell colors
       let colorType = "green"; // Light rain default
-      if (b > g && b > r * 0.9) {
-        colorType = "blue";
-      } else if (r > 155 && b > 155 && g < 135) {
+      if (g > 200 && b > 200 && r > 100 && r < 160) {
+        colorType = "clutter";
+      } else if (r > 150 && b > 150 && g < 135) {
         colorType = "purple";
-      } else if (r > 180 && g < 110 && b < 115) {
+      } else if (r > 140 && g < 50 && b < 50) {
         colorType = "red";
-      } else if (r > 150 && g > 110 && b < 100) {
+      } else if (r > 200 && g > 120 && b < 100) {
         colorType = "yellow";
-      } else if (g > r * 0.8 && g > b) {
+      } else if (b > g && b > r * 0.9) {
+        colorType = "blue";
+      } else if (g > r && g > b) {
         colorType = "green";
       }
 
       let targetHex = "";
       if (theme === "vaporwave") {
-        if (colorType === "blue") targetHex = "#00f0ff";
+        if (colorType === "clutter") targetHex = "#1c1533";
+        else if (colorType === "blue") targetHex = "#00f0ff";
         else if (colorType === "green") targetHex = "#05d9e8";
         else if (colorType === "yellow") targetHex = "#ff2a74";
         else if (colorType === "red") targetHex = "#ff007f";
         else if (colorType === "purple") targetHex = "#ab00cd";
       } else if (theme === "storm") {
-        if (colorType === "blue") targetHex = "#1e3a8a";
+        if (colorType === "clutter") targetHex = "#20181b";
+        else if (colorType === "blue") targetHex = "#1e3a8a";
         else if (colorType === "green") targetHex = "#047857";
         else if (colorType === "yellow") targetHex = "#d97706";
         else if (colorType === "red") targetHex = "#dc2626";
         else if (colorType === "purple") targetHex = "#701a75";
       } else if (theme === "retro") {
-        if (colorType === "blue") targetHex = "#14532d";
+        if (colorType === "clutter") targetHex = "#041f0f";
+        else if (colorType === "blue") targetHex = "#14532d";
         else if (colorType === "green") targetHex = "#15803d";
         else if (colorType === "yellow") targetHex = "#22c55e";
         else if (colorType === "red") targetHex = "#4ade80";
         else if (colorType === "purple") targetHex = "#86efac";
       } else if (theme === "custom") {
         // High-fidelity custom color palette provided by user (mapping classes to customized levels)
-        if (colorType === "blue") targetHex = "#0a6f87";      // 10 dBZ: rgb(10, 111, 135)
+        if (colorType === "clutter") targetHex = "#075163";      // Clutter / Lowest dBZ
+        else if (colorType === "blue") targetHex = "#0a6f87";      // 10 dBZ: rgb(10, 111, 135)
         else if (colorType === "green") targetHex = "#31ab12";   // 20 dBZ: rgb(49, 171, 18)
         else if (colorType === "yellow") targetHex = "#f0ec00";  // 35 dBZ: rgb(240, 236, 0)
         else if (colorType === "red") targetHex = "#ff0000";     // 50 dBZ: rgb(255, 0, 0)
@@ -154,11 +160,28 @@ const LiveRadar = () => {
   const [activeFrameIndex, setActiveFrameIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isPreloading, setIsPreloading] = useState(false);
+  const [isInteractiveLoading, setIsInteractiveLoading] = useState(false);
   const [error, setError] = useState(null);
 
   // Custom Radar Color Palette Themes State
   const [colorTheme, setColorTheme] = useState("custom");
   const [cachedFrameUrls, setCachedFrameUrls] = useState({});
+
+  const saveTimelineToLocalStorage = (timelineArray) => {
+    try {
+      if (typeof window !== "undefined") {
+        // Strip out large rawBase64 data URLs to prevent QuotaExceededError
+        const pruned = timelineArray.map(({ observed_at, observed_at_unix, image_url }) => ({
+          observed_at,
+          observed_at_unix,
+          image_url
+        }));
+        window.localStorage.setItem("radar_accumulated_timeline", JSON.stringify(pruned));
+      }
+    } catch (e) {
+      console.error("Failed to save radar timeline:", e);
+    }
+  };
 
   // Map GeoJSON data for aligned background projection
   const [geoData, setGeoData] = useState(null);
@@ -366,7 +389,7 @@ const LiveRadar = () => {
   const touchStartDistRef = useRef(0);
 
   // Fetch Radar Timeline Data from Supabase
-  const fetchTimeline = async (isBackground = false) => {
+  const fetchTimeline = async (isBackground = false, targetCount = playbackFramesCount) => {
     if (!isBackground) {
       setIsLoading(true);
       setIsPlaying(false);
@@ -378,7 +401,7 @@ const LiveRadar = () => {
         .from("radar_frames")
         .select("observed_at, observed_at_unix, public_url")
         .order("observed_at_unix", { ascending: false })
-        .limit(playbackFramesCount);
+        .limit(targetCount);
 
       if (error) throw error;
 
@@ -409,14 +432,18 @@ const LiveRadar = () => {
         }));
         // Sort chronologically for timeline display
         setRawTimeline(formatted.reverse());
-      } else if (!isBackground) {
-        setError("No radar history records found in database.");
+      } else {
+        if (!isBackground) {
+          setError("No radar history records found in database.");
+        }
+        setIsInteractiveLoading(false);
       }
     } catch (err) {
       console.error("Supabase fetch error:", err);
       if (!isBackground) {
         setError("Failed to connect to the radar archive database.");
       }
+      setIsInteractiveLoading(false);
     } finally {
       if (!isBackground) {
         setIsLoading(false);
@@ -505,13 +532,7 @@ const LiveRadar = () => {
       // Keep only up to the maximum possible depth (36 frames) to optimize RAM
       const sliced = merged.slice(-36);
 
-      try {
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("radar_accumulated_timeline", JSON.stringify(sliced));
-        }
-      } catch (e) {
-        console.error("Failed to save radar timeline:", e);
-      }
+      saveTimelineToLocalStorage(sliced);
 
       return sliced;
     });
@@ -569,7 +590,7 @@ const LiveRadar = () => {
       return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = "anonymous";
-        
+
         // If we already have the raw base64 data cached, load it instantly without network requests!
         if (frame.rawBase64) {
           img.src = frame.rawBase64;
@@ -581,6 +602,10 @@ const LiveRadar = () => {
         const timeoutId = setTimeout(() => {
           if (active) {
             currentCache[cacheKey] = img.src;
+            setCachedFrameUrls((prev) => ({
+              ...prev,
+              [cacheKey]: img.src
+            }));
           }
           resolve();
         }, 10000);
@@ -608,12 +633,20 @@ const LiveRadar = () => {
 
           const dataUrl = recolorRadarImage(img, colorTheme);
           currentCache[cacheKey] = dataUrl;
+          setCachedFrameUrls((prev) => ({
+            ...prev,
+            [cacheKey]: dataUrl
+          }));
           resolve();
         };
         img.onerror = () => {
           clearTimeout(timeoutId);
           if (active) {
             currentCache[cacheKey] = img.src;
+            setCachedFrameUrls((prev) => ({
+              ...prev,
+              [cacheKey]: img.src
+            }));
           }
           resolve();
         };
@@ -648,11 +681,7 @@ const LiveRadar = () => {
         });
 
         if (updated) {
-          try {
-            window.localStorage.setItem("radar_accumulated_timeline", JSON.stringify(next));
-          } catch (e) {
-            console.error("Failed to save updated timeline with base64 cache:", e);
-          }
+          saveTimelineToLocalStorage(next);
         }
         return next;
       });
@@ -679,6 +708,7 @@ const LiveRadar = () => {
       }
 
       setIsPreloading(false);
+      setIsInteractiveLoading(false);
     });
 
     return () => {
@@ -880,6 +910,13 @@ const LiveRadar = () => {
     }
   };
 
+  const loadedFramesProgress = useMemo(() => {
+    if (playbackFramesCount === 0) return { loaded: 0, total: 0 };
+    const targetFrames = preloadingFrames.length > 0 ? preloadingFrames : accumulatedTimeline.slice(-playbackFramesCount);
+    const loaded = targetFrames.filter(f => cachedFrameUrls[f.observed_at]).length;
+    return { loaded, total: playbackFramesCount };
+  }, [preloadingFrames, accumulatedTimeline, playbackFramesCount, cachedFrameUrls]);
+
   const activeTimeFormatted = formatFrameTime(frames[activeFrameIndex]?.observed_at);
 
   return (
@@ -896,10 +933,12 @@ const LiveRadar = () => {
                 <Loader2 className="h-10 w-10 text-blue-500 animate-spin" />
                 <span className="text-sm font-semibold text-slate-400">Loading Radar Timeline...</span>
               </div>
-            ) : (isPreloading && Object.keys(cachedFrameUrls).length === 0) ? (
+            ) : (isInteractiveLoading || (isPreloading && Object.keys(cachedFrameUrls).length === 0)) ? (
               <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-40">
                 <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
-                <span className="text-xs font-semibold text-slate-300">Preloading timeline frames to prevent flicker...</span>
+                <span className="text-xs font-semibold text-slate-300">
+                  Waiting to load frames... ({loadedFramesProgress.loaded}/{loadedFramesProgress.total})
+                </span>
               </div>
             ) : null}
 
@@ -1057,7 +1096,7 @@ const LiveRadar = () => {
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2.5 text-slate-500">
                 <span>GRID: EPSG:4326 (WGS84)</span>
                 <span>MODE: HYBRID REFL</span>
-                <span>SOURCE: Subic Doppler Mosaic</span>
+                <span>SOURCE: National wide Doppler Radar</span>
                 <span>RESOLUTION: 1020x1393</span>
               </div>
             </div>
@@ -1112,7 +1151,7 @@ const LiveRadar = () => {
                   className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
-                  Sync Data
+                  Refresh
                 </button>
                 <button
                   onClick={resetZoom}
@@ -1195,8 +1234,14 @@ const LiveRadar = () => {
                   <button
                     key={num}
                     onClick={() => {
-                      setIsPlaying(false);
-                      setPlaybackFramesCount(num);
+                      if (playbackFramesCount !== num) {
+                        setIsPlaying(false);
+                        setPlaybackFramesCount(num);
+                        setIsInteractiveLoading(true);
+                        setTimeout(() => {
+                          fetchTimeline(true, num);
+                        }, 50);
+                      }
                     }}
                     className={`py-2 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${playbackFramesCount === num
                       ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/30"
@@ -1250,7 +1295,7 @@ const LiveRadar = () => {
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
                   </span>
                   <span className="text-slate-400 text-[10px] tracking-wide">
-                    FRAME INDEX: <strong className="text-cyan-400">{activeFrameIndex + 1}</strong> OF <strong>{frames.length}</strong>
+                    FRAME TOTAL: <strong className="text-cyan-400">{activeFrameIndex + 1}</strong> OF <strong>{frames.length}</strong>
                   </span>
                 </div>
                 <span className="text-[10px] text-amber-400 tracking-wide">
