@@ -996,7 +996,6 @@ const LiveRadar = () => {
             <div className="absolute bottom-2 right-2 md:bottom-4 md:right-4 z-30 flex flex-col items-end text-[6.5px] md:text-[9px] text-slate-400 opacity-65 md:opacity-100 font-medium leading-tight md:leading-normal pointer-events-none select-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">
               <span>Imagery from PAGASA PANAHON</span>
               <span>Data processed by PT/W</span>
-              <span>Licensed under CC BY-SA 4.0</span>
             </div>
 
             {/* Main Radar Frame Renderer with aligned SVG province map layer underneath */}

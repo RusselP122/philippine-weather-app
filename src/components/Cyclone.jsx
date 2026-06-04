@@ -1583,7 +1583,6 @@ const Cyclone = () => {
   const [strikeDay, setStrikeDay] = useState(15);
   const [strikeMeta, setStrikeMeta] = useState(null);
   const [isStrikePlaying, setIsStrikePlaying] = useState(false);
-
   const [showTimelineControls, setShowTimelineControls] = useState(true);
   const [isLegendOpen, setIsLegendOpen] = useState(() => {
     if (typeof window !== "undefined") {
@@ -1690,7 +1689,7 @@ const Cyclone = () => {
           zoom={5}
           scrollWheelZoom={true}
           worldCopyJump={false}
-          maxBounds={[[-5.0, 100.0], [40.0, 160.0]]}
+          maxBounds={[[-20.0, 90.0], [50.0, 180.0]]}
           maxBoundsViscosity={1.0}
           minZoom={4}
           className="w-full h-full"
@@ -1767,48 +1766,6 @@ const Cyclone = () => {
             })()}
           </LeafletCustomControl>
 
-          {showStrikeProb && (
-            <LeafletCustomControl position="topleft">
-              <div className="mt-2 rounded-xl border border-slate-700/60 bg-slate-950/85 backdrop-blur-md shadow-xl overflow-hidden w-[180px] sm:w-[200px] pointer-events-auto">
-                <div className="px-3 py-1.5 border-b border-slate-700/50 bg-slate-900/70 text-left">
-                  <span className="text-[10px] font-bold text-slate-200">Strike Probability Legend</span>
-                </div>
-                <div className="p-3 bg-slate-900/40 space-y-2">
-                  {/* Continuous gradient bar */}
-                  <div
-                    className="h-2 w-full rounded"
-                    style={{ background: "linear-gradient(to right, #38bdf8, #34d399, #facc15, #f97316, #dc2626)" }}
-                  />
-                  {/* Labels */}
-                  <div className="flex justify-between text-[8px] text-slate-400 font-mono">
-                    <span>5%</span>
-                    <span className="text-yellow-400">30%</span>
-                    <span className="text-orange-400">50%</span>
-                    <span className="text-red-400">70%</span>
-                    <span>80%</span>
-                  </div>
-                  <div className="h-px bg-slate-800 my-1.5" />
-                  <div className="space-y-1">
-                    {[
-                      { color: "#475569", range: "5–10%", label: "Low signal" },
-                      { color: "#38bdf8", range: "10–20%", label: "Signal above baseline" },
-                      { color: "#34d399", range: "20–30%", label: "Emerging risk" },
-                      { color: "#facc15", range: "30–50%", label: "Actionable watch" },
-                      { color: "#f97316", range: "50–70%", label: "High likelihood" },
-                      { color: "#dc2626", range: "70–80%", label: "Dominant corridor" },
-                    ].map(({ color, range, label }) => (
-                      <div key={range} className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: color }} />
-                        <span className="text-[8px] font-mono text-slate-400 w-8">{range}</span>
-                        <span className="text-[8.5px] text-slate-300 truncate">{label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </LeafletCustomControl>
-          )}
-
           <LeafletCustomControl position="topright">
             <div id="radar-controls-container" className="flex flex-col items-end">
               <button
@@ -1882,7 +1839,13 @@ const Cyclone = () => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setShowEnsemble(!showEnsemble);
+                    const nextVal = !showEnsemble;
+                    setShowEnsemble(nextVal);
+                    if (nextVal) {
+                      setShowOutlookWeek1(false);
+                      setShowOutlookWeek2(false);
+                      setShowStrikeProb(false);
+                    }
                   }}
                   className={`rounded px-2 py-1 text-xs font-medium text-left cursor-pointer transition ${showEnsemble ? "bg-cyan-900/60 text-cyan-100 outline outline-1 outline-cyan-500/50" : "text-slate-100 hover:bg-slate-700"
                     }`}
@@ -1892,7 +1855,13 @@ const Cyclone = () => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setShowOutlookWeek1(!showOutlookWeek1);
+                    const nextVal = !showOutlookWeek1;
+                    setShowOutlookWeek1(nextVal);
+                    if (nextVal) {
+                      setShowEnsemble(false);
+                      setShowOutlookWeek2(false);
+                      setShowStrikeProb(false);
+                    }
                   }}
                   className={`rounded px-2 py-1 text-xs font-medium text-left cursor-pointer transition ${showOutlookWeek1 ? "bg-cyan-900/60 text-cyan-100 outline outline-1 outline-cyan-500/50" : "text-slate-100 hover:bg-slate-700"
                     }`}
@@ -1902,7 +1871,13 @@ const Cyclone = () => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setShowOutlookWeek2(!showOutlookWeek2);
+                    const nextVal = !showOutlookWeek2;
+                    setShowOutlookWeek2(nextVal);
+                    if (nextVal) {
+                      setShowEnsemble(false);
+                      setShowOutlookWeek1(false);
+                      setShowStrikeProb(false);
+                    }
                   }}
                   className={`rounded px-2 py-1 text-xs font-medium text-left cursor-pointer transition ${showOutlookWeek2 ? "bg-amber-900/60 text-amber-100 outline outline-1 outline-amber-500/50" : "text-slate-100 hover:bg-slate-700"
                     }`}
@@ -1912,7 +1887,13 @@ const Cyclone = () => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setShowStrikeProb(!showStrikeProb);
+                    const nextVal = !showStrikeProb;
+                    setShowStrikeProb(nextVal);
+                    if (nextVal) {
+                      setShowEnsemble(false);
+                      setShowOutlookWeek1(false);
+                      setShowOutlookWeek2(false);
+                    }
                   }}
                   className={`rounded px-2 py-1 text-xs font-medium text-left cursor-pointer transition ${showStrikeProb ? "bg-cyan-900/60 text-cyan-100 outline outline-1 outline-cyan-500/50" : "text-slate-100 hover:bg-slate-700"
                     }`}
@@ -1971,6 +1952,21 @@ const Cyclone = () => {
             onMouseDown={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
+            {/* Strike Probability Gradient Bar Legend at the top of the dock */}
+            <div className="w-full flex flex-col px-1 mb-3">
+              <div
+                className="h-1.5 w-full rounded-full"
+                style={{ background: "linear-gradient(to right, #38bdf8, #34d399, #facc15, #f97316, #dc2626)" }}
+              />
+              <div className="flex justify-between text-[8px] sm:text-[9px] text-slate-400 font-mono mt-1 px-0.5">
+                <span>5% Prob</span>
+                <span className="text-yellow-400">30% (Watch)</span>
+                <span className="text-orange-400">50% (High)</span>
+                <span className="text-red-400">70% (Dominant)</span>
+                <span>80%+</span>
+              </div>
+            </div>
+
             <div className="flex w-full items-center justify-between mb-2 sm:mb-3 px-1">
               <button
                 onClick={() => {
