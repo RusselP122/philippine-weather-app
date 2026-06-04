@@ -65,8 +65,7 @@ const Navbar = () => {
         { label: "Tropical Cyclone Track", href: "/cyclone" },
         { label: "Tropical Cyclone Prediction", href: "/tc-prediction" },
         { label: "Tropical Cyclone Info", href: "/tc-info" },
-        { label: "Warning", href: "/warning" },
-        { label: "Tropical Cyclone Strike Probability", href: "/strike-probability" }
+        { label: "Warning", href: "/warning" }
       ]
     },
     {

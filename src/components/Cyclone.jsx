@@ -487,18 +487,6 @@ const CycloneMapLogic = () => {
         };
       });
 
-      if (data.length > 0) {
-        const first = data[0];
-        const parts = first.interp_sector_file.split(/\s+/);
-        if (parts.length >= 6) {
-          const lat = parseFloat(parts[4]);
-          const lon = parseFloat(parts[5]);
-          if (!isNaN(lat) && !isNaN(lon)) {
-            map.panTo([lat, lon]);
-          }
-        }
-      }
-
       if (loadingIndicator) {
         loadingIndicator.classList.add("hidden");
       }
@@ -752,7 +740,7 @@ const CycloneMapLogic = () => {
       timestampEl.innerHTML = `${pastOrForecast}: ${new Date(
         nextFrame.time * 1000
       ).toLocaleString()}`;
-      
+
       updateSliderUI();
     }
 
@@ -1329,6 +1317,253 @@ const EnsembleLayerLogic = ({ data }) => {
   return null;
 };
 
+// Map overlay layer for Tropical Weather Outlook (Week 1 & 2)
+const OutlookLayerLogic = ({ data, onSelectArea, week }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (!map || !data) return;
+
+    const layerGroup = L.layerGroup().addTo(map);
+
+    // Active TCs in Outlook
+    if (data.active_tcs && data.active_tcs.length > 0) {
+      data.active_tcs.forEach(tc => {
+        if (tc.polygons && tc.polygons.length > 0) {
+          tc.polygons.forEach(coords => {
+            const poly = L.polygon(coords, {
+              color: tc.color,
+              weight: 2.5,
+              opacity: 0.8,
+              fillColor: tc.color,
+              fillOpacity: 0.25,
+            });
+
+            poly.on('mouseover', () => {
+              poly.setStyle({
+                fillOpacity: 0.4,
+                weight: 3.5
+              });
+            });
+
+            poly.on('mouseout', () => {
+              poly.setStyle({
+                fillOpacity: 0.25,
+                weight: 2.5
+              });
+            });
+
+            poly.on('click', (e) => {
+              L.DomEvent.stopPropagation(e);
+              onSelectArea({
+                id: tc.track_id,
+                isTC: true,
+                week: week,
+                color: tc.color,
+                label: tc.label || "Active Tropical Cyclone Area",
+                summary: `Active FNV3 ensemble track ID ${tc.track_id} centered at ${tc.center[0].toFixed(2)}°N, ${tc.center[1].toFixed(2)}°E.`,
+                initialization: data.initialization
+              });
+            });
+
+            poly.addTo(layerGroup);
+          });
+        }
+      });
+    }
+
+    // Development Areas
+    if (data.areas && data.areas.length > 0) {
+      data.areas.forEach(area => {
+        if (area.polygons && area.polygons.length > 0) {
+          area.polygons.forEach(coords => {
+            const poly = L.polygon(coords, {
+              color: area.color,
+              weight: 2,
+              opacity: 0.8,
+              fillColor: area.color,
+              fillOpacity: 0.3,
+              dashArray: '5, 5'
+            });
+
+            poly.on('mouseover', () => {
+              poly.setStyle({
+                fillOpacity: 0.45,
+                weight: 3,
+                dashArray: ''
+              });
+            });
+
+            poly.on('mouseout', () => {
+              poly.setStyle({
+                fillOpacity: 0.3,
+                weight: 2,
+                dashArray: '5, 5'
+              });
+            });
+
+            poly.on('click', (e) => {
+              L.DomEvent.stopPropagation(e);
+              onSelectArea({
+                id: area.id,
+                week: week,
+                probability_2day: area.probability_2day,
+                probability_7day: area.probability_7day,
+                category_2day: area.category_2day,
+                category_7day: area.category_7day,
+                color: area.color,
+                stage: area.stage,
+                summary: area.summary,
+                initialization: data.initialization
+              });
+            });
+
+            poly.addTo(layerGroup);
+          });
+        }
+      });
+    }
+
+    return () => {
+      layerGroup.remove();
+    };
+  }, [map, data, onSelectArea, week]);
+
+  return null;
+};
+
+// Map overlay layer for Strike Probability
+const StrikeProbabilityLayerLogic = ({ variable, day, onLoadMeta }) => {
+  const map = useMap();
+  const layerGroupRef = useRef(null);
+
+  useEffect(() => {
+    fetch('/data/strike_prob/meta.json')
+      .then(res => res.json())
+      .then(onLoadMeta)
+      .catch(() => {});
+  }, [onLoadMeta]);
+
+  useEffect(() => {
+    if (!map || !variable || !day) return;
+
+    if (!layerGroupRef.current) {
+      layerGroupRef.current = L.layerGroup().addTo(map);
+    }
+    const layerGroup = layerGroupRef.current;
+    layerGroup.clearLayers();
+
+    const getColor = (val) => {
+      if (val < 0.05) return null;
+      if (val < 0.10) return "#475569";
+      if (val < 0.20) return "#38bdf8";
+      if (val < 0.30) return "#34d399";
+      if (val < 0.50) return "#facc15";
+      if (val < 0.70) return "#f97316";
+      return "#dc2626";
+    };
+    const getFillOpacity = (val) => {
+      if (val < 0.10) return 0.25;
+      return 0.60;
+    };
+
+    const THRESHOLD_COLORS = {
+      "0.3": { color: "#facc15", label: "30%" },
+      "0.5": { color: "#f97316", label: "50%" },
+      "0.7": { color: "#dc2626", label: "70%" },
+    };
+
+    const url = `/data/strike_prob/${variable}_day${day}.json`;
+    fetch(url)
+      .then(res => {
+        if (!res.ok) throw new Error("Not found");
+        return res.json();
+      })
+      .then(geojsonData => {
+        if (geojsonData.features && geojsonData.features.length > 0) {
+          L.geoJSON(geojsonData, {
+            style: (feature) => {
+              const title = feature.properties.title || "";
+              const lower = parseFloat(title.split("-")[0].trim());
+              const fillCol = getColor(isNaN(lower) ? 0 : lower);
+              if (!fillCol) return { fillOpacity: 0, weight: 0, opacity: 0 };
+
+              return {
+                fillColor: fillCol,
+                fillOpacity: getFillOpacity(isNaN(lower) ? 0 : lower),
+                color: "rgba(0,0,0,0.08)",
+                weight: 0.3,
+                opacity: 1.0
+              };
+            },
+            onEachFeature: (feature, layer) => {
+              const title = feature.properties.title || "";
+              const lower = parseFloat(title.split("-")[0].trim());
+              const upper = parseFloat((title.split("-")[1] || "").trim());
+
+              const pctLow = isNaN(lower) ? "?" : (lower * 100).toFixed(0);
+              const pctHigh = isNaN(upper) ? "?" : Math.min(upper * 100, 80).toFixed(0);
+              const label = pctHigh === "?" ? pctLow + "%" : pctLow + "–" + pctHigh + "%";
+
+              layer.bindTooltip(
+                `<div style='font-family:monospace;font-size:12px;padding:2px 6px'>
+                  <strong>${label} probability</strong>
+                </div>`,
+                { sticky: true, opacity: 0.9, direction: "top" }
+              );
+
+              const key = isNaN(lower) ? "" : lower.toFixed(1);
+              if (THRESHOLD_COLORS[key]) {
+                const t = THRESHOLD_COLORS[key];
+                layer.setStyle({
+                  color: t.color,
+                  weight: 1.5,
+                  opacity: 0.9,
+                  dashArray: "4 3"
+                });
+              }
+            }
+          }).addTo(layerGroup);
+        }
+      })
+      .catch(() => {});
+
+  }, [map, variable, day]);
+
+  useEffect(() => {
+    return () => {
+      if (layerGroupRef.current && map) {
+        map.removeLayer(layerGroupRef.current);
+        layerGroupRef.current = null;
+      }
+    };
+  }, [map]);
+
+  return null;
+};
+
+// Map click listener to clear selected area
+const MapClickHandler = ({ onMapClick }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (!map) return;
+    const onClick = () => {
+      onMapClick();
+    };
+    map.on("click", onClick);
+    return () => {
+      map.off("click", onClick);
+    };
+  }, [map, onMapClick]);
+  return null;
+};
+
+const getBadgeColor = (prob) => {
+  if (prob < 20) return "#475569"; // Gray
+  if (prob < 40) return "#eab308"; // Yellow (Low)
+  if (prob <= 60) return "#f97316"; // Orange (Medium)
+  return "#ef4444"; // Red (High)
+};
+
 const Cyclone = () => {
   const center = [12.8797, 121.774]; // Approx center of the Philippines
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -1339,7 +1574,23 @@ const Cyclone = () => {
   };
 
   const [showEnsemble, setShowEnsemble] = useState(true);
+  const [showOutlookWeek1, setShowOutlookWeek1] = useState(false);
+  const [showOutlookWeek2, setShowOutlookWeek2] = useState(false);
+  const [selectedArea, setSelectedArea] = useState(null);
+
+  const [showStrikeProb, setShowStrikeProb] = useState(false);
+  const [strikeVariable, setStrikeVariable] = useState("34_knot_strike_probability");
+  const [strikeDay, setStrikeDay] = useState(15);
+  const [strikeMeta, setStrikeMeta] = useState(null);
+  const [isStrikePlaying, setIsStrikePlaying] = useState(false);
+
   const [showTimelineControls, setShowTimelineControls] = useState(true);
+  const [isLegendOpen, setIsLegendOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth >= 768;
+    }
+    return true;
+  });
 
   // ── Ensemble Track JSON ──────────────────────────────────────────────────────
   const [ensembleData, setEnsembleData] = useState(null);
@@ -1348,6 +1599,22 @@ const Cyclone = () => {
       .then(r => r.json())
       .then(d => setEnsembleData(d))
       .catch(() => setEnsembleData(null));
+  }, []);
+
+  // ── Outlook JSONs ──────────────────────────────────────────────────────
+  const [outlookWeek1Data, setOutlookWeek1Data] = useState(null);
+  const [outlookWeek2Data, setOutlookWeek2Data] = useState(null);
+
+  useEffect(() => {
+    fetch("/data/tropical_outlook_week1.json")
+      .then(r => r.json())
+      .then(d => setOutlookWeek1Data(d))
+      .catch(() => setOutlookWeek1Data(null));
+
+    fetch("/data/tropical_outlook_week2.json")
+      .then(r => r.json())
+      .then(d => setOutlookWeek2Data(d))
+      .catch(() => setOutlookWeek2Data(null));
   }, []);
 
   // Wind kt → category color (matches enemble.py palette)
@@ -1362,6 +1629,45 @@ const Cyclone = () => {
 
 
   useEffect(() => {
+    let interval;
+    if (isStrikePlaying && showStrikeProb) {
+      interval = setInterval(() => {
+        setStrikeDay((prev) => {
+          if (prev >= 15) {
+            return 1;
+          }
+          return prev + 1;
+        });
+      }, 800);
+    }
+    return () => clearInterval(interval);
+  }, [isStrikePlaying, showStrikeProb]);
+
+  const formatStrikeTime = (meta, day) => {
+    if (!meta) return `Forecast: +${day * 24}h (Day ${day})`;
+    const parts = meta.init_date.split("_");
+    if (parts.length !== 3) return `Forecast: +${day * 24}h (Day ${day})`;
+    const year = parseInt(parts[0]);
+    const month = parseInt(parts[1]) - 1;
+    const date = parseInt(parts[2]);
+    const hour = parseInt(meta.init_hour);
+    
+    const baseDate = new Date(Date.UTC(year, month, date, hour, 0, 0));
+    const forecastDate = new Date(baseDate.getTime() + day * 24 * 3600 * 1000);
+    
+    const options = { 
+      month: 'short', 
+      day: 'numeric', 
+      hour: 'numeric', 
+      minute: '2-digit',
+      hour12: true,
+      timeZoneName: 'short'
+    };
+    
+    return `Init: ${baseDate.toLocaleString('en-US', { ...options, timeZone: 'UTC' })} | Forecast: ${forecastDate.toLocaleString('en-US', { ...options, timeZone: 'UTC' })} (+${day * 24}h)`;
+  };
+
+  useEffect(() => {
     document.body.style.overflow = isFullscreen ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
@@ -1369,172 +1675,317 @@ const Cyclone = () => {
   }, [isFullscreen]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      <div className="w-full max-w-[96%] xl:max-w-[94%] mx-auto px-4 py-6">
-        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">
-          Tropical Cyclone Track
-        </h1>
-        <p className="text-sm md:text-base text-slate-400 mb-4 max-w-2xl">
-          Interactive map for visualizing tropical cyclone tracks over the
-          Philippines.
-        </p>
-        <div
-          ref={wrapperRef}
-          className={
-            isFullscreen
-              ? "fixed inset-0 z-[9999] bg-black w-screen h-screen m-0 p-0 block"
-              : "relative rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-slate-900/60"
-          }
-          style={isFullscreen ? {} : { isolation: "isolate" }}
+    <div className="w-full h-[calc(100vh-57px)] flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative select-none">
+      <div
+        ref={wrapperRef}
+        className={
+          isFullscreen
+            ? "fixed inset-0 z-[9999] bg-black w-screen h-screen m-0 p-0 block"
+            : "relative w-full h-full flex-grow"
+        }
+        style={isFullscreen ? {} : { isolation: "isolate" }}
+      >
+        <MapContainer
+          center={center}
+          zoom={5}
+          scrollWheelZoom={true}
+          worldCopyJump={false}
+          maxBounds={[[-5.0, 100.0], [40.0, 160.0]]}
+          maxBoundsViscosity={1.0}
+          minZoom={4}
+          className="w-full h-full"
+          style={{ height: "100%", width: "100%" }}
         >
-          <MapContainer
-            center={center}
-            zoom={5}
-            scrollWheelZoom={true}
-            worldCopyJump={false}
-            maxBounds={[[-85, -180], [85, 180]]}
-            maxBoundsViscosity={1.0}
-            minZoom={2}
-            className={isFullscreen ? "w-full h-full" : "w-full h-[76vh]"}
-            style={{ height: isFullscreen ? "100vh" : "76vh", width: "100%" }}
-          >
-            <ResizeOnFullscreen isFullscreen={isFullscreen} />
-            <FullscreenControl
-              isFullscreen={isFullscreen}
-              onToggle={toggleFullscreen}
-            />
-            <LayersControl position="topleft">
-              <BaseLayer name="Satellite">
-                <TileLayer
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution="&copy; OpenStreetMap contributors"
-                />
-              </BaseLayer>
-              <BaseLayer checked name="Dark Matter">
-                <TileLayer
-                  url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                  attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                />
-              </BaseLayer>
-              <BaseLayer name="OpenStreetMap">
-                <TileLayer
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                />
-              </BaseLayer>
-            </LayersControl>
+          <ResizeOnFullscreen isFullscreen={isFullscreen} />
+          <FullscreenControl
+            isFullscreen={isFullscreen}
+            onToggle={toggleFullscreen}
+          />
+          <LayersControl position="topleft">
+            <BaseLayer name="Satellite">
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution="&copy; OpenStreetMap contributors"
+              />
+            </BaseLayer>
+            <BaseLayer checked name="Dark Matter">
+              <TileLayer
+                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+              />
+            </BaseLayer>
+            <BaseLayer name="OpenStreetMap">
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              />
+            </BaseLayer>
+          </LayersControl>
 
-            <LeafletCustomControl position="topright">
-              <div id="radar-controls-container" className="flex flex-col items-end">
-                <button
-                  id="btn-layers-toggle"
-                  onClick={() => {
-                    const controls = document.getElementById("radar-controls-panel");
-                    if (controls) {
-                      controls.classList.toggle("hidden");
-                    }
-                  }}
-                  className="mb-2 flex h-[34px] w-[34px] items-center justify-center rounded-[4px] bg-white text-slate-800 shadow-[0_1px_5px_rgba(0,0,0,0.65)] hover:bg-[#f4f4f4] transition-colors cursor-pointer"
-                  title="Toggle Weather Layers"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                    <polyline points="2 17 12 22 22 17" />
-                    <polyline points="2 12 12 17 22 12" />
-                  </svg>
-                </button>
-                <div
-                  id="radar-controls-panel"
-                  className="hidden flex flex-col gap-2 rounded-lg bg-slate-900/90 p-3 backdrop-blur-sm border border-slate-700 shadow-xl w-32 mr-[10px]"
-                >
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700 pb-1 mb-1 text-center">
-                    Weather Layers
-                  </span>
+          <LeafletCustomControl position="topleft">
+            {(ensembleData && showEnsemble) && (() => {
+              const legend = [
+                { label: "Super Typhoon", color: "#5B0E2D" },
+                { label: "Typhoon", color: "#A83232" },
+                { label: "Severe Tropical Storm", color: "#E67E22" },
+                { label: "Tropical Storm", color: "#F1C40F" },
+                { label: "Tropical Depression", color: "#2ECC71" },
+                { label: "Low Pressure Area", color: "#3498DB" },
+                { label: "Past Track", color: "#000000" },
+              ];
+
+              return (
+                <div className="mt-2 rounded-xl border border-slate-700/60 bg-slate-950/85 backdrop-blur-md shadow-xl overflow-hidden w-[180px] sm:w-[200px] pointer-events-auto">
                   <button
-                    id="btn-radar"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
+                    onClick={() => setIsLegendOpen(!isLegendOpen)}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-b border-slate-700/50 bg-slate-900/70 hover:bg-slate-800/80 transition-colors text-left cursor-pointer"
                   >
-                    Radar
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-slate-200">Legend</span>
+                      <span className="text-[9px] font-mono text-cyan-400 font-bold bg-cyan-950/50 px-1.5 py-0.5 rounded border border-cyan-800/30">{ensembleData.storm_name}</span>
+                    </div>
+                    <span className="text-slate-400 text-xs">{isLegendOpen ? "▾" : "▸"}</span>
                   </button>
-                  <button
-                    id="btn-satellite"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
-                  >
-                    Satellite
-                  </button>
-                  <button
-                    id="btn-both"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
-                  >
-                    Both
-                  </button>
-                  <button
-                    id="btn-infrared"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
-                  >
-                    Infrared
-                  </button>
-                  <div className="h-px bg-slate-700 my-1"></div>
-                  <button
-                    id="btn-precip"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left cursor-pointer"
-                  >
-                    Precip
-                  </button>
-                  <button
-                    id="btn-pressure"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left cursor-pointer"
-                  >
-                    Pressure
-                  </button>
-                  <button
-                    id="btn-wind"
-                    className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left cursor-pointer"
-                  >
-                    Wind
-                  </button>
-                  <div className="h-px bg-slate-700 my-1"></div>
-                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowEnsemble(!showEnsemble);
-                    }}
-                    className={`rounded px-2 py-1 text-xs font-medium text-left cursor-pointer transition ${showEnsemble ? "bg-cyan-900/60 text-cyan-100 outline outline-1 outline-cyan-500/50" : "text-slate-100 hover:bg-slate-700"
-                      }`}
-                  >
-                    Forecast Track
-                  </button>
+                  {isLegendOpen && (
+                    <div className="p-3 bg-slate-900/40 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="flex flex-col gap-1.5">
+                        {legend.map(c => (
+                          <div key={c.label} className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-white/20" style={{ background: c.color }} />
+                            <span className="text-[9px] text-slate-350 font-mono tracking-tight">{c.label}</span>
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-2.5 rounded flex-shrink-0 bg-white/15 border border-white/25" />
+                          <span className="text-[9px] text-slate-355 font-mono tracking-tight">Cone</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {/* Hidden div to maintain id reference logic */}
-                <div id="radar-controls" className="hidden"></div>
+              );
+            })()}
+          </LeafletCustomControl>
+
+          {showStrikeProb && (
+            <LeafletCustomControl position="topleft">
+              <div className="mt-2 rounded-xl border border-slate-700/60 bg-slate-950/85 backdrop-blur-md shadow-xl overflow-hidden w-[180px] sm:w-[200px] pointer-events-auto">
+                <div className="px-3 py-1.5 border-b border-slate-700/50 bg-slate-900/70 text-left">
+                  <span className="text-[10px] font-bold text-slate-200">Strike Probability Legend</span>
+                </div>
+                <div className="p-3 bg-slate-900/40 space-y-2">
+                  {/* Continuous gradient bar */}
+                  <div
+                    className="h-2 w-full rounded"
+                    style={{ background: "linear-gradient(to right, #38bdf8, #34d399, #facc15, #f97316, #dc2626)" }}
+                  />
+                  {/* Labels */}
+                  <div className="flex justify-between text-[8px] text-slate-400 font-mono">
+                    <span>5%</span>
+                    <span className="text-yellow-400">30%</span>
+                    <span className="text-orange-400">50%</span>
+                    <span className="text-red-400">70%</span>
+                    <span>80%</span>
+                  </div>
+                  <div className="h-px bg-slate-800 my-1.5" />
+                  <div className="space-y-1">
+                    {[
+                      { color: "#475569", range: "5–10%", label: "Low signal" },
+                      { color: "#38bdf8", range: "10–20%", label: "Signal above baseline" },
+                      { color: "#34d399", range: "20–30%", label: "Emerging risk" },
+                      { color: "#facc15", range: "30–50%", label: "Actionable watch" },
+                      { color: "#f97316", range: "50–70%", label: "High likelihood" },
+                      { color: "#dc2626", range: "70–80%", label: "Dominant corridor" },
+                    ].map(({ color, range, label }) => (
+                      <div key={range} className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: color }} />
+                        <span className="text-[8px] font-mono text-slate-400 w-8">{range}</span>
+                        <span className="text-[8.5px] text-slate-300 truncate">{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <CycloneMapLogic />
             </LeafletCustomControl>
+          )}
 
-            <EnsembleLayerLogic data={showEnsemble ? ensembleData : null} />
-          </MapContainer>
+          <LeafletCustomControl position="topright">
+            <div id="radar-controls-container" className="flex flex-col items-end">
+              <button
+                id="btn-layers-toggle"
+                onClick={() => {
+                  const controls = document.getElementById("radar-controls-panel");
+                  if (controls) {
+                    controls.classList.toggle("hidden");
+                  }
+                }}
+                className="mb-2 flex h-[34px] w-[34px] items-center justify-center rounded-[4px] bg-white text-slate-800 shadow-[0_1px_5px_rgba(0,0,0,0.65)] hover:bg-[#f4f4f4] transition-colors cursor-pointer"
+                title="Toggle Weather Layers"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                  <polyline points="2 17 12 22 22 17" />
+                  <polyline points="2 12 12 17 22 12" />
+                </svg>
+              </button>
+              <div
+                id="radar-controls-panel"
+                className="hidden flex flex-col gap-2 rounded-lg bg-slate-900/90 p-3 backdrop-blur-sm border border-slate-700 shadow-xl w-32 mr-[10px]"
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700 pb-1 mb-1 text-center">
+                  Weather Layers
+                </span>
+                <button
+                  id="btn-radar"
+                  className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
+                >
+                  Radar
+                </button>
+                <button
+                  id="btn-satellite"
+                  className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
+                >
+                  Satellite
+                </button>
+                <button
+                  id="btn-both"
+                  className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
+                >
+                  Both
+                </button>
+                <button
+                  id="btn-infrared"
+                  className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
+                >
+                  Infrared
+                </button>
+                <div className="h-px bg-slate-700 my-1"></div>
+                <button
+                  id="btn-precip"
+                  className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left cursor-pointer"
+                >
+                  Precip
+                </button>
+                <button
+                  id="btn-pressure"
+                  className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left cursor-pointer"
+                >
+                  Pressure
+                </button>
+                <button
+                  id="btn-wind"
+                  className="rounded px-2 py-1 text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left cursor-pointer"
+                >
+                  Wind
+                </button>
+                <div className="h-px bg-slate-700 my-1"></div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowEnsemble(!showEnsemble);
+                  }}
+                  className={`rounded px-2 py-1 text-xs font-medium text-left cursor-pointer transition ${showEnsemble ? "bg-cyan-900/60 text-cyan-100 outline outline-1 outline-cyan-500/50" : "text-slate-100 hover:bg-slate-700"
+                    }`}
+                >
+                  Forecast Track
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowOutlookWeek1(!showOutlookWeek1);
+                  }}
+                  className={`rounded px-2 py-1 text-xs font-medium text-left cursor-pointer transition ${showOutlookWeek1 ? "bg-cyan-900/60 text-cyan-100 outline outline-1 outline-cyan-500/50" : "text-slate-100 hover:bg-slate-700"
+                    }`}
+                >
+                  7-Day Outlook
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowOutlookWeek2(!showOutlookWeek2);
+                  }}
+                  className={`rounded px-2 py-1 text-xs font-medium text-left cursor-pointer transition ${showOutlookWeek2 ? "bg-amber-900/60 text-amber-100 outline outline-1 outline-amber-500/50" : "text-slate-100 hover:bg-slate-700"
+                    }`}
+                >
+                  Week 2 Outlook
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowStrikeProb(!showStrikeProb);
+                  }}
+                  className={`rounded px-2 py-1 text-xs font-medium text-left cursor-pointer transition ${showStrikeProb ? "bg-cyan-900/60 text-cyan-100 outline outline-1 outline-cyan-500/50" : "text-slate-100 hover:bg-slate-700"
+                    }`}
+                >
+                  Strike Probability
+                </button>
+                {showStrikeProb && (
+                  <div className="flex flex-col gap-1 pl-3 mt-1 border-l border-cyan-800/40">
+                    {[
+                      { id: "track_probability", label: "Track Prob" },
+                      { id: "34_knot_strike_probability", label: "≥34kt (TS)" },
+                      { id: "50_knot_strike_probability", label: "≥50kt (STS)" },
+                      { id: "64_knot_strike_probability", label: "≥64kt (TY)" },
+                    ].map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStrikeVariable(opt.id);
+                        }}
+                        className={`text-[10px] py-0.5 px-1.5 rounded text-left transition ${
+                          strikeVariable === opt.id
+                            ? "bg-cyan-950 text-cyan-400 font-bold border border-cyan-800/30"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Hidden div to maintain id reference logic */}
+              <div id="radar-controls" className="hidden"></div>
+            </div>
+            <CycloneMapLogic />
+          </LeafletCustomControl>
 
-          {/* Unified Glassmorphic Timeline Seek Bar Dock */}
-          <div 
-            className={`absolute bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-3xl z-[500] flex-col rounded-2xl bg-slate-950/85 backdrop-blur-lg border border-slate-700/80 p-3 sm:p-4 shadow-[0_12px_40px_rgba(0,0,0,0.6)] timeline-dock ${
-              showTimelineControls ? "flex" : "hidden"
-            }`}
+          <EnsembleLayerLogic data={showEnsemble ? ensembleData : null} />
+          <OutlookLayerLogic data={showOutlookWeek1 ? outlookWeek1Data : null} onSelectArea={setSelectedArea} week={1} />
+          <OutlookLayerLogic data={showOutlookWeek2 ? outlookWeek2Data : null} onSelectArea={setSelectedArea} week={2} />
+          {showStrikeProb && (
+            <StrikeProbabilityLayerLogic
+              variable={strikeVariable}
+              day={strikeDay}
+              onLoadMeta={setStrikeMeta}
+            />
+          )}
+          <MapClickHandler onMapClick={() => setSelectedArea(null)} />
+        </MapContainer>
+
+        {/* Unified Glassmorphic Timeline Seek Bar Dock for Strike Probability */}
+        {(showStrikeProb && showTimelineControls) && (
+          <div
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-3xl z-[500] flex flex-col rounded-2xl bg-slate-950/85 backdrop-blur-lg border border-slate-700/80 p-3 sm:p-4 shadow-[0_12px_40px_rgba(0,0,0,0.6)] timeline-dock"
             onMouseDown={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
             <div className="flex w-full items-center justify-between mb-2 sm:mb-3 px-1">
               <button
-                id="btn-play"
-                className="flex items-center justify-center gap-1.5 min-w-[85px] rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold uppercase tracking-widest text-white shadow-lg transition active:scale-95 border border-emerald-500/50 cursor-pointer"
+                onClick={() => {
+                  if (!isStrikePlaying && strikeDay >= 15) setStrikeDay(1);
+                  setIsStrikePlaying(!isStrikePlaying);
+                }}
+                className="flex items-center justify-center gap-1.5 min-w-[85px] rounded-lg bg-cyan-600 hover:bg-cyan-500 px-4 py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold uppercase tracking-widest text-white shadow-lg transition active:scale-95 border border-cyan-500/50 cursor-pointer"
               >
-                Play
+                {isStrikePlaying ? "Stop" : "Play"}
               </button>
 
               <div
-                id="radar-timestamp"
-                className="text-xs sm:text-sm text-emerald-300 font-mono font-semibold tracking-wide flex-1 text-center truncate px-2 block"
+                className="text-[10px] sm:text-xs text-cyan-300 font-mono font-semibold tracking-wide flex-1 text-center truncate px-2 block"
               >
-                Select layers to start
+                {formatStrikeTime(strikeMeta, strikeDay)}
               </div>
 
               {/* Hide Dock Button */}
@@ -1550,80 +2001,181 @@ const Cyclone = () => {
               </button>
             </div>
 
-            <div className="w-full flex items-center px-1">
+            <div className="w-full flex flex-col px-1 relative">
+              <div className="flex justify-between text-[9px] text-slate-500 font-mono mb-1 px-1">
+                <span>Init</span>
+                <span>Day 3 (+72h)</span>
+                <span>Day 6 (+144h)</span>
+                <span>Day 9 (+216h)</span>
+                <span>Day 12 (+288h)</span>
+                <span>Day 15 (+360h)</span>
+              </div>
               <input
                 type="range"
-                id="radar-slider"
-                className="w-full h-2 rounded-lg bg-slate-800 appearance-none cursor-pointer accent-emerald-500 hover:accent-emerald-400 focus:outline-none transition"
+                min="1"
+                max="15"
+                step="1"
+                value={strikeDay}
+                onChange={(e) => {
+                  setIsStrikePlaying(false);
+                  setStrikeDay(parseInt(e.target.value));
+                }}
+                className="w-full h-2 rounded-lg bg-slate-800 appearance-none cursor-pointer accent-cyan-500 hover:accent-cyan-400 focus:outline-none transition"
               />
             </div>
           </div>
+        )}
 
-          {/* Show Timeline Dock Button (when hidden) */}
-          {!showTimelineControls && (
+        {/* Unified Glassmorphic Timeline Seek Bar Dock */}
+        <div
+          className={`absolute bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-3xl z-[500] flex-col rounded-2xl bg-slate-950/85 backdrop-blur-lg border border-slate-700/80 p-3 sm:p-4 shadow-[0_12px_40px_rgba(0,0,0,0.6)] timeline-dock ${(!showStrikeProb && showTimelineControls) ? "flex" : "hidden"
+            }`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="flex w-full items-center justify-between mb-2 sm:mb-3 px-1">
             <button
-              onClick={() => setShowTimelineControls(true)}
-              className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[500] flex items-center gap-2 rounded-full bg-slate-950/85 backdrop-blur-lg border border-slate-700/80 px-4 py-2 shadow-[0_8px_20px_rgba(0,0,0,0.5)] text-slate-300 hover:text-white hover:bg-slate-900 transition-colors"
+              id="btn-play"
+              className="flex items-center justify-center gap-1.5 min-w-[85px] rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold uppercase tracking-widest text-white shadow-lg transition active:scale-95 border border-emerald-500/50 cursor-pointer"
+            >
+              Play
+            </button>
+
+            <div
+              id="radar-timestamp"
+              className="text-xs sm:text-sm text-emerald-300 font-mono font-semibold tracking-wide flex-1 text-center truncate px-2 block"
+            >
+              Select layers to start
+            </div>
+
+            {/* Hide Dock Button */}
+            <button
+              onClick={() => setShowTimelineControls(false)}
+              className="flex items-center justify-center rounded-lg p-1.5 sm:p-2 text-xs transition cursor-pointer flex-shrink-0 text-slate-400 hover:text-white hover:bg-slate-800/60"
+              title="Hide Timeline Dock"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
               </svg>
-              <span className="text-xs font-semibold uppercase tracking-wider">Show Timeline</span>
             </button>
-          )}
+          </div>
 
-          <div id="cyclone-loading" className="absolute top-1/2 left-1/2 z-[1000] -translate-x-1/2 -translate-y-1/2 transform rounded-lg bg-slate-950/90 px-4 py-2 text-sm text-white shadow-2xl border border-slate-700 flex items-center gap-2 hidden">
-            <svg className="animate-spin h-4 w-4 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Loading data...
+          <div className="w-full flex items-center px-1">
+            <input
+              type="range"
+              id="radar-slider"
+              className="w-full h-2 rounded-lg bg-slate-800 appearance-none cursor-pointer accent-emerald-500 hover:accent-emerald-400 focus:outline-none transition"
+            />
           </div>
         </div>
 
-        {/* ── Ensemble Forecast Legend ── */}
-        {(ensembleData && showEnsemble) && (() => {
-          const legend = [
-            { label: "Super Typhoon", color: "#5B0E2D" },
-            { label: "Typhoon", color: "#A83232" },
-            { label: "Severe Tropical Storm", color: "#E67E22" },
-            { label: "Tropical Storm", color: "#F1C40F" },
-            { label: "Tropical Depression", color: "#2ECC71" },
-            { label: "Low Pressure Area", color: "#3498DB" },
-            { label: "Past Track", color: "#000000" },
-          ];
+        {/* Show Timeline Dock Button (when hidden) */}
+        {!showTimelineControls && (
+          <button
+            onClick={() => setShowTimelineControls(true)}
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[500] flex items-center gap-2 rounded-full bg-slate-950/85 backdrop-blur-lg border border-slate-700/80 px-4 py-2 shadow-[0_8px_20px_rgba(0,0,0,0.5)] text-slate-300 hover:text-white hover:bg-slate-900 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <span className="text-xs font-semibold uppercase tracking-wider">Show Timeline</span>
+          </button>
+        )}
 
-          return (
-            <div className="mt-4 rounded-xl border border-slate-700/60 bg-[#0f172a] shadow-xl overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-slate-700/50 bg-slate-900/70">
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                  </svg>
-                  <span className="text-sm font-semibold text-slate-100">Forecast Track &amp; Cone of Uncertainty</span>
-                  <span className="text-[10px] font-mono text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full border border-slate-700">{ensembleData.storm_name}</span>
+        {/* Floating NHC-Style Selected Area Card */}
+        {selectedArea && (
+          <div className="absolute top-24 left-16 z-[1000] w-[290px] sm:w-[330px] rounded-2xl border border-slate-700/80 bg-slate-950/90 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-200 animate-out fade-out slide-out-to-top-4">
+            {/* Close Button */}
+            <button
+              onClick={() => setSelectedArea(null)}
+              className="absolute top-3.5 right-3.5 text-slate-400 hover:text-white transition-colors cursor-pointer text-base font-bold bg-slate-900 hover:bg-slate-800 border border-slate-700/50 rounded-full w-6 h-6 flex items-center justify-center shadow-md"
+              title="Close Panel"
+            >
+              ✕
+            </button>
+
+            {selectedArea.isTC ? (
+              <div className="pr-4">
+                <h3 className="text-sm font-black text-white mb-1 flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse bg-pink-500 shadow-[0_0_8px_#ec4899]" />
+                  {selectedArea.label}
+                </h3>
+                {selectedArea.initialization && (
+                  <div className="text-[9px] text-slate-400 font-mono mb-2">
+                    Forecast Init: {selectedArea.initialization}
+                  </div>
+                )}
+                <div className="text-[10px] text-pink-400 font-mono font-bold uppercase tracking-wider mb-2">
+                  Active System (Week {selectedArea.week})
                 </div>
-                <span className="text-[10px] text-slate-500 font-mono">{ensembleData.current_time_ph}</span>
+                <div className="mt-3 flex items-start gap-2 bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5 text-[11px] leading-relaxed text-slate-350">
+                  <span className="text-pink-400 mt-0.5 flex-shrink-0">🌀</span>
+                  <div className="text-slate-350">{selectedArea.summary}</div>
+                </div>
               </div>
-              <div className="px-5 py-3 bg-slate-900/40">
-                <div className="flex flex-wrap gap-x-5 gap-y-1.5 mb-2">
-                  {legend.map(c => (
-                    <div key={c.label} className="flex items-center gap-1.5">
-                      <div className="w-3 h-3 rounded-full flex-shrink-0 border border-white/20" style={{ background: c.color }} />
-                      <span className="text-[10px] text-slate-400 font-mono">{c.label}</span>
+            ) : (
+              <div className="pr-4">
+                <h3 className="text-sm font-black text-white mb-1.5 flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: selectedArea.color }} />
+                  Disturbance {selectedArea.id}
+                </h3>
+                {selectedArea.initialization && (
+                  <div className="text-[9px] text-slate-450 font-mono mb-2">
+                    Forecast Init: {selectedArea.initialization}
+                  </div>
+                )}
+
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2">
+                  Potential development Area:
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {/* Badge Row */}
+                  <div className="flex items-center gap-2">
+                    {/* 2-Day / Days 8-9 Badge */}
+                    <div className="flex-1 bg-slate-900/80 border border-slate-800/60 rounded-xl p-2 text-center">
+                      <div className="text-[9px] text-slate-400 font-semibold mb-1">
+                        {selectedArea.week === 1 ? "In 48 Hours" : "In Days 8-9"}
+                      </div>
+                      <div className="inline-flex items-center justify-center font-bold px-2 py-0.5 rounded text-[11px] font-mono text-white shadow-sm" style={{ backgroundColor: getBadgeColor(selectedArea.probability_2day) }}>
+                        {selectedArea.probability_2day}%
+                      </div>
                     </div>
-                  ))}
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-8 h-3 rounded flex-shrink-0 bg-white/15 border border-white/25" />
-                    <span className="text-[10px] text-slate-400 font-mono">Cone of Uncertainty</span>
+
+                    {/* 7-Day / Week 2 Badge */}
+                    <div className="flex-1 bg-slate-900/80 border border-slate-800/60 rounded-xl p-2 text-center">
+                      <div className="text-[9px] text-slate-400 font-semibold mb-1">
+                        {selectedArea.week === 1 ? "In 7 Days" : "In Week 2"}
+                      </div>
+                      <div className="inline-flex items-center justify-center font-bold px-2 py-0.5 rounded text-[11px] font-mono text-white shadow-sm" style={{ backgroundColor: getBadgeColor(selectedArea.probability_7day) }}>
+                        {selectedArea.probability_7day}%
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Warning Details Row */}
+                  <div className="mt-2 flex items-start gap-2 bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5 text-[11px] leading-relaxed text-slate-350">
+                    <span className="text-amber-500 mt-0.5 flex-shrink-0">⚠️</span>
+                    <div>
+                      <div className="font-semibold text-slate-200 mb-0.5">Latest Warnings and Information</div>
+                      <div className="text-[10.5px] text-slate-350">{selectedArea.summary}</div>
+                    </div>
                   </div>
                 </div>
-                <p className="text-[9px] text-slate-600 font-mono text-center uppercase tracking-wider">Philippine Typhoon/Weather Track · For reference only — refer to official advisories.</p>
               </div>
-            </div>
-          );
-        })()}
+            )}
+          </div>
+        )}
+
+        <div id="cyclone-loading" className="absolute top-1/2 left-1/2 z-[1000] -translate-x-1/2 -translate-y-1/2 transform rounded-lg bg-slate-950/90 px-4 py-2 text-sm text-white shadow-2xl border border-slate-700 flex items-center gap-2 hidden">
+          <svg className="animate-spin h-4 w-4 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Loading data...
+        </div>
       </div>
     </div>
   );

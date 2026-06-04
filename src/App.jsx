@@ -19,7 +19,6 @@ import SpaghettiPlot from "./components/SpaghettiPlot";
 import Footer from "./components/Footer";
 import EnsoMonitor from "./components/EnsoMonitor";
 
-import StrikeProbability from "./components/StrikeProbability";
 import TropicalCyclonePrediction from "./components/TropicalCyclonePrediction";
 import WeatherAdvisory from "./components/WeatherAdvisory";
 import Lightning from "./components/Lightning";
@@ -101,10 +100,9 @@ function AppContent() {
     return (
       <div className="min-h-screen flex flex-col bg-slate-950">
         <Navbar />
-        <main className="flex-grow">
+        <main className="flex-grow flex flex-col">
           <Cyclone />
         </main>
-        <Footer />
       </div>
     );
   }
@@ -240,17 +238,7 @@ function AppContent() {
   }
 
 
-  if (path === "/strike-probability") {
-    return (
-      <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
-        <Navbar />
-        <main className="flex-grow">
-          <StrikeProbability />
-        </main>
-        <Footer />
-      </div>
-    );
-  }
+
 
 
   return (

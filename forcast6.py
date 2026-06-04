@@ -279,6 +279,7 @@ genesis_data = genesis_data.iloc[mask]
 print(f"Total genesis points: {len(lons)}")
 
 has_active_tc = False
+json_active_tcs = []
 active_wp_ids = [tid for tid in wp_data['track_id'].unique() if str(tid).startswith('WP')]
 if active_wp_ids:
     print(f"Found active FNV3 tracks: {active_wp_ids}")
@@ -322,9 +323,11 @@ if active_wp_ids:
             else:
                 buffered_geom = hour_polygons[lead_times[0]]
 
-            # Plot the cone geometry
+            # Plot the cone geometry and collect for JSON
+            tc_polygons = []
             if buffered_geom.geom_type == 'Polygon':
                 ext_coords = list(buffered_geom.exterior.coords)
+                tc_polygons.append([[lat, lon] for lon, lat in ext_coords])
                 patch = MplPolygon(ext_coords, facecolor=area_color, edgecolor='none', alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
                 ax.add_patch(patch)
                 outline_patch = MplPolygon(ext_coords, fill=False, edgecolor=area_color, linewidth=2.5, linestyle=line_style, transform=ccrs.PlateCarree(), zorder=51)
@@ -332,6 +335,7 @@ if active_wp_ids:
             elif buffered_geom.geom_type == 'MultiPolygon':
                 for poly in buffered_geom.geoms:
                     ext_coords = list(poly.exterior.coords)
+                    tc_polygons.append([[lat, lon] for lon, lat in ext_coords])
                     patch = MplPolygon(ext_coords, facecolor=area_color, edgecolor='none', alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
                     ax.add_patch(patch)
                     outline_patch = MplPolygon(ext_coords, fill=False, edgecolor=area_color, linewidth=2.5, linestyle=line_style, transform=ccrs.PlateCarree(), zorder=51)
@@ -339,6 +343,18 @@ if active_wp_ids:
             else:
                 patch = Circle((center_lon, center_lat), radius=2.5, facecolor=area_color, lw=0, alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
                 ax.add_patch(patch)
+                # approximate circle as a polygon for leaflet compatibility
+                angles = np.linspace(0, 2*np.pi, 36)
+                circle_coords = [[center_lat + 2.5*np.sin(a), center_lon + 2.5*np.cos(a)] for a in angles]
+                tc_polygons.append(circle_coords)
+
+            json_active_tcs.append({
+                "track_id": tid,
+                "center": [float(center_lat), float(center_lon)],
+                "color": area_color,
+                "polygons": tc_polygons,
+                "label": "Active Tropical Cyclone Area"
+            })
 
             y_label_pos = center_lat + 4.5
             x_norm = (center_lon - 105.0) / (155.0 - 105.0)
@@ -401,6 +417,25 @@ if len(lons) < 2:
     except Exception as e:
         print(f"Error saving plot: {str(e)}")
     
+    # Save JSON data
+    try:
+        json_data = {
+            "initialization": init_text,
+            "has_active_tc": has_active_tc,
+            "active_tcs": json_active_tcs,
+            "areas": [],
+            "two_day_day": two_day_day,
+            "seven_day_day": seven_day_day
+        }
+        json_dir = os.path.join(os.path.dirname(__file__), "public", "data")
+        os.makedirs(json_dir, exist_ok=True)
+        json_file = os.path.join(json_dir, "tropical_outlook_week2.json")
+        with open(json_file, 'w') as f:
+            json.dump(json_data, f, indent=2)
+        print(f"JSON saved to {json_file}")
+    except Exception as e:
+        print(f"Error saving JSON: {e}")
+
     plt.close()
     exit()
 
@@ -419,6 +454,7 @@ kde_success = False
 
 # Collect per-area forecast summary lines for display on the map
 forecast_summaries = []
+json_areas = []
 
 for i, label in enumerate(unique_labels, start=1):
     # Get points in this cluster
@@ -454,6 +490,7 @@ for i, label in enumerate(unique_labels, start=1):
 
     # Create smooth polygon blob around the cluster points
     points = np.column_stack((cluster_lons, cluster_lats))
+    area_polygons = []
     if len(points) == 1:
         # Single point, just a circle
         patch = Circle((center_lon, center_lat), radius=2.5, facecolor=area_color, lw=0, alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
@@ -461,6 +498,10 @@ for i, label in enumerate(unique_labels, start=1):
         outline_patch = Circle((center_lon, center_lat), radius=2.5, facecolor='none', edgecolor=area_color, linewidth=2.5, linestyle='--', transform=ccrs.PlateCarree(), zorder=51)
         ax.add_patch(outline_patch)
         kde_success = True
+        
+        # approximate circle as a polygon for leaflet compatibility
+        angles = np.linspace(0, 2*np.pi, 36)
+        area_polygons.append([[center_lat + 2.5*np.sin(a), center_lon + 2.5*np.cos(a)] for a in angles])
     else:
         try:
             # Use shapely to create a convex hull and buffer it for beautifully rounded edges (NHC style)
@@ -471,6 +512,7 @@ for i, label in enumerate(unique_labels, start=1):
             # If it's a valid polygon, extract outer coords
             if buffered_geom.geom_type == 'Polygon':
                 ext_coords = list(buffered_geom.exterior.coords)
+                area_polygons.append([[lat, lon] for lon, lat in ext_coords])
                 patch = MplPolygon(ext_coords, facecolor=area_color, edgecolor='none', alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
                 ax.add_patch(patch)
                 # Add crisp dashed outline
@@ -480,6 +522,7 @@ for i, label in enumerate(unique_labels, start=1):
             elif buffered_geom.geom_type == 'MultiPolygon':
                 for poly in buffered_geom.geoms:
                     ext_coords = list(poly.exterior.coords)
+                    area_polygons.append([[lat, lon] for lon, lat in ext_coords])
                     patch = MplPolygon(ext_coords, facecolor=area_color, edgecolor='none', alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
                     ax.add_patch(patch)
                     outline_patch = MplPolygon(ext_coords, fill=False, edgecolor=area_color, linewidth=2.5, linestyle='--', transform=ccrs.PlateCarree(), zorder=51)
@@ -489,8 +532,10 @@ for i, label in enumerate(unique_labels, start=1):
             print(f"Error plotting buffer blob for cluster {label}: {e}")
             patch = Circle((center_lon, center_lat), radius=2.5, facecolor=area_color, edgecolor='none', alpha=0.4, transform=ccrs.PlateCarree(), zorder=50)
             ax.add_patch(patch)
-
-
+            
+            # approximate circle as a polygon for leaflet compatibility
+            angles = np.linspace(0, 2*np.pi, 36)
+            area_polygons.append([[center_lat + 2.5*np.sin(a), center_lon + 2.5*np.cos(a)] for a in angles])
 
     # Use average genesis wind in this cluster to infer stage
     if 'maximum_sustained_wind_speed_knots' in cluster_genesis.columns:
@@ -530,6 +575,21 @@ for i, label in enumerate(unique_labels, start=1):
         f"Week 2 (2-day): ({two_day_day}) {cat_2day} ({int(prob_2day_rounded)}%), "
         f"Week 2: ({seven_day_day}) {cat_7day} ({int(prob_7day_rounded)}%)"
     )
+    
+    json_areas.append({
+        "id": i,
+        "probability_2day": int(prob_2day_rounded),
+        "probability_7day": int(prob_7day_rounded),
+        "category_2day": cat_2day,
+        "category_7day": cat_7day,
+        "center": [float(center_lat), float(center_lon)],
+        "color": area_color,
+        "stage": stage,
+        "polygons": area_polygons,
+        "text": area_text,
+        "summary": summary_line
+    })
+
     # Add NHC-style text for potentials near cluster center
     center_lat_text = center_lat + 4.5
     x_norm = (center_lon - 105.0) / (155.0 - 105.0)
@@ -615,6 +675,25 @@ try:
     print(f"Plot saved to {output_file}")
 except Exception as e:
     print(f"Error saving plot: {str(e)}")
+
+# Save JSON data
+try:
+    json_data = {
+        "initialization": init_text,
+        "has_active_tc": has_active_tc,
+        "active_tcs": json_active_tcs,
+        "areas": json_areas,
+        "two_day_day": two_day_day,
+        "seven_day_day": seven_day_day
+    }
+    json_dir = os.path.join(os.path.dirname(__file__), "public", "data")
+    os.makedirs(json_dir, exist_ok=True)
+    json_file = os.path.join(json_dir, "tropical_outlook_week2.json")
+    with open(json_file, 'w') as f:
+        json.dump(json_data, f, indent=2)
+    print(f"JSON saved to {json_file}")
+except Exception as e:
+    print(f"Error saving JSON: {e}")
 
 # Print summary
 print(f"Summary: Density areas computed from {len(lons)} genesis points with {len(unique_labels)} clusters.")
