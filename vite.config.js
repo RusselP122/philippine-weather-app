@@ -28,6 +28,10 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/zoom-earth/, ''),
+        headers: {
+          Referer: 'https://zoom.earth/',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
       },
       '/api/lightning': {
         target: 'https://panahon.gov.ph',

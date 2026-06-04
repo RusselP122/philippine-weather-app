@@ -14,7 +14,7 @@
         },
         {
             "source": "/api/zoom-earth/:path*",
-            "destination": "https://tiles.zoom.earth/:path*"
+            "destination": "/api/zoom-earth.js?path=:path*"
         },
         {
             "source": "/api/lightning",
