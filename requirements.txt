@@ -1,0 +1,1 @@
+# Empty requirements file for Vercel Python runtime
