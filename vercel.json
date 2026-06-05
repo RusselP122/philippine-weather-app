@@ -29,5 +29,10 @@
             "destination": "/index.html"
         }
     ],
-    "outputDirectory": "dist"
+    "outputDirectory": "dist",
+    "functions": {
+        "api/**/*.py": {
+            "maxDuration": 60
+        }
+    }
 }
