@@ -279,3 +279,8 @@ code {
   transform: scale(1.25);
   background: #34d399;
 }
+
+/* Remove default focus outline/box shape from interactive Leaflet layers when clicked */
+.leaflet-interactive:focus {
+  outline: none;
+}
