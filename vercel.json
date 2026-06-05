@@ -29,11 +29,5 @@
             "destination": "/index.html"
         }
     ],
-    "outputDirectory": "dist",
-    "functions": {
-        "api/**/*.py": {
-            "maxDuration": 60,
-            "excludeFiles": "{**/public/assets/**,**/public/images/**,**/dist/**,**/*.csv,**/*.grib2,**/*.nc,**/*.dat,*.py,**/scripts/**,**/.venv/**,**/node_modules/**,**/temp_data/**,**/.github/**}"
-        }
-    }
+    "outputDirectory": "dist"
 }

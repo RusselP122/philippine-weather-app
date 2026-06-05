@@ -267,13 +267,3 @@ class handler(BaseHTTPRequestHandler):
         self.send_header('Cache-Control', 's-maxage=1800, stale-while-revalidate=600')
         self.end_headers()
         self.wfile.write(json.dumps(response_payload, indent=2).encode('utf-8'))
-
-if __name__ == '__main__':
-    from http.server import HTTPServer
-    server = HTTPServer(('127.0.0.1', 8000), handler)
-    print("Press Ctrl+C to stop.")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nShutting down test server.")
-        server.server_close()
