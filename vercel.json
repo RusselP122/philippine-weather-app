@@ -33,7 +33,7 @@
     "functions": {
         "api/**/*.py": {
             "maxDuration": 60,
-            "excludeFiles": "{.venv/**,node_modules/**,temp_data/**,images/**,public/assets/**,public/images/**,*.csv,*.grib2,*.nc,*.py}"
+            "excludeFiles": "{.venv/**,node_modules/**,temp_data/**,public/assets/**,public/images/**,*.csv,*.grib2,*.nc,*.py}"
         }
     }
 }
