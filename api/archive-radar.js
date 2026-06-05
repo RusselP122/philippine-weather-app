@@ -1,27 +1,18 @@
 import { createClient } from "@supabase/supabase-js";
 
-export async function onRequest(context) {
-  const { request } = context;
-  const url = new URL(request.url);
-  
+export default async function handler(req, res) {
   // Simple token authorization check to prevent malicious spamming of the endpoint
-  const auth = url.searchParams.get("auth");
+  const { auth } = req.query;
   if (auth !== "vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k") {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" }
-    });
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const supabaseUrl = context.env.SUPABASE_URL;
-  const supabaseKey = context.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    return new Response(JSON.stringify({ 
-      error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in your Cloudflare Pages project environment settings. Please configure them in the Cloudflare Dashboard!"
-    }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
+    return res.status(500).json({ 
+      error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in your Vercel project environment settings. Please configure them in the Vercel Dashboard!"
     });
   }
 
@@ -29,10 +20,7 @@ export async function onRequest(context) {
   try {
     supabase = createClient(supabaseUrl, supabaseKey);
   } catch (err) {
-    return new Response(JSON.stringify({ error: `Failed to initialize Supabase client: ${err.message}` }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
-    });
+    return res.status(500).json({ error: `Failed to initialize Supabase client: ${err.message}` });
   }
 
   try {
@@ -48,10 +36,7 @@ export async function onRequest(context) {
     );
     const data = await timelineRes.json();
     if (!data.success || !data.data || !data.data.timeline) {
-      return new Response(JSON.stringify({ error: "Failed to retrieve active timeline from PAGASA." }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      });
+      return res.status(500).json({ error: "Failed to retrieve active timeline from PAGASA." });
     }
 
     const timeline = data.data.timeline;
@@ -91,6 +76,7 @@ export async function onRequest(context) {
       );
       if (!imgRes.ok) continue;
       
+      // Convert to ArrayBuffer which has maximum node serverless runtime compatibility
       const imgBuffer = await imgRes.arrayBuffer();
 
       // 4. Upload image to Supabase Storage (public/radar-archives)
@@ -105,6 +91,7 @@ export async function onRequest(context) {
         });
 
       if (uploadError) {
+        // If it's a duplicate error, the file is already uploaded, so we can ignore and write to database
         const errStr = JSON.stringify(uploadError);
         if (!errStr.includes("Duplicate") && !errStr.includes("already exists")) {
           console.error("Upload error:", uploadError);
@@ -136,15 +123,9 @@ export async function onRequest(context) {
       archived.push(observed_at);
     }
 
-    return new Response(JSON.stringify({ success: true, archived }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" }
-    });
+    return res.status(200).json({ success: true, archived });
   } catch (error) {
     console.error("Serverless Handler Error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
-    });
+    return res.status(500).json({ error: error.message });
   }
 }
