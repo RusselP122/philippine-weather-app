@@ -3,6 +3,8 @@ import {
   CloudRain,
   AlertTriangle,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Info,
   Compass,
   Maximize2,
@@ -19,10 +21,12 @@ const WeatherAdvisory = () => {
   const [advisoryData, setAdvisoryData] = useState(null);
   const [activeRegion, setActiveRegion] = useState("All");
   const [hoveredProvince, setHoveredProvince] = useState(null);
+  const [selectedProvince, setSelectedProvince] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
   const [showMobileNotice, setShowMobileNotice] = useState(false);
+  const [isMobileCollapsed, setIsMobileCollapsed] = useState(true);
   const mapContainerRef = useRef(null);
 
   useEffect(() => {
@@ -527,6 +531,8 @@ const WeatherAdvisory = () => {
     );
   }
 
+  const activeDisplayProvince = hoveredProvince || selectedProvince;
+
   return (
     <div className="relative h-[calc(100vh-64px)] w-full bg-slate-950 font-sans overflow-hidden flex flex-col md:flex-row">
 
@@ -534,7 +540,9 @@ const WeatherAdvisory = () => {
       <div
         ref={mapContainerRef}
         onMouseMove={handleMouseMove}
-        className="relative w-full h-[45vh] md:h-full md:flex-1 bg-[#020617] overflow-hidden flex items-center justify-center border-b md:border-b-0 border-slate-800"
+        className={`relative w-full transition-all duration-500 ease-in-out bg-[#020617] overflow-hidden flex items-center justify-center border-b md:border-b-0 border-slate-800 ${
+          isMobileCollapsed ? "h-[calc(100vh-124px)]" : "h-[40vh]"
+        } md:h-full md:flex-1`}
       >
         {/* Radar-like background grid lines */}
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,rgba(15,23,42,0.6)_0%,rgba(2,6,23,1)_95%)]" />
@@ -595,6 +603,8 @@ const WeatherAdvisory = () => {
               {mapData.features.map((feature) => {
                 const rainfall = advisoryData.provinces[feature.name]?.rainfall_mm || 0;
                 const isHovered = hoveredProvince?.id === feature.id;
+                const isSelected = selectedProvince?.id === feature.id;
+                const isActive = isHovered || isSelected;
                 const fill = getRainfallColor(rainfall);
 
                 return (
@@ -602,13 +612,15 @@ const WeatherAdvisory = () => {
                     key={feature.id}
                     d={feature.d}
                     fill={fill}
-                    stroke={isHovered ? "#ffffff" : "rgba(15, 23, 42, 0.4)"}
-                    strokeWidth={isHovered ? 2.5 : 0.8}
+                    stroke={isActive ? "#ffffff" : "rgba(15, 23, 42, 0.4)"}
+                    strokeWidth={isActive ? 2.5 : 0.8}
                     strokeLinejoin="round"
                     className="transition-all duration-300 cursor-pointer"
                     style={{
-                      opacity: hoveredProvince && !isHovered ? 0.35 : 1,
-                      filter: isHovered ? "drop-shadow(0 0 8px rgba(255,255,255,0.4)) brightness(1.15)" : "none"
+                      opacity: hoveredProvince
+                        ? (isHovered ? 1 : 0.35)
+                        : (selectedProvince ? (isSelected ? 1 : 0.45) : 1),
+                      filter: isActive ? "drop-shadow(0 0 8px rgba(255,255,255,0.4)) brightness(1.15)" : "none"
                     }}
                     onMouseEnter={() => {
                       setHoveredProvince({
@@ -629,12 +641,10 @@ const WeatherAdvisory = () => {
                         rainfall,
                         alert: getAlertLevel(rainfall)
                       };
-                      if (hoveredProvince?.id === feature.id) {
-                        setHoveredProvince(null);
-                        setIsTooltipVisible(false);
+                      if (selectedProvince?.id === feature.id) {
+                        setSelectedProvince(null);
                       } else {
-                        setHoveredProvince(currentProv);
-                        setIsTooltipVisible(true);
+                        setSelectedProvince(currentProv);
                       }
                     }}
                   />
@@ -647,9 +657,11 @@ const WeatherAdvisory = () => {
               {mapData.features.map((feature) => {
                 const rainfall = advisoryData.provinces[feature.name]?.rainfall_mm || 0;
                 const isHovered = hoveredProvince?.id === feature.id;
+                const isSelected = selectedProvince?.id === feature.id;
+                const isActive = isHovered || isSelected;
 
                 // Only render small high-importance visual guides or toggled text
-                if (showLabels && feature.centroid && (rainfall >= 50 || isHovered)) {
+                if (showLabels && feature.centroid && (rainfall >= 50 || isActive)) {
                   return (
                     <g key={`lbl-${feature.id}`} transform={`translate(${feature.centroid[0]}, ${feature.centroid[1]})`}>
                       {/* High-visibility label backdrop */}
@@ -666,7 +678,7 @@ const WeatherAdvisory = () => {
                       <text
                         y="-3"
                         textAnchor="middle"
-                        fill={isHovered ? "#ffffff" : "#cbd5e1"}
+                        fill={isActive ? "#ffffff" : "#cbd5e1"}
                         fontSize="8.5"
                         fontWeight={rainfall >= 100 ? "bold" : "normal"}
                       >
@@ -767,16 +779,28 @@ const WeatherAdvisory = () => {
         )}
 
         {/* ── MOBILE SLIDE-UP GLASS BOTTOM-SHEET PANEL ── */}
-        {hoveredProvince && (
+        {activeDisplayProvince && (
           <div className="absolute bottom-4 left-4 right-4 z-30 md:hidden pointer-events-auto rounded-xl border border-slate-700/60 bg-slate-950/95 p-3.5 shadow-2xl backdrop-blur-lg flex flex-col gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-300">
             <div className="flex justify-between items-start">
               <div>
-                <h3 className="font-bold text-slate-100 text-sm tracking-wide">{hoveredProvince.name}</h3>
+                <h3 className="font-bold text-slate-100 text-sm tracking-wide">{activeDisplayProvince.name}</h3>
                 <p className="text-[10px] font-semibold text-sky-400 uppercase tracking-wider mt-0.5">
-                  {hoveredProvince.group} • {hoveredProvince.region.split("(")[0].trim()}
+                  {activeDisplayProvince.group} • {activeDisplayProvince.region.split("(")[0].trim()}
                 </p>
               </div>
-              <MapPin className="w-4 h-4 text-sky-400 opacity-80" />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedProvince(null);
+                    setHoveredProvince(null);
+                  }}
+                  className="px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+                <MapPin className="w-4 h-4 text-sky-400 opacity-80" />
+              </div>
             </div>
 
             <div className="flex items-center justify-between gap-4 bg-slate-900/60 px-3 py-1.5 rounded-lg border border-slate-800">
@@ -785,13 +809,60 @@ const WeatherAdvisory = () => {
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Rainfall:</span>
               </div>
               <p className="text-sm font-bold text-white tracking-wide">
-                {Math.round(hoveredProvince.rainfall)} <span className="text-[10px] font-normal text-slate-400">mm / 24h</span>
+                {Math.round(activeDisplayProvince.rainfall)} <span className="text-[10px] font-normal text-slate-400">mm / 24h</span>
               </p>
             </div>
 
-            <div className={`p-2 rounded-lg border text-[11px] leading-snug flex items-center gap-2 ${hoveredProvince.alert.style}`}>
+            <div className={`p-2 rounded-lg border text-[11px] leading-snug flex items-center gap-2 ${activeDisplayProvince.alert.style}`}>
               <ShieldAlert className="w-4 h-4 flex-shrink-0" />
-              <p className="opacity-95">{hoveredProvince.alert.text}</p>
+              <p className="opacity-95">{activeDisplayProvince.alert.text}</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── DESKTOP FIXED SELECTED PROVINCE CARD ── */}
+        {selectedProvince && (
+          <div className="hidden md:flex absolute bottom-4 left-4 z-30 w-80 rounded-xl border border-slate-700/60 bg-slate-950/95 p-4 text-slate-200 shadow-2xl backdrop-blur-lg flex flex-col gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-300">
+            <div className="flex justify-between items-start border-b border-slate-800 pb-2">
+              <div>
+                <h3 className="font-bold text-slate-100 text-sm tracking-wide">{selectedProvince.name}</h3>
+                <p className="text-[10px] font-semibold text-sky-400 uppercase tracking-wider mt-0.5">
+                  {selectedProvince.group} • {selectedProvince.region.split("(")[0].trim()}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedProvince(null);
+                  }}
+                  className="p-1 rounded-md hover:bg-slate-900 text-slate-400 hover:text-white transition-colors cursor-pointer border border-transparent hover:border-slate-800"
+                  title="Clear Selection"
+                >
+                  <ChevronDown className="w-4 h-4 rotate-180" />
+                </button>
+                <MapPin className="w-4 h-4 text-sky-400 opacity-80" />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 bg-slate-900/60 px-3 py-2 rounded-lg border border-slate-800">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-sky-500/10 text-sky-400">
+                <CloudRain className="w-4 h-4 animate-pulse" />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">Forecast Rainfall</p>
+                <p className="text-base font-bold text-white tracking-wide">
+                  {Math.round(selectedProvince.rainfall)} <span className="text-xs font-normal text-slate-400">mm / 24h</span>
+                </p>
+              </div>
+            </div>
+
+            <div className={`p-2.5 rounded-lg border text-xs leading-relaxed flex flex-col gap-1 ${selectedProvince.alert.style}`}>
+              <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px]">
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>{selectedProvince.alert.title}</span>
+              </div>
+              <p className="opacity-90">{selectedProvince.alert.text}</p>
             </div>
           </div>
         )}
@@ -799,18 +870,44 @@ const WeatherAdvisory = () => {
       </div>
 
       {/* ── SIDEBAR PANEL (PAGASA WEATHER ALERT DESK STYLE) ── */}
-      <div className="w-full md:w-80 lg:w-96 flex-1 md:flex-none bg-[#090d16]/95 md:bg-[#050811]/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-slate-800/80 flex flex-col z-20 overflow-hidden shadow-[-15px_0_35px_rgba(0,0,0,0.6)]">
+      <div
+        className={`w-full md:w-80 lg:w-96 transition-all duration-500 ease-in-out bg-[#090d16]/95 md:bg-[#050811]/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-slate-800/80 flex flex-col z-20 overflow-hidden shadow-[-15px_0_35px_rgba(0,0,0,0.6)] ${
+          isMobileCollapsed ? "h-[60px] flex-none" : "h-[calc(60vh-64px)] flex-1"
+        } md:h-full md:flex-none`}
+      >
 
         {/* PAGASA Style Header */}
-        <div className="bg-gradient-to-r from-sky-950/80 to-blue-950/80 p-5 border-b border-sky-800/40 text-center relative overflow-hidden flex-shrink-0">
+        <div
+          onClick={() => {
+            if (window.innerWidth < 768) {
+              setIsMobileCollapsed(!isMobileCollapsed);
+            }
+          }}
+          className={`bg-gradient-to-r from-sky-950/80 to-blue-950/80 border-b border-sky-800/40 text-center relative overflow-hidden flex-shrink-0 cursor-pointer md:cursor-default transition-all duration-300 ${
+            isMobileCollapsed ? "py-4 px-5" : "p-5"
+          }`}
+        >
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(14,165,233,0.1)_0%,transparent_70%)] pointer-events-none" />
-          <h1 className="text-lg font-black tracking-widest text-white uppercase flex items-center justify-center gap-2">
+          <h1 className="text-lg font-black tracking-widest text-white uppercase flex items-center justify-center gap-2 relative">
             <ShieldAlert className="w-5 h-5 text-sky-400" />
             <span>Rainfall Forecast</span>
+            <span className="absolute right-0 top-1/2 -translate-y-1/2 md:hidden">
+              {isMobileCollapsed ? (
+                <ChevronUp className="w-5 h-5 text-sky-400 animate-bounce" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-slate-400" />
+              )}
+            </span>
           </h1>
-          <p className="text-xs font-semibold text-sky-300 uppercase tracking-widest mt-1">24-Hour Advisory Bulletin</p>
+          <p className={`text-xs font-semibold text-sky-300 uppercase tracking-widest mt-1 transition-all duration-300 ${
+            isMobileCollapsed ? "hidden md:block" : "block"
+          }`}>
+            24-Hour Advisory Bulletin
+          </p>
           {advisoryData && (
-            <div className="mt-3 flex flex-col gap-1.5 items-center">
+            <div className={`mt-3 flex flex-col gap-1.5 items-center transition-all duration-300 ${
+              isMobileCollapsed ? "hidden md:flex" : "flex"
+            }`}>
               <span className="text-[10px] text-slate-300 font-mono bg-slate-950/70 py-1 px-3 rounded-full border border-slate-800/60 w-fit">
                 {advisoryData.validity}
               </span>

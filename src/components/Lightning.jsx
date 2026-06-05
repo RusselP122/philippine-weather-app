@@ -782,8 +782,8 @@ const Lightning = () => {
       {/* ── SIDEBAR PANEL (TECHNICAL LIGHTNING DESK STYLE) ── */}
       <div
         className={`w-full md:w-80 lg:w-96 transition-all duration-500 ease-in-out bg-[#090d16]/95 md:bg-[#050811]/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-slate-800/80 flex flex-col z-20 overflow-hidden shadow-[-15px_0_35px_rgba(0,0,0,0.6)] ${
-          isMobileCollapsed ? "h-[60px]" : "h-[calc(60vh-64px)]"
-        } md:h-full flex-1 md:flex-none`}
+          isMobileCollapsed ? "h-[60px] flex-none" : "h-[calc(60vh-64px)] flex-1"
+        } md:h-full md:flex-none`}
       >
         
         {/* Header Block */}
