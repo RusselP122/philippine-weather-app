@@ -356,45 +356,43 @@ def generate_advisory_data():
         print("Error: No provinces found in map file.")
         return
 
-    # 1. Fetch Dynamic Metadata Structure (Fallback values)
-    title, fallback_validity, system, fallback_init = get_system_and_advisory()
+    print("Fetching forecast data...")
+    title_fc, fallback_validity_fc, system_fc, fallback_init_fc = get_system_and_advisory()
+    rainfall_map_fc, parsed_init_time_fc, parsed_validity_fc = fetch_real_ecmwf_precipitation(centroids)
     
-    # 2. Fetch Precipitation Values (Directly from ECMWF Open Data GRIB2)
-    rainfall_map, parsed_init_time, parsed_validity = fetch_real_ecmwf_precipitation(centroids)
-    
-    # 3. Fallback gracefully if API is offline
-    if rainfall_map is None:
-        rainfall_map = generate_offline_fallback(centroids)
-        init_time = fallback_init
-        validity = fallback_validity
+    if rainfall_map_fc is None:
+        rainfall_map_fc = generate_offline_fallback(centroids)
+        init_time_fc = fallback_init_fc
+        validity_fc = fallback_validity_fc
     else:
-        init_time = parsed_init_time
-        # Make sure validity aligns perfectly with the retrieved model initialization time
-        validity = parsed_validity if parsed_validity else fallback_validity
-        
-    # 4. Capture actual generation time in PHT
+        init_time_fc = parsed_init_time_fc
+        validity_fc = parsed_validity_fc if parsed_validity_fc else fallback_validity_fc
+
+    forecast_data = {
+        "title": title_fc,
+        "validity": validity_fc,
+        "system": system_fc,
+        "init_time": init_time_fc,
+        "provinces": {name: {"rainfall_mm": rainfall_map_fc.get(name, 0.0)} for name in centroids.keys()}
+    }
+
     pht_tz = timezone(timedelta(hours=8))
     now_pht = datetime.now(pht_tz)
     generated_at = now_pht.strftime("%Y-%m-%d %I:%M %p (PHT)")
-        
-    advisory_data = {
-        "title": title,
-        "validity": validity,
-        "system": system,
-        "init_time": init_time,
-        "generated_at": generated_at,
-        "provinces": {}
-    }
 
-    for name in centroids.keys():
-        advisory_data["provinces"][name] = {
-            "rainfall_mm": rainfall_map.get(name, 0.0)
-        }
+    advisory_data = {
+        "title": forecast_data["title"],
+        "validity": forecast_data["validity"],
+        "system": forecast_data["system"],
+        "init_time": forecast_data["init_time"],
+        "generated_at": generated_at,
+        "provinces": forecast_data["provinces"]
+    }
 
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
         json.dump(advisory_data, f, indent=2)
         
-    print(f"Successfully generated dynamic, blended consensus weather advisory data at {OUTPUT_PATH}")
+    print(f"Successfully generated dynamic forecast weather advisory data at {OUTPUT_PATH}")
 
 if __name__ == "__main__":
     generate_advisory_data()

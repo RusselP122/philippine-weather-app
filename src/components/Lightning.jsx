@@ -12,7 +12,9 @@ import {
   Globe,
   Layers,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  ChevronUp,
+  ChevronDown
 } from "lucide-react";
 
 const LIGHTNING_URL = "/api/lightning?token=uvNBtXqdMnd3T80OTGjmEY9c3UEjAlOCajt2AoEu&parameter=ten_minute_frequency";
@@ -55,6 +57,7 @@ const Lightning = () => {
   const [showLabels, setShowLabels] = useState(false);
   const [countdown, setCountdown] = useState(30);
   const [feedLatency, setFeedLatency] = useState(0);
+  const [isMobileCollapsed, setIsMobileCollapsed] = useState(true);
 
   // Zoom and Pan States
   const [zoomScale, setZoomScale] = useState(1);
@@ -474,7 +477,11 @@ const Lightning = () => {
       `}</style>
 
       {/* ── MAP CONTAINER ── */}
-      <div className="relative w-full h-[45vh] md:h-full md:flex-1 bg-black overflow-hidden flex items-center justify-center border-b md:border-b-0 border-slate-900">
+      <div
+        className={`relative w-full transition-all duration-500 ease-in-out bg-black overflow-hidden flex items-center justify-center border-b md:border-b-0 border-slate-900 ${
+          isMobileCollapsed ? "h-[calc(100vh-124px)]" : "h-[40vh]"
+        } md:h-full md:flex-1`}
+      >
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,rgba(15,23,42,0.3)_0%,rgba(0,0,0,1)_95%)] bg-grid" />
 
         {/* Dynamic Zooming Map */}
@@ -773,18 +780,44 @@ const Lightning = () => {
       </div>
 
       {/* ── SIDEBAR PANEL (TECHNICAL LIGHTNING DESK STYLE) ── */}
-      <div className="w-full md:w-80 lg:w-96 flex-1 md:flex-none bg-[#090d16]/95 md:bg-[#050811]/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-slate-800/80 flex flex-col z-20 overflow-hidden shadow-[-15px_0_35px_rgba(0,0,0,0.6)]">
+      <div
+        className={`w-full md:w-80 lg:w-96 transition-all duration-500 ease-in-out bg-[#090d16]/95 md:bg-[#050811]/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-slate-800/80 flex flex-col z-20 overflow-hidden shadow-[-15px_0_35px_rgba(0,0,0,0.6)] ${
+          isMobileCollapsed ? "h-[60px]" : "h-[calc(60vh-64px)]"
+        } md:h-full flex-1 md:flex-none`}
+      >
         
         {/* Header Block */}
-        <div className="bg-gradient-to-r from-slate-950/80 to-slate-900/80 p-5 border-b border-slate-800 text-center relative overflow-hidden flex-shrink-0">
+        <div
+          onClick={() => {
+            if (window.innerWidth < 768) {
+              setIsMobileCollapsed(!isMobileCollapsed);
+            }
+          }}
+          className={`bg-gradient-to-r from-slate-950/80 to-slate-900/80 px-5 border-b border-slate-800 text-center relative overflow-hidden flex-shrink-0 cursor-pointer md:cursor-default transition-all duration-300 ${
+            isMobileCollapsed ? "py-4" : "py-5"
+          }`}
+        >
           <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 blur-xl rounded-full pointer-events-none" />
-          <h1 className="text-lg font-black tracking-widest text-white uppercase flex items-center justify-center gap-2">
+          <h1 className="text-sm sm:text-base md:text-lg font-black tracking-widest text-white uppercase flex items-center justify-center gap-2 relative">
             <Radio className="w-4 h-4 text-rose-500 animate-pulse" />
             <span>Lightning Detection</span>
+            <span className="absolute right-0 top-1/2 -translate-y-1/2 md:hidden">
+              {isMobileCollapsed ? (
+                <ChevronUp className="w-5 h-5 text-sky-400 animate-bounce" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-slate-400" />
+              )}
+            </span>
           </h1>
-          <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mt-1"> Forming Thunderstorm Monitor </p>
+          <p className={`text-[10px] font-bold text-amber-400 uppercase tracking-widest mt-1 transition-all duration-300 ${
+            isMobileCollapsed ? "hidden md:block" : "block"
+          }`}>
+            Forming Thunderstorm Monitor
+          </p>
           
-          <div className="mt-3 flex justify-center gap-2 flex-wrap">
+          <div className={`mt-3 flex justify-center gap-2 flex-wrap transition-all duration-300 ${
+            isMobileCollapsed ? "hidden md:flex" : "flex"
+          }`}>
             <span className="text-[9px] font-mono bg-slate-950/90 text-slate-400 py-1 px-2.5 rounded border border-slate-800/60">
               10-Minute Refresh Loop
             </span>

@@ -45,6 +45,11 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/radar/, '/api/v1/radar/timeline'),
       },
+      '/api/jaxa': {
+        target: 'https://philippine-weather-app.vercel.app',
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
 });
