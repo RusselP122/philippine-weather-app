@@ -40,22 +40,51 @@ const WeatherAdvisory = () => {
 
   const activeThresholds = useMemo(() => {
     if (dataSource === "forecast") {
-      return { red: 200, orange: 100, yellow: 50, lightBlue: 25 };
+      return { red: 200, orange: 100, yellow: 50, lightBlue: 25, gray: 0.1 };
     }
     switch (observedWindow) {
       case "1h":
-        return { red: 30, orange: 15, yellow: 7.5, lightBlue: 3.5 };
+        return { purple: 50, red: 20, orange: 10, yellow: 5, lightBlue: 2.6, gray: 0.1 };
       case "3h":
-        return { red: 45, orange: 22.5, yellow: 11, lightBlue: 5.5 };
+        return { red: 50, orange: 30, yellow: 15, lightBlue: 7, gray: 0.1 };
       case "6h":
-        return { red: 60, orange: 30, yellow: 15, lightBlue: 7.5 };
+        return { red: 80, orange: 50, yellow: 25, lightBlue: 12, gray: 0.1 };
       case "12h":
-        return { red: 100, orange: 50, yellow: 25, lightBlue: 12.5 };
+        return { red: 130, orange: 80, yellow: 40, lightBlue: 20, gray: 0.1 };
       case "24h":
       default:
-        return { red: 200, orange: 100, yellow: 50, lightBlue: 25 };
+        return { red: 200, orange: 100, yellow: 50, lightBlue: 25, gray: 0.1 };
     }
   }, [dataSource, observedWindow]);
+
+  const getLevelMeaning = (level, window, isObserved) => {
+    if (!isObserved) return null;
+    if (level === "red") {
+      if (window === "1h") return "Severe Red (20-50 mm) / Extreme Purple (>50 mm)";
+      if (window === "3h") return "Extreme / Torrential (>50 mm)";
+      if (window === "6h") return "Extreme (>80 mm) - High flood potential";
+      if (window === "12h") return "Severe (>130 mm)";
+    }
+    if (level === "lightBlue") {
+      if (window === "1h") return "Light Blue (2.6-5 mm)";
+      if (window === "3h") return "Light Blue (7-15 mm)";
+      if (window === "6h") return "Light rain (12-25 mm)";
+      if (window === "12h") return "Light Blue (20-40 mm)";
+    }
+    if (level === "gray") {
+      if (window === "1h") return "Trace / Light rain (0.1-2.5 mm)";
+      if (window === "3h") return "Trace / Light rain (0.1-7 mm)";
+      if (window === "6h") return "Trace / Light rain (0.1-12 mm)";
+      if (window === "12h") return "Trace / Light rain (0.1-20 mm)";
+    }
+    return null;
+  };
+
+  const formatRainfall = (val) => {
+    if (val === 0) return "0";
+    if (val % 1 === 0) return val.toString();
+    return val.toFixed(1);
+  };
   const [hoveredProvince, setHoveredProvince] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
@@ -124,22 +153,25 @@ const WeatherAdvisory = () => {
       const orangeProvinces = [];
       const yellowProvinces = [];
       const lightBlueProvinces = [];
+      const grayProvinces = [];
 
       Object.entries(activeAdvisory.provinces).forEach(([name, p]) => {
-        const mm = Math.round(p.rainfall_mm || 0);
+        const mm = p.rainfall_mm || 0;
         if (mm >= activeThresholds.red) redProvinces.push(name);
         else if (mm >= activeThresholds.orange) orangeProvinces.push(name);
         else if (mm >= activeThresholds.yellow) yellowProvinces.push(name);
         else if (mm >= activeThresholds.lightBlue) lightBlueProvinces.push(name);
+        else if (activeThresholds.gray && mm >= activeThresholds.gray) grayProvinces.push(name);
       });
 
       redProvinces.sort();
       orangeProvinces.sort();
       yellowProvinces.sort();
       lightBlueProvinces.sort();
+      grayProvinces.sort();
 
       // Helper function to render a clean vertical list of province names
-      const renderProvinceList = (provinces, xPos, startY, color) => {
+      const renderProvinceList = (provinces, xPos, startY, color, checkPurple = false) => {
         if (provinces.length === 0) {
           return `<text x="${xPos}" y="${startY}" fill="#475569" font-size="9.5" text-anchor="middle" font-style="italic">None</text>`;
         }
@@ -151,7 +183,14 @@ const WeatherAdvisory = () => {
             markup += `<text x="${xPos}" y="${startY + i * 11.5}" fill="${color}" font-size="8.5" font-weight="bold" text-anchor="middle">+ ${provinces.length - maxLines} more</text>`;
             break;
           }
-          markup += `<text x="${xPos}" y="${startY + i * 11.5}" fill="#e2e8f0" font-size="9" text-anchor="middle">${provinces[i]}</text>`;
+          let itemColor = "#e2e8f0";
+          if (checkPurple) {
+            const mm = activeAdvisory.provinces[provinces[i]]?.rainfall_mm || 0;
+            if (activeThresholds.purple && mm >= activeThresholds.purple) {
+              itemColor = "#d946ef"; // Fuchsia-500
+            }
+          }
+          markup += `<text x="${xPos}" y="${startY + i * 11.5}" fill="${itemColor}" font-size="9" text-anchor="middle">${provinces[i]}</text>`;
         }
         return markup;
       };
@@ -171,7 +210,7 @@ const WeatherAdvisory = () => {
       titleGroup.setAttribute("transform", "translate(1010, 60)");
       titleGroup.setAttribute("font-family", "monospace");
 
-      const titleText = dataSource === "forecast" ? "24-HOUR RAINFALL FORECAST" : "24-HOUR OBSERVED RAINFALL";
+      const titleText = dataSource === "forecast" ? "24-HOUR RAINFALL FORECAST" : `${observedWindow.toUpperCase()} OBSERVED RAINFALL`;
       const windowLabel = dataSource === "forecast" ? "FORECAST VALIDITY WINDOW:" : "OBSERVATION TIME RANGE:";
       const runLabel = dataSource === "forecast" ? "Model Run:" : "Data Window:";
       const validityParts = activeAdvisory.validity.split(" to ");
@@ -192,83 +231,162 @@ const WeatherAdvisory = () => {
       `;
       clonedSvg.appendChild(titleGroup);
 
+      const legendItems = [];
+      if (activeThresholds.purple) {
+        legendItems.push({
+          color: "#701A75",
+          title: `Purple Warning (${activeThresholds.purple}+ mm)`,
+          desc: "Extreme torrential rainfall & catastrophic danger"
+        });
+      }
+      legendItems.push({
+        color: "#DC2626",
+        title: activeThresholds.purple 
+          ? `Red Warning (${activeThresholds.red} - ${activeThresholds.purple} mm)` 
+          : `Red Warning (${activeThresholds.red}+ mm)`,
+        desc: dataSource === "observed" && observedWindow === "3h"
+          ? "Extreme / Torrential rainfall"
+          : dataSource === "observed" && observedWindow === "6h"
+            ? "Extreme (high flood potential)"
+            : "Severe widespread flooding & landslides"
+      });
+      legendItems.push({
+        color: "#F97316",
+        title: `Orange Alert (${activeThresholds.orange} - ${activeThresholds.red} mm)`,
+        desc: "High risk of flooding & landslides"
+      });
+      legendItems.push({
+        color: "#EAB308",
+        title: `Yellow Advisory (${activeThresholds.yellow} - ${activeThresholds.orange} mm)`,
+        desc: "Localized pooling & minor flooding"
+      });
+      legendItems.push({
+        color: "#38BDF8",
+        title: `Light Blue Alert (${activeThresholds.lightBlue} - ${activeThresholds.yellow} mm)`,
+        desc: dataSource === "observed" && observedWindow === "6h" ? "Light rain" : "Localized minor ponding & wet roads"
+      });
+      if (activeThresholds.gray) {
+        legendItems.push({
+          color: "#64748B",
+          title: `Gray Alert (${activeThresholds.gray} - ${activeThresholds.lightBlue} mm)`,
+          desc: "Trace to light rain, low warning risk"
+        });
+      }
+      legendItems.push({
+        color: "#334155",
+        title: `Light / No Warning (< ${activeThresholds.gray || activeThresholds.lightBlue} mm)`,
+        desc: "Isolated light rains or clear skies"
+      });
+
+      const itemHeight = 52;
+      const legendHeight = 70 + legendItems.length * itemHeight;
+
       // 2. Warning Level Legend Box (Scaled Up for High Readability)
       const legendGroup = document.createElementNS(svgNS, "g");
       legendGroup.setAttribute("transform", "translate(1010, 320)");
       legendGroup.setAttribute("font-family", "sans-serif");
-      legendGroup.innerHTML = `
-        <rect x="0" y="0" width="370" height="370" rx="14" fill="rgba(9, 13, 22, 0.9)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.2" />
+      
+      let legendContent = `
+        <rect x="0" y="0" width="370" height="${legendHeight}" rx="14" fill="rgba(9, 13, 22, 0.9)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.2" />
         <text x="25" y="38" fill="#38bdf8" font-size="13" font-weight="bold" letter-spacing="1.5" font-family="monospace">WARNING LEVEL LEGEND</text>
         <line x1="25" y1="50" x2="345" y2="50" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1" />
-        <rect x="25" y="68" width="24" height="24" rx="6" fill="#DC2626" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="85" fill="#f1f5f9" font-size="13" font-weight="bold">Red Warning (${activeThresholds.red}+ mm)</text>
-        <text x="62" y="102" fill="#94a3b8" font-size="10.5">Severe widespread flooding & landslides</text>
-        <rect x="25" y="124" width="24" height="24" rx="6" fill="#F97316" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="141" fill="#f1f5f9" font-size="13" font-weight="bold">Orange Alert (${activeThresholds.orange} - ${activeThresholds.red} mm)</text>
-        <text x="62" y="158" fill="#94a3b8" font-size="10.5">High risk of flooding & soil slides</text>
-        <rect x="25" y="180" width="24" height="24" rx="6" fill="#EAB308" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="197" fill="#f1f5f9" font-size="13" font-weight="bold">Yellow Advisory (${activeThresholds.yellow} - ${activeThresholds.orange} mm)</text>
-        <text x="62" y="214" fill="#94a3b8" font-size="10.5">Localized pooling & minor flooding</text>
-        <rect x="25" y="236" width="24" height="24" rx="6" fill="#38BDF8" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="253" fill="#f1f5f9" font-size="13" font-weight="bold">Light Blue Alert (${activeThresholds.lightBlue} - ${activeThresholds.yellow} mm)</text>
-        <text x="62" y="270" fill="#94a3b8" font-size="10.5">Localized minor ponding & wet roads</text>
-        <rect x="25" y="292" width="24" height="24" rx="6" fill="#334155" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="309" fill="#cbd5e1" font-size="13" font-weight="bold">Light / No Warning (&lt; ${activeThresholds.lightBlue} mm)</text>
-        <text x="62" y="326" fill="#64748b" font-size="10.5">Isolated light rains or clear skies</text>
       `;
+
+      legendItems.forEach((item, index) => {
+        const yPos = 68 + index * itemHeight;
+        legendContent += `
+          <rect x="25" y="${yPos}" width="24" height="24" rx="6" fill="${item.color}" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
+          <text x="62" y="${yPos + 16}" fill="#f1f5f9" font-size="12" font-weight="bold">${item.title}</text>
+          <text x="62" y="${yPos + 31}" fill="#94a3b8" font-size="10">${item.desc}</text>
+        `;
+      });
+      legendGroup.innerHTML = legendContent;
       clonedSvg.appendChild(legendGroup);
 
       // 3. Warning Metrics Summary Box (Scaled Up and Expanded to List Province Names)
       const metricsGroup = document.createElementNS(svgNS, "g");
-      metricsGroup.setAttribute("transform", "translate(1010, 710)");
+      const metricsY = 340 + legendHeight;
+      metricsGroup.setAttribute("transform", `translate(1010, ${metricsY})`);
       metricsGroup.setAttribute("font-family", "sans-serif");
 
-      const redListMarkup = renderProvinceList(redProvinces, 38, 92, "#ef4444");
-      const orangeListMarkup = renderProvinceList(orangeProvinces, 38, 92, "#fb923c");
-      const yellowListMarkup = renderProvinceList(yellowProvinces, 38, 92, "#facc15");
-      const lightBlueListMarkup = renderProvinceList(lightBlueProvinces, 38, 92, "#38bdf8");
+      const columns = [];
+      const numCols = activeThresholds.gray ? 5 : 4;
+      const colWidth = numCols === 5 ? 62 : 76;
+      const colGap = 5;
+      const colStartX = numCols === 5 ? 20 : 25;
+
+      const redListMarkup = renderProvinceList(redProvinces, colWidth / 2, 92, "#ef4444", true);
+      const orangeListMarkup = renderProvinceList(orangeProvinces, colWidth / 2, 92, "#fb923c");
+      const yellowListMarkup = renderProvinceList(yellowProvinces, colWidth / 2, 92, "#facc15");
+      const lightBlueListMarkup = renderProvinceList(lightBlueProvinces, colWidth / 2, 92, "#38bdf8");
+      const grayListMarkup = activeThresholds.gray 
+        ? renderProvinceList(grayProvinces, colWidth / 2, 92, "#cbd5e1") 
+        : "";
+
+      columns.push({
+        color: "#DC2626",
+        bgColor: "rgba(220, 38, 38, 0.12)",
+        strokeColor: "rgba(220, 38, 38, 0.25)",
+        title: activeThresholds.purple ? "RED/PURP" : "RED",
+        count: warningMetrics.red,
+        listMarkup: redListMarkup
+      });
+      columns.push({
+        color: "#F97316",
+        bgColor: "rgba(249, 115, 22, 0.12)",
+        strokeColor: "rgba(249, 115, 22, 0.25)",
+        title: "ORANGE",
+        count: warningMetrics.orange,
+        listMarkup: orangeListMarkup
+      });
+      columns.push({
+        color: "#EAB308",
+        bgColor: "rgba(234, 179, 8, 0.12)",
+        strokeColor: "rgba(234, 179, 8, 0.25)",
+        title: "YELLOW",
+        count: warningMetrics.yellow,
+        listMarkup: yellowListMarkup
+      });
+      columns.push({
+        color: "#38BDF8",
+        bgColor: "rgba(56, 189, 248, 0.12)",
+        strokeColor: "rgba(56, 189, 248, 0.25)",
+        title: "LT BLUE",
+        count: warningMetrics.lightBlue,
+        listMarkup: lightBlueListMarkup
+      });
+      if (activeThresholds.gray) {
+        columns.push({
+          color: "#94A3B8",
+          bgColor: "rgba(148, 163, 184, 0.12)",
+          strokeColor: "rgba(148, 163, 184, 0.25)",
+          title: "GRAY",
+          count: warningMetrics.gray,
+          listMarkup: grayListMarkup
+        });
+      }
+
+      let columnsMarkup = "";
+      columns.forEach((col, index) => {
+        const xPos = colStartX + index * (colWidth + colGap);
+        columnsMarkup += `
+          <g transform="translate(${xPos}, 0)">
+            <rect x="0" y="0" width="${colWidth}" height="65" rx="10" fill="${col.bgColor}" stroke="${col.strokeColor}" stroke-width="1" />
+            <text x="${colWidth / 2}" y="35" fill="${col.color}" font-size="24" font-weight="bold" text-anchor="middle">${col.count}</text>
+            <text x="${colWidth / 2}" y="52" fill="${col.color}" font-size="8.5" font-weight="bold" text-anchor="middle" letter-spacing="0.5">${col.title}</text>
+            <line x1="8" y1="78" x2="${colWidth - 8}" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
+            ${col.listMarkup}
+          </g>
+        `;
+      });
 
       metricsGroup.innerHTML = `
         <rect x="0" y="0" width="370" height="290" rx="14" fill="rgba(9, 13, 22, 0.9)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.2" />
         <text x="25" y="38" fill="#38bdf8" font-size="13" font-weight="bold" letter-spacing="1.5" font-family="monospace">PROVINCIAL WARNING METRICS</text>
         <line x1="25" y1="50" x2="345" y2="50" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1" />
         
-        <g transform="translate(25, 70)">
-          <!-- Red Column -->
-          <g>
-            <rect x="0" y="0" width="76" height="65" rx="10" fill="rgba(220, 38, 38, 0.12)" stroke="rgba(220, 38, 38, 0.25)" stroke-width="1" />
-            <text x="38" y="35" fill="#DC2626" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.red}</text>
-            <text x="38" y="52" fill="#ef4444" font-size="9" font-weight="bold" text-anchor="middle" letter-spacing="0.5">RED</text>
-            <line x1="8" y1="78" x2="68" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
-            ${redListMarkup}
-          </g>
-
-          <!-- Orange Column -->
-          <g transform="translate(81, 0)">
-            <rect x="0" y="0" width="76" height="65" rx="10" fill="rgba(249, 115, 22, 0.12)" stroke="rgba(249, 115, 22, 0.25)" stroke-width="1" />
-            <text x="38" y="35" fill="#F97316" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.orange}</text>
-            <text x="38" y="52" fill="#fb923c" font-size="9" font-weight="bold" text-anchor="middle" letter-spacing="0.5">ORANGE</text>
-            <line x1="8" y1="78" x2="68" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
-            ${orangeListMarkup}
-          </g>
-
-          <!-- Yellow Column -->
-          <g transform="translate(162, 0)">
-            <rect x="0" y="0" width="76" height="65" rx="10" fill="rgba(234, 179, 8, 0.12)" stroke="rgba(234, 179, 8, 0.25)" stroke-width="1" />
-            <text x="38" y="35" fill="#EAB308" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.yellow}</text>
-            <text x="38" y="52" fill="#facc15" font-size="9" font-weight="bold" text-anchor="middle" letter-spacing="0.5">YELLOW</text>
-            <line x1="8" y1="78" x2="68" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
-            ${yellowListMarkup}
-          </g>
-
-          <!-- Light Blue Column -->
-          <g transform="translate(243, 0)">
-            <rect x="0" y="0" width="76" height="65" rx="10" fill="rgba(56, 189, 248, 0.12)" stroke="rgba(56, 189, 248, 0.25)" stroke-width="1" />
-            <text x="38" y="35" fill="#38BDF8" font-size="24" font-weight="bold" text-anchor="middle">${warningMetrics.lightBlue}</text>
-            <text x="38" y="52" fill="#38bdf8" font-size="9" font-weight="bold" text-anchor="middle" letter-spacing="0.5">LT BLUE</text>
-            <line x1="8" y1="78" x2="68" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
-            ${lightBlueListMarkup}
-          </g>
+        <g transform="translate(0, 70)">
+          ${columnsMarkup}
         </g>
       `;
       clonedSvg.appendChild(metricsGroup);
@@ -490,17 +608,19 @@ const WeatherAdvisory = () => {
 
   // Warning metrics summary
   const warningMetrics = useMemo(() => {
-    if (!activeAdvisory || !activeAdvisory.provinces) return { red: 0, orange: 0, yellow: 0, lightBlue: 0, normal: 0 };
-    let red = 0, orange = 0, yellow = 0, lightBlue = 0, normal = 0;
+    if (!activeAdvisory || !activeAdvisory.provinces) return { red: 0, orange: 0, yellow: 0, lightBlue: 0, gray: 0, normal: 0 };
+    let red = 0, orange = 0, yellow = 0, lightBlue = 0, gray = 0, normal = 0;
     Object.values(activeAdvisory.provinces).forEach((p) => {
-      const mm = Math.round(p.rainfall_mm || 0);
-      if (mm >= activeThresholds.red) red++;
+      const mm = p.rainfall_mm || 0;
+      if (activeThresholds.purple && mm >= activeThresholds.purple) red++;
+      else if (mm >= activeThresholds.red) red++;
       else if (mm >= activeThresholds.orange) orange++;
       else if (mm >= activeThresholds.yellow) yellow++;
       else if (mm >= activeThresholds.lightBlue) lightBlue++;
+      else if (activeThresholds.gray && mm >= activeThresholds.gray) gray++;
       else normal++;
     });
-    return { red, orange, yellow, lightBlue, normal };
+    return { red, orange, yellow, lightBlue, gray, normal };
   }, [activeAdvisory, activeThresholds]);
 
   // Warning provinces lists
@@ -509,22 +629,25 @@ const WeatherAdvisory = () => {
     const orange = [];
     const yellow = [];
     const lightBlue = [];
+    const gray = [];
 
     if (activeAdvisory && activeAdvisory.provinces) {
       Object.entries(activeAdvisory.provinces).forEach(([name, p]) => {
-        const mm = Math.round(p.rainfall_mm || 0);
+        const mm = p.rainfall_mm || 0;
         if (mm >= activeThresholds.red) red.push(name);
         else if (mm >= activeThresholds.orange) orange.push(name);
         else if (mm >= activeThresholds.yellow) yellow.push(name);
         else if (mm >= activeThresholds.lightBlue) lightBlue.push(name);
+        else if (activeThresholds.gray && mm >= activeThresholds.gray) gray.push(name);
       });
       red.sort();
       orange.sort();
       yellow.sort();
       lightBlue.sort();
+      gray.sort();
     }
 
-    return { red, orange, yellow, lightBlue };
+    return { red, orange, yellow, lightBlue, gray };
   }, [activeAdvisory, activeThresholds]);
 
   const handleMouseMove = (e) => {
@@ -562,22 +685,70 @@ const WeatherAdvisory = () => {
   };
 
   const getRainfallColor = (mm) => {
-    const roundedMm = Math.round(mm);
-    if (roundedMm >= activeThresholds.red) return "#DC2626"; // Red (Severe)
-    if (roundedMm >= activeThresholds.orange) return "#F97316"; // Orange (Heavy)
-    if (roundedMm >= activeThresholds.yellow) return "#EAB308";  // Yellow (Moderate)
-    if (roundedMm >= activeThresholds.lightBlue) return "#38BDF8";  // Light Blue (Light-Moderate)
+    if (activeThresholds.purple && mm >= activeThresholds.purple) return "#701A75"; // Dark Red / Purple
+    if (mm >= activeThresholds.red) return "#DC2626"; // Red (Severe)
+    if (mm >= activeThresholds.orange) return "#F97316"; // Orange (Heavy)
+    if (mm >= activeThresholds.yellow) return "#EAB308";  // Yellow (Moderate)
+    if (mm >= activeThresholds.lightBlue) return "#38BDF8";  // Light Blue (Light-Moderate)
+    if (activeThresholds.gray && mm >= activeThresholds.gray) return "#64748B"; // Gray
     return "#334155"; // Default Slate
   };
 
   const getAlertLevel = (mm) => {
-    const roundedMm = Math.round(mm);
     const units = dataSource === "forecast" ? "mm / 24h" : `mm / ${observedWindow}`;
-    if (roundedMm >= activeThresholds.red) return { title: "Severe Red Warning", style: "bg-red-500/20 text-red-400 border-red-500/30", text: `Severe flooding and widespread landslides are expected. Seek high shelter immediately.` };
-    if (roundedMm >= activeThresholds.orange) return { title: "Heavy Orange Alert", style: "bg-orange-500/20 text-orange-400 border-orange-500/30", text: `Flooding is highly likely. Residents near rivers and hills should prepare to evacuate.` };
-    if (roundedMm >= activeThresholds.yellow) return { title: "Moderate Yellow Advisory", style: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", text: `Localized minor flooding is possible in low-lying and urban areas.` };
-    if (roundedMm >= activeThresholds.lightBlue) return { title: "Light Blue Alert", style: "bg-sky-500/20 text-sky-400 border-sky-500/30", text: `Localized minor ponding and wet roads possible. Exercise standard caution.` };
-    return { title: "No Warnings Active", style: "bg-slate-800 text-slate-400 border-slate-700/30", text: "Standard background levels. Scattered light rains possible." };
+    
+    if (activeThresholds.purple && mm >= activeThresholds.purple) {
+      return {
+        title: "Extreme Purple Warning",
+        style: "bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-900/40",
+        text: `Extreme torrential rainfall of ${formatRainfall(mm)} ${units} observed. High risk of catastrophic flooding & landslides.`
+      };
+    }
+    if (mm >= activeThresholds.red) {
+      let title = "Severe Red Warning";
+      let text = `Severe flooding and widespread landslides are expected. Seek high shelter immediately.`;
+      if (dataSource === "observed") {
+        if (observedWindow === "3h") {
+          title = "Extreme / Torrential Red Warning";
+          text = `Extreme / torrential rainfall of ${formatRainfall(mm)} ${units} observed. Immediate flooding and landslides likely.`;
+        } else if (observedWindow === "6h") {
+          title = "Extreme Red Warning";
+          text = `Extreme rainfall of ${formatRainfall(mm)} ${units} observed. High flood potential and soil slides expected.`;
+        }
+      }
+      return { title, style: "bg-red-500/20 text-red-400 border-red-500/30", text };
+    }
+    if (mm >= activeThresholds.orange) {
+      return {
+        title: "Heavy Orange Alert",
+        style: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+        text: `Heavy rainfall of ${formatRainfall(mm)} ${units} observed. High risk of flooding & soil slides near hills and rivers.`
+      };
+    }
+    if (mm >= activeThresholds.yellow) {
+      return {
+        title: "Moderate Yellow Advisory",
+        style: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+        text: `Moderate rainfall of ${formatRainfall(mm)} ${units} observed. Localized pooling & minor flooding possible.`
+      };
+    }
+    if (mm >= activeThresholds.lightBlue) {
+      let title = "Light Blue Alert";
+      let text = `Light to moderate rainfall of ${formatRainfall(mm)} ${units} observed. Localized minor ponding & wet roads possible.`;
+      if (dataSource === "observed" && observedWindow === "6h") {
+        title = "Light Rain Alert";
+        text = `Light rain of ${formatRainfall(mm)} ${units} observed. Standard road safety precautions apply.`;
+      }
+      return { title, style: "bg-sky-500/20 text-sky-400 border-sky-500/30", text };
+    }
+    if (activeThresholds.gray && mm >= activeThresholds.gray) {
+      return {
+        title: "Gray Alert",
+        style: "bg-slate-800 text-slate-300 border-slate-700/30",
+        text: `Trace to light rainfall of ${formatRainfall(mm)} ${units} observed. Low risk of warning condition.`
+      };
+    }
+    return { title: "No Warnings Active", style: "bg-slate-800 text-slate-400 border-slate-700/30", text: `No significant rainfall (${formatRainfall(mm)} ${units}) observed. Normal conditions.` };
   };
 
   // Weather radar/met loading screen
@@ -822,7 +993,7 @@ const WeatherAdvisory = () => {
                   {dataSource === "forecast" ? "Forecast Rainfall" : "Observed Rainfall"}
                 </p>
                 <p className="text-base font-bold text-white tracking-wide">
-                  {Math.round(hoveredProvince.rainfall)} <span className="text-xs font-normal text-slate-400">mm / 24h</span>
+                  {formatRainfall(hoveredProvince.rainfall)} <span className="text-xs font-normal text-slate-400">mm / {dataSource === "forecast" ? "24h" : observedWindow}</span>
                 </p>
               </div>
             </div>
@@ -857,7 +1028,7 @@ const WeatherAdvisory = () => {
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Rainfall:</span>
               </div>
               <p className="text-sm font-bold text-white tracking-wide">
-                {Math.round(hoveredProvince.rainfall)} <span className="text-[10px] font-normal text-slate-400">mm / 24h</span>
+                {formatRainfall(hoveredProvince.rainfall)} <span className="text-[10px] font-normal text-slate-400">mm / {dataSource === "forecast" ? "24h" : observedWindow}</span>
               </p>
             </div>
 
@@ -986,7 +1157,7 @@ const WeatherAdvisory = () => {
           {/* Red Level */}
           <div className="bg-slate-950/40 rounded-xl overflow-hidden border border-red-950 shadow-lg group transition-all duration-300 hover:border-red-900/60">
             <div className="bg-gradient-to-r from-red-700 to-red-600 px-4 py-2 flex justify-between items-center text-white text-xs font-bold tracking-widest uppercase">
-              <span>Red Level ({activeThresholds.red}+ mm)</span>
+              <span>{dataSource === "observed" && observedWindow === "1h" ? "Red / Purple Level (20+ mm)" : `Red Level (${activeThresholds.red}+ mm)`}</span>
               {warningMetrics.red > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-slate-950 text-[10px] text-red-400 border border-red-500/35 font-bold shadow-md animate-pulse">
                   {warningMetrics.red} Provinces
@@ -994,6 +1165,11 @@ const WeatherAdvisory = () => {
               )}
             </div>
             <div className="p-4 text-xs text-slate-400 leading-relaxed space-y-2">
+              {getLevelMeaning("red", observedWindow, dataSource === "observed") && (
+                <div className="text-[10.5px] font-semibold text-red-300 bg-red-950/40 px-2 py-1 rounded border border-red-900/40 w-fit mb-3">
+                  {getLevelMeaning("red", observedWindow, dataSource === "observed")}
+                </div>
+              )}
               <div className="flex items-start gap-2">
                 <ChevronRight className="w-3 h-3 text-red-500 mt-0.5 flex-shrink-0" />
                 <p><strong className="text-slate-200">Flooding:</strong> Extreme, catastrophic flooding expected in highly vulnerable areas and low plains.</p>
@@ -1012,11 +1188,22 @@ const WeatherAdvisory = () => {
                 <div className="pt-3 mt-3 border-t border-slate-900/60">
                   <span className="text-[9.5px] font-bold text-red-400 uppercase tracking-wider block mb-1.5 text-left">Affected Provinces:</span>
                   <div className="flex flex-wrap gap-1 justify-start">
-                    {warningProvinces.red.map(p => (
-                      <span key={p} className="px-1.5 py-0.5 bg-red-950/60 text-red-300 border border-red-900/60 rounded text-[9.5px] font-mono">
-                        {p} ({Math.round(activeAdvisory.provinces[p]?.rainfall_mm || 0)}mm)
-                      </span>
-                    ))}
+                    {warningProvinces.red.map(p => {
+                      const mm = activeAdvisory.provinces[p]?.rainfall_mm || 0;
+                      const isPurple = activeThresholds.purple && mm >= activeThresholds.purple;
+                      return (
+                        <span
+                          key={p}
+                          className={`px-1.5 py-0.5 border rounded text-[9.5px] font-mono ${
+                            isPurple
+                              ? "bg-fuchsia-950/60 text-fuchsia-300 border-fuchsia-900/60"
+                              : "bg-red-950/60 text-red-300 border-red-900/60"
+                          }`}
+                        >
+                          {p} ({formatRainfall(mm)}mm)
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1054,7 +1241,7 @@ const WeatherAdvisory = () => {
                   <div className="flex flex-wrap gap-1 justify-start">
                     {warningProvinces.orange.map(p => (
                       <span key={p} className="px-1.5 py-0.5 bg-orange-950/60 text-orange-300 border border-orange-900/60 rounded text-[9.5px] font-mono">
-                        {p} ({Math.round(activeAdvisory.provinces[p]?.rainfall_mm || 0)}mm)
+                        {p} ({formatRainfall(activeAdvisory.provinces[p]?.rainfall_mm || 0)}mm)
                       </span>
                     ))}
                   </div>
@@ -1094,7 +1281,7 @@ const WeatherAdvisory = () => {
                   <div className="flex flex-wrap gap-1 justify-start">
                     {warningProvinces.yellow.map(p => (
                       <span key={p} className="px-1.5 py-0.5 bg-yellow-950/50 text-yellow-300 border border-yellow-900/40 rounded text-[9.5px] font-mono">
-                        {p} ({Math.round(activeAdvisory.provinces[p]?.rainfall_mm || 0)}mm)
+                        {p} ({formatRainfall(activeAdvisory.provinces[p]?.rainfall_mm || 0)}mm)
                       </span>
                     ))}
                   </div>
@@ -1106,7 +1293,7 @@ const WeatherAdvisory = () => {
           {/* Light Blue Level */}
           <div className="bg-slate-950/40 rounded-xl overflow-hidden border border-sky-950 shadow-lg group transition-all duration-300 hover:border-sky-900/60">
             <div className="bg-gradient-to-r from-sky-600 to-sky-500 px-4 py-2 flex justify-between items-center text-white text-xs font-bold tracking-widest uppercase">
-              <span>Light Blue Level ({activeThresholds.lightBlue}-{activeThresholds.yellow} mm)</span>
+              <span>Light Blue Level ({activeThresholds.lightBlue === 0.1 ? "0.1" : activeThresholds.lightBlue}-{activeThresholds.yellow} mm)</span>
               {warningMetrics.lightBlue > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-slate-950 text-[10px] text-sky-400 border border-sky-500/35 font-bold shadow-md">
                   {warningMetrics.lightBlue} Provinces
@@ -1114,6 +1301,11 @@ const WeatherAdvisory = () => {
               )}
             </div>
             <div className="p-4 text-xs text-slate-400 leading-relaxed space-y-2">
+              {getLevelMeaning("lightBlue", observedWindow, dataSource === "observed") && (
+                <div className="text-[10.5px] font-semibold text-sky-300 bg-sky-950/40 px-2 py-1 rounded border border-sky-900/40 w-fit mb-3">
+                  {getLevelMeaning("lightBlue", observedWindow, dataSource === "observed")}
+                </div>
+              )}
               <div className="flex items-start gap-2">
                 <ChevronRight className="w-3 h-3 text-sky-500 mt-0.5 flex-shrink-0" />
                 <p><strong className="text-slate-200">Flooding:</strong> Low localized ponding on streets and urban low points.</p>
@@ -1134,7 +1326,7 @@ const WeatherAdvisory = () => {
                   <div className="flex flex-wrap gap-1 justify-start">
                     {warningProvinces.lightBlue.map(p => (
                       <span key={p} className="px-1.5 py-0.5 bg-sky-950/60 text-sky-300 border border-sky-900/60 rounded text-[9.5px] font-mono">
-                        {p} ({Math.round(activeAdvisory.provinces[p]?.rainfall_mm || 0)}mm)
+                        {p} ({formatRainfall(activeAdvisory.provinces[p]?.rainfall_mm || 0)}mm)
                       </span>
                     ))}
                   </div>
@@ -1142,6 +1334,7 @@ const WeatherAdvisory = () => {
               )}
             </div>
           </div>
+
 
         </div>
 

@@ -25,7 +25,11 @@
             "destination": "https://www.panahon.gov.ph/api/v1/radar/timeline?token=vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k&sublayer=hybrid-reflectivity"
         },
         {
-            "source": "/((?!data/).*)",
+            "source": "/api/jaxa",
+            "destination": "/api/jaxa.py"
+        },
+        {
+            "source": "/((?!data/|api/).*)",
             "destination": "/index.html"
         }
     ],
