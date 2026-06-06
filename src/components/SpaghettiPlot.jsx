@@ -81,6 +81,13 @@ const LOCAL_CSV = {
     aigefs: "/data/aigefs_tc_latest.dat",
 };
 
+// Helper to resolve asset URLs relative to the base path in both local development and deployed production (subfolder) environments
+const getAssetUrl = (path) => {
+    const base = import.meta.env.BASE_URL || "/";
+    const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+    return `${base}${cleanPath}`;
+};
+
 // ── Base64 + XOR Decryptor ──────────────────────────────────────────────
 function decodeObfuscatedData(base64Str) {
     const binaryStr = atob(base64Str);
@@ -810,7 +817,7 @@ export default function SpaghettiPlot() {
             L.polyline(PAR, { color: "#ef4444", weight: 2 }).addTo(map);
 
             // Country boundaries (matches Python BORDERS styling)
-            fetch("/assets/country.0.1_small.json")
+            fetch(getAssetUrl("/assets/country.0.1_small.json"))
                 .then(r => r.ok ? r.json() : null)
                 .then(geo => {
                     if (geo && map) {
@@ -942,7 +949,7 @@ export default function SpaghettiPlot() {
             try {
                 let manifest = cyclesManifest;
                 if (!manifest) {
-                    const res = await fetch("/data/cycles_manifest.json");
+                    const res = await fetch(getAssetUrl("/data/cycles_manifest.json"));
                     if (!res.ok) throw new Error("Manifest not found");
                     manifest = await res.json();
                     if (!cancelled) setCyclesManifest(manifest);
@@ -959,7 +966,7 @@ export default function SpaghettiPlot() {
                     if (cancelled) return;
                     
                     // Fetch tracks
-                    const tracksRes = await fetch(`/data/${c.tracks}`);
+                    const tracksRes = await fetch(getAssetUrl(`/data/${c.tracks}`));
                     if (!tracksRes.ok) continue;
                     const encTracks = await tracksRes.text();
                     const csvText = decodeObfuscatedData(encTracks);
@@ -968,7 +975,7 @@ export default function SpaghettiPlot() {
                     let pairedCsvText = null;
                     if (c.paired) {
                         try {
-                            const pairedRes = await fetch(`/data/${c.paired}`);
+                            const pairedRes = await fetch(getAssetUrl(`/data/${c.paired}`));
                             if (pairedRes.ok) {
                                 const encPaired = await pairedRes.text();
                                 pairedCsvText = decodeObfuscatedData(encPaired);
@@ -1144,7 +1151,7 @@ export default function SpaghettiPlot() {
         let pairedCsvText = null;
 
         try {
-            const res = await fetch(csvUrl);
+            const res = await fetch(getAssetUrl(csvUrl));
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const encryptedText = await res.text();
             csvText = decodeObfuscatedData(encryptedText);
@@ -1163,7 +1170,7 @@ export default function SpaghettiPlot() {
         // Base → fnv3_paired_latest.csv, Large → fnv3_large_paired_latest.csv
         const pairedUrl = isLarge ? LOCAL_CSV.largePaired : LOCAL_CSV.basePaired;
         try {
-            const pairedRes = await fetch(pairedUrl);
+            const pairedRes = await fetch(getAssetUrl(pairedUrl));
             if (pairedRes.ok) {
                 const encPairedText = await pairedRes.text();
                 pairedCsvText = decodeObfuscatedData(encPairedText);

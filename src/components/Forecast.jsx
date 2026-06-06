@@ -19,6 +19,13 @@ import {
   Database
 } from "lucide-react";
 
+// Helper to resolve asset URLs relative to the base path in both local development and deployed production (subfolder) environments
+const getAssetUrl = (path) => {
+  const base = import.meta.env.BASE_URL || "/";
+  const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+  return `${base}${cleanPath}`;
+};
+
 // Build dynamic date strings for today and yesterday in YYYY-MM-DD format
 const today = new Date();
 const yyyy = today.getFullYear();
@@ -114,16 +121,16 @@ const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
     const aigefs15Day = `/assets/aigefs_tropical_cyclone_15day_forecast_${modelTime}.png`;
 
     return [
-      { id: `fnv3-base-5day-${modelTime}`, type: "5day", model: "fnv3_base", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: fnv3Base5Day },
-      { id: `fnv3-base-15day-${modelTime}`, type: "15day", model: "fnv3_base", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: fnv3Base15Day },
-      { id: `fnv3-large-5day-${modelTime}`, type: "5day", model: "fnv3_large", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: fnv3Large5Day },
-      { id: `fnv3-large-15day-${modelTime}`, type: "15day", model: "fnv3_large", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: fnv3Large15Day },
-      { id: `ifs-5day-${modelTime}`, type: "5day", model: "ifs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: ifs5Day },
-      { id: `ifs-15day-${modelTime}`, type: "15day", model: "ifs", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: ifs15Day },
-      { id: `aifs-5day-${modelTime}`, type: "5day", model: "aifs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: aifs5Day },
-      { id: `aifs-15day-${modelTime}`, type: "15day", model: "aifs", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: aifs15Day },
-      { id: `aigefs-5day-${modelTime}`, type: "5day", model: "aigefs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: aigefs5Day },
-      { id: `aigefs-15day-${modelTime}`, type: "15day", model: "aigefs", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: aigefs15Day },
+      { id: `fnv3-base-5day-${modelTime}`, type: "5day", model: "fnv3_base", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Base5Day) },
+      { id: `fnv3-base-15day-${modelTime}`, type: "15day", model: "fnv3_base", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Base15Day) },
+      { id: `fnv3-large-5day-${modelTime}`, type: "5day", model: "fnv3_large", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Large5Day) },
+      { id: `fnv3-large-15day-${modelTime}`, type: "15day", model: "fnv3_large", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Large15Day) },
+      { id: `ifs-5day-${modelTime}`, type: "5day", model: "ifs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(ifs5Day) },
+      { id: `ifs-15day-${modelTime}`, type: "15day", model: "ifs", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(ifs15Day) },
+      { id: `aifs-5day-${modelTime}`, type: "5day", model: "aifs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(aifs5Day) },
+      { id: `aifs-15day-${modelTime}`, type: "15day", model: "aifs", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(aifs15Day) },
+      { id: `aigefs-5day-${modelTime}`, type: "5day", model: "aigefs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(aigefs5Day) },
+      { id: `aigefs-15day-${modelTime}`, type: "15day", model: "aigefs", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(aigefs15Day) },
     ];
   })
 );
