@@ -585,7 +585,7 @@ export default function SpaghettiPlot() {
     const chartData = useMemo(() => {
         if (!selectedTrendSystem) return [];
 
-        const totalEnsembleMembers = dataset === "large" ? 400 : 100;
+        const totalEnsembleMembers = dataset === "large" ? 1000 : 50;
 
         return [...selectedTrendSystem]
             .reverse() // from oldest to newest cycle
@@ -603,6 +603,8 @@ export default function SpaghettiPlot() {
                         name: label,
                         cycleTime: item.cycleTime,
                         probability: 0,
+                        memberCount: 0,
+                        totalMembers: totalEnsembleMembers,
                         minWind: null,
                         maxWind: null,
                         medianWind: null,
@@ -676,6 +678,8 @@ export default function SpaghettiPlot() {
                     name: label,
                     cycleTime: item.cycleTime,
                     probability: Math.min(100, Math.round((dist.trackCount / totalEnsembleMembers) * 100)),
+                    memberCount: dist.trackCount,
+                    totalMembers: totalEnsembleMembers,
                     minWind,
                     maxWind,
                     medianWind,
@@ -1025,6 +1029,9 @@ export default function SpaghettiPlot() {
         // Colors corresponding to the 4 cycles (Latest down to oldest)
         const cycleColors = ["#38bdf8", "#34d399", "#fbbf24", "#f87171"];
 
+        // Check if the storm has an official paired track in any of the cycles
+        const hasAnyPaired = selectedTrendSystem.some(item => item.disturbance && item.disturbance.pairedTrackName);
+
         // Add trend layer group to map
         trendLayerGroupRef.current.addTo(map);
 
@@ -1033,6 +1040,11 @@ export default function SpaghettiPlot() {
             const item = selectedTrendSystem[i];
             const dist = item.disturbance;
             if (!dist || !dist.meanPoints || dist.meanPoints.length < 2) continue;
+
+            // If the storm has an official paired track in any cycle, do not draw computed ensemble mean fallback for cycles that don't have it
+            if (hasAnyPaired && !dist.pairedTrackName) {
+                continue;
+            }
 
             const color = cycleColors[item.cycleIndex] || "#cbd5e1";
             const pts = dist.meanPoints;
@@ -2941,9 +2953,17 @@ export default function SpaghettiPlot() {
                     {selectedMeanPoint && (
                         <div className="mean-details-card no-export">
                             <div className="mean-details-header">
-                                <h3 className="mean-details-title">
-                                    {selectedMeanPoint.displayName}
-                                </h3>
+                                <div>
+                                    <h3 className="mean-details-title">
+                                        {selectedMeanPoint.displayName}
+                                    </h3>
+                                    {runInitDate && (
+                                        <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>
+                                            Model Run: {runInitDate.toISOString().replace('T', ' ').substring(0, 16).replace(/-/g, '/')} UTC
+                                            {` (${new Date(runInitDate.getTime() + 8 * 3600 * 1000).toISOString().replace('T', ' ').substring(11, 16)} PHT)`}
+                                        </div>
+                                    )}
+                                </div>
                                 <button
                                     className="mean-details-close-btn"
                                     onClick={() => {
@@ -3082,21 +3102,39 @@ export default function SpaghettiPlot() {
                                 <>
                                     <div className="mean-details-header">
                                         <div>
-                                            <h3 className="mean-details-title" style={{ fontSize: '14px', fontWeight: '800' }}>
+                                            <h3 className="mean-details-title" style={{ fontSize: '14px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 {(() => {
                                                     const latestDetectedItem = [...selectedTrendSystem].find(item => item.disturbance !== null);
                                                     const latestDist = latestDetectedItem?.disturbance;
+                                                    const totalEnsembleMembers = dataset === "large" ? 1000 : 50;
                                                     if (latestDist) {
+                                                        let title = "";
                                                         if (latestDist.pairedTrackName) {
                                                             const isInvest = parseInt(latestDist.pairedTrackName) >= 90;
-                                                            return isInvest ? `Invest ${latestDist.pairedTrackName}` : `TC ${latestDist.pairedTrackName}`;
+                                                            title = isInvest ? `Invest ${latestDist.pairedTrackName}` : `TC ${latestDist.pairedTrackName}`;
+                                                        } else {
+                                                            title = `Disturbance ${latestDist.id}`;
                                                         }
-                                                        return `Disturbance ${latestDist.id}`;
+                                                        return (
+                                                            <>
+                                                                <span>{title}</span>
+                                                                <span style={{ fontSize: '12px', fontWeight: 'normal', color: '#94a3b8' }}>
+                                                                    ({latestDist.trackCount}/{totalEnsembleMembers})
+                                                                </span>
+                                                            </>
+                                                        );
                                                     }
                                                     return "Selected Storm";
                                                 })()}
                                             </h3>
-                                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Run-to-run forecast trends</span>
+                                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                                Run-to-run forecast trends · Latest: {(() => {
+                                                    const latestItem = selectedTrendSystem[0];
+                                                    if (!latestItem) return "N/A";
+                                                    const matchTime = latestItem.cycleTime.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):00/);
+                                                    return matchTime ? `${matchTime[2]}/${matchTime[3]} ${matchTime[4]}Z` : latestItem.cycleTime;
+                                                })()}
+                                            </span>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <button
@@ -3138,7 +3176,7 @@ export default function SpaghettiPlot() {
                                         fontSize: '11px',
                                         marginBottom: '6px'
                                     }}>
-                                        {selectedTrendSystem.map((item) => {
+                                        {selectedTrendSystem.map((item, index) => {
                                             const cycleColors = ["#38bdf8", "#34d399", "#fbbf24", "#f87171"];
                                             const color = cycleColors[item.cycleIndex] || "#cbd5e1";
                                             let label = item.cycleTime;
@@ -3157,7 +3195,8 @@ export default function SpaghettiPlot() {
                                                         boxShadow: `0 0 4px ${color}`
                                                     }}></span>
                                                     <span style={{ color: item.disturbance ? '#f8fafc' : '#64748b', fontWeight: item.disturbance ? 600 : 400 }}>
-                                                        {label}
+                                                        {label} {item.disturbance ? `(${item.disturbance.trackCount}/${dataset === "large" ? 1000 : 50})` : "(N/A)"}
+                                                        {index === 0 && <span style={{ color: '#38bdf8', fontSize: '9px', fontWeight: 'bold', marginLeft: '4px' }}>[CURRENT]</span>}
                                                     </span>
                                                 </div>
                                             );
@@ -3194,7 +3233,7 @@ export default function SpaghettiPlot() {
                                                                                 {data.detected ? (
                                                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                                                         <div style={{ fontSize: '12px', fontWeight: 800, color: '#10b981' }}>
-                                                                                            Genesis Prob: {data.probability}%
+                                                                                            Genesis Prob: {data.probability}% ({data.memberCount}/{data.totalMembers} members)
                                                                                         </div>
                                                                                         {data.formationDateStr && (
                                                                                             <div style={{ color: '#fbbf24', fontSize: '11px', fontWeight: 600 }}>
@@ -3217,16 +3256,16 @@ export default function SpaghettiPlot() {
                                                                 type="monotone"
                                                                 dataKey="probability"
                                                                 stroke="#10b981"
-                                                                strokeWidth={3}
-                                                                dot={{ fill: '#10b981', r: 4 }}
-                                                                activeDot={{ r: 6 }}
+                                                                strokeWidth={2.5}
+                                                                dot={{ fill: '#10b981', r: 3 }}
+                                                                activeDot={{ r: 5 }}
                                                             />
                                                         </LineChart>
                                                     </ResponsiveContainer>
                                                 </div>
                                             </div>
 
-                                            {/* Chart 2: Peak Wind Intensity Spread */}
+                                            {/* Chart 2: Peak Wind Intensity (Spread) */}
                                             <div className="trend-chart-card">
                                                 <h4 className="trend-chart-title">Peak Wind Intensity (Spread)</h4>
                                                 <div style={{ width: '100%', height: '180px' }}>
