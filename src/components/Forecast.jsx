@@ -338,8 +338,8 @@ const Forecast = () => {
             <button
               onClick={() => setCompareMode(!compareMode)}
               className={`px-4 py-2.5 rounded-xl text-xs font-black tracking-wide transition-all border flex items-center gap-2 cursor-pointer shadow-lg ${compareMode
-                  ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400"
-                  : "bg-slate-900 border-white/5 text-slate-400 hover:text-white"
+                ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400"
+                : "bg-slate-900 border-white/5 text-slate-400 hover:text-white"
                 }`}
             >
               <Grid className="w-4 h-4" />
@@ -356,8 +356,8 @@ const Forecast = () => {
                 key={modelKey}
                 onClick={() => { setSelectedModel(modelKey); setSelectedTimeId(null); }}
                 className={`px-4 py-2.5 rounded-xl text-xs font-black tracking-wider transition-all duration-300 border cursor-pointer whitespace-nowrap ${selectedModel === modelKey
-                    ? "bg-slate-800 text-cyan-400 border-white/10 shadow-lg shadow-black/40"
-                    : "bg-slate-950/60 border-white/5 text-slate-500 hover:text-slate-200"
+                  ? "bg-slate-800 text-cyan-400 border-white/10 shadow-lg shadow-black/40"
+                  : "bg-slate-950/60 border-white/5 text-slate-500 hover:text-slate-200"
                   }`}
               >
                 {MODEL_INFO[modelKey].name}
@@ -383,8 +383,8 @@ const Forecast = () => {
                     key={opt.configId}
                     onClick={() => setSelectedTimeId(opt.configId)}
                     className={`px-3.5 py-2.5 rounded-xl text-xs transition-all border flex flex-col items-start gap-1 cursor-pointer shrink-0 text-left ${isActive
-                        ? "bg-cyan-500/10 border-cyan-400/40 text-white shadow-lg shadow-black/35 scale-102"
-                        : "bg-slate-950/50 border-white/5 text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+                      ? "bg-cyan-500/10 border-cyan-400/40 text-white shadow-lg shadow-black/35 scale-102"
+                      : "bg-slate-950/50 border-white/5 text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
                       }`}
                   >
                     <span className="font-black capitalize">{opt.type === "5day" ? "5-Day Outlook" : "15-Day Longrange"}</span>

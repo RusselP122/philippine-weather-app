@@ -4,16 +4,16 @@ import html2canvas from "html2canvas";
 import GIF from "gif.js";
 import gifWorkerUrl from "gif.js/dist/gif.worker.js?url";
 import EnsembleFilter from "./EnsembleFilter";
-import { 
-    ResponsiveContainer, 
-    LineChart, 
-    Line, 
-    XAxis, 
-    YAxis, 
-    CartesianGrid, 
-    Tooltip as ChartTooltip, 
-    AreaChart, 
-    Area 
+import {
+    ResponsiveContainer,
+    LineChart,
+    Line,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip as ChartTooltip,
+    AreaChart,
+    Area
 } from "recharts";
 import "./SpaghettiPlot.css";
 
@@ -220,10 +220,10 @@ function regionName(lat, lon) {
 function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizonName) {
     const { rows } = parseCSV(csvText);
     const rawRows = rows.filter(r => (r.lead_time_hours !== undefined || r.lead_time !== undefined) && r.lat !== undefined);
-    
+
     const maxHours = horizonName === "5day" ? 120 : 312;
     const b = BASINS.find(opt => opt.id === basinName) || BASINS[0];
-    
+
     // Group by track_id -> sample
     const grouped = {};
     for (const row of rawRows) {
@@ -250,15 +250,15 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
         if (!grouped[key]) grouped[key] = [];
         grouped[key].push({ lat, lon: llon, p: pres, windKmh, h: leadH, initTime });
     }
-    
+
     // Basin filter
     const basinFiltered = Object.values(grouped).filter(points => {
         const origin = points.find(p => p.h === 0) || points[0];
         if (!origin) return false;
         return origin.lat >= b.latMin && origin.lat <= b.latMax &&
-               origin.lon >= b.lonMin && origin.lon <= b.lonMax;
+            origin.lon >= b.lonMin && origin.lon <= b.lonMax;
     });
-    
+
     // Gather origins
     const allOrigins = [];
     const uniqueOrigins = new Set();
@@ -272,24 +272,24 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
             allOrigins.push({ lat: origin.lat, lon: origin.lon, h: origin.h || 0, oKey });
         }
     }
-    
+
     // Cluster
     const clusters = clusterOriginsGreedy(allOrigins, 300);
     clusters.forEach((c, idx) => c.distId = idx + 1);
-    
+
     const tracksByDist = {};
-    
+
     for (const points of basinFiltered) {
         if (points.length < 2) continue;
         points.sort((a, b) => a.h - b.h);
-        
+
         let bad = false;
         for (let i = 1; i < points.length; i++) {
             if (Math.abs(points[i].lat - points[i - 1].lat) > 10 ||
                 Math.abs(points[i].lon - points[i - 1].lon) > 10) { bad = true; break; }
         }
         if (bad) continue;
-        
+
         const origin = points.find(pt => pt.h === 0) || points[0];
         let distId = null;
         let bestDistKm = Infinity;
@@ -301,13 +301,13 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
             }
         }
         if (bestDistKm > 666) distId = null;
-        
+
         if (distId !== null) {
             if (!tracksByDist[distId]) tracksByDist[distId] = [];
             tracksByDist[distId].push(points);
         }
     }
-    
+
     // Process paired track CSV
     const pairedMeanByTrackId = {};
     if (pairedCsvText) {
@@ -316,7 +316,7 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
             const trackId = (row.track_id || "").trim();
             const sampleVal = (row.sample || "").trim();
             if (sampleVal !== "-1" || !trackId.toUpperCase().startsWith("WP")) continue;
-            
+
             let leadH = parseFloat(row.lead_time_hours);
             if (isNaN(leadH) || row.lead_time_hours === undefined) {
                 const str = row.lead_time || "";
@@ -328,14 +328,14 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
                 }
             }
             if (isNaN(leadH) || leadH > maxHours) continue;
-            
+
             const lat = parseFloat(row.lat);
             const lon = parseFloat(row.lon);
             const pres = parseFloat(row.minimum_sea_level_pressure_hpa);
             const windKt = parseFloat(row.maximum_sustained_wind_speed_knots);
             const windKmh = isNaN(windKt) ? NaN : Math.round(windKt * 1.852);
             if (isNaN(lat) || isNaN(lon)) continue;
-            
+
             if (!pairedMeanByTrackId[trackId]) pairedMeanByTrackId[trackId] = { points: [], trackId };
             pairedMeanByTrackId[trackId].points.push({
                 lat, lon: lon > 180 ? lon - 360 : lon,
@@ -346,7 +346,7 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
             pairedMeanByTrackId[key].points.sort((a, b) => a.h - b.h);
         }
     }
-    
+
     let initDate = null;
     const firstPointWithInit = Object.values(grouped)[0]?.[0];
     if (firstPointWithInit && firstPointWithInit.initTime && firstPointWithInit.initTime !== "latest") {
@@ -368,14 +368,14 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
         });
         const peakW = allMaxW.length > 0 ? Math.max(...allMaxW) : 0;
         const region = regionName(cluster.center.lat, cluster.center.lon);
-        
+
         let formationDateStr = "Unknown";
         if (initDate && !isNaN(initDate.getTime())) {
             const minH = cluster.minH || 0;
             const d = new Date(initDate.getTime() + minH * 3600000);
             formationDateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" });
         }
-        
+
         return {
             id: cluster.distId,
             lat: cluster.center.lat,
@@ -389,7 +389,7 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
             formationDateStr
         };
     });
-    
+
     // Sort & Renumber
     disturbanceList.sort((a, b) => b.trackCount - a.trackCount);
     const oldToNew = {};
@@ -398,13 +398,13 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
         oldToNew[d.id] = newId;
         d.id = newId;
     });
-    
+
     const updatedTracksByDist = {};
     for (const [oldId, trks] of Object.entries(tracksByDist)) {
         const newId = oldToNew[parseInt(oldId)] || oldId;
         updatedTracksByDist[newId] = trks;
     }
-    
+
     // Pair assignment
     const pairedAssignment = {};
     const usedPairedTracks = new Set();
@@ -436,7 +436,7 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
             trackName: numMatch ? `${numMatch[1]}W` : c.tId,
         };
     }
-    
+
     // Final stats calculations (mean track, agreement)
     for (const dist of disturbanceList) {
         const tracks = updatedTracksByDist[dist.id] || [];
@@ -444,14 +444,14 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
         if (tracks.length < minRequiredMembers) {
             continue;
         }
-        
+
         const assignment = pairedAssignment[dist.id];
         let matchedPaired = null;
         if (assignment) {
             matchedPaired = assignment.paired;
             dist.pairedTrackName = assignment.trackName;
         }
-        
+
         // Group by hour
         const byHour = {};
         for (let tIdx = 0; tIdx < tracks.length; tIdx++) {
@@ -465,24 +465,24 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
                 byHour[pt.h].trackIndices.push(tIdx);
             }
         }
-        
+
         const hours = Object.keys(byHour).map(Number).sort((a, b) => a - b);
         const meanPts = [];
         let totalAgreement = 0;
         let agreementSteps = 0;
-        
+
         const median = arr => {
             const s = [...arr].sort((a, b) => a - b);
             const mid = Math.floor(s.length / 2);
             return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
         };
-        
+
         for (const h of hours) {
             const d = byHour[h];
             if (!d) continue;
             const n = d.lats.length;
             if (n === 0) continue;
-            
+
             let mLat, mLon, mW, mP;
             const usePaired = matchedPaired !== null;
             if (usePaired) {
@@ -503,7 +503,7 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
                 mW = median(d.winds.filter(w => !isNaN(w)));
                 mP = median(d.ps.filter(p => !isNaN(p)));
             }
-            
+
             const distsKm = d.lats.map((lat, i) => haversineKm({ lat, lon: d.lons[i] }, { lat: mLat, lon: mLon }));
             let inside = 0;
             for (let i = 0; i < n; i++) {
@@ -511,14 +511,14 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
             }
             totalAgreement += inside / n;
             agreementSteps++;
-            
+
             meanPts.push({ lat: mLat, lon: mLon, windKmh: mW, p: mP, h });
         }
-        
+
         dist.agreement = agreementSteps > 0 ? Math.round((totalAgreement / agreementSteps) * 100) : 0;
         dist.meanPoints = meanPts;
     }
-    
+
     return {
         disturbances: disturbanceList,
         tracksByDisturbance: updatedTracksByDist
@@ -584,9 +584,9 @@ export default function SpaghettiPlot() {
     // Memoized trend data prepared for Recharts
     const chartData = useMemo(() => {
         if (!selectedTrendSystem) return [];
-        
+
         const totalEnsembleMembers = dataset === "large" ? 400 : 100;
-        
+
         return [...selectedTrendSystem]
             .reverse() // from oldest to newest cycle
             .map(item => {
@@ -596,7 +596,7 @@ export default function SpaghettiPlot() {
                     const [_, yr, mo, dy, hr] = matchTime;
                     label = `${mo}/${dy} ${hr}Z`;
                 }
-                
+
                 const dist = item.disturbance;
                 if (!dist) {
                     return {
@@ -613,31 +613,31 @@ export default function SpaghettiPlot() {
                         formationDateStr: null
                     };
                 }
-                
+
                 const cycleData = allCyclesData[item.cycleIndex];
                 let distTracks = [];
                 if (cycleData && cycleData.tracksByDisturbance) {
                     distTracks = cycleData.tracksByDisturbance[dist.id] || [];
                 }
-                
+
                 const peakWinds = distTracks.map(track => {
                     const winds = track.map(pt => isNaN(pt.windKmh) ? 0 : pt.windKmh);
                     return winds.length > 0 ? Math.max(...winds) : 0;
                 }).filter(w => w > 0);
-                
+
                 let minWind = null;
                 let maxWind = null;
                 let medianWind = null;
                 let windRange = null;
-                
+
                 if (peakWinds.length > 0) {
                     minWind = Math.min(...peakWinds);
                     maxWind = Math.max(...peakWinds);
-                    
+
                     const sorted = [...peakWinds].sort((a, b) => a - b);
                     const mid = Math.floor(sorted.length / 2);
                     medianWind = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-                    
+
                     windRange = [minWind, maxWind];
                 } else if (dist.peakW > 0) {
                     minWind = dist.peakW;
@@ -663,7 +663,7 @@ export default function SpaghettiPlot() {
                     return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
                 });
                 const computedMeanWind = hourlyMedians.length > 0 ? Math.max(...hourlyMedians) : (medianWind || null);
-                
+
                 let pairedWind = null;
                 if (dist.pairedTrackName && dist.meanPoints) {
                     const winds = dist.meanPoints.map(pt => pt.windKmh).filter(w => !isNaN(w));
@@ -671,7 +671,7 @@ export default function SpaghettiPlot() {
                         pairedWind = Math.max(...winds);
                     }
                 }
-                
+
                 return {
                     name: label,
                     cycleTime: item.cycleTime,
@@ -874,24 +874,24 @@ export default function SpaghettiPlot() {
     }, [desktopSidebarOpen, sidebarOpen]);
 
     // ── Multi-Cycle Trends Logic & Hooks ─────────────────────────────────────
-    
+
     // Heuristic tracker to match a system across cycles
     const matchDisturbancesAcrossCycles = useCallback((selectedDist, cyclesData) => {
         if (!selectedDist || !cyclesData || cyclesData.length === 0) return [];
-        
+
         const matchedChain = [];
         let currentCenter = { lat: selectedDist.lat, lon: selectedDist.lon };
         let currentPairedName = selectedDist.pairedTrackName;
-        
+
         for (let i = 0; i < cyclesData.length; i++) {
             const cycle = cyclesData[i];
             let match = null;
-            
+
             // 1. Try matching by paired storm ID first
             if (currentPairedName) {
                 match = cycle.disturbances.find(d => d.pairedTrackName === currentPairedName);
             }
-            
+
             // 2. Try spatial matching
             if (!match) {
                 let bestDist = Infinity;
@@ -903,7 +903,7 @@ export default function SpaghettiPlot() {
                     }
                 }
             }
-            
+
             if (match) {
                 matchedChain.push({
                     cycleIndex: i,
@@ -923,7 +923,7 @@ export default function SpaghettiPlot() {
                 });
             }
         }
-        
+
         return matchedChain;
     }, []);
 
@@ -941,9 +941,9 @@ export default function SpaghettiPlot() {
             setIsTrendsCollapsed(false);
             return;
         }
-        
+
         let cancelled = false;
-        
+
         const loadAllCycles = async () => {
             setLoadingTrends(true);
             try {
@@ -954,23 +954,23 @@ export default function SpaghettiPlot() {
                     manifest = await res.json();
                     if (!cancelled) setCyclesManifest(manifest);
                 }
-                
+
                 const activeCycles = dataset === "large" ? manifest.large : manifest.base;
                 if (!activeCycles || activeCycles.length === 0) {
                     throw new Error("No active cycles found for selected dataset");
                 }
-                
+
                 const parsedCycles = [];
-                
+
                 for (const c of activeCycles) {
                     if (cancelled) return;
-                    
+
                     // Fetch tracks
                     const tracksRes = await fetch(getAssetUrl(`/data/${c.tracks}`));
                     if (!tracksRes.ok) continue;
                     const encTracks = await tracksRes.text();
                     const csvText = decodeObfuscatedData(encTracks);
-                    
+
                     // Fetch paired
                     let pairedCsvText = null;
                     if (c.paired) {
@@ -980,9 +980,9 @@ export default function SpaghettiPlot() {
                                 const encPaired = await pairedRes.text();
                                 pairedCsvText = decodeObfuscatedData(encPaired);
                             }
-                        } catch (_) {}
+                        } catch (_) { }
                     }
-                    
+
                     // Parse cycle stats without map layers rendering
                     const parsed = parseCycleStats(csvText, pairedCsvText, dataset, basin, horizon);
                     parsedCycles.push({
@@ -991,7 +991,7 @@ export default function SpaghettiPlot() {
                         tracksByDisturbance: parsed.tracksByDisturbance
                     });
                 }
-                
+
                 if (!cancelled) {
                     setAllCyclesData(parsedCycles);
                     setSelectedTrendSystem(null);
@@ -1002,9 +1002,9 @@ export default function SpaghettiPlot() {
                 if (!cancelled) setLoadingTrends(false);
             }
         };
-        
+
         loadAllCycles();
-        
+
         return () => {
             cancelled = true;
         };
@@ -1084,7 +1084,7 @@ export default function SpaghettiPlot() {
                 fillColor: "#0f172a",
                 fillOpacity: 1
             }).bindTooltip(`Formation: ${cycleLabel}`, { direction: "top" })
-              .addTo(trendLayerGroupRef.current);
+                .addTo(trendLayerGroupRef.current);
 
             // Peak/Latest position marker
             L.circleMarker([endPt.lat, endPt.lon], {
@@ -1094,7 +1094,7 @@ export default function SpaghettiPlot() {
                 fillColor: color,
                 fillOpacity: 0.8
             }).bindTooltip(`End position: ${cycleLabel}`, { direction: "top" })
-              .addTo(trendLayerGroupRef.current);
+                .addTo(trendLayerGroupRef.current);
         }
 
         // Auto-fit bounds of the trend tracks so the user sees the shifts immediately
@@ -1939,7 +1939,7 @@ export default function SpaghettiPlot() {
                         const d = initDate ? new Date(initDate.getTime() + pt.h * 3600000) : null;
                         const dateStr = d ? d.toLocaleDateString("en-US", { day: "numeric", month: "short", timeZone: "Asia/Manila" }) : "N/A";
                         let hr = d ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Manila" }) : "N/A";
-                        
+
                         const windVal = isNaN(pt.windKmh) ? 'N/A' : `${pt.windKmh.toFixed(0)} km/h`;
                         const windColorVal = windColor(pt.windKmh);
 
@@ -2592,14 +2592,14 @@ export default function SpaghettiPlot() {
                             const isFilterLocked = viewMode === "filter" && opt.id !== "large";
                             const isTrendsLocked = viewMode === "trends" && opt.id !== "base" && opt.id !== "large";
                             const isLocked = isFilterLocked || isTrendsLocked;
-                            
+
                             let titleText = "";
                             if (isFilterLocked) {
                                 titleText = "Only FNV3 Large dataset supports track filtering. Switch mode to Tracker to select other datasets.";
                             } else if (isTrendsLocked) {
                                 titleText = "Trends are only available for FNV3 Base and Large datasets. Switch mode to Tracker to select other datasets.";
                             }
-                            
+
                             return (
                                 <button
                                     key={opt.id}
@@ -2872,7 +2872,7 @@ export default function SpaghettiPlot() {
                 )}
 
                 {/* Mobile top bar */}
-                <div 
+                <div
                     className="mobile-topbar"
                     style={{
                         position: "fixed",
@@ -2892,8 +2892,8 @@ export default function SpaghettiPlot() {
                         zIndex: 99999
                     }}
                 >
-                    <button 
-                        onClick={() => setSidebarOpen(true)} 
+                    <button
+                        onClick={() => setSidebarOpen(true)}
                         className="mobile-menu-btn"
                         style={{
                             padding: "0.5rem",
@@ -2911,7 +2911,7 @@ export default function SpaghettiPlot() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                         </svg>
                     </button>
-                    <span 
+                    <span
                         className="mobile-title"
                         style={{
                             fontSize: "0.75rem",
@@ -2990,7 +2990,7 @@ export default function SpaghettiPlot() {
                                     start = Math.max(0, start);
                                     windowPts = pts.slice(start, end + 1);
                                 }
-                                
+
                                 // Reverse so newer/latest are at the top (descending by lead time)
                                 const selectedPts = [...windowPts].reverse();
 
@@ -3019,8 +3019,8 @@ export default function SpaghettiPlot() {
                                                     const isActive = pt.h === selectedMeanPoint.h;
                                                     const { date, time } = formatDateTime(pt.h);
                                                     return (
-                                                        <tr 
-                                                            key={pt.h} 
+                                                        <tr
+                                                            key={pt.h}
                                                             className={isActive ? "active-row" : ""}
                                                             onClick={() => handleMeanPointClick(pt, selectedMeanPoint.distId, selectedMeanPoint.region)}
                                                             style={{ cursor: 'pointer' }}
@@ -3167,158 +3167,158 @@ export default function SpaghettiPlot() {
                                     {!isTrendsCollapsed && (
                                         <>
                                             {/* Chart 1: Genesis Probability */}
-                                    <div className="trend-chart-card">
-                                        <h4 className="trend-chart-title">Genesis Probability</h4>
-                                        <div style={{ width: '100%', height: '160px' }}>
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <LineChart data={chartData} margin={{ top: 10, right: 15, left: 0, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                                                    <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="rgba(255,255,255,0.1)" />
-                                                    <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="rgba(255,255,255,0.1)" width={35} />
-                                                    <ChartTooltip
-                                                        content={({ active, payload }) => {
-                                                            if (active && payload && payload.length) {
-                                                                const data = payload[0].payload;
-                                                                return (
-                                                                    <div style={{
-                                                                        background: 'rgba(15, 23, 42, 0.95)',
-                                                                        backdropFilter: 'blur(8px)',
-                                                                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                                                                        borderRadius: '8px',
-                                                                        padding: '8px 12px',
-                                                                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                                                                    }}>
-                                                                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginBottom: '4px' }}>
-                                                                            {data.cycleTime}
-                                                                        </div>
-                                                                        {data.detected ? (
-                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                                                <div style={{ fontSize: '12px', fontWeight: 800, color: '#10b981' }}>
-                                                                                    Genesis Prob: {data.probability}%
+                                            <div className="trend-chart-card">
+                                                <h4 className="trend-chart-title">Genesis Probability</h4>
+                                                <div style={{ width: '100%', height: '160px' }}>
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <LineChart data={chartData} margin={{ top: 10, right: 15, left: 0, bottom: 0 }}>
+                                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                                                            <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="rgba(255,255,255,0.1)" />
+                                                            <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="rgba(255,255,255,0.1)" width={35} />
+                                                            <ChartTooltip
+                                                                content={({ active, payload }) => {
+                                                                    if (active && payload && payload.length) {
+                                                                        const data = payload[0].payload;
+                                                                        return (
+                                                                            <div style={{
+                                                                                background: 'rgba(15, 23, 42, 0.95)',
+                                                                                backdropFilter: 'blur(8px)',
+                                                                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                                                borderRadius: '8px',
+                                                                                padding: '8px 12px',
+                                                                                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                                                            }}>
+                                                                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginBottom: '4px' }}>
+                                                                                    {data.cycleTime}
                                                                                 </div>
-                                                                                {data.formationDateStr && (
-                                                                                    <div style={{ color: '#fbbf24', fontSize: '11px', fontWeight: 600 }}>
-                                                                                        Genesis Est: {data.formationDateStr}
+                                                                                {data.detected ? (
+                                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                                        <div style={{ fontSize: '12px', fontWeight: 800, color: '#10b981' }}>
+                                                                                            Genesis Prob: {data.probability}%
+                                                                                        </div>
+                                                                                        {data.formationDateStr && (
+                                                                                            <div style={{ color: '#fbbf24', fontSize: '11px', fontWeight: 600 }}>
+                                                                                                Genesis Est: {data.formationDateStr}
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div style={{ fontSize: '12px', color: '#ef4444', fontWeight: 600 }}>
+                                                                                        System not detected
                                                                                     </div>
                                                                                 )}
                                                                             </div>
-                                                                        ) : (
-                                                                            <div style={{ fontSize: '12px', color: '#ef4444', fontWeight: 600 }}>
-                                                                                System not detected
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                );
-                                                            }
-                                                            return null;
-                                                        }}
-                                                    />
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="probability" 
-                                                        stroke="#10b981" 
-                                                        strokeWidth={3} 
-                                                        dot={{ fill: '#10b981', r: 4 }}
-                                                        activeDot={{ r: 6 }} 
-                                                    />
-                                                </LineChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </div>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                }}
+                                                            />
+                                                            <Line
+                                                                type="monotone"
+                                                                dataKey="probability"
+                                                                stroke="#10b981"
+                                                                strokeWidth={3}
+                                                                dot={{ fill: '#10b981', r: 4 }}
+                                                                activeDot={{ r: 6 }}
+                                                            />
+                                                        </LineChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
 
-                                    {/* Chart 2: Peak Wind Intensity Spread */}
-                                    <div className="trend-chart-card">
-                                        <h4 className="trend-chart-title">Peak Wind Intensity (Spread)</h4>
-                                        <div style={{ width: '100%', height: '180px' }}>
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <AreaChart data={chartData} margin={{ top: 10, right: 15, left: 10, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                                                    <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="rgba(255,255,255,0.1)" />
-                                                    <YAxis 
-                                                        domain={['auto', 'auto']} 
-                                                        tick={{ fill: '#94a3b8', fontSize: 10 }} 
-                                                        stroke="rgba(255,255,255,0.1)"
-                                                        unit=" km/h"
-                                                        width={55}
-                                                    />
-                                                    <ChartTooltip
-                                                        content={({ active, payload }) => {
-                                                            if (active && payload && payload.length) {
-                                                                const data = payload[0].payload;
-                                                                return (
-                                                                    <div style={{
-                                                                        background: 'rgba(15, 23, 42, 0.95)',
-                                                                        backdropFilter: 'blur(8px)',
-                                                                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                                                                        borderRadius: '8px',
-                                                                        padding: '8px 12px',
-                                                                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                                                                    }}>
-                                                                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginBottom: '4px' }}>
-                                                                            {data.cycleTime}
-                                                                        </div>
-                                                                        {data.detected ? (
-                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
-                                                                                <div style={{ color: '#00d4ff', fontWeight: 700 }}>
-                                                                                    Ensemble Mean: {data.computedMeanWind ? `${data.computedMeanWind.toFixed(0)} km/h` : 'N/A'}
+                                            {/* Chart 2: Peak Wind Intensity Spread */}
+                                            <div className="trend-chart-card">
+                                                <h4 className="trend-chart-title">Peak Wind Intensity (Spread)</h4>
+                                                <div style={{ width: '100%', height: '180px' }}>
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <AreaChart data={chartData} margin={{ top: 10, right: 15, left: 10, bottom: 0 }}>
+                                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                                                            <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="rgba(255,255,255,0.1)" />
+                                                            <YAxis
+                                                                domain={['auto', 'auto']}
+                                                                tick={{ fill: '#94a3b8', fontSize: 10 }}
+                                                                stroke="rgba(255,255,255,0.1)"
+                                                                unit=" km/h"
+                                                                width={55}
+                                                            />
+                                                            <ChartTooltip
+                                                                content={({ active, payload }) => {
+                                                                    if (active && payload && payload.length) {
+                                                                        const data = payload[0].payload;
+                                                                        return (
+                                                                            <div style={{
+                                                                                background: 'rgba(15, 23, 42, 0.95)',
+                                                                                backdropFilter: 'blur(8px)',
+                                                                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                                                borderRadius: '8px',
+                                                                                padding: '8px 12px',
+                                                                                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                                                            }}>
+                                                                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginBottom: '4px' }}>
+                                                                                    {data.cycleTime}
                                                                                 </div>
-                                                                                {data.pairedWind && (
-                                                                                    <div style={{ color: '#ffffff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                                        <span style={{ width: '8px', height: '0px', borderTop: '2px dashed #ffffff', display: 'inline-block' }}></span>
-                                                                                        Paired Track: {data.pairedWind.toFixed(0)} km/h
+                                                                                {data.detected ? (
+                                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+                                                                                        <div style={{ color: '#00d4ff', fontWeight: 700 }}>
+                                                                                            Ensemble Mean: {data.computedMeanWind ? `${data.computedMeanWind.toFixed(0)} km/h` : 'N/A'}
+                                                                                        </div>
+                                                                                        {data.pairedWind && (
+                                                                                            <div style={{ color: '#ffffff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                                                <span style={{ width: '8px', height: '0px', borderTop: '2px dashed #ffffff', display: 'inline-block' }}></span>
+                                                                                                Paired Track: {data.pairedWind.toFixed(0)} km/h
+                                                                                            </div>
+                                                                                        )}
+                                                                                        <div style={{ color: '#94a3b8', fontSize: '11px' }}>
+                                                                                            Median Peak: {data.medianWind ? `${data.medianWind.toFixed(0)} km/h` : 'N/A'}
+                                                                                        </div>
+                                                                                        <div style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '11px' }}>
+                                                                                            Member Range: {data.minWind ? `${data.minWind.toFixed(0)} - ${data.maxWind.toFixed(0)} km/h` : 'N/A'}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div style={{ fontSize: '12px', color: '#ef4444', fontWeight: 600 }}>
+                                                                                        System not detected
                                                                                     </div>
                                                                                 )}
-                                                                                <div style={{ color: '#94a3b8', fontSize: '11px' }}>
-                                                                                    Median Peak: {data.medianWind ? `${data.medianWind.toFixed(0)} km/h` : 'N/A'}
-                                                                                </div>
-                                                                                <div style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '11px' }}>
-                                                                                    Member Range: {data.minWind ? `${data.minWind.toFixed(0)} - ${data.maxWind.toFixed(0)} km/h` : 'N/A'}
-                                                                                </div>
                                                                             </div>
-                                                                        ) : (
-                                                                            <div style={{ fontSize: '12px', color: '#ef4444', fontWeight: 600 }}>
-                                                                                System not detected
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                );
-                                                            }
-                                                            return null;
-                                                        }}
-                                                    />
-                                                    <Area 
-                                                        type="monotone" 
-                                                        dataKey="windRange" 
-                                                        stroke="none" 
-                                                        fill="rgba(0, 212, 255, 0.15)" 
-                                                    />
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="computedMeanWind" 
-                                                        stroke="#00d4ff" 
-                                                        name="Ensemble Mean"
-                                                        strokeWidth={2.5} 
-                                                        dot={{ fill: '#00d4ff', r: 3 }}
-                                                        activeDot={{ r: 5 }} 
-                                                    />
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="pairedWind" 
-                                                        stroke="#ffffff" 
-                                                        name="Paired Track"
-                                                        strokeDasharray="4 4" 
-                                                        strokeWidth={1.5} 
-                                                        dot={{ fill: '#ffffff', r: 2 }}
-                                                        activeDot={{ r: 4 }} 
-                                                    />
-                                                </AreaChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </div>
-                            </>
-                        )}
-                    </>
-                ) : (
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                }}
+                                                            />
+                                                            <Area
+                                                                type="monotone"
+                                                                dataKey="windRange"
+                                                                stroke="none"
+                                                                fill="rgba(0, 212, 255, 0.15)"
+                                                            />
+                                                            <Line
+                                                                type="monotone"
+                                                                dataKey="computedMeanWind"
+                                                                stroke="#00d4ff"
+                                                                name="Ensemble Mean"
+                                                                strokeWidth={2.5}
+                                                                dot={{ fill: '#00d4ff', r: 3 }}
+                                                                activeDot={{ r: 5 }}
+                                                            />
+                                                            <Line
+                                                                type="monotone"
+                                                                dataKey="pairedWind"
+                                                                stroke="#ffffff"
+                                                                name="Paired Track"
+                                                                strokeDasharray="4 4"
+                                                                strokeWidth={1.5}
+                                                                dot={{ fill: '#ffffff', r: 2 }}
+                                                                activeDot={{ r: 4 }}
+                                                            />
+                                                        </AreaChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </>
+                            ) : (
                                 <div className="trends-empty-state">
                                     <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginBottom: '8px', opacity: 0.5, color: '#94a3b8' }}>
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
