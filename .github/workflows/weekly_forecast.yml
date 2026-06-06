@@ -44,8 +44,9 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Add the new weekly images in public/images folder
+          # Add the new weekly images and JSON data
           git add public/images/*.png
+          git add public/data/*.json
           
           # Commit if there are changes
           if git diff --staged --quiet; then
