@@ -1,9 +1,20 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import * as turf from "@turf/turf";
 import html2canvas from "html2canvas";
 import GIF from "gif.js";
 import gifWorkerUrl from "gif.js/dist/gif.worker.js?url";
 import EnsembleFilter from "./EnsembleFilter";
+import { 
+    ResponsiveContainer, 
+    LineChart, 
+    Line, 
+    XAxis, 
+    YAxis, 
+    CartesianGrid, 
+    Tooltip as ChartTooltip, 
+    AreaChart, 
+    Area 
+} from "recharts";
 import "./SpaghettiPlot.css";
 
 // ── Leaflet asset injection ───────────────────────────────────────────────
@@ -198,6 +209,315 @@ function regionName(lat, lon) {
     return "Open Pacific";
 }
 
+// ── Parse Cycle Statistics (without leaflet mapping) ──────────────────────
+function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizonName) {
+    const { rows } = parseCSV(csvText);
+    const rawRows = rows.filter(r => (r.lead_time_hours !== undefined || r.lead_time !== undefined) && r.lat !== undefined);
+    
+    const maxHours = horizonName === "5day" ? 120 : 312;
+    const b = BASINS.find(opt => opt.id === basinName) || BASINS[0];
+    
+    // Group by track_id -> sample
+    const grouped = {};
+    for (const row of rawRows) {
+        let leadH = parseFloat(row.lead_time_hours);
+        if (isNaN(leadH) || row.lead_time_hours === undefined) {
+            const str = row.lead_time || "";
+            const parts = str.match(/(?:(\d+)\s+days\s+)?(\d+):(\d+):(\d+)/);
+            if (parts) {
+                const d = parseInt(parts[1] || 0);
+                const h = parseInt(parts[2] || 0);
+                leadH = d * 24 + h;
+            }
+        }
+        if (isNaN(leadH) || leadH > maxHours) continue;
+        const lat = parseFloat(row.lat);
+        const lon = parseFloat(row.lon);
+        const pres = parseFloat(row.minimum_sea_level_pressure_hpa);
+        const windKt = parseFloat(row.maximum_sustained_wind_speed_knots);
+        const windKmh = isNaN(windKt) ? NaN : Math.round(windKt * 1.852);
+        if (isNaN(lat) || isNaN(lon)) continue;
+        const llon = lon > 180 ? lon - 360 : lon;
+        const initTime = row.init_time || "latest";
+        const key = `${initTime}__${row.track_id}__${row.sample}`;
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push({ lat, lon: llon, p: pres, windKmh, h: leadH, initTime });
+    }
+    
+    // Basin filter
+    const basinFiltered = Object.values(grouped).filter(points => {
+        const origin = points.find(p => p.h === 0) || points[0];
+        if (!origin) return false;
+        return origin.lat >= b.latMin && origin.lat <= b.latMax &&
+               origin.lon >= b.lonMin && origin.lon <= b.lonMax;
+    });
+    
+    // Gather origins
+    const allOrigins = [];
+    const uniqueOrigins = new Set();
+    for (const points of basinFiltered) {
+        if (points.length < 2) continue;
+        const origin = points.find(pt => pt.h === 0) || points.reduce((prev, curr) => curr.h < prev.h ? curr : prev, points[0]);
+        if (!origin) continue;
+        const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
+        if (!uniqueOrigins.has(oKey)) {
+            uniqueOrigins.add(oKey);
+            allOrigins.push({ lat: origin.lat, lon: origin.lon, h: origin.h || 0, oKey });
+        }
+    }
+    
+    // Cluster
+    const clusters = clusterOriginsGreedy(allOrigins, 300);
+    clusters.forEach((c, idx) => c.distId = idx + 1);
+    
+    const tracksByDist = {};
+    
+    for (const points of basinFiltered) {
+        if (points.length < 2) continue;
+        points.sort((a, b) => a.h - b.h);
+        
+        let bad = false;
+        for (let i = 1; i < points.length; i++) {
+            if (Math.abs(points[i].lat - points[i - 1].lat) > 10 ||
+                Math.abs(points[i].lon - points[i - 1].lon) > 10) { bad = true; break; }
+        }
+        if (bad) continue;
+        
+        const origin = points.find(pt => pt.h === 0) || points[0];
+        let distId = null;
+        let bestDistKm = Infinity;
+        for (const c of clusters) {
+            const dd = haversineKm(c.center, origin);
+            if (dd < bestDistKm) {
+                bestDistKm = dd;
+                distId = c.distId;
+            }
+        }
+        if (bestDistKm > 666) distId = null;
+        
+        if (distId !== null) {
+            if (!tracksByDist[distId]) tracksByDist[distId] = [];
+            tracksByDist[distId].push(points);
+        }
+    }
+    
+    // Process paired track CSV
+    const pairedMeanByTrackId = {};
+    if (pairedCsvText) {
+        const { rows: pairedRows } = parseCSV(pairedCsvText);
+        for (const row of pairedRows) {
+            const trackId = (row.track_id || "").trim();
+            const sampleVal = (row.sample || "").trim();
+            if (sampleVal !== "-1" || !trackId.toUpperCase().startsWith("WP")) continue;
+            
+            let leadH = parseFloat(row.lead_time_hours);
+            if (isNaN(leadH) || row.lead_time_hours === undefined) {
+                const str = row.lead_time || "";
+                const parts = str.match(/(?:(\d+)\s+days\s+)?(\d+):(\d+):(\d+)/);
+                if (parts) {
+                    const d = parseInt(parts[1] || 0);
+                    const h = parseInt(parts[2] || 0);
+                    leadH = d * 24 + h;
+                }
+            }
+            if (isNaN(leadH) || leadH > maxHours) continue;
+            
+            const lat = parseFloat(row.lat);
+            const lon = parseFloat(row.lon);
+            const pres = parseFloat(row.minimum_sea_level_pressure_hpa);
+            const windKt = parseFloat(row.maximum_sustained_wind_speed_knots);
+            const windKmh = isNaN(windKt) ? NaN : Math.round(windKt * 1.852);
+            if (isNaN(lat) || isNaN(lon)) continue;
+            
+            if (!pairedMeanByTrackId[trackId]) pairedMeanByTrackId[trackId] = { points: [], trackId };
+            pairedMeanByTrackId[trackId].points.push({
+                lat, lon: lon > 180 ? lon - 360 : lon,
+                p: pres, windKmh, h: leadH
+            });
+        }
+        for (const key of Object.keys(pairedMeanByTrackId)) {
+            pairedMeanByTrackId[key].points.sort((a, b) => a.h - b.h);
+        }
+    }
+    
+    let initDate = null;
+    const firstPointWithInit = Object.values(grouped)[0]?.[0];
+    if (firstPointWithInit && firstPointWithInit.initTime && firstPointWithInit.initTime !== "latest") {
+        let timeStr = firstPointWithInit.initTime;
+        if (!timeStr.includes('Z') && !timeStr.includes('+')) {
+            timeStr = timeStr.trim().replace(' ', 'T') + 'Z';
+        } else {
+            timeStr = timeStr.includes('Z') ? timeStr : timeStr.replace(/-/g, '/');
+        }
+        initDate = new Date(timeStr);
+    }
+
+    // Disturbance metadata list
+    const disturbanceList = clusters.map(cluster => {
+        const distTracks = tracksByDist[cluster.distId] || [];
+        const allMaxW = distTracks.map(pts => {
+            const winds = pts.map(pt => isNaN(pt.windKmh) ? 0 : pt.windKmh);
+            return winds.length > 0 ? Math.max(...winds) : 0;
+        });
+        const peakW = allMaxW.length > 0 ? Math.max(...allMaxW) : 0;
+        const region = regionName(cluster.center.lat, cluster.center.lon);
+        
+        let formationDateStr = "Unknown";
+        if (initDate && !isNaN(initDate.getTime())) {
+            const minH = cluster.minH || 0;
+            const d = new Date(initDate.getTime() + minH * 3600000);
+            formationDateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" });
+        }
+        
+        return {
+            id: cluster.distId,
+            lat: cluster.center.lat,
+            lon: cluster.center.lon,
+            region,
+            trackCount: distTracks.length,
+            peakW,
+            pairedTrackName: null,
+            agreement: 0,
+            meanPoints: null,
+            formationDateStr
+        };
+    });
+    
+    // Sort & Renumber
+    disturbanceList.sort((a, b) => b.trackCount - a.trackCount);
+    const oldToNew = {};
+    disturbanceList.forEach((d, idx) => {
+        const newId = idx + 1;
+        oldToNew[d.id] = newId;
+        d.id = newId;
+    });
+    
+    const updatedTracksByDist = {};
+    for (const [oldId, trks] of Object.entries(tracksByDist)) {
+        const newId = oldToNew[parseInt(oldId)] || oldId;
+        updatedTracksByDist[newId] = trks;
+    }
+    
+    // Pair assignment
+    const pairedAssignment = {};
+    const usedPairedTracks = new Set();
+    const usedDisturbances = new Set();
+    const candidates = [];
+    for (const [tId, paired] of Object.entries(pairedMeanByTrackId)) {
+        if (paired.points.length < 2) continue;
+        const pOrigin = paired.points[0];
+        for (const dist of disturbanceList) {
+            const tracks = updatedTracksByDist[dist.id] || [];
+            if (tracks.length < 2) continue;
+            const dKm = haversineKm(
+                { lat: dist.lat, lon: dist.lon },
+                { lat: pOrigin.lat, lon: pOrigin.lon }
+            );
+            if (dKm < 500) {
+                candidates.push({ tId, paired, dist, dKm });
+            }
+        }
+    }
+    candidates.sort((a, b) => a.dKm - b.dKm);
+    for (const c of candidates) {
+        if (usedPairedTracks.has(c.tId) || usedDisturbances.has(c.dist.id)) continue;
+        usedPairedTracks.add(c.tId);
+        usedDisturbances.add(c.dist.id);
+        const numMatch = c.tId.match(/WP(\d{2})/i);
+        pairedAssignment[c.dist.id] = {
+            paired: c.paired,
+            trackName: numMatch ? `${numMatch[1]}W` : c.tId,
+        };
+    }
+    
+    // Final stats calculations (mean track, agreement)
+    for (const dist of disturbanceList) {
+        const tracks = updatedTracksByDist[dist.id] || [];
+        const minRequiredMembers = datasetName === "large" ? 100 : 25;
+        if (tracks.length < minRequiredMembers) {
+            continue;
+        }
+        
+        const assignment = pairedAssignment[dist.id];
+        let matchedPaired = null;
+        if (assignment) {
+            matchedPaired = assignment.paired;
+            dist.pairedTrackName = assignment.trackName;
+        }
+        
+        // Group by hour
+        const byHour = {};
+        for (let tIdx = 0; tIdx < tracks.length; tIdx++) {
+            const track = tracks[tIdx];
+            for (const pt of track) {
+                if (!byHour[pt.h]) byHour[pt.h] = { lats: [], lons: [], ps: [], winds: [], trackIndices: [] };
+                byHour[pt.h].lats.push(pt.lat);
+                byHour[pt.h].lons.push(pt.lon);
+                byHour[pt.h].ps.push(pt.p);
+                byHour[pt.h].winds.push(pt.windKmh);
+                byHour[pt.h].trackIndices.push(tIdx);
+            }
+        }
+        
+        const hours = Object.keys(byHour).map(Number).sort((a, b) => a - b);
+        const meanPts = [];
+        let totalAgreement = 0;
+        let agreementSteps = 0;
+        
+        const median = arr => {
+            const s = [...arr].sort((a, b) => a - b);
+            const mid = Math.floor(s.length / 2);
+            return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+        };
+        
+        for (const h of hours) {
+            const d = byHour[h];
+            if (!d) continue;
+            const n = d.lats.length;
+            if (n === 0) continue;
+            
+            let mLat, mLon, mW, mP;
+            const usePaired = matchedPaired !== null;
+            if (usePaired) {
+                const pairedPt = matchedPaired.points.reduce((best, pt) => {
+                    return Math.abs(pt.h - h) < Math.abs(best.h - h) ? pt : best;
+                }, matchedPaired.points[0]);
+                if (Math.abs(pairedPt.h - h) <= 3) {
+                    mLat = pairedPt.lat;
+                    mLon = pairedPt.lon;
+                    mW = pairedPt.windKmh;
+                    mP = pairedPt.p;
+                } else {
+                    continue;
+                }
+            } else {
+                mLat = median(d.lats);
+                mLon = median(d.lons);
+                mW = median(d.winds.filter(w => !isNaN(w)));
+                mP = median(d.ps.filter(p => !isNaN(p)));
+            }
+            
+            const distsKm = d.lats.map((lat, i) => haversineKm({ lat, lon: d.lons[i] }, { lat: mLat, lon: mLon }));
+            let inside = 0;
+            for (let i = 0; i < n; i++) {
+                if (distsKm[i] <= (2 * 111.32)) inside++; // 2 degrees matching AGREEMENT_RADIUS
+            }
+            totalAgreement += inside / n;
+            agreementSteps++;
+            
+            meanPts.push({ lat: mLat, lon: mLon, windKmh: mW, p: mP, h });
+        }
+        
+        dist.agreement = agreementSteps > 0 ? Math.round((totalAgreement / agreementSteps) * 100) : 0;
+        dist.meanPoints = meanPts;
+    }
+    
+    return {
+        disturbances: disturbanceList,
+        tracksByDisturbance: updatedTracksByDist
+    };
+}
+
 // ── Component ─────────────────────────────────────────────────────────────
 export default function SpaghettiPlot() {
     const mapRef = useRef(null);
@@ -205,6 +525,7 @@ export default function SpaghettiPlot() {
     const layerGroupRef = useRef(null);
     const meanLayerGroupRef = useRef(null);
     const animLayerGroupRef = useRef(null);
+    const trendLayerGroupRef = useRef(null);
     const animObjectsRef = useRef([]);
     const selectedMarkerRef = useRef(null);
     const selectedBadgeRef = useRef(null);
@@ -245,6 +566,120 @@ export default function SpaghettiPlot() {
     const [isAigefsOutdated, setIsAigefsOutdated] = useState(false);
     const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
     const exportWrapperRef = useRef(null);
+
+    // ── Multi-Cycle Trends State ──────────────────────────────────────────────
+    const [cyclesManifest, setCyclesManifest] = useState(null);
+    const [allCyclesData, setAllCyclesData] = useState([]);
+    const [loadingTrends, setLoadingTrends] = useState(false);
+    const [selectedTrendSystem, setSelectedTrendSystem] = useState(null);
+    const [isTrendsCollapsed, setIsTrendsCollapsed] = useState(false);
+
+    // Memoized trend data prepared for Recharts
+    const chartData = useMemo(() => {
+        if (!selectedTrendSystem) return [];
+        
+        const totalEnsembleMembers = dataset === "large" ? 400 : 100;
+        
+        return [...selectedTrendSystem]
+            .reverse() // from oldest to newest cycle
+            .map(item => {
+                let label = item.cycleTime;
+                const matchTime = item.cycleTime.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):00/);
+                if (matchTime) {
+                    const [_, yr, mo, dy, hr] = matchTime;
+                    label = `${mo}/${dy} ${hr}Z`;
+                }
+                
+                const dist = item.disturbance;
+                if (!dist) {
+                    return {
+                        name: label,
+                        cycleTime: item.cycleTime,
+                        probability: 0,
+                        minWind: null,
+                        maxWind: null,
+                        medianWind: null,
+                        computedMeanWind: null,
+                        pairedWind: null,
+                        windRange: null,
+                        detected: false,
+                        formationDateStr: null
+                    };
+                }
+                
+                const cycleData = allCyclesData[item.cycleIndex];
+                let distTracks = [];
+                if (cycleData && cycleData.tracksByDisturbance) {
+                    distTracks = cycleData.tracksByDisturbance[dist.id] || [];
+                }
+                
+                const peakWinds = distTracks.map(track => {
+                    const winds = track.map(pt => isNaN(pt.windKmh) ? 0 : pt.windKmh);
+                    return winds.length > 0 ? Math.max(...winds) : 0;
+                }).filter(w => w > 0);
+                
+                let minWind = null;
+                let maxWind = null;
+                let medianWind = null;
+                let windRange = null;
+                
+                if (peakWinds.length > 0) {
+                    minWind = Math.min(...peakWinds);
+                    maxWind = Math.max(...peakWinds);
+                    
+                    const sorted = [...peakWinds].sort((a, b) => a - b);
+                    const mid = Math.floor(sorted.length / 2);
+                    medianWind = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                    
+                    windRange = [minWind, maxWind];
+                } else if (dist.peakW > 0) {
+                    minWind = dist.peakW;
+                    maxWind = dist.peakW;
+                    medianWind = dist.peakW;
+                    windRange = [dist.peakW, dist.peakW];
+                }
+
+                // Peak wind speed along the computed ensemble mean track (median at each lead time)
+                const windsByHour = {};
+                for (const track of distTracks) {
+                    for (const pt of track) {
+                        if (!isNaN(pt.windKmh)) {
+                            if (!windsByHour[pt.h]) windsByHour[pt.h] = [];
+                            windsByHour[pt.h].push(pt.windKmh);
+                        }
+                    }
+                }
+                const hourlyMedians = Object.values(windsByHour).map(winds => {
+                    if (winds.length === 0) return 0;
+                    const sorted = [...winds].sort((a, b) => a - b);
+                    const mid = Math.floor(sorted.length / 2);
+                    return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                });
+                const computedMeanWind = hourlyMedians.length > 0 ? Math.max(...hourlyMedians) : (medianWind || null);
+                
+                let pairedWind = null;
+                if (dist.pairedTrackName && dist.meanPoints) {
+                    const winds = dist.meanPoints.map(pt => pt.windKmh).filter(w => !isNaN(w));
+                    if (winds.length > 0) {
+                        pairedWind = Math.max(...winds);
+                    }
+                }
+                
+                return {
+                    name: label,
+                    cycleTime: item.cycleTime,
+                    probability: Math.min(100, Math.round((dist.trackCount / totalEnsembleMembers) * 100)),
+                    minWind,
+                    maxWind,
+                    medianWind,
+                    computedMeanWind,
+                    pairedWind,
+                    windRange,
+                    detected: true,
+                    formationDateStr: dist.formationDateStr || null
+                };
+            });
+    }, [selectedTrendSystem, allCyclesData, dataset]);
 
     const [allTracks, setAllTracks] = useState([]);
     const [filteredTrackIds, setFilteredTrackIds] = useState(null);
@@ -389,6 +824,7 @@ export default function SpaghettiPlot() {
             layerGroupRef.current = L.layerGroup().addTo(map);
             meanLayerGroupRef.current = L.layerGroup(); // not added to map — default OFF
             animLayerGroupRef.current = L.layerGroup(); // not added to map — default OFF
+            trendLayerGroupRef.current = L.layerGroup(); // not added to map — default OFF
             mapInstanceRef.current = map;
 
             // Fly to default basin
@@ -429,6 +865,246 @@ export default function SpaghettiPlot() {
 
         return () => clearTimeout(timeoutId);
     }, [desktopSidebarOpen, sidebarOpen]);
+
+    // ── Multi-Cycle Trends Logic & Hooks ─────────────────────────────────────
+    
+    // Heuristic tracker to match a system across cycles
+    const matchDisturbancesAcrossCycles = useCallback((selectedDist, cyclesData) => {
+        if (!selectedDist || !cyclesData || cyclesData.length === 0) return [];
+        
+        const matchedChain = [];
+        let currentCenter = { lat: selectedDist.lat, lon: selectedDist.lon };
+        let currentPairedName = selectedDist.pairedTrackName;
+        
+        for (let i = 0; i < cyclesData.length; i++) {
+            const cycle = cyclesData[i];
+            let match = null;
+            
+            // 1. Try matching by paired storm ID first
+            if (currentPairedName) {
+                match = cycle.disturbances.find(d => d.pairedTrackName === currentPairedName);
+            }
+            
+            // 2. Try spatial matching
+            if (!match) {
+                let bestDist = Infinity;
+                for (const d of cycle.disturbances) {
+                    const dist = haversineKm(currentCenter, { lat: d.lat, lon: d.lon });
+                    if (dist < 450 && dist < bestDist) {
+                        bestDist = dist;
+                        match = d;
+                    }
+                }
+            }
+            
+            if (match) {
+                matchedChain.push({
+                    cycleIndex: i,
+                    cycleTime: cycle.cycleTime,
+                    disturbance: match
+                });
+                // Update track position and name for next cycle comparison
+                currentCenter = { lat: match.lat, lon: match.lon };
+                if (match.pairedTrackName) {
+                    currentPairedName = match.pairedTrackName;
+                }
+            } else {
+                matchedChain.push({
+                    cycleIndex: i,
+                    cycleTime: cycle.cycleTime,
+                    disturbance: null
+                });
+            }
+        }
+        
+        return matchedChain;
+    }, []);
+
+    const handleSelectTrendSystem = useCallback((dist) => {
+        if (allCyclesData.length === 0) return;
+        const chain = matchDisturbancesAcrossCycles(dist, allCyclesData);
+        setSelectedTrendSystem(chain);
+        setActiveDisturbanceId(dist.id); // pulse/highlight it on map
+    }, [allCyclesData, matchDisturbancesAcrossCycles]);
+
+    // Load trends cycles data dynamically when viewMode changes to 'trends'
+    useEffect(() => {
+        if (viewMode !== "trends") {
+            setSelectedTrendSystem(null);
+            setIsTrendsCollapsed(false);
+            return;
+        }
+        
+        let cancelled = false;
+        
+        const loadAllCycles = async () => {
+            setLoadingTrends(true);
+            try {
+                let manifest = cyclesManifest;
+                if (!manifest) {
+                    const res = await fetch("/data/cycles_manifest.json");
+                    if (!res.ok) throw new Error("Manifest not found");
+                    manifest = await res.json();
+                    if (!cancelled) setCyclesManifest(manifest);
+                }
+                
+                const activeCycles = dataset === "large" ? manifest.large : manifest.base;
+                if (!activeCycles || activeCycles.length === 0) {
+                    throw new Error("No active cycles found for selected dataset");
+                }
+                
+                const parsedCycles = [];
+                
+                for (const c of activeCycles) {
+                    if (cancelled) return;
+                    
+                    // Fetch tracks
+                    const tracksRes = await fetch(`/data/${c.tracks}`);
+                    if (!tracksRes.ok) continue;
+                    const encTracks = await tracksRes.text();
+                    const csvText = decodeObfuscatedData(encTracks);
+                    
+                    // Fetch paired
+                    let pairedCsvText = null;
+                    if (c.paired) {
+                        try {
+                            const pairedRes = await fetch(`/data/${c.paired}`);
+                            if (pairedRes.ok) {
+                                const encPaired = await pairedRes.text();
+                                pairedCsvText = decodeObfuscatedData(encPaired);
+                            }
+                        } catch (_) {}
+                    }
+                    
+                    // Parse cycle stats without map layers rendering
+                    const parsed = parseCycleStats(csvText, pairedCsvText, dataset, basin, horizon);
+                    parsedCycles.push({
+                        cycleTime: c.cycle,
+                        disturbances: parsed.disturbances,
+                        tracksByDisturbance: parsed.tracksByDisturbance
+                    });
+                }
+                
+                if (!cancelled) {
+                    setAllCyclesData(parsedCycles);
+                    setSelectedTrendSystem(null);
+                }
+            } catch (err) {
+                console.error("Error loading trends data:", err);
+            } finally {
+                if (!cancelled) setLoadingTrends(false);
+            }
+        };
+        
+        loadAllCycles();
+        
+        return () => {
+            cancelled = true;
+        };
+    }, [viewMode, dataset, basin, horizon, cyclesManifest]);
+
+    // Render multi-cycle trend tracks on the Leaflet map when a trend system is selected
+    useEffect(() => {
+        const map = mapInstanceRef.current;
+        if (!map || !trendLayerGroupRef.current || viewMode !== "trends") return;
+
+        // Clear existing trend layers
+        trendLayerGroupRef.current.clearLayers();
+        map.removeLayer(trendLayerGroupRef.current);
+
+        if (!selectedTrendSystem || selectedTrendSystem.length === 0) return;
+
+        const L = window.L;
+        // Colors corresponding to the 4 cycles (Latest down to oldest)
+        const cycleColors = ["#38bdf8", "#34d399", "#fbbf24", "#f87171"];
+
+        // Add trend layer group to map
+        trendLayerGroupRef.current.addTo(map);
+
+        // Draw oldest cycles first so newer cycles are rendered on top
+        for (let i = selectedTrendSystem.length - 1; i >= 0; i--) {
+            const item = selectedTrendSystem[i];
+            const dist = item.disturbance;
+            if (!dist || !dist.meanPoints || dist.meanPoints.length < 2) continue;
+
+            const color = cycleColors[item.cycleIndex] || "#cbd5e1";
+            const pts = dist.meanPoints;
+            const latlngs = pts.map(p => [p.lat, p.lon]);
+
+            // Draw outline for contrast
+            L.polyline(latlngs, {
+                color: "#0f172a",
+                weight: 6,
+                opacity: 0.5,
+                lineCap: "round",
+                lineJoin: "round"
+            }).addTo(trendLayerGroupRef.current);
+
+            // Draw the main track polyline
+            const poly = L.polyline(latlngs, {
+                color: color,
+                weight: 3.5,
+                opacity: 0.95,
+                lineCap: "round",
+                lineJoin: "round"
+            });
+
+            // Format cycle label for tooltip/popup
+            let cycleLabel = item.cycleTime;
+            const matchTime = item.cycleTime.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):00/);
+            if (matchTime) {
+                const [_, yr, mo, dy, hr] = matchTime;
+                cycleLabel = `${mo}/${dy} ${hr}Z Run`;
+            }
+
+            poly.bindTooltip(`
+                <div style="font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: ${color}; padding: 2px 4px;">
+                    ${cycleLabel} (${dist.pairedTrackName ? "Official Paired" : "Ensemble Mean"})
+                </div>
+            `, { sticky: true });
+
+            poly.addTo(trendLayerGroupRef.current);
+
+            // Draw markers for final and start positions
+            const startPt = pts[0];
+            const endPt = pts[pts.length - 1];
+
+            // Start position dot
+            L.circleMarker([startPt.lat, startPt.lon], {
+                radius: 4,
+                color: color,
+                weight: 1.5,
+                fillColor: "#0f172a",
+                fillOpacity: 1
+            }).bindTooltip(`Formation: ${cycleLabel}`, { direction: "top" })
+              .addTo(trendLayerGroupRef.current);
+
+            // Peak/Latest position marker
+            L.circleMarker([endPt.lat, endPt.lon], {
+                radius: 6,
+                color: color,
+                weight: 2,
+                fillColor: color,
+                fillOpacity: 0.8
+            }).bindTooltip(`End position: ${cycleLabel}`, { direction: "top" })
+              .addTo(trendLayerGroupRef.current);
+        }
+
+        // Auto-fit bounds of the trend tracks so the user sees the shifts immediately
+        const allLatLngs = [];
+        for (const item of selectedTrendSystem) {
+            if (item.disturbance && item.disturbance.meanPoints) {
+                item.disturbance.meanPoints.forEach(p => {
+                    allLatLngs.push([p.lat, p.lon]);
+                });
+            }
+        }
+        if (allLatLngs.length > 0) {
+            const bounds = L.latLngBounds(allLatLngs);
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 6, animate: true });
+        }
+
+    }, [selectedTrendSystem, viewMode]);
 
     // ── Fetch + draw when horizon changes or map is ready ─────────────────
     const loadData = useCallback(async () => {
@@ -1407,20 +2083,27 @@ export default function SpaghettiPlot() {
         }
     }, [showEnsembleMean, viewMode]);
 
-    // Toggle view mode (Tracker vs Animation)
+    // Toggle view mode (Tracker vs Animation vs Trends)
     useEffect(() => {
         const map = mapInstanceRef.current;
-        if (!map || !layerGroupRef.current || !animLayerGroupRef.current) return;
+        if (!map || !layerGroupRef.current || !animLayerGroupRef.current || !meanLayerGroupRef.current || !trendLayerGroupRef.current) return;
 
         if (viewMode === "tracker" || viewMode === "filter") {
             map.removeLayer(animLayerGroupRef.current);
+            map.removeLayer(trendLayerGroupRef.current);
             layerGroupRef.current.addTo(map);
             if (showEnsembleMean) meanLayerGroupRef.current.addTo(map);
-        } else {
+        } else if (viewMode === "animation") {
             map.removeLayer(layerGroupRef.current);
             map.removeLayer(meanLayerGroupRef.current);
+            map.removeLayer(trendLayerGroupRef.current);
             animLayerGroupRef.current.addTo(map);
             setAnimHour(prev => prev);
+        } else if (viewMode === "trends") {
+            map.removeLayer(layerGroupRef.current);
+            map.removeLayer(meanLayerGroupRef.current);
+            map.removeLayer(animLayerGroupRef.current);
+            trendLayerGroupRef.current.addTo(map);
         }
     }, [viewMode, showEnsembleMean]);
 
@@ -1819,19 +2502,29 @@ export default function SpaghettiPlot() {
                 <div className="segmented-control">
                     {[{ id: "tracker", label: "Tracker" },
                     { id: "animation", label: "Animation" },
-                    { id: "filter", label: "Filter" }]
-                        .map(opt => (
-                            <button
-                                key={opt.id}
-                                onClick={() => {
-                                    setViewMode(opt.id);
-                                    if (opt.id === "animation" && !isPlaying && animHour === 0) setIsPlaying(true);
-                                }}
-                                className={`segment-btn ${viewMode === opt.id ? "active primary" : ""}`}
-                            >
-                                <span className="segment-label">{opt.label}</span>
-                            </button>
-                        ))}
+                    { id: "filter", label: "Filter" },
+                    { id: "trends", label: "Trends" }]
+                        .map(opt => {
+                            const isTrendsLocked = opt.id === "trends" && dataset !== "base" && dataset !== "large";
+                            return (
+                                <button
+                                    key={opt.id}
+                                    onClick={() => {
+                                        if (isTrendsLocked) return;
+                                        setViewMode(opt.id);
+                                        setSelectedMeanPoint(null); // Clear active mean point detail cards
+                                        if (opt.id === "animation" && !isPlaying && animHour === 0) setIsPlaying(true);
+                                    }}
+                                    className={`segment-btn ${viewMode === opt.id ? "active primary" : ""} ${isTrendsLocked ? "opacity-35 cursor-not-allowed" : ""}`}
+                                    title={isTrendsLocked ? "Trends are only available for FNV3 Base and Large datasets" : ""}
+                                    disabled={isTrendsLocked}
+                                >
+                                    <span className="segment-label">
+                                        {opt.label} {isTrendsLocked && "🔒"}
+                                    </span>
+                                </button>
+                            );
+                        })}
                 </div>
             </div>
 
@@ -1889,17 +2582,32 @@ export default function SpaghettiPlot() {
                     { id: "aifs", label: "ECMWF AIFS" },
                     { id: "aigefs", label: "AI-GEFS" }]
                         .map(opt => {
-                            const isLocked = viewMode === "filter" && opt.id !== "large";
+                            const isFilterLocked = viewMode === "filter" && opt.id !== "large";
+                            const isTrendsLocked = viewMode === "trends" && opt.id !== "base" && opt.id !== "large";
+                            const isLocked = isFilterLocked || isTrendsLocked;
+                            
+                            let titleText = "";
+                            if (isFilterLocked) {
+                                titleText = "Only FNV3 Large dataset supports track filtering. Switch mode to Tracker to select other datasets.";
+                            } else if (isTrendsLocked) {
+                                titleText = "Trends are only available for FNV3 Base and Large datasets. Switch mode to Tracker to select other datasets.";
+                            }
+                            
                             return (
                                 <button
                                     key={opt.id}
                                     onClick={() => {
-                                        if (!isLocked) setDataset(opt.id);
+                                        if (!isLocked) {
+                                            setDataset(opt.id);
+                                        }
                                     }}
                                     className={`segment-btn ${dataset === opt.id ? "active" : ""} ${isLocked ? "opacity-30 cursor-not-allowed" : ""}`}
-                                    title={isLocked ? "Switch to Tracker mode to view other datasets" : ""}
+                                    title={titleText}
+                                    disabled={isLocked}
                                 >
-                                    <span className="segment-label">{opt.label}</span>
+                                    <span className="segment-label">
+                                        {opt.label} {isLocked && "🔒"}
+                                    </span>
                                 </button>
                             );
                         })}
@@ -1975,7 +2683,11 @@ export default function SpaghettiPlot() {
                             <div
                                 key={d.id}
                                 onClick={() => {
-                                    setActiveDisturbanceId(activeDisturbanceId === d.id ? null : d.id);
+                                    if (viewMode === "trends") {
+                                        handleSelectTrendSystem(d);
+                                    } else {
+                                        setActiveDisturbanceId(activeDisturbanceId === d.id ? null : d.id);
+                                    }
                                     setSidebarOpen(false);
                                 }}
                                 className={`system-card ${activeDisturbanceId === d.id ? 'active' : ''}`}
@@ -2348,6 +3060,265 @@ export default function SpaghettiPlot() {
                                     Zoom &gt;
                                 </button>
                             </div>
+                        </div>
+                    )}
+
+                    {/* Multi-Cycle Trends overlay panel */}
+                    {viewMode === "trends" && (
+                        <div className="trends-panel no-export">
+                            {loadingTrends ? (
+                                <div className="trends-loading-overlay">
+                                    <div className="map-spinner" />
+                                    <span className="map-loading-text">Loading multi-cycle trends...</span>
+                                </div>
+                            ) : selectedTrendSystem ? (
+                                <>
+                                    <div className="mean-details-header">
+                                        <div>
+                                            <h3 className="mean-details-title" style={{ fontSize: '14px', fontWeight: '800' }}>
+                                                {(() => {
+                                                    const latestDetectedItem = [...selectedTrendSystem].find(item => item.disturbance !== null);
+                                                    const latestDist = latestDetectedItem?.disturbance;
+                                                    if (latestDist) {
+                                                        if (latestDist.pairedTrackName) {
+                                                            const isInvest = parseInt(latestDist.pairedTrackName) >= 90;
+                                                            return isInvest ? `Invest ${latestDist.pairedTrackName}` : `TC ${latestDist.pairedTrackName}`;
+                                                        }
+                                                        return `Disturbance ${latestDist.id}`;
+                                                    }
+                                                    return "Selected Storm";
+                                                })()}
+                                            </h3>
+                                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Run-to-run forecast trends</span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <button
+                                                className="mean-details-close-btn"
+                                                onClick={() => setIsTrendsCollapsed(!isTrendsCollapsed)}
+                                                title={isTrendsCollapsed ? "Expand charts" : "Collapse charts"}
+                                                style={{ padding: '4px' }}
+                                            >
+                                                {isTrendsCollapsed ? (
+                                                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                                ) : (
+                                                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                                                )}
+                                            </button>
+                                            <button
+                                                className="mean-details-close-btn"
+                                                onClick={() => {
+                                                    setSelectedTrendSystem(null);
+                                                    setActiveDisturbanceId(null);
+                                                    setIsTrendsCollapsed(false);
+                                                }}
+                                                title="Close trends"
+                                                style={{ padding: '4px' }}
+                                            >
+                                                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Color Legend for cycle tracks on the map */}
+                                    <div style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '12px',
+                                        padding: '10px 14px',
+                                        background: 'rgba(255, 255, 255, 0.03)',
+                                        border: '1px solid rgba(255, 255, 255, 0.06)',
+                                        borderRadius: '10px',
+                                        fontSize: '11px',
+                                        marginBottom: '6px'
+                                    }}>
+                                        {selectedTrendSystem.map((item) => {
+                                            const cycleColors = ["#38bdf8", "#34d399", "#fbbf24", "#f87171"];
+                                            const color = cycleColors[item.cycleIndex] || "#cbd5e1";
+                                            let label = item.cycleTime;
+                                            const matchTime = item.cycleTime.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):00/);
+                                            if (matchTime) {
+                                                const [_, yr, mo, dy, hr] = matchTime;
+                                                label = `${mo}/${dy} ${hr}Z`;
+                                            }
+                                            return (
+                                                <div key={item.cycleTime} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                    <span style={{
+                                                        width: '7px',
+                                                        height: '7px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: color,
+                                                        boxShadow: `0 0 4px ${color}`
+                                                    }}></span>
+                                                    <span style={{ color: item.disturbance ? '#f8fafc' : '#64748b', fontWeight: item.disturbance ? 600 : 400 }}>
+                                                        {label}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {!isTrendsCollapsed && (
+                                        <>
+                                            {/* Chart 1: Genesis Probability */}
+                                    <div className="trend-chart-card">
+                                        <h4 className="trend-chart-title">Genesis Probability</h4>
+                                        <div style={{ width: '100%', height: '160px' }}>
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <LineChart data={chartData} margin={{ top: 10, right: 15, left: 0, bottom: 0 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                                                    <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="rgba(255,255,255,0.1)" />
+                                                    <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="rgba(255,255,255,0.1)" width={35} />
+                                                    <ChartTooltip
+                                                        content={({ active, payload }) => {
+                                                            if (active && payload && payload.length) {
+                                                                const data = payload[0].payload;
+                                                                return (
+                                                                    <div style={{
+                                                                        background: 'rgba(15, 23, 42, 0.95)',
+                                                                        backdropFilter: 'blur(8px)',
+                                                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                                        borderRadius: '8px',
+                                                                        padding: '8px 12px',
+                                                                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                                                    }}>
+                                                                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginBottom: '4px' }}>
+                                                                            {data.cycleTime}
+                                                                        </div>
+                                                                        {data.detected ? (
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                                <div style={{ fontSize: '12px', fontWeight: 800, color: '#10b981' }}>
+                                                                                    Genesis Prob: {data.probability}%
+                                                                                </div>
+                                                                                {data.formationDateStr && (
+                                                                                    <div style={{ color: '#fbbf24', fontSize: '11px', fontWeight: 600 }}>
+                                                                                        Genesis Est: {data.formationDateStr}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div style={{ fontSize: '12px', color: '#ef4444', fontWeight: 600 }}>
+                                                                                System not detected
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        }}
+                                                    />
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="probability" 
+                                                        stroke="#10b981" 
+                                                        strokeWidth={3} 
+                                                        dot={{ fill: '#10b981', r: 4 }}
+                                                        activeDot={{ r: 6 }} 
+                                                    />
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+
+                                    {/* Chart 2: Peak Wind Intensity Spread */}
+                                    <div className="trend-chart-card">
+                                        <h4 className="trend-chart-title">Peak Wind Intensity (Spread)</h4>
+                                        <div style={{ width: '100%', height: '180px' }}>
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <AreaChart data={chartData} margin={{ top: 10, right: 15, left: 10, bottom: 0 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                                                    <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="rgba(255,255,255,0.1)" />
+                                                    <YAxis 
+                                                        domain={['auto', 'auto']} 
+                                                        tick={{ fill: '#94a3b8', fontSize: 10 }} 
+                                                        stroke="rgba(255,255,255,0.1)"
+                                                        unit=" km/h"
+                                                        width={55}
+                                                    />
+                                                    <ChartTooltip
+                                                        content={({ active, payload }) => {
+                                                            if (active && payload && payload.length) {
+                                                                const data = payload[0].payload;
+                                                                return (
+                                                                    <div style={{
+                                                                        background: 'rgba(15, 23, 42, 0.95)',
+                                                                        backdropFilter: 'blur(8px)',
+                                                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                                        borderRadius: '8px',
+                                                                        padding: '8px 12px',
+                                                                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                                                    }}>
+                                                                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginBottom: '4px' }}>
+                                                                            {data.cycleTime}
+                                                                        </div>
+                                                                        {data.detected ? (
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+                                                                                <div style={{ color: '#00d4ff', fontWeight: 700 }}>
+                                                                                    Ensemble Mean: {data.computedMeanWind ? `${data.computedMeanWind.toFixed(0)} km/h` : 'N/A'}
+                                                                                </div>
+                                                                                {data.pairedWind && (
+                                                                                    <div style={{ color: '#ffffff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                                        <span style={{ width: '8px', height: '0px', borderTop: '2px dashed #ffffff', display: 'inline-block' }}></span>
+                                                                                        Paired Track: {data.pairedWind.toFixed(0)} km/h
+                                                                                    </div>
+                                                                                )}
+                                                                                <div style={{ color: '#94a3b8', fontSize: '11px' }}>
+                                                                                    Median Peak: {data.medianWind ? `${data.medianWind.toFixed(0)} km/h` : 'N/A'}
+                                                                                </div>
+                                                                                <div style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '11px' }}>
+                                                                                    Member Range: {data.minWind ? `${data.minWind.toFixed(0)} - ${data.maxWind.toFixed(0)} km/h` : 'N/A'}
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div style={{ fontSize: '12px', color: '#ef4444', fontWeight: 600 }}>
+                                                                                System not detected
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        }}
+                                                    />
+                                                    <Area 
+                                                        type="monotone" 
+                                                        dataKey="windRange" 
+                                                        stroke="none" 
+                                                        fill="rgba(0, 212, 255, 0.15)" 
+                                                    />
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="computedMeanWind" 
+                                                        stroke="#00d4ff" 
+                                                        name="Ensemble Mean"
+                                                        strokeWidth={2.5} 
+                                                        dot={{ fill: '#00d4ff', r: 3 }}
+                                                        activeDot={{ r: 5 }} 
+                                                    />
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="pairedWind" 
+                                                        stroke="#ffffff" 
+                                                        name="Paired Track"
+                                                        strokeDasharray="4 4" 
+                                                        strokeWidth={1.5} 
+                                                        dot={{ fill: '#ffffff', r: 2 }}
+                                                        activeDot={{ r: 4 }} 
+                                                    />
+                                                </AreaChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                            </>
+                        )}
+                    </>
+                ) : (
+                                <div className="trends-empty-state">
+                                    <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginBottom: '8px', opacity: 0.5, color: '#94a3b8' }}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                    <span>Select a system from the sidebar to view run-to-run trends</span>
+                                </div>
+                            )}
                         </div>
                     )}
 

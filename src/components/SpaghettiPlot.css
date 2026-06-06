@@ -1499,3 +1499,90 @@
     font-size: 9px;
   }
 }
+
+/* Trends Mode styles */
+.trends-panel {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 480px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 18px;
+  z-index: 1000;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+  animation: meanCardSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.trends-panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.trends-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.trends-panel::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+}
+
+.trend-chart-card {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.trend-chart-title {
+  margin: 0 0 10px 0;
+  font-size: 11px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.trends-loading-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  gap: 12px;
+}
+
+.trends-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Mobile adjustments for Trends Panel */
+@media (max-width: 768px) {
+  .trends-panel {
+    top: 110px !important;
+    bottom: auto;
+    left: 10px;
+    right: 10px;
+    width: auto;
+    max-height: calc(100vh - 120px);
+    padding: 12px;
+    gap: 12px;
+  }
+}

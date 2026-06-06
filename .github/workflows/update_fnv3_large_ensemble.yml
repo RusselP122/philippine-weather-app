@@ -65,6 +65,10 @@ jobs:
             echo "⚠ No large ensemble paired CSV found in last 3 days — skipping (will use computed median)"
           fi
 
+      - name: Download and prepare FNV3 multi-cycle datasets
+        run: |
+          python scripts/download_multi_cycle.py
+
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
@@ -76,6 +80,9 @@ jobs:
           git add public/assets/fnv3_*.png
           git add -f public/data/fnv3_large_latest.dat || true
           git add -f public/data/fnv3_large_paired_latest.dat || true
+          git add -f public/data/fnv3_large_*.dat || true
+          git add -f public/data/fnv3_large_paired_*.dat || true
+          git add -f public/data/cycles_manifest.json || true
           
           # Commit if there are changes
           if git diff --staged --quiet; then

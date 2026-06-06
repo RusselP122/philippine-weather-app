@@ -180,15 +180,16 @@ export default function EnsembleFilter({ tracks, onFilterChange, isActive, isLoc
 
                 <div className="mb-3">
                     <div className="text-[10px] text-slate-400 mb-1.5 uppercase font-bold tracking-wider">Peak Intensity Reached</div>
-                    <div className="segmented-control" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px', background: 'rgba(0,0,0,0.3)' }}>
+                    <div className="segmented-control" style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: 'rgba(0,0,0,0.3)', padding: '6px' }}>
                         {INTENSITIES.map(int => (
                             <button
                                 key={int.id}
                                 onClick={() => toggleIntensity(int.id)}
                                 className={`segment-btn ${selectedIntensities.has(int.id) ? "active primary" : ""}`}
-                                style={{ padding: '6px 4px' }}
+                                style={{ padding: '6px 10px', width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
                             >
-                                <span className="segment-label" style={{ fontSize: '9px' }}>{int.label}</span>
+                                <span className="segment-label" style={{ fontSize: '10.5px' }}>{int.label}</span>
+                                {selectedIntensities.has(int.id) && <span style={{ fontSize: '10px', fontWeight: 'bold' }}>✓</span>}
                             </button>
                         ))}
                     </div>
