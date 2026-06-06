@@ -1,19 +1,19 @@
 // src/components/Forecast.jsx
 import React, { useEffect, useState, useMemo } from "react";
-import { 
-  Maximize2, 
-  Layers, 
-  Map, 
-  Compass, 
-  Info, 
-  ChevronDown, 
-  ChevronUp, 
-  Grid, 
-  Minimize2, 
-  ZoomIn, 
-  ZoomOut, 
-  RotateCcw, 
-  Activity, 
+import {
+  Maximize2,
+  Layers,
+  Map,
+  Compass,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  Grid,
+  Minimize2,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Activity,
   Calendar,
   X,
   Database
@@ -131,9 +131,9 @@ const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
 const Forecast = () => {
   const [availableIds, setAvailableIds] = useState([]);
   const [selectedModel, setSelectedModel] = useState("fnv3_base");
-  const [selectedTimeId, setSelectedTimeId] = useState(null); 
+  const [selectedTimeId, setSelectedTimeId] = useState(null);
   const [enlargedImage, setEnlargedImage] = useState(null);
-  
+
   // Interactive UI improvements states
   const [compareMode, setCompareMode] = useState(false);
   const [activeModelTab, setActiveModelTab] = useState("characteristics");
@@ -299,7 +299,7 @@ const Forecast = () => {
       <div className="absolute inset-0 bg-grid-pattern pointer-events-none z-0"></div>
 
       <div className="max-w-6xl mx-auto px-4 relative z-10 flex flex-col gap-6 md:gap-8">
-        
+
         {/* Header Block */}
         <header className="custom-glass rounded-3xl p-5 md:p-7 shadow-2xl flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 border-b border-white/5 relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-cyan-500/10 to-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -330,11 +330,10 @@ const Forecast = () => {
             {/* Split Screen Multi Compare toggler */}
             <button
               onClick={() => setCompareMode(!compareMode)}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black tracking-wide transition-all border flex items-center gap-2 cursor-pointer shadow-lg ${
-                compareMode 
-                  ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400" 
+              className={`px-4 py-2.5 rounded-xl text-xs font-black tracking-wide transition-all border flex items-center gap-2 cursor-pointer shadow-lg ${compareMode
+                  ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400"
                   : "bg-slate-900 border-white/5 text-slate-400 hover:text-white"
-              }`}
+                }`}
             >
               <Grid className="w-4 h-4" />
               <span>{compareMode ? "SINGLE MODEL MODE" : "COMPARISON GRID"}</span>
@@ -349,11 +348,10 @@ const Forecast = () => {
               <button
                 key={modelKey}
                 onClick={() => { setSelectedModel(modelKey); setSelectedTimeId(null); }}
-                className={`px-4 py-2.5 rounded-xl text-xs font-black tracking-wider transition-all duration-300 border cursor-pointer whitespace-nowrap ${
-                  selectedModel === modelKey
+                className={`px-4 py-2.5 rounded-xl text-xs font-black tracking-wider transition-all duration-300 border cursor-pointer whitespace-nowrap ${selectedModel === modelKey
                     ? "bg-slate-800 text-cyan-400 border-white/10 shadow-lg shadow-black/40"
                     : "bg-slate-950/60 border-white/5 text-slate-500 hover:text-slate-200"
-                }`}
+                  }`}
               >
                 {MODEL_INFO[modelKey].name}
               </button>
@@ -372,16 +370,15 @@ const Forecast = () => {
               {timelineConfigs.map((opt) => {
                 const isActive = (activeConfigId === opt.configId);
                 const cycleText = opt.label.substring(opt.label.indexOf('(') + 1, opt.label.indexOf(')'));
-                
+
                 return (
                   <button
                     key={opt.configId}
                     onClick={() => setSelectedTimeId(opt.configId)}
-                    className={`px-3.5 py-2.5 rounded-xl text-xs transition-all border flex flex-col items-start gap-1 cursor-pointer shrink-0 text-left ${
-                      isActive 
+                    className={`px-3.5 py-2.5 rounded-xl text-xs transition-all border flex flex-col items-start gap-1 cursor-pointer shrink-0 text-left ${isActive
                         ? "bg-cyan-500/10 border-cyan-400/40 text-white shadow-lg shadow-black/35 scale-102"
                         : "bg-slate-950/50 border-white/5 text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
-                    }`}
+                      }`}
                   >
                     <span className="font-black capitalize">{opt.type === "5day" ? "5-Day Outlook" : "15-Day Longrange"}</span>
                     <span className="text-[10px] font-mono opacity-60 font-semibold">{cycleText}</span>
@@ -406,12 +403,12 @@ const Forecast = () => {
                 <span>Comparing forecast tracks ({current ? `${current.type.toUpperCase()} / ${current.modelTime}` : "N/A"})</span>
               </h3>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {gridModelData.map(({ modelKey, info, image, label }) => (
                 <div key={modelKey} className="custom-glass rounded-3xl p-4 flex flex-col justify-between relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 blur-xl rounded-full"></div>
-                  
+
                   <div>
                     <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
                       <span className="text-xs font-black text-white">{info.name}</span>
@@ -451,7 +448,7 @@ const Forecast = () => {
         ) : (
           /* Single Interactive Track Visualizer */
           <div className="grid grid-cols-1 lg:grid-cols-[2fr,1fr] gap-6 md:gap-8 items-start">
-            
+
             {/* Left Column Forecast Map */}
             <div className="custom-glass rounded-3xl p-3 shadow-2xl relative group flex flex-col">
               <div className="border-b border-white/5 px-4.5 py-2.5 flex items-center justify-between text-xs text-slate-400">
@@ -463,7 +460,7 @@ const Forecast = () => {
                   {current ? current.modelTime : "N/A"}
                 </span>
               </div>
-              
+
               <div className="h-80 md:h-[28rem] flex items-center justify-center bg-slate-950 border border-white/5 rounded-2xl overflow-hidden relative mt-1.5 shadow-inner">
                 {current && imageSrc ? (
                   <>
@@ -492,11 +489,11 @@ const Forecast = () => {
 
             {/* Right Column Metadata Details */}
             <div className="flex flex-col gap-6">
-              
+
               {/* Active Model run details */}
               <aside className="custom-glass rounded-3xl p-5 md:p-6 shadow-2xl space-y-4 text-xs md:text-sm text-slate-300 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 blur-2xl rounded-full"></div>
-                
+
                 <div>
                   <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3.5 flex items-center gap-1.5">
                     <Layers className="w-4 h-4 text-cyan-400" />
@@ -545,19 +542,17 @@ const Forecast = () => {
               {/* Model Intelligence matrix (Accordions) */}
               <div className="custom-glass rounded-3xl p-5 md:p-6 shadow-2xl flex flex-col gap-4">
                 <div className="flex rounded-xl bg-slate-950 p-1 border border-white/5 shrink-0">
-                  <button 
+                  <button
                     onClick={() => setActiveModelTab("characteristics")}
-                    className={`flex-1 py-2 text-center rounded-lg text-xs font-black tracking-wide transition-all cursor-pointer ${
-                      activeModelTab === "characteristics" ? "bg-slate-800 text-cyan-400 shadow" : "text-slate-500"
-                    }`}
+                    className={`flex-1 py-2 text-center rounded-lg text-xs font-black tracking-wide transition-all cursor-pointer ${activeModelTab === "characteristics" ? "bg-slate-800 text-cyan-400 shadow" : "text-slate-500"
+                      }`}
                   >
                     Details
                   </button>
-                  <button 
+                  <button
                     onClick={() => setActiveModelTab("precision")}
-                    className={`flex-1 py-2 text-center rounded-lg text-xs font-black tracking-wide transition-all cursor-pointer ${
-                      activeModelTab === "precision" ? "bg-slate-800 text-cyan-400 shadow" : "text-slate-500"
-                    }`}
+                    className={`flex-1 py-2 text-center rounded-lg text-xs font-black tracking-wide transition-all cursor-pointer ${activeModelTab === "precision" ? "bg-slate-800 text-cyan-400 shadow" : "text-slate-500"
+                      }`}
                   >
                     Specs
                   </button>
@@ -590,8 +585,8 @@ const Forecast = () => {
 
       {/* Full Screen Interactive Image Modal (Pinch/Scroll Zoomable Lightbox) */}
       {enlargedImage && (
-        <div 
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 p-4 backdrop-blur-md overflow-hidden" 
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 p-4 backdrop-blur-md overflow-hidden"
           onClick={() => { setEnlargedImage(null); resetZoom(); }}
         >
           {/* Lightbox Controls Header */}
@@ -600,30 +595,30 @@ const Forecast = () => {
               <Maximize2 className="w-4 h-4 text-cyan-400" />
               <span className="text-xs font-black text-white uppercase tracking-wider">Zoom Mode: {zoomScale.toFixed(1)}x</span>
             </div>
-            
+
             <div className="flex items-center gap-2 pointer-events-auto">
-              <button 
+              <button
                 onClick={(e) => { e.stopPropagation(); setZoomScale(Math.min(4, zoomScale + 0.5)); }}
                 className="p-2.5 rounded-xl bg-slate-900 border border-white/10 hover:border-slate-500 text-white cursor-pointer transition-all hover:scale-105 active:scale-95"
                 title="Zoom In"
               >
                 <ZoomIn className="w-4 h-4" />
               </button>
-              <button 
+              <button
                 onClick={(e) => { e.stopPropagation(); setZoomScale(Math.max(1, zoomScale - 0.5)); }}
                 className="p-2.5 rounded-xl bg-slate-900 border border-white/10 hover:border-slate-500 text-white cursor-pointer transition-all hover:scale-105 active:scale-95"
                 title="Zoom Out"
               >
                 <ZoomOut className="w-4 h-4" />
               </button>
-              <button 
+              <button
                 onClick={(e) => { e.stopPropagation(); resetZoom(); }}
                 className="p-2.5 rounded-xl bg-slate-900 border border-white/10 hover:border-slate-500 text-white cursor-pointer transition-all hover:scale-105 active:scale-95"
                 title="Reset Zoom"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
-              <button 
+              <button
                 onClick={() => { setEnlargedImage(null); resetZoom(); }}
                 className="p-2.5 rounded-xl bg-slate-900 border border-white/10 hover:border-slate-500 text-white cursor-pointer transition-all hover:scale-105 active:scale-95"
                 title="Close"
@@ -633,7 +628,7 @@ const Forecast = () => {
             </div>
           </div>
 
-          <div 
+          <div
             className="w-full h-full flex items-center justify-center"
             onWheel={handleWheel}
             onMouseDown={handleMouseDown}
