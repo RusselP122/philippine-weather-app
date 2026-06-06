@@ -76,6 +76,9 @@ jobs:
           
           python scripts/obfuscate_csvs.py
           
+          # Stage all modifications and deletions of tracked files in public/data
+          git add -u public/data/
+          
           # Add forecast PNGs and the proxied CSVs for browser use
           git add public/assets/*.png
           git add -f public/data/fnv3_base_latest.dat || true
@@ -89,6 +92,8 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Auto-update forecast images [skip ci]"
+            git reset --hard HEAD
+            git clean -fd
             git pull --rebase origin main
             git push
           fi
