@@ -56,7 +56,7 @@ const server = http.createServer((req, res) => {
 
         const pythonScript = path.join(__dirname, 'generate_trends_map.py');
         const isWidePy = isWide === 'true' ? 'True' : 'False';
-        
+
         // Render deployment always runs under Linux with python3
         const cmd = `python3 "${pythonScript}" --dataset ${dataset} --horizon ${horizon} --is-wide ${isWidePy} --disturbance-id ${disturbanceId} --output "${tempOutputFile}"`;
 
@@ -73,7 +73,7 @@ const server = http.createServer((req, res) => {
                     res.writeHead(500, { 'Content-Type': 'text/plain' });
                     return res.end(`Failed to read generated image: ${err.message}`);
                 }
-                
+
                 res.writeHead(200, {
                     'Content-Type': 'image/png',
                     'Content-Length': data.length
@@ -93,7 +93,7 @@ const server = http.createServer((req, res) => {
 
     // Serve static files from the 'dist' directory
     let filePath = path.join(__dirname, 'dist', pathname);
-    
+
     // Check if path is a directory (e.g. root '/')
     if (filePath.endsWith(path.sep) || !path.extname(filePath)) {
         filePath = path.join(__dirname, 'dist', 'index.html');
