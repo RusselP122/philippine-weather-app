@@ -1,6 +1,10 @@
 {
     "rewrites": [
         {
+            "source": "/api/generate-map",
+            "destination": "https://philippine-weather-app.onrender.com/api/generate-map"
+        },
+        {
             "source": "/api/earthquake-data",
             "destination": "https://data.garbinwx.org/api/earthquakes.json"
         },
