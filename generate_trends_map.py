@@ -677,7 +677,7 @@ def main():
         
         # Line color matches the map (black for current, cycle color for previous)
         line_color = 'black' if is_current else cycle_colors[idx]
-        text_color = cycle_colors[idx] # text is colored by the run cycle color (e.g. Sky Blue for current) for readability
+        text_color = 'black' if is_current else cycle_colors[idx] # text is black for current run on the white background, cycle color for previous
         
         cycle_lines.append((line_text, line_color, text_color))
 
@@ -689,13 +689,13 @@ def main():
         handles=cycle_legend_elements,
         loc='lower left',
         frameon=True,
-        facecolor='#0f172a',
-        framealpha=0.9,
+        facecolor='#ffffff',
+        framealpha=0.95,
         fontsize=8,
         title="Run Cycle History"
     )
-    leg_history.get_frame().set_edgecolor('#334155')
-    leg_history.get_title().set_color('#94a3b8')
+    leg_history.get_frame().set_edgecolor('#cbd5e1')
+    leg_history.get_title().set_color('#0f172a')
     plt.setp(leg_history.get_title(), fontsize=8, weight='bold')
     for text, (_, _, c_text_color) in zip(leg_history.get_texts(), cycle_lines):
         text.set_color(c_text_color)

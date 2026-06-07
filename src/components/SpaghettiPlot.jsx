@@ -3312,8 +3312,8 @@ export default function SpaghettiPlot() {
                                         flexWrap: 'wrap',
                                         gap: '12px',
                                         padding: '10px 14px',
-                                        background: 'rgba(255, 255, 255, 0.03)',
-                                        border: '1px solid rgba(255, 255, 255, 0.06)',
+                                        background: '#ffffff',
+                                        border: '1px solid #cbd5e1',
                                         borderRadius: '10px',
                                         fontSize: '11px',
                                         marginBottom: '6px'
@@ -3322,14 +3322,18 @@ export default function SpaghettiPlot() {
                                             const cycleColors = ["#38bdf8", "#34d399", "#fbbf24", "#f87171"];
                                             const isCurrent = item.cycleIndex === 0;
                                             const dotColor = isCurrent ? "#000000" : (cycleColors[item.cycleIndex] || "#cbd5e1");
-                                            const dotBorder = isCurrent ? "1.5px solid #ffffff" : "none";
-                                            const shadowColor = isCurrent ? "#ffffff" : dotColor;
+                                            const dotBorder = isCurrent ? "1.5px solid #000000" : "none";
+                                            const shadowColor = isCurrent ? "rgba(0, 0, 0, 0.2)" : dotColor;
                                             let label = item.cycleTime;
                                             const matchTime = item.cycleTime.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):00/);
                                             if (matchTime) {
                                                 const [_, yr, mo, dy, hr] = matchTime;
                                                 label = `${mo}/${dy} ${hr}Z`;
                                             }
+                                            // Text color is black for the current run, dark Slate for previous runs with disturbances, and muted grey for missing runs
+                                            const textColor = isCurrent
+                                                ? '#000000'
+                                                : (item.disturbance ? '#1e293b' : '#64748b');
                                             return (
                                                 <div key={item.cycleTime} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                                     <span style={{
@@ -3341,9 +3345,9 @@ export default function SpaghettiPlot() {
                                                         boxShadow: `0 0 4px ${shadowColor}`,
                                                         boxSizing: 'border-box'
                                                     }}></span>
-                                                    <span style={{ color: item.disturbance ? '#f8fafc' : '#64748b', fontWeight: item.disturbance ? 600 : 400 }}>
+                                                    <span style={{ color: textColor, fontWeight: item.disturbance ? 600 : 400 }}>
                                                         {label} {item.disturbance ? `(${item.disturbance.trackCount}/${dataset === "large" ? 1000 : 50})` : "(N/A)"}
-                                                        {index === 0 && <span style={{ color: '#38bdf8', fontSize: '9px', fontWeight: 'bold', marginLeft: '4px' }}>[CURRENT]</span>}
+                                                        {index === 0 && <span style={{ color: '#000000', fontSize: '9px', fontWeight: 'bold', marginLeft: '4px' }}>[CURRENT]</span>}
                                                     </span>
                                                 </div>
                                             );
