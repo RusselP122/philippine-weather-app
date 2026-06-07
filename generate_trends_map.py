@@ -637,16 +637,17 @@ def main():
         # Draw Segment lines
         ax_map.plot(lons, lats, color=line_color, linewidth=3.5, alpha=line_alpha, transform=projection)
         
-        # Colored donut rings using the Run Cycle Colors (Sky Blue, Emerald Green, Amber, Coral Red)
-        run_cycle_color = cycle_colors[idx]
+        # Colored donut rings using the wind intensity color (PAGASA categories)
         for i in range(len(lons)):
             if np.isnan(lats[i]) or np.isnan(lons[i]):
                 continue
             # shadow scaled with cycle visibility
             ax_map.plot(lons[i], lats[i], color='black', marker='o', markersize=8,
                         markeredgewidth=0, alpha=0.2 * line_alpha, transform=projection)
-            # Colored donut ring with run cycle color
-            ax_map.plot(lons[i], lats[i], markerfacecolor='none', markeredgecolor=run_cycle_color,
+            # Colored donut ring with wind intensity color
+            pt_wind = winds[i]
+            ring_color = get_pagasa_wind_color(pt_wind) or cycle_colors[idx]
+            ax_map.plot(lons[i], lats[i], markerfacecolor='none', markeredgecolor=ring_color,
                         marker='o', markersize=5, markeredgewidth=1.8, alpha=line_alpha, transform=projection)
 
     # Top-Left Map Legend (PAGASA wind categories)

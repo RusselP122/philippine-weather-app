@@ -1137,14 +1137,15 @@ export default function SpaghettiPlot() {
 
             poly.addTo(trendLayerGroupRef.current);
 
-            // Draw colored rings from the tracking points using the Run Cycle Colors
+            // Draw colored rings from the tracking points using the wind intensity color
             pts.forEach((pt, ptIdx) => {
                 const isStart = ptIdx === 0;
                 const isEnd = ptIdx === pts.length - 1;
                 const radius = isEnd ? 6 : (isStart ? 4.5 : 4);
+                const ptColor = windColor(pt.windKmh) || runColor;
                 
                 const ptTooltipHtml = `
-                    <div style="font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: ${runColor}; padding: 2px 4px;">
+                    <div style="font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: ${ptColor}; padding: 2px 4px;">
                         ${cycleLabel} (+${pt.h}h)<br/>
                         ${pt.windKmh ? `${pt.windKmh.toFixed(0)} km/h` : ''} ${pt.p ? `(${pt.p.toFixed(0)} hPa)` : ''}
                     </div>
@@ -1152,9 +1153,9 @@ export default function SpaghettiPlot() {
 
                 L.circleMarker([pt.lat, pt.lon], {
                     radius: radius,
-                    color: runColor,
+                    color: ptColor,
                     weight: 2,
-                    fillColor: isEnd ? runColor : "transparent",
+                    fillColor: isEnd ? ptColor : "transparent",
                     fillOpacity: isEnd ? 0.35 * lineOpacity : 0,
                     opacity: lineOpacity
                 }).bindTooltip(ptTooltipHtml, { direction: "top" }).addTo(trendLayerGroupRef.current);
