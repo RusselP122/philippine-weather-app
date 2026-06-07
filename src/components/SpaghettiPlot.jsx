@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import * as turf from "@turf/turf";
 import html2canvas from "html2canvas";
 import GIF from "gif.js";
 import gifWorkerUrl from "gif.js/dist/gif.worker.js?url";
@@ -536,6 +535,10 @@ export default function SpaghettiPlot() {
     const animObjectsRef = useRef([]);
     const selectedMarkerRef = useRef(null);
     const selectedBadgeRef = useRef(null);
+    const tileLayerRef = useRef(null);
+    const geoJsonLayerRef = useRef(null);
+    const parLayerRef = useRef(null);
+    const gridlinesLayerRef = useRef(null);
     const [selectedMeanPoint, setSelectedMeanPoint] = useState(null);
 
     const [horizon, setHorizon] = useState("5day");
@@ -567,6 +570,7 @@ export default function SpaghettiPlot() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
+    const [exportStatusText, setExportStatusText] = useState("");
     const [runInitDate, setRunInitDate] = useState(null);
     const [showAnimControls, setShowAnimControls] = useState(true);
     const [showAllSystems, setShowAllSystems] = useState(false);
@@ -580,6 +584,11 @@ export default function SpaghettiPlot() {
     const [loadingTrends, setLoadingTrends] = useState(false);
     const [selectedTrendSystem, setSelectedTrendSystem] = useState(null);
     const [isTrendsCollapsed, setIsTrendsCollapsed] = useState(false);
+
+    const selectedTrendSystemRef = useRef(null);
+    useEffect(() => {
+        selectedTrendSystemRef.current = selectedTrendSystem;
+    }, [selectedTrendSystem]);
 
     // Memoized trend data prepared for Recharts
     const chartData = useMemo(() => {
@@ -812,25 +821,27 @@ export default function SpaghettiPlot() {
 
             L.control.zoom({ position: "bottomright" }).addTo(map);
 
-            L.tileLayer(
+            tileLayerRef.current = L.tileLayer(
                 "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png",
                 { attribution: "© CARTO", subdomains: "abcd", maxZoom: 19, noWrap: true }
             ).addTo(map);
 
             // PAR boundary (solid red)
-            L.polyline(PAR, { color: "#ef4444", weight: 2 }).addTo(map);
+            parLayerRef.current = L.polyline(PAR, { color: "#ef4444", weight: 2 }).addTo(map);
 
             // Country boundaries (matches Python BORDERS styling)
             fetch(getAssetUrl("/assets/country.0.1_small.json"))
                 .then(r => r.ok ? r.json() : null)
                 .then(geo => {
                     if (geo && map) {
-                        L.geoJSON(geo, {
+                        geoJsonLayerRef.current = L.geoJSON(geo, {
                             style: { color: "#facc15", weight: 1, opacity: 0.7, fillOpacity: 0 }
                         }).addTo(map);
                     }
                 })
                 .catch(() => { /* silently skip if unavailable */ });
+
+            gridlinesLayerRef.current = L.layerGroup().addTo(map);
 
             layerGroupRef.current = L.layerGroup().addTo(map);
             meanLayerGroupRef.current = L.layerGroup(); // not added to map — default OFF
@@ -998,7 +1009,39 @@ export default function SpaghettiPlot() {
 
                 if (!cancelled) {
                     setAllCyclesData(parsedCycles);
-                    setSelectedTrendSystem(null);
+
+                    const prevSelected = selectedTrendSystemRef.current;
+                    let reselected = false;
+                    if (prevSelected && prevSelected.length > 0 && parsedCycles.length > 0) {
+                        const prevDist = prevSelected[0].disturbance;
+                        if (prevDist) {
+                            const latestCycle = parsedCycles[0];
+                            let bestMatch = null;
+                            if (prevDist.pairedTrackName) {
+                                bestMatch = latestCycle.disturbances.find(d => d.pairedTrackName === prevDist.pairedTrackName);
+                            }
+                            if (!bestMatch) {
+                                let minD = Infinity;
+                                for (const d of latestCycle.disturbances) {
+                                    const dd = haversineKm(prevDist, d);
+                                    if (dd < 300 && dd < minD) {
+                                        minD = dd;
+                                        bestMatch = d;
+                                    }
+                                }
+                            }
+                            if (bestMatch) {
+                                const chain = matchDisturbancesAcrossCycles(bestMatch, parsedCycles);
+                                setSelectedTrendSystem(chain);
+                                setActiveDisturbanceId(bestMatch.id);
+                                reselected = true;
+                            }
+                        }
+                    }
+                    if (!reselected) {
+                        setSelectedTrendSystem(null);
+                        setActiveDisturbanceId(null);
+                    }
                 }
             } catch (err) {
                 console.error("Error loading trends data:", err);
@@ -2193,6 +2236,7 @@ export default function SpaghettiPlot() {
     const exportScreenshot = async () => {
         if (!exportWrapperRef.current) return;
         setIsExporting(true);
+        setExportStatusText("Capturing high-resolution map snapshot...");
 
         try {
             const mapEl = exportWrapperRef.current;
@@ -2254,10 +2298,40 @@ export default function SpaghettiPlot() {
         }
     };
 
+    const exportTrendsScreenshot = async (isWide) => {
+        if (activeDisturbanceId === null) return;
+        setIsExporting(true);
+        setExportStatusText("Saving trends map please wait...");
+
+        try {
+            const response = await fetch(`/api/generate-map?dataset=${dataset}&horizon=${horizon}&isWide=${isWide}&disturbanceId=${activeDisturbanceId}`);
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(errText || `Failed to generate trends map: ${response.statusText}`);
+            }
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const modelPrefix = dataset === 'large' ? 'GDM-FNV3-Large' : 'GDM-FNV3';
+            const extentName = isWide ? 'Wide' : 'Standard';
+            a.download = `${modelPrefix}-Trends-${extentName}-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("Trends export failed:", err);
+            alert(`Trends export failed: ${err.message}`);
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+
     const exportGif = async () => {
         if (!mapInstanceRef.current || !exportWrapperRef.current) return;
         setIsExporting(true);
         setExportProgress(0);
+        setExportStatusText("Initializing GIF capture...");
         setIsPlaying(false);
 
         const mapEl = exportWrapperRef.current;
@@ -2302,6 +2376,7 @@ export default function SpaghettiPlot() {
             let exportFilename = `${modelPrefix}-Ensemble-${new Date().toISOString().replace(/[:.]/g, '-')}.gif`;
             for (let h = 0; h <= maxAnimHour; h += 6) {
                 setAnimHour(h);
+                setExportStatusText(`Capturing animation frame at hour +${h}h...`);
                 // Wait for React to apply state, useEffect to run, and Leaflet to render
                 await new Promise(r => setTimeout(r, 200));
 
@@ -2334,6 +2409,7 @@ export default function SpaghettiPlot() {
 
             gif.on('progress', p => {
                 setExportProgress(0.5 + p * 0.5); // Second 50% is encoding
+                setExportStatusText(`Encoding GIF animation (${Math.round(p * 100)}%)...`);
             });
 
             gif.on('finished', blob => {
@@ -2830,6 +2906,42 @@ export default function SpaghettiPlot() {
                 </div>
             )}
 
+            {/* Export Panel for Trends View Mode */}
+            {viewMode === "trends" && selectedTrendSystem && (
+                <div style={{ marginTop: '16px' }} className="no-export">
+                    <h2 className="spaghetti-section-title">
+                        <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '16px', height: '16px' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        Export Forecast Image
+                    </h2>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <button
+                            onClick={() => exportTrendsScreenshot(false)}
+                            disabled={isExporting}
+                            className="trends-export-btn-std"
+                        >
+                            {isExporting ? (
+                                <div className="spinner" style={{ width: '12px', height: '12px' }} />
+                            ) : (
+                                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '4px' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                            )}
+                            Save Standard (105°E - 155°E)
+                        </button>
+                        <button
+                            onClick={() => exportTrendsScreenshot(true)}
+                            disabled={isExporting}
+                            className="trends-export-btn-wide"
+                        >
+                            {isExporting ? (
+                                <div className="spinner" style={{ width: '12px', height: '12px' }} />
+                            ) : (
+                                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '4px' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                            )}
+                            Save Wide (105°E - 190°E)
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Global Intensity Legend */}
             <div className="spaghetti-legend">
                 <div className="spaghetti-legend-title">Wind Intensity Scale (km/h)</div>
@@ -3138,6 +3250,26 @@ export default function SpaghettiPlot() {
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <button
+                                                className="mean-details-close-btn no-export"
+                                                onClick={() => exportTrendsScreenshot(false)}
+                                                disabled={isExporting}
+                                                title="Save Image (Standard 105°E-155°E)"
+                                                style={{ padding: '4px', position: 'relative' }}
+                                            >
+                                                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                                <span style={{ position: 'absolute', fontSize: '7px', fontWeight: 'bold', bottom: '-2px', right: '-2px', backgroundColor: '#00d4ff', color: '#0f172a', padding: '0 2px', borderRadius: '3px', lineHeight: '1' }}>S</span>
+                                            </button>
+                                            <button
+                                                className="mean-details-close-btn no-export"
+                                                onClick={() => exportTrendsScreenshot(true)}
+                                                disabled={isExporting}
+                                                title="Save Image (Wide 105°E-190°E)"
+                                                style={{ padding: '4px', position: 'relative' }}
+                                            >
+                                                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                                <span style={{ position: 'absolute', fontSize: '7px', fontWeight: 'bold', bottom: '-2px', right: '-2px', backgroundColor: '#f87171', color: '#0f172a', padding: '0 2px', borderRadius: '3px', lineHeight: '1' }}>W</span>
+                                            </button>
+                                            <button
                                                 className="mean-details-close-btn"
                                                 onClick={() => setIsTrendsCollapsed(!isTrendsCollapsed)}
                                                 title={isTrendsCollapsed ? "Expand charts" : "Collapse charts"}
@@ -3354,6 +3486,39 @@ export default function SpaghettiPlot() {
                                                     </ResponsiveContainer>
                                                 </div>
                                             </div>
+
+                                            {/* Export buttons at bottom of Trends Panel */}
+                                            <div className="no-export" style={{
+                                                display: 'flex',
+                                                gap: '8px',
+                                                marginTop: '4px',
+                                                padding: '0 4px'
+                                            }}>
+                                                <button
+                                                    onClick={() => exportTrendsScreenshot(false)}
+                                                    disabled={isExporting}
+                                                    className="trends-export-btn-std"
+                                                >
+                                                    {isExporting ? (
+                                                        <div className="spinner" style={{ width: '10px', height: '10px' }} />
+                                                    ) : (
+                                                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '4px' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                                    )}
+                                                    Save Standard (105°-155°E)
+                                                </button>
+                                                <button
+                                                    onClick={() => exportTrendsScreenshot(true)}
+                                                    disabled={isExporting}
+                                                    className="trends-export-btn-wide"
+                                                >
+                                                    {isExporting ? (
+                                                        <div className="spinner" style={{ width: '10px', height: '10px' }} />
+                                                    ) : (
+                                                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '4px' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                                    )}
+                                                    Save Wide (105°-190°E)
+                                                </button>
+                                            </div>
                                         </>
                                     )}
                                 </>
@@ -3406,7 +3571,7 @@ export default function SpaghettiPlot() {
                     )}
 
                     {/* GIF Watermark Overlay (Visible in Animation Mode) */}
-                    {(viewMode === "animation" || isExporting) && (
+                    {(viewMode === "animation" || (isExporting && viewMode !== "trends")) && (
                         <div className="gif-watermark">
                             <h3 className="gif-watermark-title">
                                 {dataset === 'ifs' ? 'ECMWF IFS Ensemble Track' : dataset === 'aifs' ? 'ECMWF AIFS Ensemble Track' : dataset === 'aigefs' ? 'AI-GEFS Ensemble Track' : (dataset === 'large' ? 'Google Deepmind FNV3 1000 Ensemble Track' : 'Google Deepmind FNV3 50 Ensemble Track')}
@@ -3479,6 +3644,33 @@ export default function SpaghettiPlot() {
                     {animationControlsNode}
                 </div>
             </main>
+
+            {/* Fullscreen Exporting/Saving Loading UI */}
+            {isExporting && (
+                <div className="export-loading-overlay">
+                    <div className="export-loading-card">
+                        <div className="export-loading-spinner-container">
+                            <div className="export-loading-spinner-outer"></div>
+                            <div className="export-loading-spinner-inner"></div>
+                            <div className="export-loading-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                            </div>
+                        </div>
+                        <h3 className="export-loading-title">Exporting Trends</h3>
+                        <p className="export-loading-status">{exportStatusText || "Generating image..."}</p>
+                        {exportProgress > 0 && (
+                            <div className="export-progress-container">
+                                <div className="export-progress-bar-bg">
+                                    <div className="export-progress-bar-fill" style={{ width: `${Math.round(exportProgress * 100)}%` }}></div>
+                                </div>
+                                <span className="export-progress-text">{Math.round(exportProgress * 100)}% Complete</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
