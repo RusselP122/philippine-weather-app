@@ -619,20 +619,35 @@ def main():
         if is_wide:
             lons = [lon - 180.0 if lon > 0 else lon for lon in lons]
             
+        # Determine track line color and visibility based on the run cycle index
+        # Current run: 100% opacity black line
+        # Older runs: respective Run Cycle Colors, stepping down in visibility (60%, 40%, 20%)
+        if idx == 0:
+            line_color = 'black'
+            line_alpha = 1.0
+        else:
+            line_color = cycle_colors[idx]
+            if idx == 1:
+                line_alpha = 0.6
+            elif idx == 2:
+                line_alpha = 0.4
+            else:
+                line_alpha = 0.2
+            
         # Draw Segment lines
-        ax_map.plot(lons, lats, color=color, linewidth=3.5, alpha=0.9, transform=projection)
+        ax_map.plot(lons, lats, color=line_color, linewidth=3.5, alpha=line_alpha, transform=projection)
         
-        # Donut markers colored by PAGASA wind classifications
+        # Colored donut rings using the Run Cycle Colors (Sky Blue, Emerald Green, Amber, Coral Red)
+        run_cycle_color = cycle_colors[idx]
         for i in range(len(lons)):
-            w_color = get_pagasa_wind_color(winds[i])
-            if w_color is None:
+            if np.isnan(lats[i]) or np.isnan(lons[i]):
                 continue
-            # shadow
+            # shadow scaled with cycle visibility
             ax_map.plot(lons[i], lats[i], color='black', marker='o', markersize=8,
-                        markeredgewidth=0, alpha=0.2, transform=projection)
-            # Colored donut ring
-            ax_map.plot(lons[i], lats[i], markerfacecolor='none', markeredgecolor=w_color,
-                        marker='o', markersize=5, markeredgewidth=1.8, transform=projection)
+                        markeredgewidth=0, alpha=0.2 * line_alpha, transform=projection)
+            # Colored donut ring with run cycle color
+            ax_map.plot(lons[i], lats[i], markerfacecolor='none', markeredgecolor=run_cycle_color,
+                        marker='o', markersize=5, markeredgewidth=1.8, alpha=line_alpha, transform=projection)
 
     # Top-Left Map Legend (PAGASA wind categories)
     wind_categories = [
@@ -658,12 +673,16 @@ def main():
         is_current = (idx == 0)
         suffix = " [CURRENT]" if is_current else ""
         line_text = f"{d['name']} ({d['memberCount']}/{d['totalMembers']}){suffix}"
-        color = cycle_colors[idx]
-        cycle_lines.append((line_text, color))
+        
+        # Line color matches the map (black for current, cycle color for previous)
+        line_color = 'black' if is_current else cycle_colors[idx]
+        text_color = cycle_colors[idx] # text is colored by the run cycle color (e.g. Sky Blue for current) for readability
+        
+        cycle_lines.append((line_text, line_color, text_color))
 
     cycle_legend_elements = [
-        plt.Line2D([0], [0], color=c_color, linewidth=2.5, label=c_text)
-        for c_text, c_color in cycle_lines
+        plt.Line2D([0], [0], color=c_line_color, linewidth=2.5, label=c_text)
+        for c_text, c_line_color, _ in cycle_lines
     ]
     leg_history = ax_map.legend(
         handles=cycle_legend_elements,
@@ -677,8 +696,8 @@ def main():
     leg_history.get_frame().set_edgecolor('#334155')
     leg_history.get_title().set_color('#94a3b8')
     plt.setp(leg_history.get_title(), fontsize=8, weight='bold')
-    for text, leg_handle in zip(leg_history.get_texts(), cycle_legend_elements):
-        text.set_color(leg_handle.get_color())
+    for text, (_, _, c_text_color) in zip(leg_history.get_texts(), cycle_lines):
+        text.set_color(c_text_color)
         text.set_weight('bold')
     ax_map.add_artist(leg_history)
     

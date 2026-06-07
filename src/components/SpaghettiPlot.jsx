@@ -1090,24 +1090,33 @@ export default function SpaghettiPlot() {
                 continue;
             }
 
-            const color = cycleColors[item.cycleIndex] || "#cbd5e1";
+            const runColor = cycleColors[item.cycleIndex] || "#cbd5e1";
             const pts = dist.meanPoints;
             const latlngs = pts.map(p => [p.lat, p.lon]);
 
-            // Draw outline for contrast
+            // Set track line color and opacity based on run cycle index
+            // Current run: 100% opacity black line
+            // Older runs: respective Run Cycle Colors, stepping down in visibility (60%, 40%, 20%)
+            const lineColor = item.cycleIndex === 0 ? "#000000" : runColor;
+            let lineOpacity = 1.0;
+            if (item.cycleIndex === 1) lineOpacity = 0.6;
+            else if (item.cycleIndex === 2) lineOpacity = 0.4;
+            else if (item.cycleIndex >= 3) lineOpacity = 0.2;
+
+            // Draw outline for contrast (white on dark map background, opacity scaled)
             L.polyline(latlngs, {
-                color: "#0f172a",
+                color: "#ffffff",
                 weight: 6,
-                opacity: 0.5,
+                opacity: 0.4 * lineOpacity,
                 lineCap: "round",
                 lineJoin: "round"
             }).addTo(trendLayerGroupRef.current);
 
             // Draw the main track polyline
             const poly = L.polyline(latlngs, {
-                color: color,
+                color: lineColor,
                 weight: 3.5,
-                opacity: 0.95,
+                opacity: lineOpacity,
                 lineCap: "round",
                 lineJoin: "round"
             });
@@ -1121,36 +1130,35 @@ export default function SpaghettiPlot() {
             }
 
             poly.bindTooltip(`
-                <div style="font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: ${color}; padding: 2px 4px;">
+                <div style="font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: ${runColor}; padding: 2px 4px;">
                     ${cycleLabel} (${dist.pairedTrackName ? "Official Paired" : "Ensemble Mean"})
                 </div>
             `, { sticky: true });
 
             poly.addTo(trendLayerGroupRef.current);
 
-            // Draw markers for final and start positions
-            const startPt = pts[0];
-            const endPt = pts[pts.length - 1];
+            // Draw colored rings from the tracking points using the Run Cycle Colors
+            pts.forEach((pt, ptIdx) => {
+                const isStart = ptIdx === 0;
+                const isEnd = ptIdx === pts.length - 1;
+                const radius = isEnd ? 6 : (isStart ? 4.5 : 4);
+                
+                const ptTooltipHtml = `
+                    <div style="font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: ${runColor}; padding: 2px 4px;">
+                        ${cycleLabel} (+${pt.h}h)<br/>
+                        ${pt.windKmh ? `${pt.windKmh.toFixed(0)} km/h` : ''} ${pt.p ? `(${pt.p.toFixed(0)} hPa)` : ''}
+                    </div>
+                `;
 
-            // Start position dot
-            L.circleMarker([startPt.lat, startPt.lon], {
-                radius: 4,
-                color: color,
-                weight: 1.5,
-                fillColor: "#0f172a",
-                fillOpacity: 1
-            }).bindTooltip(`Formation: ${cycleLabel}`, { direction: "top" })
-                .addTo(trendLayerGroupRef.current);
-
-            // Peak/Latest position marker
-            L.circleMarker([endPt.lat, endPt.lon], {
-                radius: 6,
-                color: color,
-                weight: 2,
-                fillColor: color,
-                fillOpacity: 0.8
-            }).bindTooltip(`End position: ${cycleLabel}`, { direction: "top" })
-                .addTo(trendLayerGroupRef.current);
+                L.circleMarker([pt.lat, pt.lon], {
+                    radius: radius,
+                    color: runColor,
+                    weight: 2,
+                    fillColor: isEnd ? runColor : "transparent",
+                    fillOpacity: isEnd ? 0.35 * lineOpacity : 0,
+                    opacity: lineOpacity
+                }).bindTooltip(ptTooltipHtml, { direction: "top" }).addTo(trendLayerGroupRef.current);
+            });
         }
 
         // Auto-fit bounds of the trend tracks so the user sees the shifts immediately
@@ -3311,7 +3319,10 @@ export default function SpaghettiPlot() {
                                     }}>
                                         {selectedTrendSystem.map((item, index) => {
                                             const cycleColors = ["#38bdf8", "#34d399", "#fbbf24", "#f87171"];
-                                            const color = cycleColors[item.cycleIndex] || "#cbd5e1";
+                                            const isCurrent = item.cycleIndex === 0;
+                                            const dotColor = isCurrent ? "#000000" : (cycleColors[item.cycleIndex] || "#cbd5e1");
+                                            const dotBorder = isCurrent ? "1.5px solid #ffffff" : "none";
+                                            const shadowColor = isCurrent ? "#ffffff" : dotColor;
                                             let label = item.cycleTime;
                                             const matchTime = item.cycleTime.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):00/);
                                             if (matchTime) {
@@ -3321,11 +3332,13 @@ export default function SpaghettiPlot() {
                                             return (
                                                 <div key={item.cycleTime} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                                     <span style={{
-                                                        width: '7px',
-                                                        height: '7px',
+                                                        width: '8px',
+                                                        height: '8px',
                                                         borderRadius: '50%',
-                                                        backgroundColor: color,
-                                                        boxShadow: `0 0 4px ${color}`
+                                                        backgroundColor: dotColor,
+                                                        border: dotBorder,
+                                                        boxShadow: `0 0 4px ${shadowColor}`,
+                                                        boxSizing: 'border-box'
                                                     }}></span>
                                                     <span style={{ color: item.disturbance ? '#f8fafc' : '#64748b', fontWeight: item.disturbance ? 600 : 400 }}>
                                                         {label} {item.disturbance ? `(${item.disturbance.trackCount}/${dataset === "large" ? 1000 : 50})` : "(N/A)"}
