@@ -3,6 +3,7 @@ import io
 import json
 import base64
 import argparse
+import urllib.request
 import math
 import numpy as np
 import pandas as pd
@@ -25,6 +26,15 @@ def haversine_km(lat1, lon1, lat2, lon2):
 def decode_obfuscated_data(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read().strip()
+    encrypted_bytes = base64.b64decode(content)
+    decrypted_bytes = bytes([b ^ 0xAA for b in encrypted_bytes])
+    return decrypted_bytes.decode('utf-8')
+
+def decode_obfuscated_url(url):
+    """Fetch an obfuscated data file from a URL and decode it."""
+    req = urllib.request.Request(url, headers={'User-Agent': 'TrendsMapGenerator/1.0'})
+    with urllib.request.urlopen(req, timeout=30) as response:
+        content = response.read().decode('utf-8').strip()
     encrypted_bytes = base64.b64decode(content)
     decrypted_bytes = bytes([b ^ 0xAA for b in encrypted_bytes])
     return decrypted_bytes.decode('utf-8')
@@ -364,12 +374,24 @@ def main():
     dataset = args.dataset
     disturbance_id = args.disturbance_id
     
+    # Check for DATA_SOURCE_URL environment variable to fetch latest data from Vercel CDN
+    # instead of reading from (potentially stale) local filesystem in the Docker container.
+    # Falls back to local files for local development.
+    data_source_url = os.environ.get('DATA_SOURCE_URL')
+    
     project_root = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(project_root, "public", "data")
-    manifest_path = os.path.join(data_dir, "cycles_manifest.json")
     
-    with open(manifest_path, 'r', encoding='utf-8') as f:
-        manifest = json.load(f)
+    if data_source_url:
+        print(f"Fetching latest data from: {data_source_url}")
+        manifest_url = f"{data_source_url.rstrip('/')}/data/cycles_manifest.json"
+        req = urllib.request.Request(manifest_url, headers={'User-Agent': 'TrendsMapGenerator/1.0'})
+        with urllib.request.urlopen(req, timeout=30) as response:
+            manifest = json.loads(response.read().decode('utf-8'))
+    else:
+        manifest_path = os.path.join(data_dir, "cycles_manifest.json")
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            manifest = json.load(f)
         
     active_cycles = manifest['large'] if dataset == 'large' else manifest['base']
     if not active_cycles:
@@ -378,11 +400,21 @@ def main():
     # Process all cycles
     parsed_cycles = []
     for c in active_cycles:
-        tracks_path = os.path.join(data_dir, c['tracks'])
-        paired_path = os.path.join(data_dir, c['paired']) if c.get('paired') else None
-        
-        csv_text = decode_obfuscated_data(tracks_path)
-        paired_csv_text = decode_obfuscated_data(paired_path) if paired_path and os.path.exists(paired_path) else None
+        if data_source_url:
+            tracks_url = f"{data_source_url.rstrip('/')}/data/{c['tracks']}"
+            paired_url = f"{data_source_url.rstrip('/')}/data/{c['paired']}" if c.get('paired') else None
+            csv_text = decode_obfuscated_url(tracks_url)
+            paired_csv_text = None
+            if paired_url:
+                try:
+                    paired_csv_text = decode_obfuscated_url(paired_url)
+                except Exception:
+                    paired_csv_text = None
+        else:
+            tracks_path = os.path.join(data_dir, c['tracks'])
+            paired_path = os.path.join(data_dir, c['paired']) if c.get('paired') else None
+            csv_text = decode_obfuscated_data(tracks_path)
+            paired_csv_text = decode_obfuscated_data(paired_path) if paired_path and os.path.exists(paired_path) else None
         
         # Max hours matches the frontend (5-day: 120h, 15-day: 312h)
         max_h = 120 if args.horizon == '5day' else 312
