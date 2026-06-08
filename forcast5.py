@@ -236,32 +236,37 @@ fig = plt.figure(figsize=(14, 11))  # Slightly wider than tall
 ax = plt.axes(projection=ccrs.PlateCarree())
 ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
-# Add satellite background (like Zoom Earth)
-tiles = cimgt.GoogleTiles(style='satellite')
-ax.add_image(tiles, 6)  # Zoom level 6 for regional detail; adjust as needed
+# Add land, ocean, and coastlines
+ax.set_facecolor('#87CEEB')
+ax.add_feature(cfeature.LAND, facecolor='#DEB887', edgecolor='#8B4513', linewidth=0.8)
+ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.8, alpha=0.7, color='#654321')
 
-# Add coastlines and borders (overlaid on satellite)
-ax.add_feature(cfeature.COASTLINE, edgecolor='white', alpha=0.7, linewidth=1.0)
-ax.add_feature(cfeature.BORDERS, edgecolor='white', alpha=0.5, linestyle=':', linewidth=0.8)
-
-# Add gridlines with emphasized labels at 5° intervals
-gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='white', alpha=0.3, linestyle='--')
+# Add gridlines
+gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
 gl.xlocator = plt.FixedLocator(np.arange(105, 156, 5))
 gl.ylocator = plt.FixedLocator(np.arange(0, 41, 5))
-gl.xlabel_style = {'size': 11, 'weight': 'bold', 'color': 'white'}
-gl.ylabel_style = {'size': 11, 'weight': 'bold', 'color': 'white'}
+gl.xlabel_style = {'size': 12, 'weight': 'bold'}
+gl.ylabel_style = {'size': 12, 'weight': 'bold'}
 gl.top_labels = False
 gl.right_labels = False
+
+ax.text(
+    118, 13, 'West Philippine\nSea', fontsize=5, color='navy', weight='bold',
+    transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5
+)
+ax.text(
+    130, 20, 'Philippine\nSea', fontsize=9, color='navy', weight='bold',
+    transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5
+)
 
 # Add Philippine Area of Responsibility (PAR) boundary
 par_vertices = [
     (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
     (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
 ]
-par_path = Path(par_vertices)
-# Use a glowing cyan color for better visibility against dark ocean background
-par_patch = PathPatch(par_path, edgecolor='#00E5FF', linestyle='-', linewidth=2.0, facecolor='none', alpha=0.8, transform=ccrs.PlateCarree())
-ax.add_patch(par_patch)
+ax.add_patch(patches.Polygon(par_vertices, facecolor='none', edgecolor='#FF6B35', 
+                             linestyle='-', linewidth=3, alpha=0.8, 
+                             transform=ccrs.PlateCarree()))
 
 # Prepare data for clustering (using all potential genesis points)
 lons = genesis_data['lon'].values
@@ -374,7 +379,7 @@ if len(lons) < 2:
         end_date_str = (init_ph + timedelta(days=7)).strftime("%m/%d/%Y")
         message_text = f"NO TROPICAL CYCLONE\nFORMATION EXPECTED\n\nUNTIL {end_date_str}"
         ax.text(0.5, 0.5, message_text, transform=ax.transAxes, fontsize=22, weight='heavy', ha='center', va='center', color='white', 
-                bbox=dict(boxstyle='round,pad=1.2', facecolor='#1c1e22', edgecolor='#00E5FF', linewidth=2, alpha=0.9))
+                bbox=dict(boxstyle='round,pad=1.2', facecolor='#1c1e22', edgecolor='#FF6B35', linewidth=2, alpha=0.9))
     
     # Add prepared by information with initialization line
     init_line = init_text or "Initialization unavailable"
@@ -386,8 +391,8 @@ if len(lons) < 2:
     ax.text(
         0.98, 0.02, legend_text,
         transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right',
-        color='white', weight='bold',
-        bbox=dict(facecolor='#1c1e22', alpha=0.85, edgecolor='gray', boxstyle='round,pad=0.5')
+        color='#0f172a', weight='bold',
+        bbox=dict(facecolor='#ffffff', alpha=0.9, edgecolor='#cbd5e1', boxstyle='round,pad=0.5')
     )
     
 
@@ -398,12 +403,10 @@ if len(lons) < 2:
         "Should not be used for critical decision making. This is not an official forecast.\n"
         "Refer to PAGASA and official meteorological agencies for official warnings and advisories."
     )
-    ax.text(0.01, 0.01, disclaimer, transform=ax.transAxes, fontsize=9, ha='left', va='bottom', weight='bold', color='#FFD700', bbox=dict(facecolor='#111111', alpha=0.85, edgecolor='none', boxstyle='round,pad=0.5'))
+    ax.text(0.01, 0.01, disclaimer, transform=ax.transAxes, fontsize=8, ha='left', va='bottom', weight='bold', color='#b91c1c', bbox=dict(facecolor='#f8fafc', alpha=0.9, edgecolor='#cbd5e1', boxstyle='round,pad=0.5'))
 
     # Add title banner
-    ax.set_title("7-Day Tropical Weather Outlook - Western Pacific", fontsize=18, weight='heavy', pad=15,
-                 color='white', bbox=dict(facecolor='#001f3f', edgecolor='none', alpha=0.9, pad=10, boxstyle='square,pad=0.4'))
-    fig.patch.set_facecolor('#111111') # Set figure background
+    ax.set_title("7-Day Tropical Weather Outlook - Western Pacific", fontsize=16, weight='bold', pad=15)
     # Save the plot to a file
     try:
         import os
@@ -624,14 +627,14 @@ legend = ax.legend(
     handles=legend_elements, loc='upper left', bbox_to_anchor=(0.02, 0.98),
     frameon=True, fancybox=True, shadow=True, fontsize=10, title='Development Potential'
 )
-# Make the legend look more premium with a dark background and white text
-legend.get_title().set_color('white')
+# Make the legend look more premium with a white background and dark text
+legend.get_title().set_color('#0f172a')
 legend.get_title().set_weight('bold')
 for text in legend.get_texts():
-    text.set_color('white')
-legend.get_frame().set_facecolor('#1c1e22')
-legend.get_frame().set_edgecolor('gray')
-legend.get_frame().set_alpha(0.85)
+    text.set_color('#0f172a')
+legend.get_frame().set_facecolor('#ffffff')
+legend.get_frame().set_edgecolor('#cbd5e1')
+legend.get_frame().set_alpha(0.9)
 
 # Update legend text with initialization line
 init_line = init_text or "Initialization unavailable"
@@ -643,8 +646,8 @@ legend_text = (
 ax.text(
     0.98, 0.02, legend_text,
     transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right',
-    color='white', weight='bold',
-    bbox=dict(facecolor='#1c1e22', alpha=0.85, edgecolor='gray', boxstyle='round,pad=0.5')
+    color='#0f172a', weight='bold',
+    bbox=dict(facecolor='#ffffff', alpha=0.9, edgecolor='#cbd5e1', boxstyle='round,pad=0.5')
 )
 
 # Add disclaimer
@@ -654,15 +657,13 @@ disclaimer = (
     "Refer to PAGASA and official meteorological agencies for official warnings and advisories."
 )
 
-ax.text(0.01, 0.01, disclaimer, transform=ax.transAxes, fontsize=9,
-       ha='left', va='bottom', weight='bold', color='#FFD700',
-       bbox=dict(facecolor='#111111', alpha=0.85, edgecolor='none', boxstyle='round,pad=0.5'))
+ax.text(0.01, 0.01, disclaimer, transform=ax.transAxes, fontsize=8,
+       ha='left', va='bottom', weight='bold', color='#b91c1c',
+       bbox=dict(facecolor='#f8fafc', alpha=0.9, edgecolor='#cbd5e1', boxstyle='round,pad=0.5'))
 
 
 # Add title banner
-ax.set_title("7-Day Tropical Weather Outlook - Western Pacific", fontsize=18, weight='heavy', pad=15,
-             color='white', bbox=dict(facecolor='#001f3f', edgecolor='none', alpha=0.9, pad=10, boxstyle='square,pad=0.4'))
-fig.patch.set_facecolor('#111111') # Set figure background
+ax.set_title("7-Day Tropical Weather Outlook - Western Pacific", fontsize=16, weight='bold', pad=15)
 
 # Save the plot to a file
 try:

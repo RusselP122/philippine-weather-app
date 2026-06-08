@@ -65,7 +65,7 @@ const TropicalOutlook = () => {
               </div>
 
               <span className="font-mono text-[11px] text-slate-500">
-                Updated Weekly
+                Update every Mon, Wed, Fri, Sun at 8:40 AM PHT
               </span>
             </div>
             <div className="h-80 md:h-[26rem] flex items-center justify-center bg-slate-900 relative">

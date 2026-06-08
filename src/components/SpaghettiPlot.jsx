@@ -591,6 +591,30 @@ export default function SpaghettiPlot() {
         selectedTrendSystemRef.current = selectedTrendSystem;
     }, [selectedTrendSystem]);
 
+    // Parse URL query parameters to initialize states
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const viewParam = params.get("view");
+        const datasetParam = params.get("dataset");
+        const horizonParam = params.get("horizon");
+
+        if (viewParam === "trends") {
+            setViewMode("trends");
+        } else if (viewParam === "animation") {
+            setViewMode("animation");
+        } else if (viewParam === "tracker") {
+            setViewMode("tracker");
+        }
+
+        if (datasetParam === "base" || datasetParam === "large" || datasetParam === "ifs" || datasetParam === "aifs" || datasetParam === "aigefs") {
+            setDataset(datasetParam);
+        }
+
+        if (horizonParam === "5day" || horizonParam === "15day") {
+            setHorizon(horizonParam);
+        }
+    }, []);
+
     // Memoized trend data prepared for Recharts
     const chartData = useMemo(() => {
         if (!selectedTrendSystem) return [];
@@ -1040,8 +1064,15 @@ export default function SpaghettiPlot() {
                         }
                     }
                     if (!reselected) {
-                        setSelectedTrendSystem(null);
-                        setActiveDisturbanceId(null);
+                        if (parsedCycles.length > 0 && parsedCycles[0].disturbances.length > 0) {
+                            const firstDist = parsedCycles[0].disturbances[0];
+                            const chain = matchDisturbancesAcrossCycles(firstDist, parsedCycles);
+                            setSelectedTrendSystem(chain);
+                            setActiveDisturbanceId(firstDist.id);
+                        } else {
+                            setSelectedTrendSystem(null);
+                            setActiveDisturbanceId(null);
+                        }
                     }
                 }
             } catch (err) {
