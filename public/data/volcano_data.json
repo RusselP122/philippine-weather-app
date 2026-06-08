@@ -2,9 +2,9 @@
     "metadata": {
         "api_source": "Philippine Typhoon/Weather",
         "data_source": "Philippine Institute of Volcanology and Seismology",
-        "last_updated": "2026-06-08T21:59:06.175433+08:00",
+        "last_updated": "2026-06-09T02:19:00.424383+08:00",
         "developer_note": "Made by a Filipino, For the Filipino, and For the World. This API is free for non-commercial use, is not affiliated with any government entities, and is solely operated independently by Philippine Typhoon/Weather. We extend our sincere gratitude to all our generous supporters. Proxy or replicate this data before using it in your application to prevent undue stress on our existing infrastructure.",
-        "total_Volcanic_earthquakes": "mvo: 33, bvo: 27, kvo: 11, tvo: 9, hvo: 0, pvo: 1"
+        "total_Volcanic_earthquakes": "mvo: 4, bvo: 0, kvo: 0, tvo: 0, hvo: 0, pvo: 0"
     },
     "records": [
         {
@@ -6584,6 +6584,19 @@
                 "pvo": "1"
             },
             "total_Volcanic_earthquakes": "mvo: 33, bvo: 27, kvo: 11, tvo: 9, hvo: 0, pvo: 1"
+        },
+        {
+            "timestamp": "2026-06-09T02:19:00.424383+08:00",
+            "date": "2026-06-09",
+            "data": {
+                "mvo": "4",
+                "bvo": "0",
+                "kvo": "0",
+                "tvo": "0",
+                "hvo": "0",
+                "pvo": "0"
+            },
+            "total_Volcanic_earthquakes": "mvo: 4, bvo: 0, kvo: 0, tvo: 0, hvo: 0, pvo: 0"
         }
     ]
 }
