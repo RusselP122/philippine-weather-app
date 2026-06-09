@@ -1257,9 +1257,20 @@
   transition: all 0.2s ease;
 }
 
-.mean-details-close-btn:hover {
+.mean-details-close-btn:hover:not(:disabled) {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.1);
+}
+
+.mean-details-close-btn:disabled {
+  color: rgba(255, 255, 255, 0.15) !important;
+  cursor: not-allowed;
+  background: transparent !important;
+}
+
+.mean-details-close-btn:disabled span {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.3) !important;
 }
 
 .mean-details-table-wrap {
@@ -1638,6 +1649,17 @@
   border-color: rgba(248, 113, 113, 0.6);
   box-shadow: 0 0 10px rgba(248, 113, 113, 0.2);
   transform: translateY(-1px);
+}
+
+.trends-export-btn-std:disabled,
+.trends-export-btn-wide:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: rgba(255, 255, 255, 0.3) !important;
 }
 
 /* Matplotlib Export Styling */

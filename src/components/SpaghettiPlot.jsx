@@ -323,7 +323,7 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
         for (const row of pairedRows) {
             const trackId = (row.track_id || "").trim();
             const sampleVal = (row.sample || "").trim();
-            if (sampleVal !== "-1" || !trackId.toUpperCase().startsWith("WP")) continue;
+            if (sampleVal !== "-1") continue;
 
             let leadH = parseFloat(row.lead_time_hours);
             if (isNaN(leadH) || row.lead_time_hours === undefined) {
@@ -442,10 +442,11 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
         if (usedPairedTracks.has(c.tId) || usedDisturbances.has(c.dist.id)) continue;
         usedPairedTracks.add(c.tId);
         usedDisturbances.add(c.dist.id);
-        const numMatch = c.tId.match(/WP(\d{2})/i);
+        // Matches e.g. WP01, EP02, AL03, CP01 and maps them to 01W, 02E, 03L, 01C, etc.
+        const numMatch = c.tId.match(/^([A-Z]{2})(\d{2})/i);
         pairedAssignment[c.dist.id] = {
             paired: c.paired,
-            trackName: numMatch ? `${numMatch[1]}W` : c.tId,
+            trackName: numMatch ? `${numMatch[2]}${numMatch[1][0].toUpperCase()}` : c.tId,
         };
     }
 
@@ -1601,8 +1602,8 @@ export default function SpaghettiPlot() {
                 for (const row of pairedRows) {
                     const trackId = (row.track_id || "").trim();
                     const sampleVal = (row.sample || "").trim();
-                    // Only use the official ensemble mean (sample=-1) for WP-prefixed storms
-                    if (sampleVal !== "-1" || !trackId.toUpperCase().startsWith("WP")) continue;
+                    // Only use the official ensemble mean (sample=-1)
+                    if (sampleVal !== "-1") continue;
 
                     let leadH = parseFloat(row.lead_time_hours);
                     if (isNaN(leadH) || row.lead_time_hours === undefined) {
@@ -1674,10 +1675,11 @@ export default function SpaghettiPlot() {
                 if (usedPairedTracks.has(c.tId) || usedDisturbances.has(c.dist.id)) continue;
                 usedPairedTracks.add(c.tId);
                 usedDisturbances.add(c.dist.id);
-                const numMatch = c.tId.match(/WP(\d{2})/i);
+                // Matches e.g. WP01, EP02, AL03, CP01 and maps them to 01W, 02E, 03L, 01C, etc.
+                const numMatch = c.tId.match(/^([A-Z]{2})(\d{2})/i);
                 pairedAssignment[c.dist.id] = {
                     paired: c.paired,
-                    trackName: numMatch ? `${numMatch[1]}W` : c.tId,
+                    trackName: numMatch ? `${numMatch[2]}${numMatch[1][0].toUpperCase()}` : c.tId,
                 };
             }
 
@@ -2986,41 +2988,7 @@ export default function SpaghettiPlot() {
                 </div>
             )}
 
-            {/* Export Panel for Trends View Mode */}
-            {viewMode === "trends" && selectedTrendSystem && (
-                <div style={{ marginTop: '16px' }} className="no-export">
-                    <h2 className="spaghetti-section-title">
-                        <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '16px', height: '16px' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                        Export Forecast Image
-                    </h2>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <button
-                            onClick={() => exportTrendsScreenshot(false)}
-                            disabled={isExporting}
-                            className="trends-export-btn-std"
-                        >
-                            {isExporting ? (
-                                <div className="spinner" style={{ width: '12px', height: '12px' }} />
-                            ) : (
-                                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '4px' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                            )}
-                            Save Standard (105°E - 155°E)
-                        </button>
-                        <button
-                            onClick={() => exportTrendsScreenshot(true)}
-                            disabled={isExporting}
-                            className="trends-export-btn-wide"
-                        >
-                            {isExporting ? (
-                                <div className="spinner" style={{ width: '12px', height: '12px' }} />
-                            ) : (
-                                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '4px' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                            )}
-                            Save Wide (105°E - 190°E)
-                        </button>
-                    </div>
-                </div>
-            )}
+
 
             {/* Global Intensity Legend */}
             <div className="spaghetti-legend">
@@ -3332,8 +3300,8 @@ export default function SpaghettiPlot() {
                                             <button
                                                 className="mean-details-close-btn no-export"
                                                 onClick={() => exportTrendsScreenshot(false)}
-                                                disabled={isExporting}
-                                                title="Save Image (Standard 105°E-155°E)"
+                                                disabled={isExporting || basin !== "wpac"}
+                                                title={basin !== "wpac" ? "Trends map export is only available for the Western Pacific basin" : "Save Image (Standard 105°E-155°E)"}
                                                 style={{ padding: '4px', position: 'relative' }}
                                             >
                                                 <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -3342,8 +3310,8 @@ export default function SpaghettiPlot() {
                                             <button
                                                 className="mean-details-close-btn no-export"
                                                 onClick={() => exportTrendsScreenshot(true)}
-                                                disabled={isExporting}
-                                                title="Save Image (Wide 105°E-190°E)"
+                                                disabled={isExporting || basin !== "wpac"}
+                                                title={basin !== "wpac" ? "Trends map export is only available for the Western Pacific basin" : "Save Image (Wide 105°E-190°E)"}
                                                 style={{ padding: '4px', position: 'relative' }}
                                             >
                                                 <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -3585,8 +3553,9 @@ export default function SpaghettiPlot() {
                                             }}>
                                                 <button
                                                     onClick={() => exportTrendsScreenshot(false)}
-                                                    disabled={isExporting}
+                                                    disabled={isExporting || basin !== "wpac"}
                                                     className="trends-export-btn-std"
+                                                    title={basin !== "wpac" ? "Trends map export is only available for the Western Pacific basin" : ""}
                                                 >
                                                     {isExporting ? (
                                                         <div className="spinner" style={{ width: '10px', height: '10px' }} />
@@ -3597,8 +3566,9 @@ export default function SpaghettiPlot() {
                                                 </button>
                                                 <button
                                                     onClick={() => exportTrendsScreenshot(true)}
-                                                    disabled={isExporting}
+                                                    disabled={isExporting || basin !== "wpac"}
                                                     className="trends-export-btn-wide"
+                                                    title={basin !== "wpac" ? "Trends map export is only available for the Western Pacific basin" : ""}
                                                 >
                                                     {isExporting ? (
                                                         <div className="spinner" style={{ width: '10px', height: '10px' }} />
