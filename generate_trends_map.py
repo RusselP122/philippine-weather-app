@@ -3,6 +3,7 @@ import io
 import json
 import base64
 import argparse
+import gc
 import urllib.request
 import math
 import numpy as np
@@ -133,7 +134,7 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
         
     raw_rows = df[df['lead_time_hours'].notna() & df['lat'].notna()]
     grouped = {}
-    for _, row in raw_rows.iterrows():
+    for row in raw_rows.to_dict('records'):
         lead_h = float(row['lead_time_hours'])
         if lead_h > max_hours:
             continue
@@ -214,7 +215,7 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
         if 'lead_time_hours' not in pdf.columns:
             pdf['lead_time_hours'] = pdf.apply(parse_lead_time, axis=1)
             
-        for _, row in pdf.iterrows():
+        for row in pdf.to_dict('records'):
             track_id = str(row.get('track_id', '')).strip()
             sample_val = str(row.get('sample', '')).strip()
             if sample_val != "-1" or not track_id.upper().startswith("WP"):
@@ -304,6 +305,15 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
         if len(tracks) < min_required:
             continue
             
+        # Calculate genesis hour for estimated genesis time
+        genesis_hours = []
+        for track in tracks:
+            valid_pts = [pt for pt in track if not np.isnan(pt['lat']) and not np.isnan(pt['lon'])]
+            if valid_pts:
+                sorted_pts = sorted(valid_pts, key=lambda pt: pt['h'])
+                genesis_hours.append(sorted_pts[0]['h'])
+        dist['genesis_h'] = np.median(genesis_hours) if genesis_hours else 0
+
         assignment = paired_assignment.get(dist['id'])
         matched_paired = None
         if assignment:
@@ -359,7 +369,36 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
         dist['agreement'] = round((total_agreement / agreement_steps) * 100) if agreement_steps > 0 else 0
         dist['meanPoints'] = mean_pts
 
-    return disturbance_list, updated_tracks_by_dist
+        # Compute peak and ensemble mean wind statistics
+        peak_winds = []
+        for track in tracks:
+            winds = [pt['windKmh'] for pt in track if not np.isnan(pt['windKmh'])]
+            if winds:
+                peak_winds.append(max(winds))
+        min_w = min(peak_winds) if peak_winds else 0
+        max_w = max(peak_winds) if peak_winds else 0
+        median_w = np.median(peak_winds) if peak_winds else 0
+
+        hourly_medians = []
+        for h in hours:
+            valid_winds = [w for w in by_hour[h]['winds'] if not np.isnan(w)]
+            if valid_winds:
+                hourly_medians.append(np.median(valid_winds))
+        computed_mean_wind = max(hourly_medians) if hourly_medians else median_w
+
+        dist['minWind'] = min_w
+        dist['maxWind'] = max_w
+        dist['computedMeanWind'] = computed_mean_wind
+
+    # Set default values for any disturbances that did not get processed
+    for dist in disturbance_list:
+        if 'minWind' not in dist:
+            dist['minWind'] = 0
+            dist['maxWind'] = 0
+            dist['computedMeanWind'] = 0
+            dist['genesis_h'] = 0
+
+    return disturbance_list
 
 def main():
     parser = argparse.ArgumentParser()
@@ -418,12 +457,13 @@ def main():
         
         # Max hours matches the frontend (5-day: 120h, 15-day: 312h)
         max_h = 120 if args.horizon == '5day' else 312
-        disturbances, tracks_by_dist = parse_cycle_stats(csv_text, paired_csv_text, dataset, max_h)
+        disturbances = parse_cycle_stats(csv_text, paired_csv_text, dataset, max_h)
         parsed_cycles.append({
             'cycle_time': c['cycle'],
-            'disturbances': disturbances,
-            'tracks_by_disturbance': tracks_by_dist
+            'disturbances': disturbances
         })
+        # Explicitly run garbage collection to free memory from large strings/dataframes/arrays
+        gc.collect()
         
     # Match Selected Disturbance across cycles
     # Trace starting from selected disturbance ID in latest cycle (index 0)
@@ -451,8 +491,7 @@ def main():
             chain.append({
                 'cycle_index': i,
                 'cycle_time': cycle['cycle_time'],
-                'disturbance': match,
-                'tracks': cycle['tracks_by_disturbance'].get(match['id'], [])
+                'disturbance': match
             })
             current_center = {'lat': match['lat'], 'lon': match['lon']}
             if match.get('pairedTrackName'):
@@ -461,8 +500,7 @@ def main():
             chain.append({
                 'cycle_index': i,
                 'cycle_time': cycle['cycle_time'],
-                'disturbance': None,
-                'tracks': []
+                'disturbance': None
             })
 
     # Prepare Recharts-like chart data
@@ -488,36 +526,17 @@ def main():
                 'maxWind': 0,
                 'computedMeanWind': 0,
                 'pairedWind': 0,
-                'detected': False
+                'detected': False,
+                'genesis_time': 'N/A'
             })
             continue
             
         prob = min(100, round((dist['trackCount'] / total_members) * 100))
         
-        # Calculate Peak Wind Intensity Spread
-        peak_winds = []
-        for track in item['tracks']:
-            winds = [pt['windKmh'] for pt in track if not np.isnan(pt['windKmh'])]
-            if winds:
-                peak_winds.append(max(winds))
-                
-        min_w, max_w, median_w = 0, 0, 0
-        if peak_winds:
-            min_w = min(peak_winds)
-            max_w = max(peak_winds)
-            median_w = np.median(peak_winds)
-            
-        # Computed Ensemble Mean wind along the mean track
-        winds_by_hour = {}
-        for track in item['tracks']:
-            for pt in track:
-                if not np.isnan(pt['windKmh']):
-                    h = pt['h']
-                    if h not in winds_by_hour:
-                        winds_by_hour[h] = []
-                    winds_by_hour[h].append(pt['windKmh'])
-        hourly_medians = [np.median(w) for w in winds_by_hour.values() if w]
-        computed_mean_wind = max(hourly_medians) if hourly_medians else median_w
+        # Use pre-computed Peak Wind Intensity Spread and Mean Wind
+        min_w = dist.get('minWind', 0)
+        max_w = dist.get('maxWind', 0)
+        computed_mean_wind = dist.get('computedMeanWind', 0)
         
         paired_wind = 0
         if dist.get('pairedTrackName') and dist.get('meanPoints'):
@@ -525,6 +544,21 @@ def main():
             if winds:
                 paired_wind = max(winds)
                 
+        # Calculate estimated genesis date and time in PH Time (PHT, UTC+8)
+        genesis_time_str = 'N/A'
+        try:
+            clean_time = item['cycle_time'].replace('T', ' ').strip()
+            if len(clean_time) > 16:
+                clean_time = clean_time[:16]
+            base_dt = datetime.strptime(clean_time, '%Y-%m-%d %H:%M')
+            gen_hours = dist.get('genesis_h', 0)
+            gen_dt = base_dt + timedelta(hours=gen_hours)
+            ph_dt = gen_dt + timedelta(hours=8)
+            genesis_time_str = ph_dt.strftime('%b %d %I:%M %p')
+        except Exception as e:
+            print(f"Error parsing genesis time: {e}")
+            genesis_time_str = 'N/A'
+
         chart_data.append({
             'name': label,
             'probability': prob,
@@ -534,7 +568,8 @@ def main():
             'maxWind': max_w,
             'computedMeanWind': computed_mean_wind,
             'pairedWind': paired_wind,
-            'detected': True
+            'detected': True,
+            'genesis_time': genesis_time_str
         })
 
     # PLOTTING TIME
@@ -745,13 +780,13 @@ def main():
     ax_gen.set_title("Genesis Probability Trend", fontsize=11, weight='bold', pad=8)
     ax_gen.tick_params(axis='both', labelsize=9)
     
-    # Add member ratio text labels next to each marker
+    # Add member ratio and estimated genesis time text labels next to each marker
     for i, d in enumerate(chart_data):
         if d['detected']:
-            label_text = f"{d['memberCount']}/{d['totalMembers']}"
+            label_text = f"{d['memberCount']}/{d['totalMembers']}\n{d['genesis_time']}"
             ax_gen.annotate(label_text, (x_names[i], probs[i]), textcoords="offset points",
-                            xytext=(0,10), ha='center', fontsize=8, weight='bold', color='#0f172a',
-                            bbox=dict(boxstyle="round,pad=0.2", fc="yellow", alpha=0.8, ec="gray", lw=0.5))
+                            xytext=(0,10), ha='center', fontsize=6.5, weight='bold', color='#0f172a',
+                            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", alpha=0.8, ec="gray", lw=0.5))
                             
     # 3. SUBPLOT 2: WIND INTENSITY CHART (Lower Right)
     ax_wind = fig.add_subplot(gs[1, 2])
@@ -778,6 +813,15 @@ def main():
     ax_wind.set_title("Peak Wind Intensity Trend", fontsize=11, weight='bold', pad=8)
     ax_wind.legend(loc='lower left', fontsize=8)
     ax_wind.tick_params(axis='both', labelsize=9)
+    
+    # Add wind peak text labels next to each marker
+    for i, d in enumerate(chart_data):
+        if d['detected']:
+            mean_val = d['computedMeanWind']
+            label_text = f"{mean_val:.0f} km/h"
+            ax_wind.annotate(label_text, (x_names[i], mean_val), textcoords="offset points",
+                             xytext=(0, 10), ha='center', fontsize=6.5, weight='bold', color='#0f172a',
+                             bbox=dict(boxstyle="round,pad=0.3", fc="#e0f2fe", alpha=0.9, ec="#0284c7", lw=0.5))
     
     # Tight layout and save
     plt.tight_layout()
