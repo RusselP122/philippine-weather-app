@@ -18,14 +18,6 @@ import {
   X,
   Database
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid
-} from "recharts";
 
 // Helper to resolve asset URLs relative to the base path in both local development and deployed production (subfolder) environments
 const getAssetUrl = (path) => {
@@ -513,52 +505,6 @@ const Forecast = () => {
               </div>
             </div>
 
-            {/* Run-to-Run Forecast Trends Preview Card */}
-            {(selectedModel === "fnv3_base" || selectedModel === "fnv3_large") && (
-              <div 
-                onClick={() => window.location.href = `/spaghetti?view=trends&dataset=${selectedModel === "fnv3_large" ? "large" : "base"}`}
-                className="custom-glass rounded-3xl p-5 md:p-6 shadow-2xl relative overflow-hidden group flex flex-col gap-3 cursor-pointer hover:border-slate-500 transition-all"
-              >
-                <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 blur-2xl rounded-full"></div>
-                
-                <div className="flex items-center justify-between border-b border-white/5 pb-2 text-xs text-slate-400">
-                  <span className="font-bold flex items-center gap-1.5 text-cyan-400">
-                    <Activity className="w-3.5 h-3.5 animate-pulse" />
-                    <span>Run-to-Run Forecast Trends (Ensemble Probability)</span>
-                  </span>
-                  <span className="text-[9px] text-slate-500 font-black tracking-wider bg-slate-950 px-2 py-0.5 rounded-lg border border-white/5">
-                    INTERACTIVE MAP COMPARISON
-                  </span>
-                </div>
-                
-                <div className="h-36 w-full flex items-center justify-center relative bg-slate-950/40 rounded-2xl border border-white/5 p-2">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={[
-                      { name: "Run -18h", probability: 30 },
-                      { name: "Run -12h", probability: 55 },
-                      { name: "Run -6h", probability: 80 },
-                      { name: "Current Run", probability: 95 }
-                    ]} margin={{ top: 10, right: 15, left: -25, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                      <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 9 }} stroke="rgba(255,255,255,0.05)" />
-                      <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 9 }} stroke="rgba(255,255,255,0.05)" />
-                      <Line
-                        type="monotone"
-                        dataKey="probability"
-                        stroke="#10b981"
-                        strokeWidth={2.5}
-                        dot={{ fill: '#10b981', r: 3 }}
-                        activeDot={{ r: 5 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-                
-                <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
-                  Ensemble member agreement and track consistency are shifting across execution cycles. **Click this chart to load the full interactive Spaghetti Trends Map and view dynamic tracking points.**
-                </p>
-              </div>
-            )}
 
             {/* Right Column Metadata Details */}
             <div className="flex flex-col gap-6">
