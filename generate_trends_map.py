@@ -159,8 +159,8 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
             continue
         points_sorted = sorted(points, key=lambda p: p['h'])
         origin = next((p for p in points_sorted if p['h'] == 0), points_sorted[0])
-        # filter to 105 to 190 E, 0 to 40 N
-        if 100 <= origin['lon'] <= 190 and -5 <= origin['lat'] <= 45:
+        # filter to 100 to 180 E, -5 to 45 N (align with React wpac basin)
+        if 100 <= origin['lon'] <= 180 and -5 <= origin['lat'] <= 45:
             basin_filtered.append(points_sorted)
 
     # Gather origins for clustering
@@ -168,6 +168,14 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
     unique_origins = set()
     for points in basin_filtered:
         if len(points) < 2:
+            continue
+        # check jumps (align with React)
+        bad = False
+        for i in range(1, len(points)):
+            if abs(points[i]['lat'] - points[i-1]['lat']) > 10 or abs(points[i]['lon'] - points[i-1]['lon']) > 10:
+                bad = True
+                break
+        if bad:
             continue
         origin = next((p for p in points if p['h'] == 0), points[0])
         okey = f"{origin['lat']:.1f},{origin['lon']:.1f}"
@@ -238,12 +246,9 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
         for key in paired_mean_by_track_id:
             paired_mean_by_track_id[key]['points'].sort(key=lambda p: p['h'])
 
-    min_required = 100 if dataset_name == "large" else 25
     disturbance_list = []
     for cluster in clusters:
         dist_tracks = tracks_by_dist.get(cluster['distId'], [])
-        if len(dist_tracks) < min_required:
-            continue
         all_max_w = []
         for pts in dist_tracks:
             winds = [p['windKmh'] for p in pts if not np.isnan(p['windKmh'])]
@@ -261,7 +266,8 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
             'meanPoints': None
         })
 
-    disturbance_list.sort(key=lambda d: d['trackCount'], reverse=True)
+    # Sort & Renumber deterministically (descending by trackCount, then lat, then lon)
+    disturbance_list.sort(key=lambda d: (-d['trackCount'], -d['lat'], -d['lon']))
     old_to_new = {}
     for idx, d in enumerate(disturbance_list):
         new_id = idx + 1
@@ -270,9 +276,8 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
 
     updated_tracks_by_dist = {}
     for old_id, trks in tracks_by_dist.items():
-        if old_id in old_to_new:
-            new_id = old_to_new[old_id]
-            updated_tracks_by_dist[new_id] = trks
+        new_id = old_to_new.get(old_id, old_id)
+        updated_tracks_by_dist[new_id] = trks
 
     paired_assignment = {}
     used_paired = set()
@@ -442,6 +447,8 @@ def main():
     parser.add_argument('--is-wide', required=True, choices=['True', 'False'])
     parser.add_argument('--disturbance-id', required=True, type=int)
     parser.add_argument('--output', required=True)
+    parser.add_argument('--lat', type=float, default=None)
+    parser.add_argument('--lon', type=float, default=None)
     args = parser.parse_args()
     
     is_wide = args.is_wide == 'True'
@@ -501,11 +508,22 @@ def main():
         gc.collect()
         
     # Match Selected Disturbance across cycles
-    # Trace starting from selected disturbance ID in latest cycle (index 0)
+    # Trace starting from selected disturbance ID/coordinates in latest cycle (index 0)
     latest_cycle = parsed_cycles[0]
-    selected_dist = next((d for d in latest_cycle['disturbances'] if d['id'] == disturbance_id), None)
+    selected_dist = None
+    if args.lat is not None and args.lon is not None:
+        best_d = float('inf')
+        for d in latest_cycle['disturbances']:
+            d_km = haversine_km(args.lat, args.lon, d['lat'], d['lon'])
+            if d_km < 450 and d_km < best_d:
+                best_d = d_km
+                selected_dist = d
+                
     if not selected_dist:
-        raise ValueError(f"Selected disturbance {disturbance_id} not found in latest cycle")
+        selected_dist = next((d for d in latest_cycle['disturbances'] if d['id'] == disturbance_id), None)
+        
+    if not selected_dist:
+        raise ValueError(f"Selected disturbance not found in latest cycle")
         
     chain = []
     current_center = {'lat': selected_dist['lat'], 'lon': selected_dist['lon']}
@@ -595,19 +613,20 @@ def main():
                 
         # Calculate estimated genesis date and time in PH Time (PHT, UTC+8)
         genesis_time_str = 'N/A'
-        try:
-            clean_time = item['cycle_time'].replace('T', ' ').strip()
-            if len(clean_time) > 16:
-                clean_time = clean_time[:16]
-            base_dt = datetime.strptime(clean_time, '%Y-%m-%d %H:%M')
-            gen_hours = dist.get('genesis_h', 0)
-            
-            gen_dt = base_dt + timedelta(hours=gen_hours)
-            ph_dt = gen_dt + timedelta(hours=8)
-            genesis_time_str = ph_dt.strftime('%b %d %I:%M %p')
-        except Exception as e:
-            print(f"Error parsing genesis time: {e}")
-            genesis_time_str = 'N/A'
+        if dist.get('meanPoints') is not None:
+            try:
+                clean_time = item['cycle_time'].replace('T', ' ').strip()
+                if len(clean_time) > 16:
+                    clean_time = clean_time[:16]
+                base_dt = datetime.strptime(clean_time, '%Y-%m-%d %H:%M')
+                gen_hours = dist.get('genesis_h', 0)
+                
+                gen_dt = base_dt + timedelta(hours=gen_hours)
+                ph_dt = gen_dt + timedelta(hours=8)
+                genesis_time_str = ph_dt.strftime('%b %d %I:%M %p')
+            except Exception as e:
+                print(f"Error parsing genesis time: {e}")
+                genesis_time_str = 'N/A'
 
         chart_data.append({
             'name': label,
@@ -618,7 +637,7 @@ def main():
             'maxWind': max_w,
             'computedMeanWind': computed_mean_wind,
             'pairedWind': paired_wind,
-            'detected': True,
+            'detected': dist.get('meanPoints') is not None,
             'genesis_time': genesis_time_str
         })
 

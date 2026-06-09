@@ -29,6 +29,8 @@ const server = http.createServer((req, res) => {
         const horizon = parsedUrl.searchParams.get('horizon');
         const isWide = parsedUrl.searchParams.get('isWide');
         const disturbanceId = parsedUrl.searchParams.get('disturbanceId');
+        const lat = parsedUrl.searchParams.get('lat');
+        const lon = parsedUrl.searchParams.get('lon');
 
         // Validation
         if (dataset !== 'base' && dataset !== 'large') {
@@ -47,6 +49,14 @@ const server = http.createServer((req, res) => {
             res.writeHead(400, { 'Content-Type': 'text/plain' });
             return res.end('Invalid disturbanceId parameter');
         }
+        if (lat && !/^-?\d+(?:\.\d+)?$/.test(lat)) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            return res.end('Invalid lat parameter');
+        }
+        if (lon && !/^-?\d+(?:\.\d+)?$/.test(lon)) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            return res.end('Invalid lon parameter');
+        }
 
         const tempDir = path.join(__dirname, 'temp_data');
         if (!fs.existsSync(tempDir)) {
@@ -58,7 +68,10 @@ const server = http.createServer((req, res) => {
         const isWidePy = isWide === 'true' ? 'True' : 'False';
 
         // Render deployment always runs under Linux with python3
-        const cmd = `python3 "${pythonScript}" --dataset ${dataset} --horizon ${horizon} --is-wide ${isWidePy} --disturbance-id ${disturbanceId} --output "${tempOutputFile}"`;
+        let cmd = `python3 "${pythonScript}" --dataset ${dataset} --horizon ${horizon} --is-wide ${isWidePy} --disturbance-id ${disturbanceId} --output "${tempOutputFile}"`;
+        if (lat && lon) {
+            cmd += ` --lat ${lat} --lon ${lon}`;
+        }
 
         exec(cmd, (error, stdout, stderr) => {
             if (error) {

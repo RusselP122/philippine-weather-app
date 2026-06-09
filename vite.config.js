@@ -20,6 +20,8 @@ export default defineConfig({
               const horizon = url.searchParams.get('horizon');
               const isWide = url.searchParams.get('isWide');
               const disturbanceId = url.searchParams.get('disturbanceId');
+              const lat = url.searchParams.get('lat');
+              const lon = url.searchParams.get('lon');
 
               // Validation
               if (dataset !== 'base' && dataset !== 'large') {
@@ -46,6 +48,18 @@ export default defineConfig({
                 res.end('Invalid disturbanceId parameter');
                 return;
               }
+              if (lat && !/^-?\d+(?:\.\d+)?$/.test(lat)) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'text/plain');
+                res.end('Invalid lat parameter');
+                return;
+              }
+              if (lon && !/^-?\d+(?:\.\d+)?$/.test(lon)) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'text/plain');
+                res.end('Invalid lon parameter');
+                return;
+              }
 
               // Path setup
               const pythonScript = path.join(process.cwd(), 'generate_trends_map.py');
@@ -57,7 +71,10 @@ export default defineConfig({
               
               // Run python script
               const isWidePy = isWide === 'true' ? 'True' : 'False';
-              const cmd = `python "${pythonScript}" --dataset ${dataset} --horizon ${horizon} --is-wide ${isWidePy} --disturbance-id ${disturbanceId} --output "${tempOutputFile}"`;
+              let cmd = `python "${pythonScript}" --dataset ${dataset} --horizon ${horizon} --is-wide ${isWidePy} --disturbance-id ${disturbanceId} --output "${tempOutputFile}"`;
+              if (lat && lon) {
+                cmd += ` --lat ${lat} --lon ${lon}`;
+              }
 
               exec(cmd, (error, stdout, stderr) => {
                 if (error) {

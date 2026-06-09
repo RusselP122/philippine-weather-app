@@ -118,6 +118,22 @@ def main():
                 "paired": large_paired_fn if download_and_obfuscate(large_paired_url, large_paired_fn) else None
             })
 
+        # If this is the latest cycle, also update the _latest.dat files
+        if dt == cycles[0]:
+            import shutil
+            if success_tracks:
+                shutil.copy(os.path.join(DATA_DIR, base_tracks_fn), os.path.join(DATA_DIR, "fnv3_base_latest.dat"))
+                base_paired_path = os.path.join(DATA_DIR, base_paired_fn)
+                if os.path.exists(base_paired_path):
+                    shutil.copy(base_paired_path, os.path.join(DATA_DIR, "fnv3_paired_latest.dat"))
+                    print("Updated base latest files.")
+            if success_large:
+                shutil.copy(os.path.join(DATA_DIR, large_tracks_fn), os.path.join(DATA_DIR, "fnv3_large_latest.dat"))
+                large_paired_path = os.path.join(DATA_DIR, large_paired_fn)
+                if os.path.exists(large_paired_path):
+                    shutil.copy(large_paired_path, os.path.join(DATA_DIR, "fnv3_large_paired_latest.dat"))
+                    print("Updated large latest files.")
+
     # Write cycles_manifest.json
     manifest_path = os.path.join(DATA_DIR, "cycles_manifest.json")
     with open(manifest_path, 'w', encoding='utf-8') as f:

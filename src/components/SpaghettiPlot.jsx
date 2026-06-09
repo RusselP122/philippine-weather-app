@@ -264,6 +264,14 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
     const uniqueOrigins = new Set();
     for (const points of basinFiltered) {
         if (points.length < 2) continue;
+        points.sort((a, b) => a.h - b.h);
+        // check jumps (align with parseCycleData)
+        let bad = false;
+        for (let i = 1; i < points.length; i++) {
+            if (Math.abs(points[i].lat - points[i - 1].lat) > 10 ||
+                Math.abs(points[i].lon - points[i - 1].lon) > 10) { bad = true; break; }
+        }
+        if (bad) continue;
         const origin = points.find(pt => pt.h === 0) || points.reduce((prev, curr) => curr.h < prev.h ? curr : prev, points[0]);
         if (!origin) continue;
         const oKey = `${origin.lat.toFixed(1)},${origin.lon.toFixed(1)}`;
@@ -390,8 +398,12 @@ function parseCycleStats(csvText, pairedCsvText, datasetName, basinName, horizon
         };
     });
 
-    // Sort & Renumber
-    disturbanceList.sort((a, b) => b.trackCount - a.trackCount);
+    // Sort & Renumber deterministically (descending by trackCount, then lat, then lon)
+    disturbanceList.sort((a, b) => {
+        if (b.trackCount !== a.trackCount) return b.trackCount - a.trackCount;
+        if (b.lat !== a.lat) return b.lat - a.lat;
+        return b.lon - a.lon;
+    });
     const oldToNew = {};
     disturbanceList.forEach((d, idx) => {
         const newId = idx + 1;
@@ -989,7 +1001,7 @@ export default function SpaghettiPlot() {
             try {
                 let manifest = cyclesManifest;
                 if (!manifest) {
-                    const res = await fetch(getAssetUrl("/data/cycles_manifest.json"));
+                    const res = await fetch(getAssetUrl(`/data/cycles_manifest.json?t=${Date.now()}`));
                     if (!res.ok) throw new Error("Manifest not found");
                     manifest = await res.json();
                     if (!cancelled) setCyclesManifest(manifest);
@@ -1006,7 +1018,7 @@ export default function SpaghettiPlot() {
                     if (cancelled) return;
 
                     // Fetch tracks
-                    const tracksRes = await fetch(getAssetUrl(`/data/${c.tracks}`));
+                    const tracksRes = await fetch(getAssetUrl(`/data/${c.tracks}?t=${Date.now()}`));
                     if (!tracksRes.ok) continue;
                     const encTracks = await tracksRes.text();
                     const csvText = decodeObfuscatedData(encTracks);
@@ -1015,7 +1027,7 @@ export default function SpaghettiPlot() {
                     let pairedCsvText = null;
                     if (c.paired) {
                         try {
-                            const pairedRes = await fetch(getAssetUrl(`/data/${c.paired}`));
+                            const pairedRes = await fetch(getAssetUrl(`/data/${c.paired}?t=${Date.now()}`));
                             if (pairedRes.ok) {
                                 const encPaired = await pairedRes.text();
                                 pairedCsvText = decodeObfuscatedData(encPaired);
@@ -1242,12 +1254,33 @@ export default function SpaghettiPlot() {
         setRunLabel("");
 
         const isLarge = dataset === "large";
-        const csvUrl = LOCAL_CSV[dataset];
+        let csvUrl = LOCAL_CSV[dataset];
+        let pairedUrl = isLarge ? LOCAL_CSV.largePaired : LOCAL_CSV.basePaired;
+
+        if (dataset === "base" || dataset === "large") {
+            try {
+                const manifestRes = await fetch(getAssetUrl(`/data/cycles_manifest.json?t=${Date.now()}`));
+                if (manifestRes.ok) {
+                    const manifest = await manifestRes.json();
+                    setCyclesManifest(manifest);
+                    const activeCycles = dataset === "large" ? manifest.large : manifest.base;
+                    if (activeCycles && activeCycles.length > 0) {
+                        csvUrl = `/data/${activeCycles[0].tracks}`;
+                        if (activeCycles[0].paired) {
+                            pairedUrl = `/data/${activeCycles[0].paired}`;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Failed to fetch cycles_manifest.json in loadData, falling back to default latest URLs", e);
+            }
+        }
+
         let csvText = null;
         let pairedCsvText = null;
 
         try {
-            const res = await fetch(getAssetUrl(csvUrl));
+            const res = await fetch(getAssetUrl(`${csvUrl}?t=${Date.now()}`));
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const encryptedText = await res.text();
             csvText = decodeObfuscatedData(encryptedText);
@@ -1264,9 +1297,8 @@ export default function SpaghettiPlot() {
 
         // Attempt to fetch the official FNV3 paired/ensemble-mean CSV (non-blocking)
         // Base → fnv3_paired_latest.csv, Large → fnv3_large_paired_latest.csv
-        const pairedUrl = isLarge ? LOCAL_CSV.largePaired : LOCAL_CSV.basePaired;
         try {
-            const pairedRes = await fetch(getAssetUrl(pairedUrl));
+            const pairedRes = await fetch(getAssetUrl(`${pairedUrl}?t=${Date.now()}`));
             if (pairedRes.ok) {
                 const encPairedText = await pairedRes.text();
                 pairedCsvText = decodeObfuscatedData(encPairedText);
@@ -1355,6 +1387,7 @@ export default function SpaghettiPlot() {
             const uniqueOrigins = new Set();
             for (const points of basinFiltered) {
                 if (points.length < 2) continue;
+                points.sort((a, b) => a.h - b.h);
                 let bad = false;
                 for (let i = 1; i < points.length; i++) {
                     if (Math.abs(points[i].lat - points[i - 1].lat) > 10 ||
@@ -1530,8 +1563,12 @@ export default function SpaghettiPlot() {
                 };
             });
 
-            // ── Renumber disturbances: most tracks = Disturbance 1 ──────────
-            disturbanceList.sort((a, b) => b.trackCount - a.trackCount);
+            // ── Renumber disturbances deterministically (descending by trackCount, then lat, then lon) ──────────
+            disturbanceList.sort((a, b) => {
+                if (b.trackCount !== a.trackCount) return b.trackCount - a.trackCount;
+                if (b.lat !== a.lat) return b.lat - a.lat;
+                return b.lon - a.lon;
+            });
             const oldToNew = {};
             disturbanceList.forEach((d, idx) => {
                 const newId = idx + 1;
@@ -2345,7 +2382,9 @@ export default function SpaghettiPlot() {
         setExportStatusText("Saving trends map please wait...");
 
         try {
-            const response = await fetch(`/api/generate-map?dataset=${dataset}&horizon=${horizon}&isWide=${isWide}&disturbanceId=${activeDisturbanceId}`);
+            const activeDist = disturbances.find(d => d.id === activeDisturbanceId);
+            const latParam = activeDist ? `&lat=${activeDist.lat}&lon=${activeDist.lon}` : '';
+            const response = await fetch(`/api/generate-map?dataset=${dataset}&horizon=${horizon}&isWide=${isWide}&disturbanceId=${activeDisturbanceId}${latParam}`);
             if (!response.ok) {
                 const errText = await response.text();
                 throw new Error(errText || `Failed to generate trends map: ${response.statusText}`);
