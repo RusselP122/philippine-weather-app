@@ -1,1 +1,1 @@
-{"features":[{"geometry":{"coordinates":[[[[261.25,16.194],[261.5,16.121],[261.75,16.25],[261.735,16.5],[261.562,16.75],[261.5,16.793],[261.25,16.857],[261.121,16.75],[261.0,16.517],[260.993,16.5],[261.0,16.487],[261.167,16.25],[261.25,16.194]]]],"type":"MultiPolygon"},"properties":{"fill":"#460a5d","fill-opacity":0.9,"stroke":"#460a5d","stroke-opacity":1,"stroke-width":1,"title":"0.05-0.10 "},"type":"Feature"}],"type":"FeatureCollection"}
+{"type": "FeatureCollection", "features": []}
