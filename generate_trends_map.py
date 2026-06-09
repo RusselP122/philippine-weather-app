@@ -238,9 +238,12 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
         for key in paired_mean_by_track_id:
             paired_mean_by_track_id[key]['points'].sort(key=lambda p: p['h'])
 
+    min_required = 100 if dataset_name == "large" else 25
     disturbance_list = []
     for cluster in clusters:
         dist_tracks = tracks_by_dist.get(cluster['distId'], [])
+        if len(dist_tracks) < min_required:
+            continue
         all_max_w = []
         for pts in dist_tracks:
             winds = [p['windKmh'] for p in pts if not np.isnan(p['windKmh'])]
@@ -267,8 +270,9 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
 
     updated_tracks_by_dist = {}
     for old_id, trks in tracks_by_dist.items():
-        new_id = old_to_new.get(old_id, old_id)
-        updated_tracks_by_dist[new_id] = trks
+        if old_id in old_to_new:
+            new_id = old_to_new[old_id]
+            updated_tracks_by_dist[new_id] = trks
 
     paired_assignment = {}
     used_paired = set()
@@ -390,6 +394,36 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
         dist['maxWind'] = max_w
         dist['computedMeanWind'] = computed_mean_wind
 
+        # Calculate Rapid Intensification (RI) Probability by lead time
+        # RI is defined as wind speed increase of >= 30 knots (55 km/h) within 24 hours.
+        intervals = list(range(24, int(max_hours) + 1, 24))
+        ri_counts = {h: 0 for h in intervals}
+        for track in tracks:
+            valid_pts = sorted([pt for pt in track if not np.isnan(pt['windKmh']) and not np.isnan(pt['h'])], key=lambda pt: pt['h'])
+            if len(valid_pts) < 2:
+                continue
+            for H in intervals:
+                has_ri = False
+                for i in range(len(valid_pts)):
+                    p1 = valid_pts[i]
+                    if p1['h'] > H:
+                        break
+                    for j in range(i + 1, len(valid_pts)):
+                        p2 = valid_pts[j]
+                        if p2['h'] > H:
+                            break
+                        if p2['h'] - p1['h'] <= 24:
+                            if p2['windKmh'] - p1['windKmh'] >= 55:
+                                has_ri = True
+                                break
+                    if has_ri:
+                        break
+                if has_ri:
+                    ri_counts[H] += 1
+                    
+        total_tracks = len(tracks)
+        dist['ri_probs'] = {h: round((ri_counts[h] / total_tracks) * 100) if total_tracks > 0 else 0 for h in intervals}
+
     # Set default values for any disturbances that did not get processed
     for dist in disturbance_list:
         if 'minWind' not in dist:
@@ -397,6 +431,7 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
             dist['maxWind'] = 0
             dist['computedMeanWind'] = 0
             dist['genesis_h'] = 0
+            dist['ri_probs'] = {}
 
     return disturbance_list
 
@@ -503,6 +538,20 @@ def main():
                 'disturbance': None
             })
 
+    # Detect if the disturbance is already an active TC in the latest cycle
+    is_latest_tc = False
+    latest_item = chain[0] if chain else None
+    if latest_item and latest_item['disturbance']:
+        dist = latest_item['disturbance']
+        paired_name = dist.get('pairedTrackName')
+        if paired_name:
+            import re
+            m_num = re.search(r'(\d+)', paired_name)
+            if m_num:
+                num_val = int(m_num.group(1))
+                if num_val < 90:
+                    is_latest_tc = True
+
     # Prepare Recharts-like chart data
     total_members = 1000 if dataset == 'large' else 50
     chart_data = []
@@ -552,6 +601,7 @@ def main():
                 clean_time = clean_time[:16]
             base_dt = datetime.strptime(clean_time, '%Y-%m-%d %H:%M')
             gen_hours = dist.get('genesis_h', 0)
+            
             gen_dt = base_dt + timedelta(hours=gen_hours)
             ph_dt = gen_dt + timedelta(hours=8)
             genesis_time_str = ph_dt.strftime('%b %d %I:%M %p')
@@ -771,22 +821,43 @@ def main():
     ax_gen.set_facecolor('none')
     ax_gen.grid(True, linestyle=':', alpha=0.6, color='gray')
     
-    x_names = [d['name'] for d in chart_data]
-    probs = [d['probability'] for d in chart_data]
-    
-    ax_gen.plot(x_names, probs, color='#10b981', linewidth=2, marker='o', markersize=6, markerfacecolor='#10b981')
-    ax_gen.set_ylim(-5, 105)
-    ax_gen.set_ylabel("Genesis Probability (%)", fontsize=10, weight='bold')
-    ax_gen.set_title("Genesis Probability Trend", fontsize=11, weight='bold', pad=8)
-    ax_gen.tick_params(axis='both', labelsize=9)
-    
-    # Add member ratio and estimated genesis time text labels next to each marker
-    for i, d in enumerate(chart_data):
-        if d['detected']:
-            label_text = f"{d['memberCount']}/{d['totalMembers']}\n{d['genesis_time']}"
-            ax_gen.annotate(label_text, (x_names[i], probs[i]), textcoords="offset points",
-                            xytext=(0,10), ha='center', fontsize=6.5, weight='bold', color='#0f172a',
-                            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", alpha=0.8, ec="gray", lw=0.5))
+    if is_latest_tc:
+        latest_dist = latest_item['disturbance']
+        ri_probs = latest_dist.get('ri_probs', {}) if latest_dist else {}
+        sorted_hours = sorted(ri_probs.keys())
+        ri_x = [f"{h}h" for h in sorted_hours]
+        ri_y = [ri_probs[h] for h in sorted_hours]
+        
+        ax_gen.plot(ri_x, ri_y, color='#ef4444', linewidth=2, marker='o', markersize=6, markerfacecolor='#ef4444')
+        ax_gen.set_ylim(-5, 105)
+        ax_gen.set_ylabel("RI Probability (%)", fontsize=10, weight='bold')
+        ax_gen.set_title("RI Probability by Lead Time", fontsize=11, weight='bold', pad=8)
+        ax_gen.tick_params(axis='both', labelsize=9)
+        
+        # Add RI probability bubble labels next to each marker
+        for i, h in enumerate(sorted_hours):
+            prob_val = ri_probs[h]
+            label_text = f"{prob_val}%"
+            ax_gen.annotate(label_text, (ri_x[i], prob_val), textcoords="offset points",
+                            xytext=(0, 10), ha='center', fontsize=6.5, weight='bold', color='#0f172a',
+                            bbox=dict(boxstyle="round,pad=0.3", fc="#fee2e2", alpha=0.9, ec="#ef4444", lw=0.5))
+    else:
+        x_names = [d['name'] for d in chart_data]
+        probs = [d['probability'] for d in chart_data]
+        
+        ax_gen.plot(x_names, probs, color='#10b981', linewidth=2, marker='o', markersize=6, markerfacecolor='#10b981')
+        ax_gen.set_ylim(-5, 105)
+        ax_gen.set_ylabel("Genesis Probability (%)", fontsize=10, weight='bold')
+        ax_gen.set_title("Genesis Probability Trend", fontsize=11, weight='bold', pad=8)
+        ax_gen.tick_params(axis='both', labelsize=9)
+        
+        # Add member ratio and estimated genesis time text labels next to each marker
+        for i, d in enumerate(chart_data):
+            if d['detected']:
+                label_text = f"{d['memberCount']}/{d['totalMembers']}\n{d['genesis_time']}"
+                ax_gen.annotate(label_text, (x_names[i], probs[i]), textcoords="offset points",
+                                xytext=(0, 10), ha='center', fontsize=6.5, weight='bold', color='#0f172a',
+                                bbox=dict(boxstyle="round,pad=0.3", fc="yellow", alpha=0.8, ec="gray", lw=0.5))
                             
     # 3. SUBPLOT 2: WIND INTENSITY CHART (Lower Right)
     ax_wind = fig.add_subplot(gs[1, 2])
