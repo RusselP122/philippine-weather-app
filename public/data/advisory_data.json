@@ -1,255 +1,255 @@
 {
   "title": "ECMWF Blended Consensus Rainfall Forecast",
-  "validity": "08:00 PM, 10 June 2026 to 08:00 PM, 11 June 2026",
+  "validity": "02:00 AM, 11 June 2026 to 02:00 AM, 12 June 2026",
   "system": "ECMWF Consensus Blend",
-  "init_time": "2026-06-10 02:00 PM (PHT)",
-  "generated_at": "2026-06-11 01:47 AM (PHT)",
+  "init_time": "2026-06-10 08:00 PM (PHT)",
+  "generated_at": "2026-06-11 06:33 AM (PHT)",
   "provinces": {
     "Abra": {
-      "rainfall_mm": 6.2
+      "rainfall_mm": 5.2
     },
     "Agusan del Norte": {
       "rainfall_mm": 4.9
     },
     "Agusan del Sur": {
-      "rainfall_mm": 7.4
+      "rainfall_mm": 5.7
     },
     "Aklan": {
       "rainfall_mm": 3.3
     },
     "Albay": {
-      "rainfall_mm": 3.4
-    },
-    "Antique": {
-      "rainfall_mm": 3.8
-    },
-    "Apayao": {
-      "rainfall_mm": 4.0
-    },
-    "Aurora": {
-      "rainfall_mm": 0.0
-    },
-    "Basilan": {
-      "rainfall_mm": 5.0
-    },
-    "Bataan": {
-      "rainfall_mm": 1.1
-    },
-    "Batanes": {
-      "rainfall_mm": 10.5
-    },
-    "Batangas": {
-      "rainfall_mm": 0.7
-    },
-    "Benguet": {
-      "rainfall_mm": 7.4
-    },
-    "Biliran": {
-      "rainfall_mm": 6.6
-    },
-    "Bohol": {
-      "rainfall_mm": 11.8
-    },
-    "Bukidnon": {
-      "rainfall_mm": 13.1
-    },
-    "Bulacan": {
-      "rainfall_mm": 1.4
-    },
-    "Cagayan": {
-      "rainfall_mm": 2.6
-    },
-    "Camarines Norte": {
-      "rainfall_mm": 1.4
-    },
-    "Camarines Sur": {
-      "rainfall_mm": 2.2
-    },
-    "Camiguin": {
-      "rainfall_mm": 5.2
-    },
-    "Capiz": {
-      "rainfall_mm": 6.7
-    },
-    "Catanduanes": {
-      "rainfall_mm": 4.1
-    },
-    "Cavite": {
-      "rainfall_mm": 1.4
-    },
-    "Cebu": {
-      "rainfall_mm": 8.6
-    },
-    "Compostela Valley": {
-      "rainfall_mm": 15.1
-    },
-    "Davao del Norte": {
-      "rainfall_mm": 11.5
-    },
-    "Davao del Sur": {
-      "rainfall_mm": 10.7
-    },
-    "Davao Oriental": {
-      "rainfall_mm": 13.2
-    },
-    "Dinagat Islands": {
-      "rainfall_mm": 6.8
-    },
-    "Eastern Samar": {
-      "rainfall_mm": 4.5
-    },
-    "Guimaras": {
-      "rainfall_mm": 5.2
-    },
-    "Ifugao": {
-      "rainfall_mm": 3.8
-    },
-    "Ilocos Norte": {
-      "rainfall_mm": 7.4
-    },
-    "Ilocos Sur": {
-      "rainfall_mm": 8.3
-    },
-    "Iloilo": {
-      "rainfall_mm": 6.3
-    },
-    "Isabela": {
-      "rainfall_mm": 1.9
-    },
-    "Kalinga": {
-      "rainfall_mm": 6.7
-    },
-    "La Union": {
-      "rainfall_mm": 7.1
-    },
-    "Laguna": {
-      "rainfall_mm": 1.7
-    },
-    "Lanao del Norte": {
-      "rainfall_mm": 24.8
-    },
-    "Lanao del Sur": {
-      "rainfall_mm": 31.4
-    },
-    "Leyte": {
-      "rainfall_mm": 12.4
-    },
-    "Maguindanao": {
-      "rainfall_mm": 17.5
-    },
-    "Marinduque": {
-      "rainfall_mm": 2.2
-    },
-    "Masbate": {
-      "rainfall_mm": 7.2
-    },
-    "Metropolitan Manila": {
-      "rainfall_mm": 0.8
-    },
-    "Misamis Occidental": {
-      "rainfall_mm": 8.6
-    },
-    "Misamis Oriental": {
-      "rainfall_mm": 11.1
-    },
-    "Mountain Province": {
-      "rainfall_mm": 6.6
-    },
-    "Negros Occidental": {
-      "rainfall_mm": 5.8
-    },
-    "Negros Oriental": {
-      "rainfall_mm": 8.5
-    },
-    "North Cotabato": {
-      "rainfall_mm": 17.1
-    },
-    "Northern Samar": {
-      "rainfall_mm": 5.1
-    },
-    "Nueva Ecija": {
-      "rainfall_mm": 1.8
-    },
-    "Nueva Vizcaya": {
-      "rainfall_mm": 2.5
-    },
-    "Occidental Mindoro": {
-      "rainfall_mm": 5.2
-    },
-    "Oriental Mindoro": {
-      "rainfall_mm": 4.3
-    },
-    "Palawan": {
-      "rainfall_mm": 7.7
-    },
-    "Pampanga": {
-      "rainfall_mm": 1.3
-    },
-    "Pangasinan": {
-      "rainfall_mm": 3.3
-    },
-    "Quezon": {
-      "rainfall_mm": 0.1
-    },
-    "Quirino": {
-      "rainfall_mm": 1.9
-    },
-    "Rizal": {
-      "rainfall_mm": 1.0
-    },
-    "Romblon": {
-      "rainfall_mm": 1.3
-    },
-    "Samar": {
-      "rainfall_mm": 6.8
-    },
-    "Sarangani": {
-      "rainfall_mm": 12.9
-    },
-    "Shariff Kabunsuan": {
-      "rainfall_mm": 15.3
-    },
-    "Siquijor": {
-      "rainfall_mm": 3.6
-    },
-    "Sorsogon": {
-      "rainfall_mm": 3.6
-    },
-    "South Cotabato": {
-      "rainfall_mm": 23.3
-    },
-    "Southern Leyte": {
-      "rainfall_mm": 7.7
-    },
-    "Sultan Kudarat": {
-      "rainfall_mm": 15.9
-    },
-    "Sulu": {
-      "rainfall_mm": 6.8
-    },
-    "Surigao del Norte": {
-      "rainfall_mm": 5.4
-    },
-    "Surigao del Sur": {
-      "rainfall_mm": 3.5
-    },
-    "Tarlac": {
-      "rainfall_mm": 3.0
-    },
-    "Tawi-Tawi": {
-      "rainfall_mm": 4.5
-    },
-    "Zambales": {
       "rainfall_mm": 4.9
     },
+    "Antique": {
+      "rainfall_mm": 6.0
+    },
+    "Apayao": {
+      "rainfall_mm": 5.6
+    },
+    "Aurora": {
+      "rainfall_mm": 0.2
+    },
+    "Basilan": {
+      "rainfall_mm": 4.7
+    },
+    "Bataan": {
+      "rainfall_mm": 1.5
+    },
+    "Batanes": {
+      "rainfall_mm": 13.0
+    },
+    "Batangas": {
+      "rainfall_mm": 1.4
+    },
+    "Benguet": {
+      "rainfall_mm": 5.4
+    },
+    "Biliran": {
+      "rainfall_mm": 6.5
+    },
+    "Bohol": {
+      "rainfall_mm": 7.2
+    },
+    "Bukidnon": {
+      "rainfall_mm": 6.0
+    },
+    "Bulacan": {
+      "rainfall_mm": 2.0
+    },
+    "Cagayan": {
+      "rainfall_mm": 3.0
+    },
+    "Camarines Norte": {
+      "rainfall_mm": 4.2
+    },
+    "Camarines Sur": {
+      "rainfall_mm": 5.1
+    },
+    "Camiguin": {
+      "rainfall_mm": 3.4
+    },
+    "Capiz": {
+      "rainfall_mm": 8.1
+    },
+    "Catanduanes": {
+      "rainfall_mm": 5.8
+    },
+    "Cavite": {
+      "rainfall_mm": 1.3
+    },
+    "Cebu": {
+      "rainfall_mm": 7.4
+    },
+    "Compostela Valley": {
+      "rainfall_mm": 11.8
+    },
+    "Davao del Norte": {
+      "rainfall_mm": 7.2
+    },
+    "Davao del Sur": {
+      "rainfall_mm": 9.0
+    },
+    "Davao Oriental": {
+      "rainfall_mm": 11.7
+    },
+    "Dinagat Islands": {
+      "rainfall_mm": 2.3
+    },
+    "Eastern Samar": {
+      "rainfall_mm": 2.3
+    },
+    "Guimaras": {
+      "rainfall_mm": 5.9
+    },
+    "Ifugao": {
+      "rainfall_mm": 5.9
+    },
+    "Ilocos Norte": {
+      "rainfall_mm": 7.9
+    },
+    "Ilocos Sur": {
+      "rainfall_mm": 6.3
+    },
+    "Iloilo": {
+      "rainfall_mm": 8.3
+    },
+    "Isabela": {
+      "rainfall_mm": 4.2
+    },
+    "Kalinga": {
+      "rainfall_mm": 10.0
+    },
+    "La Union": {
+      "rainfall_mm": 7.0
+    },
+    "Laguna": {
+      "rainfall_mm": 2.4
+    },
+    "Lanao del Norte": {
+      "rainfall_mm": 15.4
+    },
+    "Lanao del Sur": {
+      "rainfall_mm": 20.7
+    },
+    "Leyte": {
+      "rainfall_mm": 8.3
+    },
+    "Maguindanao": {
+      "rainfall_mm": 14.9
+    },
+    "Marinduque": {
+      "rainfall_mm": 4.3
+    },
+    "Masbate": {
+      "rainfall_mm": 10.0
+    },
+    "Metropolitan Manila": {
+      "rainfall_mm": 1.8
+    },
+    "Misamis Occidental": {
+      "rainfall_mm": 4.6
+    },
+    "Misamis Oriental": {
+      "rainfall_mm": 12.6
+    },
+    "Mountain Province": {
+      "rainfall_mm": 9.1
+    },
+    "Negros Occidental": {
+      "rainfall_mm": 8.9
+    },
+    "Negros Oriental": {
+      "rainfall_mm": 6.7
+    },
+    "North Cotabato": {
+      "rainfall_mm": 9.3
+    },
+    "Northern Samar": {
+      "rainfall_mm": 6.7
+    },
+    "Nueva Ecija": {
+      "rainfall_mm": 3.3
+    },
+    "Nueva Vizcaya": {
+      "rainfall_mm": 3.4
+    },
+    "Occidental Mindoro": {
+      "rainfall_mm": 9.2
+    },
+    "Oriental Mindoro": {
+      "rainfall_mm": 6.8
+    },
+    "Palawan": {
+      "rainfall_mm": 12.3
+    },
+    "Pampanga": {
+      "rainfall_mm": 1.5
+    },
+    "Pangasinan": {
+      "rainfall_mm": 3.6
+    },
+    "Quezon": {
+      "rainfall_mm": 0.8
+    },
+    "Quirino": {
+      "rainfall_mm": 2.8
+    },
+    "Rizal": {
+      "rainfall_mm": 1.2
+    },
+    "Romblon": {
+      "rainfall_mm": 1.7
+    },
+    "Samar": {
+      "rainfall_mm": 11.8
+    },
+    "Sarangani": {
+      "rainfall_mm": 11.9
+    },
+    "Shariff Kabunsuan": {
+      "rainfall_mm": 7.2
+    },
+    "Siquijor": {
+      "rainfall_mm": 2.0
+    },
+    "Sorsogon": {
+      "rainfall_mm": 6.2
+    },
+    "South Cotabato": {
+      "rainfall_mm": 18.8
+    },
+    "Southern Leyte": {
+      "rainfall_mm": 5.5
+    },
+    "Sultan Kudarat": {
+      "rainfall_mm": 12.6
+    },
+    "Sulu": {
+      "rainfall_mm": 8.2
+    },
+    "Surigao del Norte": {
+      "rainfall_mm": 2.0
+    },
+    "Surigao del Sur": {
+      "rainfall_mm": 0.8
+    },
+    "Tarlac": {
+      "rainfall_mm": 3.5
+    },
+    "Tawi-Tawi": {
+      "rainfall_mm": 7.1
+    },
+    "Zambales": {
+      "rainfall_mm": 1.6
+    },
     "Zamboanga del Norte": {
-      "rainfall_mm": 18.4
+      "rainfall_mm": 12.5
     },
     "Zamboanga del Sur": {
-      "rainfall_mm": 8.7
+      "rainfall_mm": 9.2
     },
     "Zamboanga Sibugay": {
-      "rainfall_mm": 10.2
+      "rainfall_mm": 9.9
     }
   }
 }
