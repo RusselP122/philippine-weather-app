@@ -1,1 +1,1 @@
-{"features":[{"geometry":{"coordinates":[[[[142.25,16.219],[142.5,16.25],[142.25,16.292],[142.125,16.25],[142.25,16.219]]]],"type":"MultiPolygon"},"properties":{"fill":"#460a5d","fill-opacity":0.9,"stroke":"#460a5d","stroke-opacity":1,"stroke-width":1,"title":"0.05-0.10 "},"type":"Feature"}],"type":"FeatureCollection"}
+{"type": "FeatureCollection", "features": []}
