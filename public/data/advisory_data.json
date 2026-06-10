@@ -1,255 +1,255 @@
 {
   "title": "ECMWF Blended Consensus Rainfall Forecast",
-  "validity": "08:00 AM, 10 June 2026 to 08:00 AM, 11 June 2026",
+  "validity": "02:00 PM, 10 June 2026 to 02:00 PM, 11 June 2026",
   "system": "ECMWF Consensus Blend",
-  "init_time": "2026-06-10 02:00 AM (PHT)",
-  "generated_at": "2026-06-10 02:53 PM (PHT)",
+  "init_time": "2026-06-10 08:00 AM (PHT)",
+  "generated_at": "2026-06-10 08:02 PM (PHT)",
   "provinces": {
     "Abra": {
-      "rainfall_mm": 8.0
+      "rainfall_mm": 8.1
     },
     "Agusan del Norte": {
-      "rainfall_mm": 3.6
+      "rainfall_mm": 4.6
     },
     "Agusan del Sur": {
-      "rainfall_mm": 4.7
+      "rainfall_mm": 5.1
     },
     "Aklan": {
-      "rainfall_mm": 1.9
+      "rainfall_mm": 3.8
     },
     "Albay": {
-      "rainfall_mm": 5.0
+      "rainfall_mm": 3.4
     },
     "Antique": {
-      "rainfall_mm": 2.9
+      "rainfall_mm": 3.8
     },
     "Apayao": {
-      "rainfall_mm": 3.0
+      "rainfall_mm": 1.8
     },
     "Aurora": {
       "rainfall_mm": 0.1
     },
     "Basilan": {
-      "rainfall_mm": 3.2
+      "rainfall_mm": 4.8
     },
     "Bataan": {
-      "rainfall_mm": 2.1
+      "rainfall_mm": 2.0
     },
     "Batanes": {
-      "rainfall_mm": 15.4
+      "rainfall_mm": 8.7
     },
     "Batangas": {
       "rainfall_mm": 1.1
     },
     "Benguet": {
-      "rainfall_mm": 9.2
-    },
-    "Biliran": {
-      "rainfall_mm": 6.4
-    },
-    "Bohol": {
-      "rainfall_mm": 9.3
-    },
-    "Bukidnon": {
-      "rainfall_mm": 6.3
-    },
-    "Bulacan": {
-      "rainfall_mm": 4.8
-    },
-    "Cagayan": {
-      "rainfall_mm": 1.9
-    },
-    "Camarines Norte": {
-      "rainfall_mm": 2.1
-    },
-    "Camarines Sur": {
-      "rainfall_mm": 3.5
-    },
-    "Camiguin": {
-      "rainfall_mm": 3.6
-    },
-    "Capiz": {
-      "rainfall_mm": 4.7
-    },
-    "Catanduanes": {
-      "rainfall_mm": 3.8
-    },
-    "Cavite": {
-      "rainfall_mm": 2.7
-    },
-    "Cebu": {
-      "rainfall_mm": 5.7
-    },
-    "Compostela Valley": {
-      "rainfall_mm": 10.5
-    },
-    "Davao del Norte": {
-      "rainfall_mm": 5.6
-    },
-    "Davao del Sur": {
-      "rainfall_mm": 8.0
-    },
-    "Davao Oriental": {
       "rainfall_mm": 9.0
     },
-    "Dinagat Islands": {
-      "rainfall_mm": 2.3
+    "Biliran": {
+      "rainfall_mm": 7.3
     },
-    "Eastern Samar": {
-      "rainfall_mm": 2.8
+    "Bohol": {
+      "rainfall_mm": 12.4
     },
-    "Guimaras": {
-      "rainfall_mm": 2.9
-    },
-    "Ifugao": {
-      "rainfall_mm": 6.2
-    },
-    "Ilocos Norte": {
-      "rainfall_mm": 9.8
-    },
-    "Ilocos Sur": {
-      "rainfall_mm": 8.6
-    },
-    "Iloilo": {
-      "rainfall_mm": 4.6
-    },
-    "Isabela": {
-      "rainfall_mm": 3.8
-    },
-    "Kalinga": {
-      "rainfall_mm": 7.2
-    },
-    "La Union": {
-      "rainfall_mm": 8.6
-    },
-    "Laguna": {
-      "rainfall_mm": 3.8
-    },
-    "Lanao del Norte": {
-      "rainfall_mm": 19.0
-    },
-    "Lanao del Sur": {
-      "rainfall_mm": 19.0
-    },
-    "Leyte": {
-      "rainfall_mm": 7.7
-    },
-    "Maguindanao": {
-      "rainfall_mm": 14.6
-    },
-    "Marinduque": {
-      "rainfall_mm": 1.6
-    },
-    "Masbate": {
-      "rainfall_mm": 4.3
-    },
-    "Metropolitan Manila": {
-      "rainfall_mm": 2.5
-    },
-    "Misamis Occidental": {
-      "rainfall_mm": 8.0
-    },
-    "Misamis Oriental": {
-      "rainfall_mm": 9.6
-    },
-    "Mountain Province": {
-      "rainfall_mm": 9.2
-    },
-    "Negros Occidental": {
-      "rainfall_mm": 6.1
-    },
-    "Negros Oriental": {
-      "rainfall_mm": 2.4
-    },
-    "North Cotabato": {
-      "rainfall_mm": 11.9
-    },
-    "Northern Samar": {
+    "Bukidnon": {
       "rainfall_mm": 6.5
     },
-    "Nueva Ecija": {
-      "rainfall_mm": 8.2
+    "Bulacan": {
+      "rainfall_mm": 2.7
     },
-    "Nueva Vizcaya": {
+    "Cagayan": {
       "rainfall_mm": 2.9
     },
-    "Occidental Mindoro": {
-      "rainfall_mm": 3.3
+    "Camarines Norte": {
+      "rainfall_mm": 2.4
     },
-    "Oriental Mindoro": {
-      "rainfall_mm": 4.9
+    "Camarines Sur": {
+      "rainfall_mm": 3.9
     },
-    "Palawan": {
-      "rainfall_mm": 11.3
+    "Camiguin": {
+      "rainfall_mm": 6.1
     },
-    "Pampanga": {
+    "Capiz": {
+      "rainfall_mm": 7.8
+    },
+    "Catanduanes": {
+      "rainfall_mm": 4.7
+    },
+    "Cavite": {
+      "rainfall_mm": 2.6
+    },
+    "Cebu": {
+      "rainfall_mm": 9.8
+    },
+    "Compostela Valley": {
+      "rainfall_mm": 10.3
+    },
+    "Davao del Norte": {
+      "rainfall_mm": 5.5
+    },
+    "Davao del Sur": {
+      "rainfall_mm": 8.3
+    },
+    "Davao Oriental": {
+      "rainfall_mm": 7.6
+    },
+    "Dinagat Islands": {
+      "rainfall_mm": 5.1
+    },
+    "Eastern Samar": {
       "rainfall_mm": 3.8
     },
+    "Guimaras": {
+      "rainfall_mm": 6.4
+    },
+    "Ifugao": {
+      "rainfall_mm": 5.2
+    },
+    "Ilocos Norte": {
+      "rainfall_mm": 12.5
+    },
+    "Ilocos Sur": {
+      "rainfall_mm": 11.6
+    },
+    "Iloilo": {
+      "rainfall_mm": 7.5
+    },
+    "Isabela": {
+      "rainfall_mm": 2.3
+    },
+    "Kalinga": {
+      "rainfall_mm": 4.7
+    },
+    "La Union": {
+      "rainfall_mm": 12.2
+    },
+    "Laguna": {
+      "rainfall_mm": 2.9
+    },
+    "Lanao del Norte": {
+      "rainfall_mm": 17.5
+    },
+    "Lanao del Sur": {
+      "rainfall_mm": 18.3
+    },
+    "Leyte": {
+      "rainfall_mm": 9.6
+    },
+    "Maguindanao": {
+      "rainfall_mm": 9.8
+    },
+    "Marinduque": {
+      "rainfall_mm": 2.8
+    },
+    "Masbate": {
+      "rainfall_mm": 5.4
+    },
+    "Metropolitan Manila": {
+      "rainfall_mm": 1.5
+    },
+    "Misamis Occidental": {
+      "rainfall_mm": 7.8
+    },
+    "Misamis Oriental": {
+      "rainfall_mm": 9.2
+    },
+    "Mountain Province": {
+      "rainfall_mm": 9.5
+    },
+    "Negros Occidental": {
+      "rainfall_mm": 5.8
+    },
+    "Negros Oriental": {
+      "rainfall_mm": 4.9
+    },
+    "North Cotabato": {
+      "rainfall_mm": 8.1
+    },
+    "Northern Samar": {
+      "rainfall_mm": 5.4
+    },
+    "Nueva Ecija": {
+      "rainfall_mm": 5.2
+    },
+    "Nueva Vizcaya": {
+      "rainfall_mm": 2.1
+    },
+    "Occidental Mindoro": {
+      "rainfall_mm": 3.5
+    },
+    "Oriental Mindoro": {
+      "rainfall_mm": 6.0
+    },
+    "Palawan": {
+      "rainfall_mm": 6.4
+    },
+    "Pampanga": {
+      "rainfall_mm": 1.8
+    },
     "Pangasinan": {
-      "rainfall_mm": 7.0
+      "rainfall_mm": 7.7
     },
     "Quezon": {
       "rainfall_mm": 0.3
     },
     "Quirino": {
-      "rainfall_mm": 3.4
+      "rainfall_mm": 2.1
     },
     "Rizal": {
-      "rainfall_mm": 2.5
+      "rainfall_mm": 1.0
     },
     "Romblon": {
-      "rainfall_mm": 0.3
+      "rainfall_mm": 1.6
     },
     "Samar": {
-      "rainfall_mm": 6.5
+      "rainfall_mm": 7.4
     },
     "Sarangani": {
-      "rainfall_mm": 8.4
+      "rainfall_mm": 5.3
     },
     "Shariff Kabunsuan": {
-      "rainfall_mm": 8.3
-    },
-    "Siquijor": {
-      "rainfall_mm": 1.3
-    },
-    "Sorsogon": {
-      "rainfall_mm": 6.6
-    },
-    "South Cotabato": {
-      "rainfall_mm": 11.1
-    },
-    "Southern Leyte": {
-      "rainfall_mm": 3.3
-    },
-    "Sultan Kudarat": {
       "rainfall_mm": 9.5
     },
+    "Siquijor": {
+      "rainfall_mm": 5.5
+    },
+    "Sorsogon": {
+      "rainfall_mm": 4.4
+    },
+    "South Cotabato": {
+      "rainfall_mm": 9.0
+    },
+    "Southern Leyte": {
+      "rainfall_mm": 6.8
+    },
+    "Sultan Kudarat": {
+      "rainfall_mm": 11.3
+    },
     "Sulu": {
-      "rainfall_mm": 3.0
+      "rainfall_mm": 2.6
     },
     "Surigao del Norte": {
-      "rainfall_mm": 2.0
+      "rainfall_mm": 5.6
     },
     "Surigao del Sur": {
-      "rainfall_mm": 1.9
+      "rainfall_mm": 2.3
     },
     "Tarlac": {
-      "rainfall_mm": 7.5
+      "rainfall_mm": 5.6
     },
     "Tawi-Tawi": {
-      "rainfall_mm": 8.5
+      "rainfall_mm": 2.2
     },
     "Zambales": {
-      "rainfall_mm": 7.9
+      "rainfall_mm": 6.9
     },
     "Zamboanga del Norte": {
-      "rainfall_mm": 7.7
+      "rainfall_mm": 9.9
     },
     "Zamboanga del Sur": {
-      "rainfall_mm": 4.2
+      "rainfall_mm": 8.9
     },
     "Zamboanga Sibugay": {
-      "rainfall_mm": 3.7
+      "rainfall_mm": 7.7
     }
   }
 }
