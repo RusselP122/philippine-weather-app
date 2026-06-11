@@ -1,3 +1,6 @@
+import os
+import json
+from shapely.geometry import shape
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
@@ -417,9 +420,7 @@ def plot_rainfall(lons, lats, data, filename_id, init_time=None, valid_time_star
     ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.6, edgecolor='#555555', zorder=3)
     # Add Philippine province boundaries from ph_provinces.json
     try:
-        import os
-        import json
-        from shapely.geometry import shape
+
         script_dir_path = os.path.dirname(os.path.abspath(__file__))
         geojson_paths_list = [
             os.path.join(script_dir_path, "public", "data", "ph_provinces.json"),

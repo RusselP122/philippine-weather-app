@@ -1,4 +1,7 @@
 import os
+import json
+from shapely.geometry import shape
+import os
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
@@ -49,9 +52,7 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.8, alpha=0.7, color='#654321')
     # Add Philippine province boundaries from ph_provinces.json
     try:
-        import os
-        import json
-        from shapely.geometry import shape
+
         script_dir_path = os.path.dirname(os.path.abspath(__file__))
         geojson_paths_list = [
             os.path.join(script_dir_path, "public", "data", "ph_provinces.json"),

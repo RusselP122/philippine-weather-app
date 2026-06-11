@@ -1,3 +1,6 @@
+import os
+import json
+from shapely.geometry import shape
 import matplotlib
 matplotlib.use("Agg")
 
@@ -53,9 +56,7 @@ def plot_thunderstorm_frame(lons, lats, precip_grid, region_id, filename_id,
     ax.add_feature(cfeature.BORDERS, linestyle="-", linewidth=0.6, edgecolor="#555555", zorder=5)
     # Add Philippine province boundaries from ph_provinces.json
     try:
-        import os
-        import json
-        from shapely.geometry import shape
+
         script_dir_path = os.path.dirname(os.path.abspath(__file__))
         geojson_paths_list = [
             os.path.join(script_dir_path, "public", "data", "ph_provinces.json"),

@@ -1,3 +1,6 @@
+import os
+import json
+from shapely.geometry import shape
 """
 GFS 10m Wind Speed (kph) & MSLP Generator
 Fetches data from UCAR THREDDS via OPeNDAP for the 00z, 06z, 12z, 18z runs.
@@ -120,9 +123,7 @@ def plot_wind_frame(sub_lons, sub_lats, ws_kph, u_ms, v_ms, msl_hpa,
     ax.add_feature(cfeature.BORDERS,   linestyle="-", linewidth=0.6, edgecolor="#555555", zorder=5)
     # Add Philippine province boundaries from ph_provinces.json
     try:
-        import os
-        import json
-        from shapely.geometry import shape
+
         script_dir_path = os.path.dirname(os.path.abspath(__file__))
         geojson_paths_list = [
             os.path.join(script_dir_path, "public", "data", "ph_provinces.json"),

@@ -1,3 +1,6 @@
+import os
+import json
+from shapely.geometry import shape
 from ecmwf.opendata import Client
 import xarray as xr
 import matplotlib.pyplot as plt
@@ -149,9 +152,7 @@ def plot_wind_pressure(lats, lons, ws, u, v, msl, filename_id, init_time=None, v
     ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.6, edgecolor='#555555', zorder=5)
     # Add Philippine province boundaries from ph_provinces.json
     try:
-        import os
-        import json
-        from shapely.geometry import shape
+
         script_dir_path = os.path.dirname(os.path.abspath(__file__))
         geojson_paths_list = [
             os.path.join(script_dir_path, "public", "data", "ph_provinces.json"),
