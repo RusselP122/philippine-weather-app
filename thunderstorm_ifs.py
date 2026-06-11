@@ -51,6 +51,30 @@ def plot_thunderstorm_frame(lons, lats, precip_grid, region_id, filename_id,
     ax.add_feature(cfeature.OCEAN, facecolor="#d4e5ed", zorder=0)
     ax.add_feature(cfeature.COASTLINE, linewidth=1.0, edgecolor="#222222", zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle="-", linewidth=0.6, edgecolor="#555555", zorder=5)
+    # Add Philippine province boundaries from ph_provinces.json
+    try:
+        import os
+        import json
+        from shapely.geometry import shape
+        script_dir_path = os.path.dirname(os.path.abspath(__file__))
+        geojson_paths_list = [
+            os.path.join(script_dir_path, "public", "data", "ph_provinces.json"),
+            os.path.join(os.getcwd(), "public", "data", "ph_provinces.json"),
+            "public/data/ph_provinces.json"
+        ]
+        found_geojson_path = None
+        for p_path in geojson_paths_list:
+            if os.path.exists(p_path):
+                found_geojson_path = p_path
+                break
+        if found_geojson_path:
+            with open(found_geojson_path, 'r', encoding='utf-8') as geojson_file_handle:
+                geojson_content_dict = json.load(geojson_file_handle)
+            province_shapely_geometries = [shape(prov_feat['geometry']) for prov_feat in geojson_content_dict['features']]
+            ax.add_geometries(province_shapely_geometries, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#555555', linewidth=0.4, alpha=0.6, zorder=3)
+    except Exception as province_load_error:
+        print(f"Warning: Failed to overlay province boundaries: {province_load_error}")
+
 
     gl = ax.gridlines(draw_labels=True, linewidth=0.5, color="gray",
                       alpha=0.4, linestyle=":", zorder=6)

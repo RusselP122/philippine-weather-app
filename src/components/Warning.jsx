@@ -433,11 +433,51 @@ const Warning = () => {
       };
     });
 
+    // Extract overlay paths for Laguna de Bay, Taal Lake, and Taal Volcano to mask colors
+    const batangasFeature = geoData.features.find(f => {
+      const name = f.properties.PROV_NAME || f.properties.PROVINCE || f.properties.NAME_1 || f.properties.name || "";
+      return name === "Batangas";
+    });
+    const lagunaFeature = geoData.features.find(f => {
+      const name = f.properties.PROV_NAME || f.properties.PROVINCE || f.properties.NAME_1 || f.properties.name || "";
+      return name === "Laguna";
+    });
+
+    const projectRing = (ring) => {
+      return ring.map((coord, index) => {
+        const [x, y] = project(coord[0], coord[1]);
+        return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ') + ' Z';
+    };
+
+    let taalLakePath = "";
+    let taalVolcanoPath = "";
+    if (batangasFeature && batangasFeature.geometry.type === "MultiPolygon") {
+      const coords = batangasFeature.geometry.coordinates;
+      if (coords[2] && coords[2][1]) {
+        taalLakePath = projectRing(coords[2][1]);
+      }
+      if (coords[3] && coords[3][0]) {
+        taalVolcanoPath = projectRing(coords[3][0]);
+      }
+    }
+
+    let lagunaDeBayPath = "";
+    if (lagunaFeature && lagunaFeature.geometry.type === "Polygon") {
+      const coords = lagunaFeature.geometry.coordinates;
+      if (coords[2]) {
+        lagunaDeBayPath = projectRing(coords[2]);
+      }
+    }
+
     return {
       features: projectedFeatures,
       bounds,
       canvasWidth,
-      canvasHeight
+      canvasHeight,
+      lagunaDeBayPath,
+      taalLakePath,
+      taalVolcanoPath
     };
   }, [geoData]);
 
@@ -790,6 +830,19 @@ const Warning = () => {
                   />
                 );
               })}
+
+              {/* Uncolored Overlays to cover warning colors in Laguna de Bay and Taal Volcano */}
+              <g pointer-events="none">
+                {mapData.lagunaDeBayPath && (
+                  <path d={mapData.lagunaDeBayPath} fill="#020617" stroke="rgba(255, 255, 255, 0.1)" strokeWidth={0.6} />
+                )}
+                {mapData.taalLakePath && (
+                  <path d={mapData.taalLakePath} fill="#020617" stroke="rgba(255, 255, 255, 0.1)" strokeWidth={0.6} />
+                )}
+                {mapData.taalVolcanoPath && (
+                  <path d={mapData.taalVolcanoPath} fill="#020617" stroke="rgba(255, 255, 255, 0.1)" strokeWidth={0.6} />
+                )}
+              </g>
             </g>
           </svg>
         )}

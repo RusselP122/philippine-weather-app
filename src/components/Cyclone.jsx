@@ -111,11 +111,19 @@ const CycloneMapLogic = () => {
       return;
     }
 
+    // Create custom pane for boundaries (above weather layers but below markers/popups)
+    const BOUNDARIES_PANE = "boundariesPane";
+    if (!map.getPane(BOUNDARIES_PANE)) {
+      map.createPane(BOUNDARIES_PANE);
+      map.getPane(BOUNDARIES_PANE).style.zIndex = 550;
+    }
+
     // Country borders style
     const countryStyle = {
+      pane: BOUNDARIES_PANE,
       color: "#FFD700",
-      weight: 1,
-      opacity: 0.6,
+      weight: 1.2,
+      opacity: 0.65,
       fillOpacity: 0,
     };
 
@@ -124,9 +132,26 @@ const CycloneMapLogic = () => {
       "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson"
     )
       .then((response) => response.json())
-      .then((data) => L.geoJSON(data, { style: countryStyle }).addTo(map))
+      .then((data) => L.geoJSON(data, { style: countryStyle, pane: BOUNDARIES_PANE }).addTo(map))
       .catch((error) =>
         console.error("Error loading country borders:", error)
+      );
+
+    // Philippine Province boundaries style
+    const provinceStyle = {
+      pane: BOUNDARIES_PANE,
+      color: "rgba(255, 255, 255, 0.7)", // Crisp white borders overlaying the strike probabilities
+      weight: 0.7,
+      opacity: 1,
+      fillOpacity: 0,
+    };
+
+    // Load PH Province boundaries
+    fetch("/data/ph_provinces.json")
+      .then((response) => response.json())
+      .then((data) => L.geoJSON(data, { style: provinceStyle, pane: BOUNDARIES_PANE }).addTo(map))
+      .catch((error) =>
+        console.error("Error loading Philippine province boundaries:", error)
       );
 
     // PAR Boundary (Philippine Area of Responsibility)
@@ -1440,7 +1465,7 @@ const StrikeProbabilityLayerLogic = ({ variable, day, onLoadMeta }) => {
     fetch('/data/strike_prob/meta.json')
       .then(res => res.json())
       .then(onLoadMeta)
-      .catch(() => {});
+      .catch(() => { });
   }, [onLoadMeta]);
 
   useEffect(() => {
@@ -1454,7 +1479,7 @@ const StrikeProbabilityLayerLogic = ({ variable, day, onLoadMeta }) => {
 
     const getColor = (val) => {
       if (val < 0.05) return null;
-      if (val < 0.10) return "#475569";
+      if (val < 0.10) return "#1d4ed8"; // Royal Blue instead of slate gray
       if (val < 0.20) return "#38bdf8";
       if (val < 0.30) return "#34d399";
       if (val < 0.50) return "#facc15";
@@ -1462,7 +1487,7 @@ const StrikeProbabilityLayerLogic = ({ variable, day, onLoadMeta }) => {
       return "#dc2626";
     };
     const getFillOpacity = (val) => {
-      if (val < 0.10) return 0.25;
+      if (val < 0.10) return 0.40; // Increased opacity to make it more visible
       return 0.60;
     };
 
@@ -1525,7 +1550,7 @@ const StrikeProbabilityLayerLogic = ({ variable, day, onLoadMeta }) => {
           }).addTo(layerGroup);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
   }, [map, variable, day]);
 
@@ -1650,19 +1675,19 @@ const Cyclone = () => {
     const month = parseInt(parts[1]) - 1;
     const date = parseInt(parts[2]);
     const hour = parseInt(meta.init_hour);
-    
+
     const baseDate = new Date(Date.UTC(year, month, date, hour, 0, 0));
     const forecastDate = new Date(baseDate.getTime() + day * 24 * 3600 * 1000);
-    
-    const options = { 
-      month: 'short', 
-      day: 'numeric', 
-      hour: 'numeric', 
+
+    const options = {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
       minute: '2-digit',
       hour12: true,
       timeZoneName: 'short'
     };
-    
+
     return `Init: ${baseDate.toLocaleString('en-US', { ...options, timeZone: 'UTC' })} | Forecast: ${forecastDate.toLocaleString('en-US', { ...options, timeZone: 'UTC' })} (+${day * 24}h)`;
   };
 
@@ -1914,11 +1939,10 @@ const Cyclone = () => {
                           e.stopPropagation();
                           setStrikeVariable(opt.id);
                         }}
-                        className={`text-[10px] py-0.5 px-1.5 rounded text-left transition ${
-                          strikeVariable === opt.id
+                        className={`text-[10px] py-0.5 px-1.5 rounded text-left transition ${strikeVariable === opt.id
                             ? "bg-cyan-950 text-cyan-400 font-bold border border-cyan-800/30"
                             : "text-slate-400 hover:text-slate-200"
-                        }`}
+                          }`}
                       >
                         {opt.label}
                       </button>
@@ -1956,7 +1980,7 @@ const Cyclone = () => {
             <div className="w-full flex flex-col px-1 mb-3">
               <div
                 className="h-1.5 w-full rounded-full"
-                style={{ background: "linear-gradient(to right, #38bdf8, #34d399, #facc15, #f97316, #dc2626)" }}
+                style={{ background: "linear-gradient(to right, #1d4ed8, #38bdf8, #34d399, #facc15, #f97316, #dc2626)" }}
               />
               <div className="flex justify-between text-[8px] sm:text-[9px] text-slate-400 font-mono mt-1 px-0.5">
                 <span>5% Prob</span>
