@@ -124,8 +124,10 @@ def get_pagasa_wind_color(wind_kmh):
         return '#E67E22'  # Severe Tropical Storm
     elif 62 <= wind_kmh < 89:
         return '#F1C40F'  # Tropical Storm
+    elif 39 <= wind_kmh < 62:
+        return '#2ECC71'  # Tropical Depression
     else:
-        return '#2ECC71'  # Tropical Depression / Low Pressure Area
+        return '#3498DB'  # Low Pressure Area
 
 def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
     f_in = io.StringIO(csv_text)
