@@ -39,6 +39,70 @@ def curl_status(url):
     except Exception:
         return 0
 
+def haversine_km(lat1, lon1, lat2, lon2):
+    R = 6371.0
+    dlat = np.radians(lat2 - lat1)
+    # Correct for longitude wrap-around by taking the shortest distance on the sphere
+    dlon = np.radians((lon2 - lon1 + 180) % 360 - 180)
+    a = np.sin(dlat / 2.0)**2 + np.cos(np.radians(lat1)) * np.cos(np.radians(lat2)) * np.sin(dlon / 2.0)**2
+    c = 2.0 * np.arcsin(np.sqrt(a))
+    return R * c
+
+def cluster_origins_greedy(origins, dist_km=300, max_genesis_spread=96):
+    if not origins:
+        return []
+    
+    # Sort origins by time first to build clusters chronologically
+    sorted_origins = sorted(origins, key=lambda x: x['h'])
+    clusters = []
+    
+    for origin in sorted_origins:
+        best_cluster = None
+        min_distance = float('inf')
+        
+        # Check if origin can merge into an existing cluster
+        for cluster in clusters:
+            # Temporal boundary: Check if adding this point exceeds the max cluster duration
+            new_min_h = min(cluster['min_h'], origin['h'])
+            new_max_h = max(cluster['max_h'], origin['h'])
+            if (new_max_h - new_min_h) > max_genesis_spread:
+                continue
+                
+            # Single linkage: Find distance to the CLOSEST point anywhere in the cluster
+            for member in cluster['origins']:
+                d_km = haversine_km(member['lat'], member['lon'], origin['lat'], origin['lon'])
+                if d_km <= dist_km and d_km < min_distance:
+                    min_distance = d_km
+                    best_cluster = cluster
+                    
+        if best_cluster is not None:
+            best_cluster['origins'].append(origin)
+            best_cluster['min_h'] = min(best_cluster['min_h'], origin['h'])
+            best_cluster['max_h'] = max(best_cluster['max_h'], origin['h'])
+        else:
+            clusters.append({
+                'origins': [origin],
+                'min_h': origin['h'],
+                'max_h': origin['h']
+            })
+            
+    # Post-process: compute the geographic center of each cluster
+    for c in clusters:
+        sum_lat = sum(o['lat'] for o in c['origins'])
+        # Correctly handle longitude wrapping (-180 to 180) for center calculation
+        sum_lon = sum(o['lon'] + 360 if o['lon'] < 0 else o['lon'] for o in c['origins'])
+        avg_lon = sum_lon / len(c['origins'])
+        if avg_lon > 180:
+            avg_lon -= 360
+            
+        c['center'] = {
+            'lat': sum_lat / len(c['origins']),
+            'lon': avg_lon,
+            'h': c['min_h']
+        }
+        
+    return clusters
+
 def get_latest_run_url():
     today = datetime.now(timezone.utc).date()
     # Check today and previous 4 days in case of server delays
@@ -382,48 +446,107 @@ else:
                 large_df = load_encrypted_dat(l_path)
                 if large_df is not None and not large_df.empty:
                     break
-        
         if large_df is not None:
+            # 1. Group by (track_id, sample) to identify individual member tracks
+            valid_tracks = []
+            unique_origins = set()
+            all_origins = []
+            
+            for (tr_id, smp), group in large_df.groupby(['track_id', 'sample']):
+                group = group.dropna(subset=['lat', 'lon']).sort_values(by='lead_time_hours').copy()
+                if len(group) < 2:
+                    continue
+                
+                lats = group['lat'].values
+                lons = group['lon'].values
+                # Normalize lons to [-180, 180]
+                lons = np.where(lons > 180, lons - 360, lons)
+                
+                # Check for jumps > 10 degrees between consecutive points
+                bad = False
+                for i in range(1, len(lats)):
+                    if abs(lats[i] - lats[i-1]) > 10 or abs(lons[i] - lons[i-1]) > 10:
+                        bad = True
+                        break
+                if bad:
+                    continue
+                
+                # Find origin (h=0 preferred, otherwise min h)
+                h_values = group['lead_time_hours'].values
+                origin_idx = 0
+                if 0 in h_values:
+                    origin_idx = np.where(h_values == 0)[0][0]
+                else:
+                    origin_idx = np.argmin(h_values)
+                
+                origin_lat = lats[origin_idx]
+                origin_lon = lons[origin_idx]
+                origin_h = h_values[origin_idx]
+                
+                # Basin filter for origin (Western Pacific: lat [-5, 45], lon [100, 180])
+                if not (-5 <= origin_lat <= 45 and 100 <= origin_lon <= 180):
+                    continue
+                
+                # Update group's lon with normalized values
+                group['lon'] = lons
+                
+                track_key = f"{tr_id}__{smp}"
+                origin_info = {'lat': origin_lat, 'lon': origin_lon, 'h': origin_h, 'key': track_key}
+                valid_tracks.append((track_key, origin_info, group))
+                
+                o_key = f"{origin_lat:.1f},{origin_lon:.1f}"
+                if o_key not in unique_origins:
+                    unique_origins.add(o_key)
+                    all_origins.append({'lat': origin_lat, 'lon': origin_lon, 'h': origin_h, 'oKey': o_key})
+            
+            # 2. Cluster origins greedily
+            clusters = cluster_origins_greedy(all_origins, dist_km=300, max_genesis_spread=96)
+            
+            # Assign tracks to nearest cluster center (within 666 km)
+            cluster_tracks = {}
+            for track_key, origin_info, group in valid_tracks:
+                best_dist_km = float('inf')
+                best_dist_id = None
+                
+                for idx, c in enumerate(clusters):
+                    dist_id = idx + 1
+                    dd = haversine_km(c['center']['lat'], c['center']['lon'], origin_info['lat'], origin_info['lon'])
+                    if dd < best_dist_km:
+                        best_dist_km = dd
+                        best_dist_id = dist_id
+                
+                if best_dist_km <= 666:
+                    if best_dist_id not in cluster_tracks:
+                        cluster_tracks[best_dist_id] = []
+                    cluster_tracks[best_dist_id].append(group)
+            
+            # 3. Process each cluster to build candidate tracks
             candidate_tracks = []
-            # Group by track_id
-            for track_id, group in large_df.groupby('track_id'):
-                group = group.dropna(subset=['lat', 'lon'])
-                if len(group) < 30: # Skip very minor development signals
-                    continue
+            for dist_id, tracks in cluster_tracks.items():
+                cluster_df = pd.concat(tracks)
                 
-                # Compute member count
-                member_count = len(group['sample'].unique())
-                if member_count < 100: # Require at least 10% member support (100 out of 1000)
+                # Compute unique sample (member) support
+                member_count = len(cluster_df['sample'].unique())
+                if member_count < 100: # Require at least 10% support (100 out of 1000)
                     continue
-                
-                # Compute mean starting coordinates
-                min_lt = group['lead_time_hours'].min()
-                start_pts = group[group['lead_time_hours'] == min_lt]
-                start_lon = start_pts['lon'].median()
-                start_lat = start_pts['lat'].median()
-                if start_lon > 180:
-                    start_lon -= 360
-                    
-                # Only plot if start point is in the broad Western Pacific area
-                if not (100 <= start_lon <= 165 and -5 <= start_lat <= 45):
-                    continue
-                    
-                # Normalize group longitudes to [-180, 180] before computing median
-                group_lons = group['lon'].values
-                group['lon'] = np.where(group_lons > 180, group_lons - 360, group_lons)
                 
                 # Compute median track at each lead hour
-                mean_track = group.groupby('lead_time_hours')[['lat', 'lon', 'maximum_sustained_wind_speed_knots']].median().reset_index()
+                # Group longitudes to [0, 360] for median calculation to handle wrap-around
+                cluster_df_lons = cluster_df['lon'].values
+                cluster_df['lon_360'] = np.where(cluster_df_lons < 0, cluster_df_lons + 360, cluster_df_lons)
+                
+                mean_track = cluster_df.groupby('lead_time_hours')[['lat', 'lon_360', 'maximum_sustained_wind_speed_knots']].median().reset_index()
                 mean_track = mean_track.sort_values(by='lead_time_hours')
                 
-                track_lons = mean_track['lon'].values
+                med_lons = mean_track['lon_360'].values
+                track_lons = np.where(med_lons > 180, med_lons - 360, med_lons)
                 track_lats = mean_track['lat'].values
                 
                 # Filter track coordinates strictly to the Eastern Hemisphere/Western Pacific [100, 180]
                 in_basin = (track_lons >= 100) & (track_lons <= 180) & (track_lats >= -5) & (track_lats <= 45)
                 if not np.any(in_basin):
                     continue
-                    
+                
                 track_lons = track_lons[in_basin]
                 track_lats = track_lats[in_basin]
                 
@@ -433,9 +556,9 @@ else:
                     wind_kt = row.get('maximum_sustained_wind_speed_knots', float('nan'))
                     wind_kmh = np.nan if np.isnan(wind_kt) else round(wind_kt * 1.852)
                     colors.append(get_pagasa_wind_color(wind_kmh))
-                    
+                
                 candidate_tracks.append({
-                    'id': f"Mean Track {track_id}",
+                    'id': f"Disturbance Cluster {dist_id}",
                     'lons': track_lons,
                     'lats': track_lats,
                     'colors': colors,

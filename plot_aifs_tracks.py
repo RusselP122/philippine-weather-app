@@ -42,7 +42,7 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
     init_times = wp_data['init_time'].unique()
 
-    fig = plt.figure(figsize=(12, 12))
+    fig = plt.figure(figsize=(14, 11), facecolor='#87CEEB')
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
@@ -156,7 +156,7 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     ax.set_title(title, fontsize=16, weight='bold')
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor(), edgecolor='none')
     print(f"Plot saved to {output_file} ({plotted_tracks} plotted, {skipped_tracks} skipped)")
     plt.close()
 

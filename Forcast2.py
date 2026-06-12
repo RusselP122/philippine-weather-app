@@ -123,7 +123,7 @@ if len(init_times) == 0:
 print(f"Found {len(init_times)} forecast initialization times: {init_times}")
 
 # Set up the figure and map projection
-fig = plt.figure(figsize=(12, 12))
+fig = plt.figure(figsize=(14, 11), facecolor='#87CEEB')
 ax = plt.axes(projection=ccrs.PlateCarree())
 ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
@@ -303,7 +303,7 @@ try:
     output_dir = "public/assets"
     os.makedirs(output_dir, exist_ok=True)
     output_file = f"{output_dir}/tropical_cyclone_5day_forecast_{init_time_str}.png"
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor(), edgecolor='none')
     print(f"Plot saved to {output_file}")
 except Exception as e:
     print(f"Error saving plot: {str(e)}")
