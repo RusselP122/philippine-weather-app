@@ -170,15 +170,19 @@ const Forecast = () => {
   }, [availableIds]);
 
   const latestConfigurations = useMemo(() => {
+    // In single-model mode, only show run cycles where the selected model has images
+    const filteredOptions = compareMode
+      ? allAvailableOptions
+      : allAvailableOptions.filter((opt) => opt.model === selectedModel);
     return Array.from(
-      new Set(allAvailableOptions.map((opt) => `${opt.type}-${opt.modelTime}`))
+      new Set(filteredOptions.map((opt) => `${opt.type}-${opt.modelTime}`))
     ).sort((a, b) => {
       const timeA = a.substring(a.indexOf('-') + 1);
       const timeB = b.substring(b.indexOf('-') + 1);
       if (timeA !== timeB) return timeA < timeB ? 1 : -1;
       return a.startsWith("15day") ? -1 : 1;
     });
-  }, [allAvailableOptions]);
+  }, [allAvailableOptions, selectedModel, compareMode]);
 
   const timelineConfigs = useMemo(() => {
     return latestConfigurations.map((configId) => {

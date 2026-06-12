@@ -42,7 +42,12 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
     init_times = wp_data['init_time'].unique()
 
-    fig = plt.figure(figsize=(14, 11), facecolor='#87CEEB')
+    if max_lead_time > 120:
+        fig = plt.figure(figsize=(12, 12))
+        fig_facecolor = None
+    else:
+        fig = plt.figure(figsize=(14, 11), facecolor='#87CEEB')
+        fig_facecolor = fig.get_facecolor()
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
@@ -153,10 +158,13 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     legend_text = f"Runtime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
     plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
     
-    ax.set_title(title, fontsize=16, weight='bold')
+    ax.set_title(title, fontsize=14, weight='bold')
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor(), edgecolor='none')
+    if fig_facecolor is not None:
+        plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor=fig_facecolor, edgecolor='none')
+    else:
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Plot saved to {output_file} ({plotted_tracks} plotted, {skipped_tracks} skipped)")
     plt.close()
 
@@ -210,7 +218,7 @@ if __name__ == "__main__":
     days_5day_str = f"{int(actual_5day_days)}" if actual_5day_hours % 24 == 0 else f"{actual_5day_days:.3g}"
     
     end_5day = (latest_ph + timedelta(hours=actual_5day_hours)).strftime("%Y-%m-%d")
-    title_5day = f"{days_5day_str}-Day Forecast Tropical Cyclone Tracks - ECMWF IFS ({forecast_start} to {end_5day})"
+    title_5day = f"ECMWF IFS {days_5day_str}-Day Forecast Tropical Cyclone Tracks\nWestern Pacific ({forecast_start} to {end_5day})"
     out_5day = f"public/assets/ifs_tropical_cyclone_5day_forecast_{init_time_str}.png"
     generate_plot(data, 120, out_5day, title_5day, runtime_text)
 
@@ -220,6 +228,6 @@ if __name__ == "__main__":
     days_15day_str = f"{int(actual_15day_days)}" if actual_15day_hours % 24 == 0 else f"{actual_15day_days:.3g}"
     
     end_15day = (latest_ph + timedelta(hours=actual_15day_hours)).strftime("%Y-%m-%d")
-    title_15day = f"{days_15day_str}-Day Forecast Tropical Cyclone Tracks - ECMWF IFS ({forecast_start} to {end_15day})"
+    title_15day = f"ECMWF IFS {days_15day_str}-Day Forecast Tropical Cyclone Tracks\nWestern Pacific ({forecast_start} to {end_15day})"
     out_15day = f"public/assets/ifs_tropical_cyclone_15day_forecast_{init_time_str}.png"
     generate_plot(data, 360, out_15day, title_15day, runtime_text)
