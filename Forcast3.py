@@ -125,7 +125,7 @@ print(f"Found {len(init_times)} forecast initialization times: {init_times}")
 
 # Set up the figure and map projection
 projection = ccrs.PlateCarree(central_longitude=180)
-fig = plt.figure(figsize=(14, 11), facecolor='#87CEEB')
+fig = plt.figure(figsize=(14, 11), facecolor='white')
 ax = plt.axes(projection=projection)
 ax.set_extent([-75, 10, 0, 40], crs=projection)
 
@@ -306,7 +306,7 @@ plt.text(
 # Add title
 start_date = forecast_start_date_text or "Start"
 end_date = forecast_end_date_text or "End"
-ax.set_title(f"FNV3 1000 Ensemble 5-Day Forecast Tropical Cyclone Tracks\nWestern Pacific ({start_date} to {end_date})", fontsize=14, weight='bold')
+title_obj = ax.set_title(f"FNV3 1000 Ensemble 5-Day Forecast Tropical Cyclone Tracks\nWestern Pacific ({start_date} to {end_date})", fontsize=14, weight='bold')
 
 # Save the plot to a file
 try:
@@ -315,7 +315,7 @@ try:
     import os
     os.makedirs(output_dir, exist_ok=True)
     output_file = f"{output_dir}/fnv3_tropical_cyclone_5day_forecast_{init_time_str}.png"
-    plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor(), edgecolor='none')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor(), edgecolor='none', bbox_extra_artists=[title_obj, gl])
     print(f"Plot saved to {output_file}")
 except Exception as e:
     print(f"Error saving plot: {str(e)}")
