@@ -221,35 +221,39 @@ def parse_cycle_stats(csv_text, paired_csv_text, dataset_name, max_hours=360):
             tracks_by_dist[dist_id].append(points)
 
     paired_mean_by_track_id = {}
-    if paired_csv_text:
-        pf_in = io.StringIO(paired_csv_text)
-        pdf = pd.read_csv(pf_in, comment='#')
-        pdf.columns = pdf.columns.str.strip()
-        if 'lead_time_hours' not in pdf.columns:
-            pdf['lead_time_hours'] = pdf.apply(parse_lead_time, axis=1)
-            
-        for row in pdf.to_dict('records'):
-            track_id = str(row.get('track_id', '')).strip()
-            sample_val = str(row.get('sample', '')).strip()
-            if sample_val != "-1" or not track_id.upper().startswith("WP"):
-                continue
-            lead_h = float(row['lead_time_hours'])
-            if lead_h > max_hours:
-                continue
-            lat = float(row['lat'])
-            lon = float(row['lon'])
-            pres = float(row['minimum_sea_level_pressure_hpa'])
-            wind_kt = float(row['maximum_sustained_wind_speed_knots'])
-            wind_kmh = np.nan if np.isnan(wind_kt) else round(wind_kt * 1.852)
-            if np.isnan(lat) or np.isnan(lon):
-                continue
-            
-            if track_id not in paired_mean_by_track_id:
-                paired_mean_by_track_id[track_id] = {'points': [], 'trackId': track_id}
-            paired_mean_by_track_id[track_id]['points'].append({'lat': lat, 'lon': lon - 360 if lon > 180 else lon, 'p': pres, 'windKmh': wind_kmh, 'h': lead_h})
-            
-        for key in paired_mean_by_track_id:
-            paired_mean_by_track_id[key]['points'].sort(key=lambda p: p['h'])
+    if paired_csv_text and paired_csv_text.strip():
+        try:
+            pf_in = io.StringIO(paired_csv_text)
+            pdf = pd.read_csv(pf_in, comment='#')
+            if not pdf.empty:
+                pdf.columns = pdf.columns.str.strip()
+                if 'lead_time_hours' not in pdf.columns:
+                    pdf['lead_time_hours'] = pdf.apply(parse_lead_time, axis=1)
+                    
+                for row in pdf.to_dict('records'):
+                    track_id = str(row.get('track_id', '')).strip()
+                    sample_val = str(row.get('sample', '')).strip()
+                    if sample_val != "-1" or not track_id.upper().startswith("WP"):
+                        continue
+                    lead_h = float(row['lead_time_hours'])
+                    if lead_h > max_hours:
+                        continue
+                    lat = float(row['lat'])
+                    lon = float(row['lon'])
+                    pres = float(row['minimum_sea_level_pressure_hpa'])
+                    wind_kt = float(row['maximum_sustained_wind_speed_knots'])
+                    wind_kmh = np.nan if np.isnan(wind_kt) else round(wind_kt * 1.852)
+                    if np.isnan(lat) or np.isnan(lon):
+                        continue
+                    
+                    if track_id not in paired_mean_by_track_id:
+                        paired_mean_by_track_id[track_id] = {'points': [], 'trackId': track_id}
+                    paired_mean_by_track_id[track_id]['points'].append({'lat': lat, 'lon': lon - 360 if lon > 180 else lon, 'p': pres, 'windKmh': wind_kmh, 'h': lead_h})
+                    
+                for key in paired_mean_by_track_id:
+                    paired_mean_by_track_id[key]['points'].sort(key=lambda p: p['h'])
+        except Exception as e:
+            print(f"Warning: Failed to parse paired CSV: {e}")
 
     disturbance_list = []
     for cluster in clusters:
