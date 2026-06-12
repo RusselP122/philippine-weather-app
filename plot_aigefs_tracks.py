@@ -42,12 +42,8 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
     init_times = wp_data['init_time'].unique()
 
-    if max_lead_time > 120:
-        fig = plt.figure(figsize=(12, 12))
-        fig_facecolor = None
-    else:
-        fig = plt.figure(figsize=(14, 11), facecolor='#87CEEB')
-        fig_facecolor = fig.get_facecolor()
+    fig = plt.figure(figsize=(14, 11), facecolor='white')
+    fig_facecolor = fig.get_facecolor()
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
@@ -158,13 +154,10 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     legend_text = f"Runtime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
     plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
     
-    ax.set_title(title, fontsize=14, weight='bold')
+    title_obj = ax.set_title(title, fontsize=14, weight='bold')
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    if fig_facecolor is not None:
-        plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor=fig_facecolor, edgecolor='none')
-    else:
-        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor=fig_facecolor, edgecolor='none', bbox_extra_artists=[title_obj, gl])
     print(f"Plot saved to {output_file} ({plotted_tracks} plotted, {skipped_tracks} skipped)")
     plt.close()
 
