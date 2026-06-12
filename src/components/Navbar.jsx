@@ -65,7 +65,8 @@ const Navbar = () => {
         { label: "Tropical Cyclone Map", href: "/cyclone" },
         { label: "Tropical Cyclone Prediction", href: "/tc-prediction" },
         { label: "Tropical Cyclone Info", href: "/tc-info" },
-        { label: "Warning", href: "/warning" }
+        { label: "Warning", href: "/warning" },
+        { label: "Risk Area", href: "/risk-area" }
       ]
     },
     {

@@ -41,8 +41,9 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Add output GeoJSONs
+          # Add output GeoJSONs and PNGs
           git add -f public/data/strike_prob/*.json || true
+          git add -f public/assets/risk_maps/*.png || true
           
           # Commit if there are changes
           if git diff --staged --quiet; then
