@@ -6,7 +6,6 @@ on:
     paths:
       - 'plot_aifs_tracks.py'
       - '.github/workflows/update_aifs_tracks.yml'
-      - 'scratch/trigger_aifs.txt'
   schedule:
     - cron: '45 2,8,14,20 * * *' # Run 4 times a day, slightly offset from IFS
   workflow_dispatch:

@@ -6,7 +6,6 @@ on:
     paths:
       - 'plot_ifs_tracks.py'
       - '.github/workflows/update_ifs_tracks.yml'
-      - 'scratch/trigger_ifs.txt'
   schedule:
     - cron: '30 2,8,14,20 * * *' # Run 4 times a day, giving time for the data to be ready
   workflow_dispatch:
