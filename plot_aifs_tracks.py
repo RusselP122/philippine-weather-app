@@ -43,8 +43,8 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
     init_times = wp_data['init_time'].unique()
 
-    # 1. Switch to a wide rectangular aspect ratio matching the map coordinates
-    fig = plt.figure(figsize=(11, 8.5), facecolor='white')
+    # Fixed figure window dimensions to give text more headroom
+    fig = plt.figure(figsize=(11, 9), facecolor='white')
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
@@ -154,15 +154,15 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     legend_text = f"Runtime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
     plt.text(0.99, 0.01, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
     
-    # Anchor title precisely within the rectangular container bounds
-    ax.set_title(title, fontsize=14, weight='bold', pad=12)
+    # 1. Use figure-level title centered perfectly over the entire image layout space
+    fig.suptitle(title, fontsize=14, weight='bold', y=0.95, va='center')
 
-    # 2. Perfect spacing adjustment for map coordinates + labels + title padding
-    fig.subplots_adjust(left=0.06, right=0.98, top=0.91, bottom=0.05)
+    # 2. Push the top down to 0.86 to ensure the title sits safely in the whitespace margin
+    fig.subplots_adjust(left=0.06, right=0.98, top=0.86, bottom=0.05)
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     
-    # 3. Save exactly layout-constrained
+    # 3. Save clean layout
     plt.savefig(output_file, dpi=300, facecolor='white', edgecolor='none')
     print(f"Plot saved to {output_file} ({plotted_tracks} plotted, {skipped_tracks} skipped)")
     plt.close()
