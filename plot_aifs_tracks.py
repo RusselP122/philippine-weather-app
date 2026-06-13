@@ -43,9 +43,11 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
     init_times = wp_data['init_time'].unique()
 
-    # Match the layout initialization of your working script exactly
-    fig = plt.figure(figsize=(12, 12))
-    ax = plt.axes(projection=ccrs.PlateCarree())
+    # 1. Use a clear rectangular aspect ratio to perfectly fit the map coordinates
+    fig = plt.figure(figsize=(12, 10), facecolor='white')
+    
+    # Explicitly position the map inside the figure to leave clean margins for labels and title
+    ax = fig.add_axes([0.08, 0.08, 0.88, 0.80], projection=ccrs.PlateCarree())
     ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
     # Add land, ocean, and coastlines
@@ -78,8 +80,8 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
     gl.xlocator = plt.FixedLocator(np.arange(105, 156, 5))
     gl.ylocator = plt.FixedLocator(np.arange(0, 41, 5))
-    gl.xlabel_style = {'size': 12, 'weight': 'bold'}
-    gl.ylabel_style = {'size': 12, 'weight': 'bold'}
+    gl.xlabel_style = {'size': 11, 'weight': 'bold'}
+    gl.ylabel_style = {'size': 11, 'weight': 'bold'}
     gl.top_labels = False
     gl.right_labels = False
 
@@ -149,18 +151,19 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
                    markeredgecolor=r['color'], markeredgewidth=2, markersize=8, label=r['pressure_range'])
         for r in pressure_ranges
     ]
-    legend = ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0.02, 0.98), frameon=False, fontsize=10)
+    legend = ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0.01, 0.99), frameon=False, fontsize=10)
 
     legend_text = f"Runtime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
-    plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
+    plt.text(0.99, 0.01, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
     
-    # Title matching layout of working file
-    ax.set_title(title, fontsize=14, weight='bold')
+    # 2. Use global figure title configuration so it stays pinned within the safe canvas margins
+    fig.suptitle(title, fontsize=14, weight='bold', y=0.94)
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     
-    # Saved exactly as your working file
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    # 3. Save directly WITHOUT bbox_inches='tight'. 
+    # This prevents the headless system from trying to recalculate margins dynamically.
+    plt.savefig(output_file, dpi=300, facecolor='white', edgecolor='none')
     print(f"Plot saved to {output_file} ({plotted_tracks} plotted, {skipped_tracks} skipped)")
     plt.close()
 
