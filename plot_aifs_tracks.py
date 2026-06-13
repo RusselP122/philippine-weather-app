@@ -154,11 +154,15 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     legend_text = f"Runtime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
     plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
     
-    title_obj = fig.suptitle(title, fontsize=14, weight='bold', y=0.98)
-    plt.subplots_adjust(top=0.92)
+    ax.set_title(title, fontsize=14, weight='bold', pad=15)
+
+    # Force render all text positions before saving — on headless Linux (Agg backend),
+    # text bounding boxes aren't computed until draw(), causing bbox_inches='tight' to
+    # crop the title. This explicit draw() ensures the title is included.
+    fig.canvas.draw()
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    plt.savefig(output_file, dpi=300, bbox_inches='tight', pad_inches=0.3, facecolor=fig_facecolor, edgecolor='none', bbox_extra_artists=[title_obj])
+    plt.savefig(output_file, dpi=300, bbox_inches='tight', pad_inches=0.2, facecolor=fig_facecolor, edgecolor='none')
     print(f"Plot saved to {output_file} ({plotted_tracks} plotted, {skipped_tracks} skipped)")
     plt.close()
 
