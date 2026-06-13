@@ -6758,14 +6758,14 @@
             "timestamp": "2026-06-12T16:16:07.796539+08:00",
             "date": "2026-06-12",
             "data": {
-                "mvo": "22",
-                "bvo": "121",
+                "mvo": "24",
+                "bvo": "215",
                 "kvo": "10",
                 "tvo": "0",
                 "hvo": "0",
                 "pvo": "0"
             },
-            "total_Volcanic_earthquakes": "mvo: 22, bvo: 121, kvo: 10, tvo: 0, hvo: 0, pvo: 0"
+            "total_Volcanic_earthquakes": "mvo: 22, bvo: 215, kvo: 10, tvo: 0, hvo: 0, pvo: 0"
         },
         {
             "timestamp": "2026-06-13T02:01:56.586308+08:00",
