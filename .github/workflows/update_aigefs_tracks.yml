@@ -1,5 +1,12 @@
 name: Update NOAA AI-GEFS TC Tracks
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'plot_aigefs_tracks.py'
+      - '.github/workflows/update_aigefs_tracks.yml'
+      - 'scratch/trigger_aigefs.txt'
   schedule:
     - cron: '15 4,10,16,22 * * *' # Run 4 times a day (after NCEP runs 00, 06, 12, 18Z)
   workflow_dispatch:
