@@ -43,8 +43,8 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
     init_times = wp_data['init_time'].unique()
 
-    # 1. Force a strict, clean canvas size
-    fig = plt.figure(figsize=(12, 10), facecolor='white')
+    # 1. Switch to a wide rectangular aspect ratio matching the map coordinates
+    fig = plt.figure(figsize=(11, 8.5), facecolor='white')
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
@@ -78,8 +78,8 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
     gl.xlocator = plt.FixedLocator(np.arange(105, 156, 5))
     gl.ylocator = plt.FixedLocator(np.arange(0, 41, 5))
-    gl.xlabel_style = {'size': 12, 'weight': 'bold'}
-    gl.ylabel_style = {'size': 12, 'weight': 'bold'}
+    gl.xlabel_style = {'size': 11, 'weight': 'bold'}
+    gl.ylabel_style = {'size': 11, 'weight': 'bold'}
     gl.top_labels = False
     gl.right_labels = False
 
@@ -149,21 +149,20 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
                    markeredgecolor=r['color'], markeredgewidth=2, markersize=8, label=r['pressure_range'])
         for r in pressure_ranges
     ]
-    legend = ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0.02, 0.98), frameon=False, fontsize=10)
+    legend = ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0.01, 0.99), frameon=False, fontsize=10)
 
     legend_text = f"Runtime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
-    plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
+    plt.text(0.99, 0.01, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
     
-    # Add padding directly to title to prevent cropping out of bounds
-    ax.set_title(title, fontsize=14, weight='bold', pad=20)
+    # Anchor title precisely within the rectangular container bounds
+    ax.set_title(title, fontsize=14, weight='bold', pad=12)
 
-    # 2. Hardcode the axis margins inside the figure box.
-    # This prevents the Linux environment from creating variable whitespace borders.
-    fig.subplots_adjust(left=0.08, right=0.95, top=0.88, bottom=0.06)
+    # 2. Perfect spacing adjustment for map coordinates + labels + title padding
+    fig.subplots_adjust(left=0.06, right=0.98, top=0.91, bottom=0.05)
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     
-    # 3. Save directly WITHOUT using layout hooks or tight bounding boxes
+    # 3. Save exactly layout-constrained
     plt.savefig(output_file, dpi=300, facecolor='white', edgecolor='none')
     print(f"Plot saved to {output_file} ({plotted_tracks} plotted, {skipped_tracks} skipped)")
     plt.close()
