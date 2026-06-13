@@ -43,8 +43,8 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
     init_times = wp_data['init_time'].unique()
 
-    # 1. Use the exact dimensions from your working script but include constrained layout
-    fig = plt.figure(figsize=(12, 12), layout="constrained")
+    # Match the layout initialization of your working script exactly
+    fig = plt.figure(figsize=(12, 12))
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
@@ -154,12 +154,12 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     legend_text = f"Runtime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
     plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
     
-    # 2. Revert back to original ax.set_title configuration
+    # Title matching layout of working file
     ax.set_title(title, fontsize=14, weight='bold')
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     
-    # 3. Save with tight margins—the layout="constrained" handle prevents text cutoff on Linux
+    # Saved exactly as your working file
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Plot saved to {output_file} ({plotted_tracks} plotted, {skipped_tracks} skipped)")
     plt.close()
