@@ -43,8 +43,8 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
     init_times = wp_data['init_time'].unique()
 
-    # Match the layout initialization of your working script
-    fig = plt.figure(figsize=(12, 12))
+    # 1. Force a strict, clean canvas size
+    fig = plt.figure(figsize=(12, 10), facecolor='white')
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
@@ -154,11 +154,17 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     legend_text = f"Runtime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
     plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
     
-    ax.set_title(title, fontsize=14, weight='bold')
+    # Add padding directly to title to prevent cropping out of bounds
+    ax.set_title(title, fontsize=14, weight='bold', pad=20)
 
-    # Save exactly like the working file to ensure cross-environment compatibility
+    # 2. Hardcode the axis margins inside the figure box.
+    # This prevents the Linux environment from creating variable whitespace borders.
+    fig.subplots_adjust(left=0.08, right=0.95, top=0.88, bottom=0.06)
+
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    
+    # 3. Save directly WITHOUT using layout hooks or tight bounding boxes
+    plt.savefig(output_file, dpi=300, facecolor='white', edgecolor='none')
     print(f"Plot saved to {output_file} ({plotted_tracks} plotted, {skipped_tracks} skipped)")
     plt.close()
 
