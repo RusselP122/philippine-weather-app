@@ -1,7 +1,8 @@
 import os
 import json
+import io
+import base64
 from shapely.geometry import shape
-import os
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
@@ -42,8 +43,8 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
     init_times = wp_data['init_time'].unique()
 
-    fig = plt.figure(figsize=(14, 11), facecolor='white')
-    fig_facecolor = fig.get_facecolor()
+    # Match the layout initialization of your working script
+    fig = plt.figure(figsize=(12, 12))
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
@@ -51,9 +52,9 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     ax.set_facecolor('#87CEEB')
     ax.add_feature(cfeature.LAND, facecolor='#DEB887', edgecolor='#8B4513', linewidth=0.8)
     ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.8, alpha=0.7, color='#654321')
+    
     # Add Philippine province boundaries from ph_provinces.json
     try:
-
         script_dir_path = os.path.dirname(os.path.abspath(__file__))
         geojson_paths_list = [
             os.path.join(script_dir_path, "public", "data", "ph_provinces.json"),
@@ -72,7 +73,6 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
             ax.add_geometries(province_shapely_geometries, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#654321', linewidth=0.4, alpha=0.5, zorder=3)
     except Exception as province_load_error:
         print(f"Warning: Failed to overlay province boundaries: {province_load_error}")
-
 
     # Add gridlines
     gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
@@ -154,22 +154,15 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     legend_text = f"Runtime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
     plt.text(0.98, 0.02, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
     
-    ax.set_title(title, fontsize=14, weight='bold', pad=15)
+    ax.set_title(title, fontsize=14, weight='bold')
 
-    # Force render all text positions before saving — on headless Linux (Agg backend),
-    # text bounding boxes aren't computed until draw(), causing bbox_inches='tight' to
-    # crop the title. This explicit draw() ensures the title is included.
-    fig.canvas.draw()
-
+    # Save exactly like the working file to ensure cross-environment compatibility
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    plt.savefig(output_file, dpi=300, bbox_inches='tight', pad_inches=0.2, facecolor=fig_facecolor, edgecolor='none')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Plot saved to {output_file} ({plotted_tracks} plotted, {skipped_tracks} skipped)")
     plt.close()
 
 if __name__ == "__main__":
-    import io
-    import base64
-    
     csv_file = "public/data/aifs_tc_latest.csv"
     dat_file = "public/data/aifs_tc_latest.dat"
     
