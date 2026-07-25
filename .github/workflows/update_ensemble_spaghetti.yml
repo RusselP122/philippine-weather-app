@@ -1,0 +1,47 @@
+name: Generate Ensemble Spaghetti Tracks
+on:
+  workflow_dispatch:
+
+jobs:
+  generate-spaghetti:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install system dependencies (eccodes and proj)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libeccodes-dev libgeos-dev libproj-dev proj-data proj-bin
+          
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy matplotlib cartopy shapely
+          
+      - name: Run spaghetti script
+        run: |
+          python plot_ensemble_spaghetti.py
+          
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/assets/*.png || true
+          git add public/data/spaghetti_manifest.json || true
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Manual update of Ensemble Spaghetti Tracks [skip ci]"
+            git pull --rebase origin main
+            git push
+          fi

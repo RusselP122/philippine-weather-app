@@ -1,0 +1,11 @@
+matplotlib
+pandas
+requests
+numpy
+# Cartopy is pre-installed in some environments or needs system libs (proj, geos). 
+# We'll try installing it via pip, but it might require extra apt-get steps in the workflow.
+cartopy
+scipy
+pyshp
+shapely
+

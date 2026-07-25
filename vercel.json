@@ -1,0 +1,29 @@
+{
+    "rewrites": [
+        {
+            "source": "/api/earthquake-data",
+            "destination": "https://data.garbinwx.org/api/earthquakes.json"
+        },
+        {
+            "source": "/api/cap-alerts",
+            "destination": "https://www.panahon.gov.ph/api/v1/cap-alerts?token=sH2S6zIL6jKA7lgffdgyI3kGTZgPjGdiHCsIocAW"
+        },
+        {
+            "source": "/api/ogimet/:path*",
+            "destination": "http://www.ogimet.com/cgi-bin/:path*"
+        },
+        {
+            "source": "/api/lightning",
+            "destination": "https://panahon.gov.ph/api/v1/lightning"
+        },
+        {
+            "source": "/api/radar",
+            "destination": "https://www.panahon.gov.ph/api/v1/radar/timeline?token=vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k&sublayer=hybrid-reflectivity"
+        },
+        {
+            "source": "/((?!data/|api/).*)",
+            "destination": "/index.html"
+        }
+    ],
+    "outputDirectory": "dist"
+}

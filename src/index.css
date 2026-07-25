@@ -1,0 +1,325 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+    monospace;
+}
+
+/* Keep Leaflet attribution compact in the bottom-right instead of full-width */
+.leaflet-control-attribution {
+  max-width: 70%;
+  right: 0;
+  bottom: 0;
+  margin: 0.25rem;
+  padding: 0.15rem 0.4rem;
+  background: rgba(15, 23, 42, 0.7);
+  /* slate-ish, semi-transparent */
+  color: #e5e7eb;
+  /* light text */
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 640px) {
+  .leaflet-control-attribution {
+    max-width: 60%;
+  }
+}
+
+/* ─── Storm Marker – Animated Cyclone Rings ─────────────── */
+.storm-marker {
+  opacity: 1 !important;
+  visibility: visible !important;
+  overflow: visible !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+@keyframes cy-cw {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cy-ccw {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes cy-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+
+  75%,
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* --- Weather Component Animations --- */
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes raindrop {
+  0% {
+    transform: translateY(-5px);
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(15px);
+    opacity: 0;
+  }
+}
+
+.animate-raindrop {
+  animation: raindrop 1.5s infinite linear;
+}
+
+@keyframes rise {
+  0% {
+    transform: translateY(100%);
+    opacity: 0.5;
+  }
+
+  40%,
+  100% {
+    transform: translateY(0%);
+    opacity: 1;
+  }
+}
+
+.animate-rise {
+  animation: rise 4s ease-in-out infinite alternate;
+}
+
+@keyframes set {
+
+  0%,
+  40% {
+    transform: translateY(0%);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(100%);
+    opacity: 0.5;
+  }
+}
+
+.animate-set {
+  animation: set 4s ease-in-out infinite alternate;
+}
+
+@keyframes rock {
+
+  0%,
+  100% {
+    transform: rotate(-5deg);
+  }
+
+  50% {
+    transform: rotate(5deg);
+  }
+}
+
+.animate-rock {
+  animation: rock 6s ease-in-out infinite;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ─── Custom Popup Tail & Reset ─────────────── */
+.popup-tail::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 8px 8px 0;
+  border-style: solid;
+  border-color: rgba(15, 23, 42, 0.9) transparent transparent transparent;
+  display: block;
+  width: 0;
+}
+
+.popup-tail::before {
+  content: '';
+  position: absolute;
+  bottom: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 9px 9px 0;
+  border-style: solid;
+  border-color: rgba(51, 65, 85, 0.5) transparent transparent transparent;
+  display: block;
+  width: 0;
+  z-index: -1;
+}
+
+/* Reset Leaflet's default popup styling so our custom container works */
+.custom-storm-popup .leaflet-popup-content-wrapper {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.custom-storm-popup .leaflet-popup-content {
+  margin: 0;
+  line-height: inherit;
+  width: auto !important;
+}
+
+.custom-storm-popup .leaflet-popup-tip-container {
+  display: none;
+}
+
+/* Custom Timeline Slider Styling */
+#radar-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+#radar-slider::-webkit-slider-runnable-track {
+  background: rgba(30, 41, 59, 0.8);
+  height: 6px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+#radar-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #10b981;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin-top: -4px;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+  cursor: pointer;
+  border: 2px solid #0f172a;
+  transition: transform 0.1s ease, background-color 0.15s ease;
+}
+
+#radar-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+  background: #34d399;
+  box-shadow: 0 0 14px rgba(52, 211, 153, 0.8);
+}
+
+#radar-slider::-moz-range-track {
+  background: rgba(30, 41, 59, 0.8);
+  height: 6px;
+  border-radius: 9999px;
+}
+
+#radar-slider::-moz-range-thumb {
+  background: #10b981;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+  cursor: pointer;
+  border: 2px solid #0f172a;
+  transition: transform 0.1s ease, background-color 0.15s ease;
+}
+
+#radar-slider::-moz-range-thumb:hover {
+  transform: scale(1.25);
+  background: #34d399;
+}
+
+/* Remove default focus outline/box shape from interactive Leaflet layers when clicked */
+.leaflet-interactive:focus {
+  outline: none;
+}
+
+/* Reset Leaflet's default tooltip style for historical track points */
+.custom-storm-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.custom-storm-tooltip::before {
+  display: none !important;
+}
+
+/* History dot marker overrides */
+.history-dot-marker {
+  background: transparent !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Custom scrollbar style for weather layers panel */
+.weather-panel-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+}
+.weather-panel-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.weather-panel-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.weather-panel-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 4px;
+}
+.weather-panel-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}

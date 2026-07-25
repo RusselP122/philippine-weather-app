@@ -1,0 +1,116 @@
+name: Update Forecast Images
+
+on:
+  schedule:
+    # Runs at 00:00, 06:00, 12:00, and 18:00 UTC every day
+    - cron: '0 0,6,12,18 * * *'
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  update-forecast:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:  
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgeos-dev libproj-dev proj-data proj-bin
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9' # Adjust if your script uses a newer version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install matplotlib cartopy pandas numpy requests scikit-learn scipy
+          if [ -f requirements_dev.txt ]; then pip install -r requirements_dev.txt; fi
+
+      - name: Run forecast logic
+        run: |
+          # Running forecast scripts
+          python Forcast.py
+          python Forcast2.py
+
+      - name: Download FNV3 Base paired/mean track CSV
+        run: |
+          BASE_URL="https://deepmind.google.com/science/weatherlab/download/cyclones/FNV3P2/ensemble_mean/paired/csv"
+          OUTPUT="public/data/fnv3p2_paired_latest.csv"
+          FOUND=false
+
+          # Probe the last 3 days × 4 cycles to find the latest available run
+          for DAYS_AGO in 0 1 2 3; do
+            DATE=$(date -u -d "-${DAYS_AGO} days" +%Y_%m_%d)
+            for HOUR in 18 12 06 00; do
+              URL="${BASE_URL}/FNV3P2_${DATE}T${HOUR}_00_paired.csv"
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -L "$URL")
+              if [ "$HTTP_CODE" = "200" ]; then
+                echo "✓ Found paired run: ${DATE}T${HOUR}:00"
+                curl -sL -o "$OUTPUT" "$URL"
+                echo "  Downloaded → $OUTPUT ($(wc -c < "$OUTPUT") bytes)"
+                FOUND=true
+                break 2
+              fi
+            done
+          done
+
+          if [ "$FOUND" = "false" ]; then
+            echo "⚠ No paired CSV found in last 3 days — skipping (will use computed median)"
+          fi
+
+      - name: Download and prepare FNV3 multi-cycle datasets
+        run: |
+          python scripts/download_multi_cycle.py
+
+      - name: Generate FNV3 Base Ensemble Trend Maps
+        run: |
+          python generate_trends_map.py --dataset base --horizon 5day --all
+          python generate_trends_map.py --dataset base --horizon 15day --all
+
+      - name: Generate TC Positions Map and JSON
+        run: |
+          python generate_tc_positions_map.py
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          python scripts/obfuscate_csvs.py
+          
+          # Stage all modifications and deletions of tracked files in public/data
+          git add -u public/data/
+          
+          # Add forecast PNGs and the proxied CSVs for browser use
+          git add public/assets/*.png
+          git add -f public/data/fnv3p2_latest.dat || true
+          git add -f public/data/fnv3p2_paired_latest.dat || true
+          git add -f public/data/fnv3p1_latest.dat || true
+          git add -f public/data/fnv3p1_paired_latest.dat || true
+          git add -f public/data/oper_latest.dat || true
+          git add -f public/data/oper_paired_latest.dat || true
+          git add -f public/data/fnv3p2_*.dat || true
+          git add -f public/data/fnv3p2_paired_*.dat || true
+          git add -f public/data/cycles_manifest.json || true
+          git add -f public/data/tc_positions_latest.json || true
+          git add -f public/data/tc_positions_*.json || true
+          git add -f public/data/tc_storms_index.json || true
+          git add public/data/trends/* || true
+          
+          # Commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-update forecast images [skip ci]"
+            git reset --hard HEAD
+            git clean -fd
+            git pull --rebase origin main
+            git push
+          fi

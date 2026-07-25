@@ -1,0 +1,91 @@
+name: Update WeatherNext 2 Forecast Maps
+
+on:
+  schedule:
+    # Runs 4 times daily at 04:00, 10:00, 16:00, and 22:00 UTC
+    # (Approx. 4 hours after model initializations at 00, 06, 12, and 18 UTC)
+    - cron: '0 4,10,16,22 * * *'
+  workflow_dispatch:
+
+jobs:
+  update-weathernext-maps:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libgeos-dev libproj-dev proj-data proj-bin
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            matplotlib \
+            cartopy \
+            numpy \
+            scipy \
+            requests \
+            gcsfs \
+            zarr \
+            xarray
+
+      - name: Authenticate to Google Cloud
+        env:
+          GCP_KEY_JSON: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          # Write the secret Google Cloud Service Account JSON key to a temporary file
+          echo "$GCP_KEY_JSON" > gcp-key.json
+          # Export GOOGLE_APPLICATION_CREDENTIALS environment variable for gcsfs to detect automatically
+          echo "GOOGLE_APPLICATION_CREDENTIALS=gcp-key.json" >> $GITHUB_ENV
+
+      - name: Run WeatherNext 2 maps generators
+        run: |
+          python generate_weathernext_maps.py
+          python generate_weathernext_wind_maps.py
+          python generate_weathernext_rainfall_maps.py
+
+      - name: Clean up GCP key
+        if: always()
+        run: rm -f gcp-key.json
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Stage new/updated forecast maps and metadata JSON
+          git add -f public/images/precip_mslp_weathernext/*.png || true
+          git add -f public/images/precip_mslp_weathernext_overlay/*.png || true
+          git add -f public/images/wind_weathernext/*.png || true
+          git add -f public/images/wind_weathernext_overlay/*.png || true
+          git add -f public/images/rainfall_weathernext/*.png || true
+          git add -f public/data/precip_mslp_weathernext_meta.json || true
+          git add -f public/data/wind_weathernext_meta.json || true
+          git add -f public/data/rainfall_weathernext_meta.json || true
+
+          # Commit only if files have changed
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Auto-update WeatherNext 2 Forecast maps [skip ci]"
+
+            # Retry push to handle transient concurrency locks
+            for i in 1 2 3 4 5; do
+              echo "Push attempt $i..."
+              git pull --rebase origin main
+              git push && echo "Push successful!" && break
+              echo "Push failed. Retrying..."
+              sleep $((15 * i))
+            done
+          fi
