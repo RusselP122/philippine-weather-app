@@ -20,9 +20,9 @@ const THUNDER_EXPECTING_COLOR = "#fcd34d";
 const THUNDER_EXPECTING_EDGE = "#f59e0b";
 
 const WARNING_LEVEL_COLORS = {
-  yellow: { fill: "#3b82f6", edge: "#60a5fa" },
-  orange: { fill: "#2563eb", edge: "#3b82f6" },
-  red: { fill: "#1e40af", edge: "#1d4ed8" },
+  yellow: { fill: "#facc15", edge: "#eab308" },
+  orange: { fill: "#f97316", edge: "#ea580c" },
+  red: { fill: "#ef4444", edge: "#dc2626" },
 };
 
 function parseWarningLevel(text) {
@@ -673,9 +673,9 @@ const Alert = () => {
       let col1List = [], col2List = [], col3List = [], col4List = [], col5List = [];
 
       if (mode === "rainfall") {
-        col1Name = "RED"; col1Color = "#1e40af"; col1Count = Object.keys(rainfallSummary.red).length; col1List = Object.keys(rainfallSummary.red).sort();
-        col2Name = "ORANGE"; col2Color = "#2563eb"; col2Count = Object.keys(rainfallSummary.orange).length; col2List = Object.keys(rainfallSummary.orange).sort();
-        col3Name = "YELLOW"; col3Color = "#3b82f6"; col3Count = Object.keys(rainfallSummary.yellow).length; col3List = Object.keys(rainfallSummary.yellow).sort();
+        col1Name = "RED"; col1Color = "#ef4444"; col1Count = Object.keys(rainfallSummary.red).length; col1List = Object.keys(rainfallSummary.red).sort();
+        col2Name = "ORANGE"; col2Color = "#f97316"; col2Count = Object.keys(rainfallSummary.orange).length; col2List = Object.keys(rainfallSummary.orange).sort();
+        col3Name = "YELLOW"; col3Color = "#facc15"; col3Count = Object.keys(rainfallSummary.yellow).length; col3List = Object.keys(rainfallSummary.yellow).sort();
         col4Name = "LT BLUE"; col4Color = "#38BDF8"; col4Count = Object.keys({ ...rainfallSummary.severe, ...rainfallSummary.moderate }).length; col4List = Object.keys({ ...rainfallSummary.severe, ...rainfallSummary.moderate }).sort();
         col5Name = "EXPECTING"; col5Color = "#93c5fd"; col5Count = Object.keys(rainfallSummary.expected).length; col5List = Object.keys(rainfallSummary.expected).sort();
       } else {
@@ -743,15 +743,15 @@ const Alert = () => {
           <text x="25" y="38" fill="#38bdf8" font-size="13" font-weight="bold" letter-spacing="1.5" font-family="monospace">WARNING LEVEL LEGEND</text>
           <line x1="25" y1="50" x2="345" y2="50" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1" />
           
-          <rect x="25" y="68" width="22" height="22" rx="6" fill="#1e40af" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
+          <rect x="25" y="68" width="22" height="22" rx="6" fill="#ef4444" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
           <text x="60" y="84" fill="#f1f5f9" font-size="12" font-weight="bold">Red Warning (Critical)</text>
           <text x="60" y="100" fill="#94a3b8" font-size="10">Serious flooding expected. Evacuate.</text>
           
-          <rect x="25" y="120" width="22" height="22" rx="6" fill="#2563eb" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
+          <rect x="25" y="120" width="22" height="22" rx="6" fill="#f97316" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
           <text x="60" y="136" fill="#f1f5f9" font-size="12" font-weight="bold">Orange Alert (Prepare)</text>
           <text x="60" y="152" fill="#94a3b8" font-size="10">Flooding threatening. High landslide risk.</text>
           
-          <rect x="25" y="172" width="22" height="22" rx="6" fill="#3b82f6" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
+          <rect x="25" y="172" width="22" height="22" rx="6" fill="#facc15" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
           <text x="60" y="188" fill="#f1f5f9" font-size="12" font-weight="bold">Yellow Advisory (Monitor)</text>
           <text x="60" y="204" fill="#94a3b8" font-size="10">Low-lying flooding possible.</text>
           
@@ -799,23 +799,23 @@ const Alert = () => {
           
           <g transform="translate(25, 70)">
             <g>
-              <rect x="0" y="0" width="60" height="65" rx="10" fill="rgba(30, 64, 175, 0.12)" stroke="rgba(30, 64, 175, 0.25)" stroke-width="1" />
-              <text x="30" y="35" fill="#1e40af" font-size="24" font-weight="bold" text-anchor="middle">${col1Count}</text>
-              <text x="30" y="52" fill="#3b82f6" font-size="8.5" font-weight="bold" text-anchor="middle" letter-spacing="0.5">${col1Name}</text>
+              <rect x="0" y="0" width="60" height="65" rx="10" fill="rgba(239, 68, 68, 0.12)" stroke="rgba(239, 68, 68, 0.25)" stroke-width="1" />
+              <text x="30" y="35" fill="#ef4444" font-size="24" font-weight="bold" text-anchor="middle">${col1Count}</text>
+              <text x="30" y="52" fill="#ef4444" font-size="8.5" font-weight="bold" text-anchor="middle" letter-spacing="0.5">${col1Name}</text>
               <line x1="6" y1="78" x2="54" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
               ${col1ListMarkup}
             </g>
             <g transform="translate(65, 0)">
-              <rect x="0" y="0" width="60" height="65" rx="10" fill="rgba(37, 99, 235, 0.12)" stroke="rgba(37, 99, 235, 0.25)" stroke-width="1" />
-              <text x="30" y="35" fill="#2563eb" font-size="24" font-weight="bold" text-anchor="middle">${col2Count}</text>
-              <text x="30" y="52" fill="#3b82f6" font-size="8.5" font-weight="bold" text-anchor="middle" letter-spacing="0.5">${col2Name}</text>
+              <rect x="0" y="0" width="60" height="65" rx="10" fill="rgba(249, 115, 22, 0.12)" stroke="rgba(249, 115, 22, 0.25)" stroke-width="1" />
+              <text x="30" y="35" fill="#f97316" font-size="24" font-weight="bold" text-anchor="middle">${col2Count}</text>
+              <text x="30" y="52" fill="#f97316" font-size="8.5" font-weight="bold" text-anchor="middle" letter-spacing="0.5">${col2Name}</text>
               <line x1="6" y1="78" x2="54" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
               ${col2ListMarkup}
             </g>
             <g transform="translate(130, 0)">
-              <rect x="0" y="0" width="60" height="65" rx="10" fill="rgba(59, 130, 246, 0.12)" stroke="rgba(59, 130, 246, 0.25)" stroke-width="1" />
-              <text x="30" y="35" fill="#3b82f6" font-size="24" font-weight="bold" text-anchor="middle">${col3Count}</text>
-              <text x="30" y="52" fill="#60a5fa" font-size="8.5" font-weight="bold" text-anchor="middle" letter-spacing="0.5">${col3Name}</text>
+              <rect x="0" y="0" width="60" height="65" rx="10" fill="rgba(250, 204, 21, 0.12)" stroke="rgba(250, 204, 21, 0.25)" stroke-width="1" />
+              <text x="30" y="35" fill="#facc15" font-size="24" font-weight="bold" text-anchor="middle">${col3Count}</text>
+              <text x="30" y="52" fill="#facc15" font-size="8.5" font-weight="bold" text-anchor="middle" letter-spacing="0.5">${col3Name}</text>
               <line x1="6" y1="78" x2="54" y2="78" stroke="rgba(255, 255, 255, 0.08)" stroke-width="0.8" />
               ${col3ListMarkup}
             </g>
@@ -1307,24 +1307,24 @@ const Alert = () => {
           --color-sky-500: #0ea5e9;
           --color-sky-450: #38bdf8;
           --color-sky-400: #38bdf8;
-          --color-red-950: #172554;
-          --color-red-500: #1e40af;
-          --color-red-400: #3b82f6;
-          --color-orange-950: #1e3a8a;
-          --color-orange-600: #1d4ed8;
-          --color-orange-500: #2563eb;
-          --color-orange-400: #3b82f6;
-          --color-yellow-950: #172554;
-          --color-yellow-500: #3b82f6;
-          --color-yellow-450: #60a5fa;
-          --color-yellow-400: #60a5fa;
-          --color-yellow-350: #93c5fd;
-          --color-yellow-300: #93c5fd;
-          --color-purple-950: #172554;
-          --color-purple-500: #93c5fd;
-          --color-purple-400: #60a5fa;
-          --color-purple-305: #93c5fd;
-          --color-purple-300: #93c5fd;
+          --color-red-950: #450a0a;
+          --color-red-500: #ef4444;
+          --color-red-400: #f87171;
+          --color-orange-950: #431407;
+          --color-orange-600: #ea580c;
+          --color-orange-500: #f97316;
+          --color-orange-400: #fb923c;
+          --color-yellow-950: #422006;
+          --color-yellow-500: #eab308;
+          --color-yellow-450: #facc15;
+          --color-yellow-400: #facc15;
+          --color-yellow-350: #fde047;
+          --color-yellow-300: #fde047;
+          --color-purple-950: #3b0764;
+          --color-purple-500: #a855f7;
+          --color-purple-400: #c084fc;
+          --color-purple-305: #d8b4fe;
+          --color-purple-300: #d8b4fe;
           --color-amber-950: #451a03;
           --color-amber-600: #d97706;
           --color-amber-500: #f59e0b;
@@ -1542,14 +1542,14 @@ const Alert = () => {
                       borderColor = "#60a5fa";
                       fillOpacity = 0.55;
                     } else if (levelKey === "red") {
-                      fillColor = "#1e40af";
-                      borderColor = "#1d4ed8";
+                      fillColor = "#ef4444";
+                      borderColor = "#dc2626";
                     } else if (levelKey === "orange") {
-                      fillColor = "#2563eb";
-                      borderColor = "#3b82f6";
+                      fillColor = "#f97316";
+                      borderColor = "#ea580c";
                     } else if (levelKey === "yellow") {
-                      fillColor = "#3b82f6";
-                      borderColor = "#60a5fa";
+                      fillColor = "#facc15";
+                      borderColor = "#eab308";
                     } else {
                       fillColor = "#38bdf8";
                       borderColor = "#38bdf8";
@@ -1564,14 +1564,14 @@ const Alert = () => {
                       borderColor = "#fbbf24";
                       fillOpacity = 0.55;
                     } else if (levelKey === "red") {
-                      fillColor = "#1e40af";
-                      borderColor = "#1d4ed8";
+                      fillColor = "#ef4444";
+                      borderColor = "#dc2626";
                     } else if (levelKey === "orange") {
-                      fillColor = "#2563eb";
-                      borderColor = "#3b82f6";
+                      fillColor = "#f97316";
+                      borderColor = "#ea580c";
                     } else if (levelKey === "yellow") {
-                      fillColor = "#3b82f6";
-                      borderColor = "#60a5fa";
+                      fillColor = "#facc15";
+                      borderColor = "#eab308";
                     } else {
                       fillColor = "#f59e0b";
                       borderColor = "#f59e0b";
@@ -1745,7 +1745,7 @@ const Alert = () => {
                   <span className="text-slate-200">Light-Moderate Rain</span>
                 </div>
                 <div className="flex items-center gap-2.5">
-                  <span className="w-3 h-3 rounded bg-indigo-400 border border-indigo-300/50 shadow-[0_0_8px_rgba(129,140,248,0.6)] shrink-0"></span>
+                  <span className="w-3 h-3 rounded bg-blue-400 border border-blue-300/50 shadow-[0_0_8px_rgba(96,165,250,0.6)] shrink-0"></span>
                   <span className="text-slate-200">Expecting Areas</span>
                 </div>
               </>
@@ -1855,7 +1855,9 @@ const Alert = () => {
             <AlertTriangle className="w-5 h-5 text-sky-400 animate-pulse" />
             <span>Weather Advisory</span>
           </h1>
-          <p className="text-xs font-semibold text-sky-300 uppercase tracking-widest mt-1">PAGASA RAINFALL ADVISORY</p>
+          <p className={`text-xs font-semibold uppercase tracking-widest mt-1 ${mode === "rainfall" ? "text-sky-300" : "text-amber-400"}`}>
+            PAGASA {mode === "rainfall" ? "RAINFALL" : "THUNDERSTORM"} ADVISORY
+          </p>
 
           {/* Mode Sliding Controls */}
           <div className="flex rounded-xl border border-white/5 bg-slate-950/80 p-1 mt-3.5 shadow-inner w-full justify-center">
@@ -1915,11 +1917,11 @@ const Alert = () => {
                 </span>
                 <span className="text-[8.5px] text-sky-400 font-bold uppercase tracking-wider mt-0.5">Lt-Mod</span>
               </div>
-              <div className="flex flex-col items-center justify-center p-1 rounded bg-purple-500/10 border border-purple-500/20 animate-in fade-in duration-200">
-                <span className="text-xs font-mono font-black text-purple-500">
+              <div className="flex flex-col items-center justify-center p-1 rounded bg-blue-500/10 border border-blue-500/20 animate-in fade-in duration-200">
+                <span className="text-xs font-mono font-black text-blue-500">
                   {Object.keys(rainfallSummary.expected).length}
                 </span>
-                <span className="text-[8.5px] text-purple-400 font-bold uppercase tracking-wider mt-0.5">Expect</span>
+                <span className="text-[8.5px] text-blue-400 font-bold uppercase tracking-wider mt-0.5">Expect</span>
               </div>
             </>
           ) : (
@@ -1930,7 +1932,7 @@ const Alert = () => {
               </div>
               <div className="col-span-2 flex flex-col items-center justify-center p-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 animate-in fade-in duration-200">
                 <span className="text-sm font-mono font-black text-yellow-500">{thunderSummary.expected.length}</span>
-                <span className="text-[8.5px] text-yellow-450 font-bold uppercase tracking-wider mt-0.5">Expecting</span>
+                <span className="text-[8.5px] text-yellow-400 font-bold uppercase tracking-wider mt-0.5">Expecting</span>
               </div>
             </>
           )}
@@ -2079,17 +2081,17 @@ const Alert = () => {
 
               {/* Expecting Rainfall Card */}
               {Object.keys(rainfallSummary.expected).length > 0 && (
-                <div className="bg-gradient-to-br from-purple-950/20 to-slate-900/60 border border-purple-500/35 rounded-2xl overflow-hidden shadow-lg group transition-all duration-300 hover:border-purple-500/50">
-                  <div className="bg-purple-500/10 border-b border-purple-500/20 px-4 py-3 flex justify-between items-center text-white text-xs font-bold tracking-widest uppercase">
+                <div className="bg-gradient-to-br from-blue-950/20 to-slate-900/60 border border-blue-500/35 rounded-2xl overflow-hidden shadow-lg group transition-all duration-300 hover:border-blue-500/50">
+                  <div className="bg-blue-500/10 border-b border-blue-500/20 px-4 py-3 flex justify-between items-center text-white text-xs font-bold tracking-widest uppercase">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-purple-400"></span>
-                      <span className="text-purple-400 font-extrabold tracking-wider">Expecting Rainfall</span>
+                      <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                      <span className="text-blue-400 font-extrabold tracking-wider">Expecting Rainfall</span>
                     </div>
-                    <span className="text-[10px] text-purple-400 bg-purple-500/15 px-2.5 py-0.5 rounded-full font-extrabold">STANDBY</span>
+                    <span className="text-[10px] text-blue-400 bg-blue-500/15 px-2.5 py-0.5 rounded-full font-extrabold">STANDBY</span>
                   </div>
                   <div className="p-4 text-xs text-slate-400 leading-relaxed space-y-3">
                     <p className="text-slate-300 font-medium">Rain likely to develop or occur within 1-2 hours.</p>
-                    {renderAreaListDict(rainfallSummary.expected, "bg-purple-500/10 border-purple-500/30 text-purple-305", "border-purple-500/30", "Expecting Rain", "☁️")}
+                    {renderAreaListDict(rainfallSummary.expected, "bg-blue-500/10 border-blue-500/30 text-blue-300", "border-blue-500/30", "Expecting Rain", "☁️")}
                   </div>
                 </div>
               )}
@@ -2134,15 +2136,15 @@ const Alert = () => {
               {/* Expecting Thunderstorm */}
               {thunderSummary.expected.length > 0 && (
                 <div className="bg-gradient-to-br from-yellow-950/30 to-slate-900/60 border border-yellow-500/35 rounded-2xl overflow-hidden shadow-lg shadow-yellow-950/10 group transition-all duration-300 hover:border-yellow-500/50 hover:shadow-yellow-950/20">
-                  <div className="bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-3 flex justify-between items-center text-slate-950 text-xs font-black tracking-widest uppercase">
+                  <div className="bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-3 flex justify-between items-center text-white text-xs font-black tracking-widest uppercase">
                     <div className="flex items-center gap-2">
                       <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
                       </span>
-                      <span className="text-yellow-950 font-extrabold tracking-wider">Expecting Areas</span>
+                      <span className="text-yellow-450 font-extrabold tracking-wider">Expecting Areas</span>
                     </div>
-                    <span className="text-[10px] text-yellow-950 bg-yellow-500/25 px-2.5 py-0.5 rounded-full font-extrabold">DEVELOPING</span>
+                    <span className="text-[10px] text-yellow-400 bg-yellow-500/25 px-2.5 py-0.5 rounded-full font-extrabold">DEVELOPING</span>
                   </div>
                   <div className="p-4 text-xs text-slate-400 leading-relaxed space-y-3">
                     <p className="text-slate-300 font-medium">Favorable conditions for thunderstorm cells to develop or drift inside these zones within 2 hours.</p>
@@ -2166,14 +2168,14 @@ const Alert = () => {
           <div className="bg-slate-900/30 border border-white/5 rounded-2xl p-3 flex items-start gap-3">
             <div className="text-sm shrink-0">⚠️</div>
             <div>
-              <h5 className="text-slate-350 font-bold text-[10px] mb-0.5">Public Safety Precaution</h5>
-              <p className="text-[9px] text-slate-500 leading-relaxed">
+              <h5 className="text-slate-200 font-bold text-[10px] mb-0.5">Public Safety Precaution</h5>
+              <p className="text-[9px] text-slate-300 leading-relaxed">
                 Residents residing in warning/advisory sectors are instructed to check emergency supplies, monitor updates, and follow any local precaution cues.
               </p>
             </div>
           </div>
-          <div className="text-center text-[8px] text-slate-650 font-mono tracking-wider mt-1 uppercase">
-            Philippine Weather Alert System | CAP Bulletins
+          <div className="text-center text-[8px] text-slate-400 font-mono tracking-wider mt-1 uppercase">
+            Philippine Weather Alert System | PAGASA Bulletins
           </div>
         </div>
 
