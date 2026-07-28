@@ -845,8 +845,10 @@ const LiveRadar = () => {
 
       // Update the active frames list for playback only after everything is cached!
       const isInitialLoad = frames.length === 0;
+      const isNewImageAdded = !isInitialLoad && frames.length > 0 && preloadingFrames.length > 0 && 
+                              preloadingFrames[preloadingFrames.length - 1].observed_at !== frames[frames.length - 1].observed_at;
 
-      if (isInitialLoad || themeChanged || countChanged) {
+      if (isInitialLoad || themeChanged || countChanged || isNewImageAdded) {
         setFrames(preloadingFrames);
         setActiveFrameIndex(preloadingFrames.length - 1); // Default to the latest frame
       } else {
