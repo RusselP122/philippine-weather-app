@@ -485,6 +485,7 @@ const LiveRadar = () => {
   const [labelRegion, setLabelRegion] = useState("luzon");
   const prevThemeRef = useRef(colorTheme);
   const prevFrameCountRef = useRef(playbackFramesCount);
+  const initialFocusDone = useRef(false);
 
   // Dynamic Responsive Region Focusing Helper
   const focusOnRegion = (regionId) => {
@@ -529,7 +530,8 @@ const LiveRadar = () => {
 
   // Keep Luzon focus dynamic on mounting and timeline load
   useEffect(() => {
-    if (frames.length > 0 && mapContainerRef.current) {
+    if (frames.length > 0 && mapContainerRef.current && !initialFocusDone.current) {
+      initialFocusDone.current = true;
       const timer = setTimeout(() => {
         focusOnRegion("luzon");
       }, 100);
