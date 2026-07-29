@@ -1065,11 +1065,11 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
 
     # Add Sea Text Labels from Forcast.py
     ax.text(
-        118, 13, 'West Philippine\nSea', fontsize=8, color='navy', weight='bold',
+        118, 13, 'West Philippine\nSea', fontsize=5, color='navy', weight='bold',
         transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3
     )
     ax.text(
-        130, 20, 'Philippine\nSea', fontsize=10, color='navy', weight='bold',
+        130, 20, 'Philippine\nSea', fontsize=7, color='navy', weight='bold',
         transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3
     )
 
@@ -1163,7 +1163,8 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
         if not segments:
             continue
             
-        lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=2.0, alpha=0.55, transform=ccrs.PlateCarree(), zorder=4)
+        lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=1.5, alpha=0.95, 
+                            capstyle='round', joinstyle='round', transform=ccrs.PlateCarree(), zorder=4)
         lc.set_array(np.array(seg_vals))
         ax.add_collection(lc)
         plotted_members += 1
@@ -1196,7 +1197,8 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
                         seg_vals.append((w1 + w2) / 2.0)
                     
                 if segments:
-                    lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=2.5, alpha=0.9, transform=ccrs.PlateCarree(), zorder=5)
+                    lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=2.5, alpha=0.9, 
+                                        capstyle='round', joinstyle='round', transform=ccrs.PlateCarree(), zorder=5)
                     lc.set_array(np.array(seg_vals))
                     ax.add_collection(lc)
                     print(f"Plotted deterministic run (sample 0, track {t_id}) for {model_name}")
