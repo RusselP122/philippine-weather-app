@@ -29,8 +29,10 @@ from ecmwf.opendata import Client
 
 # ── Directories ────────────────────────────────────────────────────────────
 OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "precip_mslp_aifs")
+OUTPUT_OVERLAY_DIR = os.path.join(os.getcwd(), "public", "images", "precip_mslp_aifs_overlay")
 DATA_DIR = os.path.join(os.getcwd(), "public", "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(OUTPUT_OVERLAY_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ── Region ─────────────────────────────────────────────────────────────────
@@ -195,6 +197,52 @@ def plot_frame(
     plt.savefig(filepath, dpi=120, bbox_inches="tight", facecolor="white")
     print(f"  Saved {filepath}")
     plt.close()
+
+    # --- Overlay Frame (Transparent & Borderless for Leaflet) ---
+    fig_ol = plt.figure(figsize=(10, 10 * (LAT_MAX - LAT_MIN) / (LON_MAX - LON_MIN)), facecolor='none')
+    ax_ol = fig_ol.add_axes([0, 0, 1, 1], projection=ccrs.PlateCarree(), facecolor='none')
+    ax_ol.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=ccrs.PlateCarree())
+    ax_ol.set_aspect('auto')
+    ax_ol.axis('off')
+
+    # 1. Precipitation fill
+    if np.nanmax(precip_rate) > 0:
+        ax_ol.contourf(
+            X, Y, precip_rate, levels=pr_levels, cmap=pr_cmap, norm=pr_norm,
+            extend="max", transform=ccrs.PlateCarree(), zorder=2
+        )
+
+    # 2. MSLP isobars
+    if msl_data is not None:
+        msl_smooth = scipy.ndimage.gaussian_filter(msl_data, sigma=1)
+        cs_ol = ax_ol.contour(
+            X, Y, msl_smooth, levels=range(900, 1050, 4),
+            colors="black", linewidths=1.2, transform=ccrs.PlateCarree(), zorder=3
+        )
+        ax_ol.clabel(cs_ol, inline=True, fontsize=9, fmt="%d", colors="black")
+
+    # 3. Thickness
+    if thickness is not None:
+        thick_smooth = scipy.ndimage.gaussian_filter(thickness, sigma=1.5)
+        thick_levels = list(range(492, 600, 6))
+
+        ct_ol = ax_ol.contour(
+            X, Y, thick_smooth, levels=thick_levels,
+            colors="#2563eb", linewidths=0.8, linestyles="dashed",
+            transform=ccrs.PlateCarree(), zorder=3
+        )
+        ax_ol.clabel(ct_ol, inline=True, fontsize=8, fmt="%d", colors="#2563eb")
+
+        ct540_ol = ax_ol.contour(
+            X, Y, thick_smooth, levels=[540],
+            colors="#dc2626", linewidths=2.5, linestyles="solid",
+            transform=ccrs.PlateCarree(), zorder=4
+        )
+        ax_ol.clabel(ct540_ol, inline=True, fontsize=10, fmt="%d", colors="#dc2626")
+
+    filepath_ol = os.path.join(OUTPUT_OVERLAY_DIR, f"{filename_id}.png")
+    fig_ol.savefig(filepath_ol, dpi=120, transparent=True)
+    plt.close(fig_ol)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -26,8 +26,10 @@ from matplotlib.colors import ListedColormap, BoundaryNorm
 
 # ── Directories ────────────────────────────────────────────────────────────────
 OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "wind_gfs")
+OUTPUT_OVERLAY_DIR = os.path.join(os.getcwd(), "public", "images", "wind_gfs_overlay")
 DATA_DIR   = os.path.join(os.getcwd(), "public", "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(OUTPUT_OVERLAY_DIR, exist_ok=True)
 os.makedirs(DATA_DIR,   exist_ok=True)
 
 # ── Region ─────────────────────────────────────────────────────────────────────
@@ -222,6 +224,34 @@ def plot_wind_frame(sub_lons, sub_lats, ws_kph, u_ms, v_ms, msl_hpa,
     plt.savefig(out_path, dpi=120, bbox_inches="tight", facecolor="white")
     print(f"  Saved {out_path}")
     plt.close()
+
+    # --- Overlay Frame (Transparent & Borderless for Leaflet) ---
+    fig_ol = plt.figure(figsize=(10, 10 * (LAT_MAX - LAT_MIN) / (LON_MAX - LON_MIN)), facecolor='none')
+    ax_ol = fig_ol.add_axes([0, 0, 1, 1], projection=ccrs.PlateCarree(), facecolor='none')
+    ax_ol.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=ccrs.PlateCarree())
+    ax_ol.set_aspect('auto')
+    ax_ol.axis('off')
+
+    ax_ol.contourf(X, Y, ws_kph, levels=levels, cmap=cmap, norm=norm,
+                   extend="max", transform=ccrs.PlateCarree(), zorder=2)
+
+    if msl_hpa is not None:
+        msl_smooth = scipy.ndimage.gaussian_filter(msl_hpa, sigma=1)
+        cs_ol = ax_ol.contour(X, Y, msl_smooth, levels=range(900, 1040, 4),
+                              colors="black", linewidths=1.2,
+                              transform=ccrs.PlateCarree(), zorder=3)
+        ax_ol.clabel(cs_ol, inline=True, fontsize=10, fmt="%d", colors="black")
+
+    skip = 8
+    ax_ol.quiver(X[::skip, ::skip], Y[::skip, ::skip],
+                 u_ms[::skip, ::skip], v_ms[::skip, ::skip],
+                 transform=ccrs.PlateCarree(),
+                 color="black", alpha=0.35,
+                 width=0.0015, scale=400, headwidth=3, zorder=4)
+
+    filepath_ol = os.path.join(OUTPUT_OVERLAY_DIR, f"{filename_id}.png")
+    fig_ol.savefig(filepath_ol, dpi=120, transparent=True)
+    plt.close(fig_ol)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

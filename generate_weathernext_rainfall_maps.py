@@ -16,8 +16,10 @@ from datetime import datetime, timezone, timedelta
 
 # ── Directories ────────────────────────────────────────────────────────────
 OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "rainfall_weathernext")
+OUTPUT_OVERLAY_DIR = os.path.join(os.getcwd(), "public", "images", "rainfall_weathernext_overlay")
 DATA_DIR = os.path.join(os.getcwd(), "public", "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(OUTPUT_OVERLAY_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ── Region ─────────────────────────────────────────────────────────────────
@@ -133,6 +135,21 @@ def plot_rainfall(lons, lats, precip_grid, filename_id, init_dt, valid_dt_start,
     plt.savefig(filepath, dpi=120, bbox_inches="tight", facecolor="white")
     plt.close()
     print(f"  Saved {filepath}")
+
+    # --- Overlay Frame (Transparent & Borderless for Leaflet) ---
+    fig_ol = plt.figure(figsize=(10, 10 * (26 - 4) / (138 - 112)), facecolor='none')
+    ax_ol = fig_ol.add_axes([0, 0, 1, 1], projection=ccrs.PlateCarree(), facecolor='none')
+    ax_ol.set_extent([112, 138, 4, 26], crs=ccrs.PlateCarree())
+    ax_ol.set_aspect('auto')
+    ax_ol.axis('off')
+
+    if np.nanmax(precip_grid) > 0.05:
+        ax_ol.contourf(LONS, LATS, precip_grid, levels=levels, cmap=cmap, norm=norm,
+                       extend="max", transform=ccrs.PlateCarree(), zorder=2)
+
+    filepath_ol = os.path.join(OUTPUT_OVERLAY_DIR, f"{filename_id}.png")
+    fig_ol.savefig(filepath_ol, dpi=120, transparent=True)
+    plt.close(fig_ol)
 
 
 def main():

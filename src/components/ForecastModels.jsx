@@ -1,7 +1,49 @@
-import React, { useState, useEffect } from "react";
-import { Play, Pause, X, SlidersHorizontal, Video } from "lucide-react";
+import React, { useState, useEffect, useMemo } from "react";
+import { Play, Pause, X, SlidersHorizontal, Video, Layers, Map as MapIcon, Image as ImageIcon } from "lucide-react";
 import GIF from "gif.js";
 import gifWorkerUrl from "gif.js/dist/gif.worker.js?url";
+import { MapContainer, TileLayer, ImageOverlay, GeoJSON, Polyline, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+const PAR_COORDINATES = [
+    [5.0, 115.0],
+    [15.0, 115.0],
+    [21.0, 120.0],
+    [25.0, 120.0],
+    [25.0, 135.0],
+    [5.0, 135.0],
+    [5.0, 115.0]
+];
+
+const TILE_LAYERS = {
+    dark: {
+        url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>'
+    },
+    satellite: {
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attribution: "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
+    },
+    terrain: {
+        url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+        attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a>'
+    },
+    light: {
+        url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>'
+    }
+};
+
+const MapBoundsHandler = ({ bounds }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (bounds) {
+            map.fitBounds(bounds, { padding: [10, 10] });
+        }
+    }, [bounds, map]);
+    return null;
+};
 
 const ForecastModels = () => {
     const [activeParam, setActiveParam] = useState("rainfall");
@@ -20,6 +62,19 @@ const ForecastModels = () => {
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
     const [gifFps, setGifFps] = useState(2);
+    const [viewMode, setViewMode] = useState("leaflet"); // "leaflet" | "full"
+    const [tileStyle, setTileStyle] = useState("dark"); // "dark" | "satellite" | "terrain" | "light"
+    const [showProvinces, setShowProvinces] = useState(true);
+    const [showParBoundary, setShowParBoundary] = useState(true);
+    const [provinceGeoJson, setProvinceGeoJson] = useState(null);
+    const [overlayError, setOverlayError] = useState(false);
+
+    useEffect(() => {
+        fetch("/data/ph_provinces.json")
+            .then(res => res.json())
+            .then(data => setProvinceGeoJson(data))
+            .catch(err => console.error("Failed to load ph_provinces.json", err));
+    }, []);
 
     useEffect(() => {
         let url = "";
@@ -74,8 +129,8 @@ const ForecastModels = () => {
         setIsPlaying(false);
     }, [activeParam, activeModel, imageTimestamp, thunderstormRegion]);
 
-    const frames = activeParam === "thunderstorm" 
-        ? (metadata?.animation_frames?.[thunderstormRegion] || []) 
+    const frames = activeParam === "thunderstorm"
+        ? (metadata?.animation_frames?.[thunderstormRegion] || [])
         : (metadata?.animation_frames || []);
     const currentFrameName = frames[frameIndex] || "";
 
@@ -105,6 +160,28 @@ const ForecastModels = () => {
         imagePath = `/images/${folder}/${currentFrameName}.png`;
     }
 
+    let overlayPath = "";
+    if (imagePath) {
+        overlayPath = imagePath.replace(/\/images\/([^/]+)\//, "/images/$1_overlay/");
+    }
+
+    useEffect(() => {
+        setOverlayError(false);
+    }, [overlayPath]);
+
+    const mapBounds = useMemo(() => {
+        if (activeParam === "rainfall") {
+            return [[4.0, 112.0], [26.0, 138.0]];
+        }
+        if (activeParam === "thunderstorm") {
+            if (thunderstormRegion === "luzon") return [[11.5, 118.5], [20.0, 126.0]];
+            if (thunderstormRegion === "visayas") return [[8.0, 120.0], [13.5, 127.0]];
+            if (thunderstormRegion === "mindanao") return [[4.5, 118.0], [11.0, 127.5]];
+            return [[2.0, 112.0], [28.0, 140.0]];
+        }
+        return [[2.0, 112.0], [28.0, 140.0]];
+    }, [activeParam, thunderstormRegion]);
+
     let stepHours = 0;
     let dayNum = 1;
     if ((activeParam === "wind" || activeParam === "wind_gfs" || activeParam === "precip_mslp" || activeParam === "thunderstorm") && currentFrameName) {
@@ -117,10 +194,10 @@ const ForecastModels = () => {
     }
     const maxDays =
         activeParam === "thunderstorm" ? 1 :
-        activeParam === "wind_gfs" ? 16 :
-            activeParam === "wind" ? 15 :
-                activeParam === "precip_mslp" ? (activeModel === "weathernext" ? 15 : activeModel === "aifs" ? 15 : 16) :
-                    activeParam === "rainfall" ? (activeModel === "weathernext" ? 15 : 7) : 7;
+            activeParam === "wind_gfs" ? 16 :
+                activeParam === "wind" ? 15 :
+                    activeParam === "precip_mslp" ? (activeModel === "weathernext" ? 15 : activeModel === "aifs" ? 15 : 16) :
+                        activeParam === "rainfall" ? (activeModel === "weathernext" ? 15 : 7) : 7;
 
     useEffect(() => {
         let interval;
@@ -462,10 +539,132 @@ const ForecastModels = () => {
                     </span>
                 </div>
 
+                {/* Top Control Bar: View Mode, Tile Layers & Map Features */}
+                <div className="absolute top-14 lg:top-4 right-2 lg:right-4 z-20 flex flex-wrap items-center gap-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 p-1.5 rounded-xl shadow-xl text-xs text-slate-200">
+                    <div className="flex bg-slate-800 rounded-lg p-0.5 border border-slate-700">
+                        <button
+                            onClick={() => setViewMode("leaflet")}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${viewMode === "leaflet" ? "bg-cyan-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                                }`}
+                            title="Interactive Leaflet Map with Weather Data Overlay"
+                        >
+                            <MapIcon className="w-3.5 h-3.5" />
+                            <span>Map View</span>
+                        </button>
+                        <button
+                            onClick={() => setViewMode("full")}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${viewMode === "full" ? "bg-cyan-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                                }`}
+                            title="Full Frame Image View"
+                        >
+                            <ImageIcon className="w-3.5 h-3.5" />
+                            <span>Full Frame</span>
+                        </button>
+                    </div>
+
+                    {viewMode === "leaflet" && (
+                        <>
+                            <div className="h-4 w-px bg-slate-700 mx-0.5"></div>
+                            <div className="flex items-center gap-1 bg-slate-800 rounded-lg px-2 py-1 border border-slate-700">
+                                <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                                <select
+                                    value={tileStyle}
+                                    onChange={(e) => setTileStyle(e.target.value)}
+                                    className="bg-transparent text-xs font-semibold text-slate-200 outline-none cursor-pointer"
+                                >
+                                    <option value="dark" className="bg-slate-900">Dark</option>
+                                    <option value="satellite" className="bg-slate-900">Satellite</option>
+                                    <option value="terrain" className="bg-slate-900">Terrain</option>
+                                    <option value="light" className="bg-slate-900">Light</option>
+                                </select>
+                            </div>
+
+                            <button
+                                onClick={() => setShowProvinces(!showProvinces)}
+                                className={`px-2 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${showProvinces ? "bg-slate-800 border-cyan-500/50 text-cyan-400" : "bg-slate-900 border-slate-700 text-slate-500"
+                                    }`}
+                                title={showProvinces ? "Hide Province Boundaries" : "Show Province Boundaries"}
+                            >
+                                Provinces
+                            </button>
+
+                            <button
+                                onClick={() => setShowParBoundary(!showParBoundary)}
+                                className={`px-2 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${showParBoundary ? "bg-slate-800 border-red-500/50 text-red-400" : "bg-slate-900 border-slate-700 text-slate-500"
+                                    }`}
+                                title={showParBoundary ? "Hide PAR Boundary" : "Show PAR Boundary"}
+                            >
+                                PAR
+                            </button>
+                        </>
+                    )}
+                </div>
+
                 {/* Visualizer: fills to the bottom bar, starts below the mobile top bar on small screens */}
                 <div className="absolute inset-0 top-[44px] lg:top-0 bottom-16 lg:bottom-20 z-0 bg-slate-950 flex items-center justify-center overflow-hidden">
 
-                    {imagePath ? (
+                    {viewMode === "leaflet" && overlayError && (
+                        <div className="absolute top-16 lg:top-16 left-1/2 -translate-x-1/2 z-[400] bg-slate-900/95 border border-amber-500/50 px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-3 backdrop-blur-md">
+                            <div className="text-xs text-amber-200">
+                                <span className="font-semibold text-white">Transparent Overlay Pending:</span> Overlay frame not generated on server for this frame.
+                            </div>
+                            <button
+                                onClick={() => setViewMode("full")}
+                                className="px-2.5 py-1 text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors cursor-pointer shadow-md"
+                            >
+                                Switch to Full Frame
+                            </button>
+                        </div>
+                    )}
+
+                    {viewMode === "leaflet" ? (
+                        <MapContainer
+                            bounds={mapBounds}
+                            style={{ width: "100%", height: "100%", background: "#020617" }}
+                            zoomControl={true}
+                            maxBounds={[[-5, 100], [35, 150]]}
+                        >
+                            <MapBoundsHandler bounds={mapBounds} />
+                            <TileLayer
+                                url={TILE_LAYERS[tileStyle].url}
+                                attribution={TILE_LAYERS[tileStyle].attribution}
+                                maxZoom={18}
+                            />
+                            {showProvinces && provinceGeoJson && (
+                                <GeoJSON
+                                    key={`provinces-${tileStyle}`}
+                                    data={provinceGeoJson}
+                                    style={{
+                                        color: tileStyle === "satellite" ? "#38bdf8" : "#64748b",
+                                        weight: 0.8,
+                                        fillOpacity: 0,
+                                        opacity: 0.6
+                                    }}
+                                />
+                            )}
+                            {showParBoundary && (
+                                <Polyline
+                                    positions={PAR_COORDINATES}
+                                    pathOptions={{
+                                        color: "#ef4444",
+                                        weight: 2,
+                                        dashArray: "solid"
+                                    }}
+                                />
+                            )}
+                            {overlayPath && !overlayError && (
+                                <ImageOverlay
+                                    key={`${overlayPath}-${imageTimestamp}`}
+                                    url={`${overlayPath}?t=${imageTimestamp}`}
+                                    bounds={mapBounds}
+                                    opacity={0.85}
+                                    eventHandlers={{
+                                        error: () => setOverlayError(true)
+                                    }}
+                                />
+                            )}
+                        </MapContainer>
+                    ) : imagePath ? (
                         <img
                             key={`${imagePath}-${imageTimestamp}`}
                             src={`${imagePath}?t=${imageTimestamp}`}
@@ -564,11 +763,11 @@ const ForecastModels = () => {
                         <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                             <Video className="w-5 h-5 text-cyan-400" /> Export Forecast GIF
                         </h2>
-                        
+
                         <div className="space-y-4 mb-6">
                             <div>
                                 <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Start Frame</label>
-                                <select 
+                                <select
                                     value={gifStartIdx}
                                     onChange={(e) => setGifStartIdx(parseInt(e.target.value))}
                                     disabled={isExporting}
@@ -581,7 +780,7 @@ const ForecastModels = () => {
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-400 uppercase mb-1">End Frame</label>
-                                <select 
+                                <select
                                     value={gifEndIdx}
                                     onChange={(e) => setGifEndIdx(parseInt(e.target.value))}
                                     disabled={isExporting}
@@ -622,7 +821,7 @@ const ForecastModels = () => {
                                 </div>
                             </div>
                         ) : (
-                            <button 
+                            <button
                                 onClick={handleExportGif}
                                 className="w-full py-2.5 rounded-lg font-bold text-white bg-cyan-600 hover:bg-cyan-500 transition-colors shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:shadow-[0_0_20px_rgba(6,182,212,0.5)] cursor-pointer"
                             >

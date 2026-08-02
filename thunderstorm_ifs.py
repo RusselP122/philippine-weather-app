@@ -20,8 +20,10 @@ from ecmwf.opendata import Client
 
 # ── Directories ─────────────────────────────────────────────────────────────
 OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "thunderstorm_ifs")
+OUTPUT_OVERLAY_DIR = os.path.join(os.getcwd(), "public", "images", "thunderstorm_ifs_overlay")
 DATA_DIR = os.path.join(os.getcwd(), "public", "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(OUTPUT_OVERLAY_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ── Regions ─────────────────────────────────────────────────────────────────
@@ -159,6 +161,23 @@ def plot_thunderstorm_frame(lons, lats, precip_grid, region_id, filename_id,
     filepath = os.path.join(OUTPUT_DIR, f"{filename_id}.png")
     plt.savefig(filepath, dpi=120, bbox_inches="tight", facecolor="white")
     plt.close()
+
+    # --- Overlay Frame (Transparent & Borderless for Leaflet) ---
+    lon_span = bounds["lon_max"] - bounds["lon_min"]
+    lat_span = bounds["lat_max"] - bounds["lat_min"]
+    fig_ol = plt.figure(figsize=(10, 10 * lat_span / lon_span), facecolor='none')
+    ax_ol = fig_ol.add_axes([0, 0, 1, 1], projection=ccrs.PlateCarree(), facecolor='none')
+    ax_ol.set_extent([bounds["lon_min"], bounds["lon_max"], bounds["lat_min"], bounds["lat_max"]], crs=ccrs.PlateCarree())
+    ax_ol.set_aspect('auto')
+    ax_ol.axis('off')
+
+    LONS, LATS = np.meshgrid(lons, lats)
+    ax_ol.contourf(LONS, LATS, precip_grid, levels=precip_levels, cmap=p_cmap, norm=p_norm,
+                   extend="max", transform=ccrs.PlateCarree(), zorder=2)
+
+    filepath_ol = os.path.join(OUTPUT_OVERLAY_DIR, f"{filename_id}.png")
+    fig_ol.savefig(filepath_ol, dpi=120, transparent=True)
+    plt.close(fig_ol)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Main Pipeline
