@@ -39,9 +39,9 @@ TEXT_SEC     = "#7a9ab5"   # muted blue-gray secondary
 TEXT_MUT     = "#4a6a84"   # very muted for labels
 GRIDLINE     = "#1a2d3f"   # gridlines
 
-def wind_color(kt):
-    if kt >= 34: return WIND_HIGH
-    if kt >= 28: return WIND_MID
+def wind_color(kmh):
+    if kmh >= 62: return WIND_HIGH
+    if kmh >= 52: return WIND_MID
     return WIND_LOW
 
 
@@ -308,11 +308,17 @@ def get_actual_ensemble_mean_for_storm(storm, model_file_path):
         valid_pts = h_group.dropna(subset=['lat', 'lon'])
         n_active = len(valid_pts)
         if n_active >= required_support:
-            mean_rows.append({
+            row_dict = {
                 'lead_time_hours': h,
                 'lat': valid_pts['lat'].mean(),
                 'lon': valid_pts['lon'].mean()
-            })
+            }
+            if 'wind' in valid_pts.columns:
+                w_mean = valid_pts['wind'].mean()
+                row_dict['wind'] = w_mean
+            if 'pressure' in valid_pts.columns:
+                row_dict['pressure'] = valid_pts['pressure'].mean()
+            mean_rows.append(row_dict)
 
     mean_track = pd.DataFrame(mean_rows)
     if not mean_track.empty:
@@ -389,7 +395,10 @@ def get_fnv3_paired_mean_track(storm, data_dir='public/data'):
                 
         if best_tid is not None:
             matched = paired_df[paired_df['track_id'] == best_tid].sort_values('lead_time_hours')
-            res = matched[['lead_time_hours', 'lat', 'lon']].dropna(subset=['lat', 'lon'])
+            cols_to_keep = ['lead_time_hours', 'lat', 'lon']
+            if 'wind' in matched.columns: cols_to_keep.append('wind')
+            if 'pressure' in matched.columns: cols_to_keep.append('pressure')
+            res = matched[cols_to_keep].dropna(subset=['lat', 'lon'])
             if not res.empty:
                 print(f"Found official FNV3p2 paired mean track for {short_id} in {os.path.basename(fpath)} (dist: {best_dist:.1f}km)")
                 return res
@@ -455,7 +464,10 @@ def get_aigefs_aimn_mean_track(storm, data_dir='public/data'):
                 
         if best_tid is not None:
             matched = aimn_df[aimn_df['track_id'] == best_tid].sort_values('lead_time_hours')
-            res = matched[['lead_time_hours', 'lat', 'lon']].dropna(subset=['lat', 'lon'])
+            cols_to_keep = ['lead_time_hours', 'lat', 'lon']
+            if 'wind' in matched.columns: cols_to_keep.append('wind')
+            if 'pressure' in matched.columns: cols_to_keep.append('pressure')
+            res = matched[cols_to_keep].dropna(subset=['lat', 'lon'])
             if not res.empty:
                 print(f"Found official AIGEFS aimn mean track for {short_id} in {os.path.basename(fpath)} (dist: {best_dist:.1f}km)")
                 return res
@@ -484,7 +496,15 @@ def get_aigefs_aimn_mean_track(storm, data_dir='public/data'):
                                 h = int(tau)
                             except ValueError:
                                 h = 0
-                            rows.append({'track_id': f"{b}{cy}", 'lead_time_hours': h, 'lat': la, 'lon': lo})
+                            row_data = {'track_id': f"{b}{cy}", 'lead_time_hours': h, 'lat': la, 'lon': lo}
+                            # ATCF fields: parts[8] = wind (kt), parts[9] = pressure (hPa)
+                            if len(parts) > 8 and parts[8].strip():
+                                try: row_data['wind'] = float(parts[8])
+                                except ValueError: pass
+                            if len(parts) > 9 and parts[9].strip():
+                                try: row_data['pressure'] = float(parts[9])
+                                except ValueError: pass
+                            rows.append(row_data)
                             
                     if rows:
                         live_df = pd.DataFrame(rows)
@@ -496,7 +516,11 @@ def get_aigefs_aimn_mean_track(storm, data_dir='public/data'):
                             d_km = haversine_km(first_row['lat'], first_row['lon'], curr_lat, curr_lon)
                             if d_km <= 250.0:
                                 print(f"Successfully fetched live NOAA AIGEFS aimn mean track for {short_id} (dist: {d_km:.1f}km)")
-                                return t_df[['lead_time_hours', 'lat', 'lon']]
+                                cols_ret = ['lead_time_hours', 'lat', 'lon']
+                                if 'wind' in t_df.columns: cols_ret.append('wind')
+                                if 'pressure' in t_df.columns: cols_ret.append('pressure')
+                                ret_df = t_df[cols_ret].copy()
+                                return ret_df
                 except Exception:
                     continue
     except Exception:
@@ -625,7 +649,10 @@ def get_ecmwf_control_or_paired_track(storm, fpath):
             
     if best_tid is not None:
         matched = ctrl_df[ctrl_df['track_id'] == best_tid].sort_values('lead_time_hours')
-        res = matched[['lead_time_hours', 'lat', 'lon']].dropna(subset=['lat', 'lon'])
+        cols_to_keep = ['lead_time_hours', 'lat', 'lon']
+        if 'wind' in matched.columns: cols_to_keep.append('wind')
+        if 'pressure' in matched.columns: cols_to_keep.append('pressure')
+        res = matched[cols_to_keep].dropna(subset=['lat', 'lon'])
         if not res.empty:
             print(f"Found official ECMWF control/paired track for {short_id} in {os.path.basename(fpath)} (dist: {best_dist:.1f}km)")
             return res
@@ -691,10 +718,13 @@ def load_all_actual_tracks_for_storm(storm):
 
 def get_jtwc_official_track(storm, data_dir='public/data'):
     """
-    Fetches official JTWC forecast track for Western Pacific storms from NOAA ATCF / Navy JTWC endpoints:
-    - https://ftp.nhc.noaa.gov/atcf/aid_public/bwp{short_id}{year}.dat (OFCL tech track)
-    - Navy JTWC text/KMZ forecast files for Western Pacific (https://www.metoc.navy.mil/jtwc/products/)
-    If no official JTWC forecast track exists, returns an empty DataFrame (no fallback track display).
+    Fetches official JTWC forecast track for Western Pacific storms from Navy JTWC .tcw files:
+    - https://www.metoc.navy.mil/jtwc/products/wp{num}{year_short}.tcw
+    The .tcw file contains structured forecast lines like:
+        T000 236N 1509E 110
+        T012 243N 1483E 100
+    Format: T{hours} {lat}{N/S} {lon}{E/W} {wind_kt}
+    If no official JTWC forecast track exists, returns an empty DataFrame.
     """
     raw_id = str(storm['atcf_id']).replace('.', '').upper()
     short_id = get_short_atcf_id(raw_id)
@@ -706,25 +736,27 @@ def get_jtwc_official_track(storm, data_dir='public/data'):
     num_str, basin_letter = m.group(1), m.group(2)
     if basin_letter != 'W':
         return pd.DataFrame()  # Western Pacific storms only
+    
+    # Skip invests (90-99) — JTWC only issues warnings for numbered storms
+    num_val = int(num_str)
+    if num_val >= 90:
+        return pd.DataFrame()
         
     now_year = datetime.now(timezone.utc).year
     year_short = str(now_year)[-2:]
     
-    atcf_filename = f"bwp{num_str}{now_year}.dat"
-    local_path = os.path.join(data_dir, atcf_filename)
+    local_path = os.path.join(data_dir, f"jtwc_wp{num_str}{year_short}.tcw")
     
     urls_to_try = [
-        f"https://ftp.nhc.noaa.gov/atcf/aid_public/{atcf_filename}",
-        f"https://ftp.nhc.noaa.gov/atcf/aid_public/bwp{num_str}{year_short}.dat",
-        f"https://ftp.nhc.noaa.gov/atcf/fst/bwp{num_str}{now_year}.fst",
-        f"https://www.metoc.navy.mil/jtwc/products/wp{num_str}{year_short}.txt"
+        f"https://www.metoc.navy.mil/jtwc/products/wp{num_str}{year_short}.tcw",
+        f"https://www.metoc.navy.mil/jtwc/products/wp{num_str}{year_short}web.txt",
     ]
     
     content = ""
     for url in urls_to_try:
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-            with urllib.request.urlopen(req, timeout=4) as resp:
+            with urllib.request.urlopen(req, timeout=6) as resp:
                 text = resp.read().decode('utf-8', errors='ignore')
                 if text.strip():
                     content = text
@@ -743,42 +775,73 @@ def get_jtwc_official_track(storm, data_dir='public/data'):
         except Exception:
             pass
 
-    # Also check local bwp*.dat files in public/data or temp_data
-    if not content.strip():
-        cand_files = glob.glob(os.path.join(data_dir, f"*bwp*{num_str}*.dat")) + glob.glob(os.path.join('temp_data', f"*bwp*{num_str}*.dat"))
-        for cf in cand_files:
-            if os.path.exists(cf):
-                try:
-                    with open(cf, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    if content.strip():
-                        print(f"Loaded JTWC track for {short_id} from local file {cf}")
-                        break
-                except Exception:
-                    pass
-
     if not content.strip():
         return pd.DataFrame()
 
     curr_lat, curr_lon = storm['lat'], storm['lon']
     rows = []
     
-    # Parse ATCF rows for OFCL / JTWC tech tracks
+    # Method 1: Parse .tcw T-line format: "T000 236N 1509E 110 R064 ..."
     for line in content.splitlines():
         line = line.strip()
-        if not line:
-            continue
-        parts = [p.strip() for p in line.split(',')]
-        if len(parts) >= 8:
-            tech = parts[4].upper()
-            if tech in ('OFCL', 'JTWC', 'JTWI'):
-                try:
-                    tau = int(parts[5])
-                    la = parse_atcf_latlon(parts[6])
-                    lo = parse_atcf_latlon(parts[7])
-                    if not math.isnan(la) and not math.isnan(lo):
-                        rows.append({'lead_time_hours': tau, 'lat': la, 'lon': lo})
-                except (ValueError, IndexError):
+        t_match = re.match(r'^T(\d{3})\s+(\d+)([NS])\s+(\d+)([EW])\s+(\d+)', line)
+        if t_match:
+            tau = int(t_match.group(1))
+            lat_raw = float(t_match.group(2)) / 10.0
+            if t_match.group(3) == 'S':
+                lat_raw = -lat_raw
+            lon_raw = float(t_match.group(4)) / 10.0
+            if t_match.group(5) == 'W':
+                lon_raw = -lon_raw
+            wind_kt = float(t_match.group(6))
+            rows.append({
+                'lead_time_hours': tau,
+                'lat': lat_raw,
+                'lon': lon_raw,
+                'wind': wind_kt,
+            })
+    
+    # Method 2: If no T-lines found, try ATCF comma-separated format
+    if not rows:
+        for line in content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = [p.strip() for p in line.split(',')]
+            if len(parts) >= 8:
+                tech = parts[4].upper()
+                if tech in ('OFCL', 'JTWC', 'JTWI'):
+                    try:
+                        tau = int(parts[5])
+                        la = parse_atcf_latlon(parts[6])
+                        lo = parse_atcf_latlon(parts[7])
+                        if not math.isnan(la) and not math.isnan(lo):
+                            row_data = {'lead_time_hours': tau, 'lat': la, 'lon': lo}
+                            if len(parts) > 8 and parts[8].strip():
+                                try: row_data['wind'] = float(parts[8])
+                                except ValueError: pass
+                            if len(parts) > 9 and parts[9].strip():
+                                try: row_data['pressure'] = float(parts[9])
+                                except ValueError: pass
+                            rows.append(row_data)
+                    except (ValueError, IndexError):
+                        continue
+
+    # Method 3: Parse the plain-text warning for forecast positions
+    if not rows:
+        forecast_section = False
+        for line in content.splitlines():
+            line = line.strip()
+            if 'FORECAST' in line.upper() and ('POSITION' in line.upper() or 'POSIT' in line.upper()):
+                forecast_section = True
+                continue
+            if forecast_section:
+                # Match patterns like: "030000Z --- NEAR 24.8N 145.6E"  or "TAU 024 --- 24.8N 145.6E"
+                pos_match = re.search(r'(\d+)\s*(?:Z|H)?\s*---\s*(?:NEAR\s+)?(\d+\.?\d*)\s*([NS])\s+(\d+\.?\d*)\s*([EW])', line, re.IGNORECASE)
+                if pos_match:
+                    continue  # These are position-only, harder to extract tau reliably
+                wind_match = re.search(r'MAX\s+(?:SUSTAINED\s+)?WINDS?\s*[-:]\s*(\d+)\s*KT', line, re.IGNORECASE)
+                if wind_match:
                     continue
 
     if not rows:
@@ -788,9 +851,13 @@ def get_jtwc_official_track(storm, data_dir='public/data'):
     first_pt = df.iloc[0]
     dist_km = haversine_km(first_pt['lat'], first_pt['lon'], curr_lat, curr_lon)
     
-    if dist_km <= 300.0:
+    if dist_km <= 500.0:
         print(f"Matched official JTWC track for {short_id} (dist: {dist_km:.1f}km)")
-        return df[['lead_time_hours', 'lat', 'lon']]
+        cols_ret = ['lead_time_hours', 'lat', 'lon']
+        if 'wind' in df.columns: cols_ret.append('wind')
+        if 'pressure' in df.columns: cols_ret.append('pressure')
+        ret_df = df[cols_ret].copy()
+        return ret_df
         
     return pd.DataFrame()
 
@@ -882,11 +949,26 @@ def get_jma_official_track(storm, data_dir='public/data'):
                         if t0 is None:
                             t0 = dt
                         tau = (dt - t0).total_seconds() / 3600.0
-                        rows.append({'lead_time_hours': tau, 'lat': lat, 'lon': lon})
+                        row_data = {'lead_time_hours': tau, 'lat': lat, 'lon': lon}
+                        # JMA windPart.windSpeedKnot is 10-min sustained kt (JMA convention)
+                        w_part = pt.get('windPart', {}) or {}
+                        wind_kt_str = w_part.get('windSpeedKnot')
+                        if wind_kt_str is not None:
+                            try: row_data['wind'] = float(wind_kt_str)  # already 10-min kt
+                            except (ValueError, TypeError): pass
+                        # Pressure from centerPart
+                        pres_val = c_part.get('pressure')
+                        if pres_val is not None:
+                            try: row_data['pressure'] = float(pres_val)
+                            except (ValueError, TypeError): pass
+                        rows.append(row_data)
                 
                 df = pd.DataFrame(rows)
                 if not df.empty:
-                    return df[['lead_time_hours', 'lat', 'lon']]
+                    cols_ret = ['lead_time_hours', 'lat', 'lon']
+                    if 'wind' in df.columns: cols_ret.append('wind')
+                    if 'pressure' in df.columns: cols_ret.append('pressure')
+                    return df[cols_ret]
         except Exception:
             continue
             
@@ -1161,7 +1243,7 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
         hours = df['lead_time_hours'].values
         
         # Solid line without dot clutter along path
-        ax.plot(lons, lats, color=color, linestyle='-', linewidth=2.4, label=name, transform=ccrs.PlateCarree(), zorder=8)
+        ax.plot(lons, lats, color=color, linestyle='-', linewidth=1.0, label=name, transform=ccrs.PlateCarree(), zorder=8)
         
         # Forecast hour markers
         for i, (h, la, lo) in enumerate(zip(hours, lats, lons)):
@@ -1277,13 +1359,13 @@ def get_intensity_color(wind, pressure=None):
     if pd.isna(wind) or wind is None or wind <= 0:
         return '#3498DB', 'Low Pressure Area'
     wind = float(wind)
-    if wind < 34:
+    if wind <= 61:
         return '#2ECC71', 'Tropical Depression'
-    elif wind < 48:
+    elif wind <= 88:
         return '#F1C40F', 'Tropical Storm'
-    elif wind < 64:
+    elif wind <= 117:
         return '#E67E22', 'Severe Tropical Storm'
-    elif wind < 100:
+    elif wind <= 184:
         return '#A83232', 'Typhoon'
     else:
         return '#5B0E2D', 'Super Typhoon'
@@ -1314,6 +1396,7 @@ def compute_compiled_mean_track(agency_tracks, ensemble_means):
             if 'wind' in valid_pts.columns:
                 v_winds = pd.to_numeric(valid_pts['wind'], errors='coerce').dropna()
                 if not v_winds.empty:
+                    # Wind values are in raw knots from source parsers
                     row['wind'] = float(v_winds.mean())
             if 'pressure' in valid_pts.columns:
                 v_press = pd.to_numeric(valid_pts['pressure'], errors='coerce').dropna()
@@ -1322,6 +1405,12 @@ def compute_compiled_mean_track(agency_tracks, ensemble_means):
             mean_rows.append(row)
             
     mean_df = pd.DataFrame(mean_rows).sort_values('lead_time_hours')
+    if 'wind' in mean_df.columns:
+        mean_df['wind'] = mean_df['wind'].interpolate(method='linear', limit_direction='both')
+        # Convert 10-min sustained knots to km/h
+        mean_df['wind'] = mean_df['wind'] * 1.852
+    if 'pressure' in mean_df.columns:
+        mean_df['pressure'] = mean_df['pressure'].ffill().bfill()
     return mean_df
 
 
@@ -1331,8 +1420,16 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
 
     clean_id = clean_storm_id_no_dot(storm['atcf_id'])
     short_id = get_short_atcf_id(storm['atcf_id'])
-    storm_name = storm.get('name', 'INVEST').upper()
-    full_storm_title = f"{clean_id}" if 'INVEST' in clean_id or 'STORM' in clean_id else f"{storm_name} ({clean_id})"
+    storm_name = storm.get('name', '').upper()
+    
+    if storm_name and storm_name not in ["INVEST", "NONAME", "UNKNOWN", ""]:
+        full_storm_title = f"{storm_name} ({short_id})"
+    else:
+        is_invest = False
+        nums = ''.join(filter(str.isdigit, short_id))
+        if nums and int(nums) >= 90:
+            is_invest = True
+        full_storm_title = f"{short_id} INVEST" if is_invest else f"{short_id} STORM"
 
     mean_track = compute_compiled_mean_track(agency_tracks, ensemble_means)
     
@@ -1427,12 +1524,14 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             la = row['lat']
             lo = row['lon']
             w = row.get('wind')
+            wind_for_color = w if (w is not None and not pd.isna(w) and w > 0) else 46
             
             if h in [0, 24, 48, 72, 96, 120]:
-                pt_color, _ = get_intensity_color(w)
+                pt_color, _ = get_intensity_color(wind_for_color)
                 ax.scatter(lo, la, color=pt_color, edgecolor='white', linewidth=1.5, s=70, zorder=11, transform=ccrs.PlateCarree())
+                offset_y = 0.35 if (h // 24) % 2 == 0 else -0.55
                 ax.text(
-                    lo + 0.35, la + 0.35, f"T+{h}h", color='black', fontsize=9, weight='bold',
+                    lo + 0.35, la + offset_y, f"T+{h}h", color='black', fontsize=9, weight='bold',
                     transform=ccrs.PlateCarree(), zorder=12
                 )
 
@@ -1461,7 +1560,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
                 w_val = r.get('wind')
                 p_val = r.get('pressure')
                 
-                wind = int(round(w_val)) if (w_val is not None and not math.isnan(w_val) and w_val > 0) else 25
+                wind = int(round(w_val)) if (w_val is not None and not math.isnan(w_val) and w_val > 0) else 46
                 mslp = int(round(p_val)) if (p_val is not None and not math.isnan(p_val) and p_val > 0) else 1004
                 
                 time_lbl = ""
@@ -1471,7 +1570,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
                 else:
                     time_lbl = f"+{h}h"
                     
-                pt_color, _ = get_intensity_color(w_val)
+                pt_color, _ = get_intensity_color(wind)
                 
                 forecast_data.append({
                     "label": f"T+{h}h",
@@ -1512,11 +1611,11 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
 
         wind_y_min, wind_y_max = max(10, min(winds_list) - 5), max(40, max(winds_list) + 5)
         def wind_to_y(w):
-            return 0.08 + (w - wind_y_min) / max(1, (wind_y_max - wind_y_min)) * 0.22
+            return 0.08 + (w - wind_y_min) / max(1, (wind_y_max - wind_y_min)) * 0.10
 
         mslp_y_min, mslp_y_max = min(980, min(mslps_list) - 5), max(1012, max(mslps_list) + 5)
         def mslp_to_y(p):
-            return 0.08 + (mslp_y_max - p) / max(1, (mslp_y_max - mslp_y_min)) * 0.22
+            return 0.08 + (mslp_y_max - p) / max(1, (mslp_y_max - mslp_y_min)) * 0.10
 
         wx = [xfrac(i) for i in range(N)]
         wy = [wind_to_y(f["wind"]) for f in forecast_data]
@@ -1542,18 +1641,18 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             panel_ax.add_patch(card)
 
             dot_c = fc.get("dot_color", WIND_LOW)
-            panel_ax.text(cx, 0.85, fc["label"],
+            panel_ax.text(cx, 0.86, fc["label"],
                           transform=panel_ax.transAxes,
                           ha="center", va="center",
                           fontsize=7.5, fontweight="bold",
                           color=dot_c, fontfamily="monospace")
 
-            panel_ax.text(cx, 0.775, fc["date"],
+            panel_ax.text(cx, 0.79, fc["date"],
                           transform=panel_ax.transAxes,
                           ha="center", va="center",
                           fontsize=5.8, color=TEXT_SEC)
 
-            dot_y = 0.695
+            dot_y = 0.71
             panel_ax.plot(cx, dot_y,
                           transform=panel_ax.transAxes,
                           marker="o", markersize=6,
@@ -1561,30 +1660,30 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
                           markeredgecolor=PANEL_BG, markeredgewidth=1.0)
 
             pos_str = f"{fc['lat']}°N, {fc['lon']}°E"
-            panel_ax.text(cx, 0.615, pos_str,
+            panel_ax.text(cx, 0.63, pos_str,
                           transform=panel_ax.transAxes,
                           ha="center", va="center",
                           fontsize=5.5, color=TEXT_MUT)
 
-            panel_ax.axhline(0.56, color=CARD_BORDER, linewidth=0.5,
+            panel_ax.axhline(0.57, color=CARD_BORDER, linewidth=0.5,
                              xmin=x0 + 0.005, xmax=x1 - 0.005)
 
             wc = wind_color(fc["wind"])
 
-            panel_ax.text(cx, 0.49, "WIND",
+            panel_ax.text(cx, 0.51, "WIND",
                           transform=panel_ax.transAxes,
                           ha="center", va="center",
                           fontsize=4.8, color=TEXT_MUT, fontfamily="monospace")
 
-            panel_ax.text(cx, 0.40, f"{fc['wind']} kt",
+            panel_ax.text(cx, 0.42, f"{fc['wind']} km/h",
                           transform=panel_ax.transAxes,
                           ha="center", va="center",
-                          fontsize=9.5, fontweight="bold", color=wc)
+                          fontsize=8.5, fontweight="bold", color=wc)
 
             bar_x0 = x0 + cw * 0.12
             bar_x1 = x1 - cw * 0.12
             bw = bar_x1 - bar_x0
-            bar_y = 0.305
+            bar_y = 0.34
             bar_h = 0.028
 
             track = FancyBboxPatch((bar_x0, bar_y), bw, bar_h,
@@ -1593,8 +1692,8 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
                                     facecolor=GRIDLINE, edgecolor="none", zorder=2)
             panel_ax.add_patch(track)
 
-            min_w_val = min(15, min(winds_list))
-            max_w_val = max(38, max(winds_list))
+            min_w_val = min(30, min(winds_list))
+            max_w_val = max(70, max(winds_list) * 1.15)
             fill_w = bw * (fc["wind"] - min_w_val) / max(1, (max_w_val - min_w_val))
             fill_w = max(0.01, min(fill_w, bw))
             fill = FancyBboxPatch((bar_x0, bar_y), fill_w, bar_h,
@@ -1604,12 +1703,12 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
                                    alpha=0.85, zorder=3)
             panel_ax.add_patch(fill)
 
-            panel_ax.text(cx, 0.225, "MSLP",
+            panel_ax.text(cx, 0.28, "MSLP",
                           transform=panel_ax.transAxes,
                           ha="center", va="center",
                           fontsize=4.8, color=TEXT_MUT, fontfamily="monospace")
 
-            panel_ax.text(cx, 0.145, f"{fc['mslp']} hPa",
+            panel_ax.text(cx, 0.21, f"{fc['mslp']} hPa",
                           transform=panel_ax.transAxes,
                           ha="center", va="center",
                           fontsize=7.5, fontweight="bold", color=TEXT_PRI)
