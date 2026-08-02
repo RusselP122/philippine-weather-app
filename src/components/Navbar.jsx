@@ -54,6 +54,8 @@ const Navbar = () => {
       id: "ai-forecast",
       items: [
         { label: "Forecast (Ensemble)", href: "/forecast" },
+        { label: "Forecast Track Comparison", href: "/forecast-track-comparison" },
+        { label: "Unofficial Forecast Track", href: "/unofficial-forecast-track" },
         { label: "TC Positions", href: "/tc-positions" },
         { label: "Tropical Weather Outlook", href: "/outlook" }
       ]

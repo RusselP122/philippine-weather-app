@@ -13,11 +13,37 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-from shapely.geometry import shape
+from shapely.geometry import shape, Polygon
+from shapely.ops import unary_union
 import urllib.request
 from datetime import datetime, timezone, timedelta
+
+# NHC standard cone radii (nautical miles) by lead time (hours)
+LEAD_STANDARD = [0,  12,  24,  36,  48,   60,   72,   96,  120,  144]
+RADII_NM      = [0,  26,  38,  50,  59,   71,   83,  113,  146,  180]
+
+# ── Forecast Panel Palette Constants ─────────────────────────────
+PANEL_BG     = "#0f1923"   # deep navy
+CARD_BG      = "#162130"   # surface card
+CARD_BORDER  = "#1e3247"   # subtle border
+ACCENT_LINE  = "#2a78d6"   # blue — trend line
+MSLP_LINE    = "#eb6834"   # orange — pressure line
+WIND_HIGH    = "#e34948"   # red tint for high wind
+WIND_MID     = "#eda100"   # amber for moderate
+WIND_LOW     = "#1baf7a"   # green for low
+TEXT_PRI     = "#e8eef4"   # near-white primary text
+TEXT_SEC     = "#7a9ab5"   # muted blue-gray secondary
+TEXT_MUT     = "#4a6a84"   # very muted for labels
+GRIDLINE     = "#1a2d3f"   # gridlines
+
+def wind_color(kt):
+    if kt >= 34: return WIND_HIGH
+    if kt >= 28: return WIND_MID
+    return WIND_LOW
+
 
 def clean_storm_id_no_dot(raw_id):
     """
@@ -1118,7 +1144,7 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
         hours = df['lead_time_hours'].values
         
         # Solid line without dot clutter along path
-        ax.plot(lons, lats, color=color, linestyle='-', linewidth=2.6, label=name, transform=ccrs.PlateCarree(), zorder=10)
+        ax.plot(lons, lats, color=color, linestyle='-', linewidth=1.0, label=name, transform=ccrs.PlateCarree(), zorder=10)
         
         # Forecast hour markers at key lead times
         for i, (h, la, lo) in enumerate(zip(hours, lats, lons)):
@@ -1192,10 +1218,417 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
 
     os.makedirs(os.path.dirname(os.path.abspath(output_filepath)), exist_ok=True)
     
+    os.makedirs(os.path.dirname(os.path.abspath(output_filepath)), exist_ok=True)
+    
     # Save image publication quality matching plot_ensemble_spaghetti.py
     plt.savefig(output_filepath, dpi=200, bbox_inches='tight', facecolor='white')
     plt.close(fig)
     print(f"Successfully generated publication-quality forecast track plot: {output_filepath}")
+
+
+def offset_point(lat, lon, distance_km, bearing_deg):
+    R = 6371.0
+    br = math.radians(bearing_deg)
+    la1 = math.radians(lat)
+    lo1 = math.radians(lon)
+    la2 = math.asin(
+        math.sin(la1) * math.cos(distance_km / R) +
+        math.cos(la1) * math.sin(distance_km / R) * math.cos(br)
+    )
+    lo2 = lo1 + math.atan2(
+        math.sin(br) * math.sin(distance_km / R) * math.cos(la1),
+        math.cos(distance_km / R) - math.sin(la1) * math.sin(la2),
+    )
+    return math.degrees(la2), math.degrees(lo2)
+
+
+def build_cone_polygon(lats, lons, lead_times):
+    if len(lats) == 0:
+        return None
+    radii_nm_interp = np.interp(lead_times, LEAD_STANDARD, RADII_NM)
+    radii_km = radii_nm_interp * 1.852
+    if len(lats) <= 1:
+        circ_pts = []
+        radius = max(radii_km[0], 0.1)
+        for ang in range(0, 360, 10):
+            clat, clon = offset_point(lats[0], lons[0], radius, ang)
+            circ_pts.append((clon, clat))
+        return Polygon(circ_pts)
+
+    circles = []
+    for i in range(len(lats)):
+        circ_pts = []
+        radius = max(radii_km[i], 0.1)
+        for ang in range(0, 360, 10):
+            clat, clon = offset_point(lats[i], lons[i], radius, ang)
+            circ_pts.append((clon, clat))
+        circles.append(Polygon(circ_pts))
+        
+    segments = []
+    for i in range(len(circles) - 1):
+        segment = circles[i].union(circles[i+1]).convex_hull
+        segments.append(segment)
+        
+    cone_geom = unary_union(segments)
+    return cone_geom
+
+
+def get_intensity_color(wind, pressure=None):
+    if pd.isna(wind) or wind is None or wind <= 0:
+        return '#3498DB', 'Low Pressure Area'
+    wind = float(wind)
+    if wind < 34:
+        return '#2ECC71', 'Tropical Depression'
+    elif wind < 48:
+        return '#F1C40F', 'Tropical Storm'
+    elif wind < 64:
+        return '#E67E22', 'Severe Tropical Storm'
+    elif wind < 100:
+        return '#A83232', 'Typhoon'
+    else:
+        return '#5B0E2D', 'Super Typhoon'
+
+
+def compute_compiled_mean_track(agency_tracks, ensemble_means):
+    all_dfs = list(agency_tracks.values()) + list(ensemble_means.values())
+    valid_dfs = [
+        df for df in all_dfs 
+        if isinstance(df, pd.DataFrame) and not df.empty and 'lat' in df.columns and 'lon' in df.columns and 'lead_time_hours' in df.columns
+    ]
+    if not valid_dfs:
+        return pd.DataFrame()
+    combined = pd.concat(valid_dfs, ignore_index=True)
+    combined = combined.dropna(subset=['lat', 'lon', 'lead_time_hours'])
+    if combined.empty:
+        return pd.DataFrame()
+        
+    mean_rows = []
+    for tau, group in combined.groupby('lead_time_hours'):
+        valid_pts = group.dropna(subset=['lat', 'lon'])
+        if not valid_pts.empty:
+            row = {
+                'lead_time_hours': float(tau),
+                'lat': float(valid_pts['lat'].mean()),
+                'lon': float(valid_pts['lon'].mean())
+            }
+            if 'wind' in valid_pts.columns:
+                v_winds = pd.to_numeric(valid_pts['wind'], errors='coerce').dropna()
+                if not v_winds.empty:
+                    row['wind'] = float(v_winds.mean())
+            if 'pressure' in valid_pts.columns:
+                v_press = pd.to_numeric(valid_pts['pressure'], errors='coerce').dropna()
+                if not v_press.empty:
+                    row['pressure'] = float(v_press.mean())
+            mean_rows.append(row)
+            
+    mean_df = pd.DataFrame(mean_rows).sort_values('lead_time_hours')
+    return mean_df
+
+
+def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepath, init_time_str="Latest", track_inits=None):
+    if track_inits is None:
+        track_inits = {}
+
+    clean_id = clean_storm_id_no_dot(storm['atcf_id'])
+    short_id = get_short_atcf_id(storm['atcf_id'])
+    storm_name = storm.get('name', 'INVEST').upper()
+    full_storm_title = f"{clean_id}" if 'INVEST' in clean_id or 'STORM' in clean_id else f"{storm_name} ({clean_id})"
+
+    mean_track = compute_compiled_mean_track(agency_tracks, ensemble_means)
+    
+    fig = plt.figure(figsize=(12, 7.2), facecolor='white')
+    ax = fig.add_axes([0.08, 0.22, 0.88, 0.64], projection=ccrs.PlateCarree())
+    
+    ax.set_facecolor('#87CEEB')
+    ax.add_feature(cfeature.LAND, facecolor='#DEB887', edgecolor='#8B4513', linewidth=0.8, zorder=1)
+    ax.add_feature(cfeature.OCEAN, facecolor='#87CEEB', zorder=0)
+    ax.add_feature(cfeature.COASTLINE, edgecolor='#8B4513', linewidth=0.8, zorder=2)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='#654321', linewidth=0.8, zorder=2)
+
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        geojson_paths = [
+            os.path.join(script_dir, "public", "data", "ph_provinces.json"),
+            "public/data/ph_provinces.json"
+        ]
+        found_geojson = next((p for p in geojson_paths if os.path.exists(p)), None)
+        if found_geojson:
+            with open(found_geojson, 'r', encoding='utf-8') as gf:
+                geojson_data = json.load(gf)
+            prov_geoms = [shape(feature['geometry']) for feature in geojson_data['features']]
+            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#654321', linewidth=0.4, alpha=0.5, zorder=3)
+    except Exception:
+        pass
+
+    ax.text(118, 13, 'West Philippine\nSea', fontsize=5, color='navy', weight='bold',
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3)
+    ax.text(130, 20, 'Philippine\nSea', fontsize=7, color='navy', weight='bold',
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3)
+
+    par_vertices = [
+        (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
+        (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
+    ]
+    ax.add_patch(mpatches.Polygon(par_vertices, facecolor='none', edgecolor='#FF6B35', 
+                                 linestyle='-', linewidth=2.8, alpha=0.85, 
+                                 transform=ccrs.PlateCarree(), zorder=3, label='PAR'))
+    ax.text(134.5, 24.2, 'PAR', color='#FF6B35', fontsize=9.5, weight='bold', transform=ccrs.PlateCarree(), ha='right', va='top', zorder=4)
+
+    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+    gl.xlocator = plt.FixedLocator(np.arange(90, 181, 5))
+    gl.ylocator = plt.FixedLocator(np.arange(-10, 51, 5))
+    gl.xlabel_style = {'size': 9.5, 'weight': 'bold', 'color': '#475569'}
+    gl.ylabel_style = {'size': 9.5, 'weight': 'bold', 'color': '#475569'}
+    gl.top_labels = False
+    gl.right_labels = False
+
+    all_lats = [storm['lat']]
+    all_lons = [storm['lon']]
+    if not mean_track.empty:
+        all_lats.extend(mean_track['lat'].dropna().tolist())
+        all_lons.extend(mean_track['lon'].dropna().tolist())
+            
+    min_lon, max_lon = min(all_lons) - 5.0, max(all_lons) + 5.0
+    min_lat, max_lat = min(all_lats) - 4.0, max(all_lats) + 4.0
+    
+    min_lon = max(105.0, min_lon)
+    max_lon = min(155.0, max(145.0, max_lon))
+    min_lat = max(0.0, min_lat)
+    max_lat = min(40.0, max(30.0, max_lat))
+    
+    ax.set_extent([min_lon, max_lon, min_lat, max_lat], crs=ccrs.PlateCarree())
+
+    if not mean_track.empty and len(mean_track) > 0:
+        lats = mean_track['lat'].values
+        lons = mean_track['lon'].values
+        taus = mean_track['lead_time_hours'].values
+        
+        cone_geom = build_cone_polygon(lats, lons, taus)
+        if cone_geom:
+            if cone_geom.geom_type == 'Polygon':
+                geoms = [cone_geom]
+            elif cone_geom.geom_type == 'MultiPolygon':
+                geoms = list(cone_geom.geoms)
+            else:
+                geoms = []
+                
+            if geoms:
+                ax.add_geometries(
+                    geoms, crs=ccrs.PlateCarree(),
+                    facecolor='white', alpha=0.35,
+                    edgecolor='white', linestyle='-', linewidth=1.8,
+                    zorder=6, label='Cone of Uncertainty'
+                )
+
+        ax.plot(lons, lats, color='black', linestyle='-', linewidth=1.0, label='Unofficial Mean Track', transform=ccrs.PlateCarree(), zorder=10)
+        
+        for _, row in mean_track.iterrows():
+            h = int(row['lead_time_hours'])
+            la = row['lat']
+            lo = row['lon']
+            w = row.get('wind')
+            
+            if h in [0, 24, 48, 72, 96, 120]:
+                pt_color, _ = get_intensity_color(w)
+                ax.scatter(lo, la, color=pt_color, edgecolor='white', linewidth=1.5, s=70, zorder=11, transform=ccrs.PlateCarree())
+                ax.text(
+                    lo + 0.35, la + 0.35, f"T+{h}h", color='black', fontsize=9, weight='bold',
+                    transform=ccrs.PlateCarree(), zorder=12
+                )
+
+    fig.text(0.08, 0.94, f"{full_storm_title} – Unofficial Forecast Track & Cone of Uncertainty", fontsize=13, weight='bold', color='black', ha='left', va='bottom')
+    fig.text(0.08, 0.90, f"Initialized at {init_time_str} | Compiled Multi-Model & Agency Ensemble Mean", fontsize=10.5, color='#475569', ha='left', va='bottom')
+    
+    fig.text(0.96, 0.94, "Philippine Typhoon/Weather", fontsize=11, weight='bold', color='black', ha='right', va='bottom')
+    fig.text(0.96, 0.90, "Unofficial Forecast Track", fontsize=10, weight='bold', color='#475569', ha='right', va='bottom')
+
+    init_dt = None
+    if storm.get('init_time'):
+        try:
+            init_dt = datetime.strptime(str(storm['init_time']).split('.')[0], "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            try:
+                init_dt = pd.to_datetime(storm['init_time'])
+            except Exception:
+                pass
+
+    key_hours = [0, 24, 48, 72, 96, 120]
+    forecast_data = []
+    if not mean_track.empty:
+        for _, r in mean_track.iterrows():
+            h = int(r['lead_time_hours'])
+            if h in key_hours:
+                w_val = r.get('wind')
+                p_val = r.get('pressure')
+                
+                wind = int(round(w_val)) if (w_val is not None and not math.isnan(w_val) and w_val > 0) else 25
+                mslp = int(round(p_val)) if (p_val is not None and not math.isnan(p_val) and p_val > 0) else 1004
+                
+                time_lbl = ""
+                if init_dt:
+                    t_pt = init_dt + timedelta(hours=h)
+                    time_lbl = t_pt.strftime("%b %d %HZ")
+                else:
+                    time_lbl = f"+{h}h"
+                    
+                pt_color, _ = get_intensity_color(w_val)
+                
+                forecast_data.append({
+                    "label": f"T+{h}h",
+                    "date": time_lbl,
+                    "lat": round(float(r['lat']), 1),
+                    "lon": round(float(r['lon']), 1),
+                    "wind": wind,
+                    "mslp": mslp,
+                    "dot_color": pt_color
+                })
+
+    N = len(forecast_data)
+    if N > 0:
+        rect = (0.08, 0.012, 0.88, 0.185)
+        panel_ax = fig.add_axes(rect)
+        panel_ax.set_facecolor(PANEL_BG)
+        for spine in panel_ax.spines.values():
+            spine.set_visible(False)
+        panel_ax.set_xticks([])
+        panel_ax.set_yticks([])
+
+        left_margin  = 0.005
+        right_margin = 0.995
+        card_width   = (right_margin - left_margin) / N
+        card_pad     = 0.003
+
+        panel_ax.axhline(0.93, color=CARD_BORDER, linewidth=0.8, xmin=0.01, xmax=0.99)
+        panel_ax.text(0.012, 0.965, "FORECAST SUMMARY & INTENSITY DETAILS",
+                      transform=panel_ax.transAxes,
+                      fontsize=6.5, fontweight="bold", color=TEXT_SEC,
+                      fontfamily="monospace", va="center")
+
+        def xfrac(i, offset=0.5):
+            return left_margin + (i + offset) * card_width
+
+        winds_list = [f["wind"] for f in forecast_data]
+        mslps_list = [f["mslp"] for f in forecast_data]
+
+        wind_y_min, wind_y_max = max(10, min(winds_list) - 5), max(40, max(winds_list) + 5)
+        def wind_to_y(w):
+            return 0.08 + (w - wind_y_min) / max(1, (wind_y_max - wind_y_min)) * 0.22
+
+        mslp_y_min, mslp_y_max = min(980, min(mslps_list) - 5), max(1012, max(mslps_list) + 5)
+        def mslp_to_y(p):
+            return 0.08 + (mslp_y_max - p) / max(1, (mslp_y_max - mslp_y_min)) * 0.22
+
+        wx = [xfrac(i) for i in range(N)]
+        wy = [wind_to_y(f["wind"]) for f in forecast_data]
+        py = [mslp_to_y(f["mslp"]) for f in forecast_data]
+
+        panel_ax.plot(wx, wy, color=ACCENT_LINE, linewidth=1.2,
+                      alpha=0.7, zorder=3, transform=panel_ax.transAxes)
+        panel_ax.plot(wx, py, color=MSLP_LINE, linewidth=1.2,
+                      alpha=0.7, zorder=3, linestyle=(0, (4, 2)),
+                      transform=panel_ax.transAxes)
+
+        for i, fc in enumerate(forecast_data):
+            x0 = left_margin + i * card_width + card_pad
+            x1 = left_margin + (i + 1) * card_width - card_pad
+            cw = x1 - x0
+            cx = (x0 + x1) / 2
+
+            card = FancyBboxPatch((x0, 0.06), cw, 0.84,
+                                   boxstyle="round,pad=0.003",
+                                   transform=panel_ax.transAxes,
+                                   facecolor=CARD_BG, edgecolor=CARD_BORDER,
+                                   linewidth=0.6, zorder=1)
+            panel_ax.add_patch(card)
+
+            dot_c = fc.get("dot_color", WIND_LOW)
+            panel_ax.text(cx, 0.85, fc["label"],
+                          transform=panel_ax.transAxes,
+                          ha="center", va="center",
+                          fontsize=7.5, fontweight="bold",
+                          color=dot_c, fontfamily="monospace")
+
+            panel_ax.text(cx, 0.775, fc["date"],
+                          transform=panel_ax.transAxes,
+                          ha="center", va="center",
+                          fontsize=5.8, color=TEXT_SEC)
+
+            dot_y = 0.695
+            panel_ax.plot(cx, dot_y,
+                          transform=panel_ax.transAxes,
+                          marker="o", markersize=6,
+                          color=dot_c, zorder=5,
+                          markeredgecolor=PANEL_BG, markeredgewidth=1.0)
+
+            pos_str = f"{fc['lat']}°N, {fc['lon']}°E"
+            panel_ax.text(cx, 0.615, pos_str,
+                          transform=panel_ax.transAxes,
+                          ha="center", va="center",
+                          fontsize=5.5, color=TEXT_MUT)
+
+            panel_ax.axhline(0.56, color=CARD_BORDER, linewidth=0.5,
+                             xmin=x0 + 0.005, xmax=x1 - 0.005)
+
+            wc = wind_color(fc["wind"])
+
+            panel_ax.text(cx, 0.49, "WIND",
+                          transform=panel_ax.transAxes,
+                          ha="center", va="center",
+                          fontsize=4.8, color=TEXT_MUT, fontfamily="monospace")
+
+            panel_ax.text(cx, 0.40, f"{fc['wind']} kt",
+                          transform=panel_ax.transAxes,
+                          ha="center", va="center",
+                          fontsize=9.5, fontweight="bold", color=wc)
+
+            bar_x0 = x0 + cw * 0.12
+            bar_x1 = x1 - cw * 0.12
+            bw = bar_x1 - bar_x0
+            bar_y = 0.305
+            bar_h = 0.028
+
+            track = FancyBboxPatch((bar_x0, bar_y), bw, bar_h,
+                                    boxstyle="round,pad=0.001",
+                                    transform=panel_ax.transAxes,
+                                    facecolor=GRIDLINE, edgecolor="none", zorder=2)
+            panel_ax.add_patch(track)
+
+            min_w_val = min(15, min(winds_list))
+            max_w_val = max(38, max(winds_list))
+            fill_w = bw * (fc["wind"] - min_w_val) / max(1, (max_w_val - min_w_val))
+            fill_w = max(0.01, min(fill_w, bw))
+            fill = FancyBboxPatch((bar_x0, bar_y), fill_w, bar_h,
+                                   boxstyle="round,pad=0.001",
+                                   transform=panel_ax.transAxes,
+                                   facecolor=wc, edgecolor="none",
+                                   alpha=0.85, zorder=3)
+            panel_ax.add_patch(fill)
+
+            panel_ax.text(cx, 0.225, "MSLP",
+                          transform=panel_ax.transAxes,
+                          ha="center", va="center",
+                          fontsize=4.8, color=TEXT_MUT, fontfamily="monospace")
+
+            panel_ax.text(cx, 0.145, f"{fc['mslp']} hPa",
+                          transform=panel_ax.transAxes,
+                          ha="center", va="center",
+                          fontsize=7.5, fontweight="bold", color=TEXT_PRI)
+
+            panel_ax.plot(wx[i], wy[i],
+                          transform=panel_ax.transAxes,
+                          marker="o", markersize=4,
+                          color=ACCENT_LINE, zorder=6,
+                          markeredgecolor=CARD_BG, markeredgewidth=0.8)
+            panel_ax.plot(wx[i], py[i],
+                          transform=panel_ax.transAxes,
+                          marker="s", markersize=3.5,
+                          color=MSLP_LINE, zorder=6,
+                          markeredgecolor=CARD_BG, markeredgewidth=0.8)
+
+    os.makedirs(os.path.dirname(os.path.abspath(output_filepath)), exist_ok=True)
+    plt.savefig(output_filepath, dpi=200, bbox_inches='tight', facecolor='white')
+    plt.close(fig)
+    print(f"Successfully generated Philippine Typhoon/Weather unofficial forecast track plot: {output_filepath}")
 
 
 def process_and_generate_tracks(storm_id_filter=None, output_dir='public/assets'):
@@ -1229,6 +1662,7 @@ def process_and_generate_tracks(storm_id_filter=None, output_dir='public/assets'
         # Load real tracks per storm alongside model run initialization timestamps
         agency_tracks, ensemble_means, track_inits = load_all_actual_tracks_for_storm(storm)
         
+        # 1. Comparison Track Map
         filename = f"forecasttrack_{short_id}.png"
         out_filepath = os.path.join(output_dir, filename)
         
@@ -1241,6 +1675,20 @@ def process_and_generate_tracks(storm_id_filter=None, output_dir='public/assets'
             track_inits=track_inits
         )
         plotted_files.append(out_filepath)
+
+        # 2. Dedicated Unofficial Consensus Mean Track Map with Cone of Uncertainty
+        unofficial_filename = f"forecasttrack_unofficial_{short_id}.png"
+        unofficial_filepath = os.path.join(output_dir, unofficial_filename)
+        
+        plot_unofficial_forecast_track_map(
+            storm=storm,
+            agency_tracks=agency_tracks,
+            ensemble_means=ensemble_means,
+            output_filepath=unofficial_filepath,
+            init_time_str=storm.get('init_time', 'Latest'),
+            track_inits=track_inits
+        )
+        plotted_files.append(unofficial_filepath)
         
     return plotted_files
 
