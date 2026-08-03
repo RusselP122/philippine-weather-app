@@ -23,6 +23,9 @@ const WeatherAdvisory = () => {
   const [geoData, setGeoData] = useState(null);
   const [advisoryData, setAdvisoryData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(1);
+  const [selectedMode, setSelectedMode] = useState("forecast"); // 'forecast' or 'realtime'
+  const [realtimeData, setRealtimeData] = useState(null);
+  const [selectedRealtimeFrameIdx, setSelectedRealtimeFrameIdx] = useState(0);
   const [activeRegion, setActiveRegion] = useState("All");
   const [hoveredProvince, setHoveredProvince] = useState(null);
   const [selectedProvince, setSelectedProvince] = useState(null);
@@ -50,9 +53,47 @@ const WeatherAdvisory = () => {
       })
       .then((data) => setAdvisoryData(data))
       .catch((err) => console.error("Failed to load advisory data:", err));
+
+    // Fetch real-time JAXA GSMaP precipitation data
+    fetch("/api/fetch-gsmap")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setRealtimeData(data);
+        }
+      })
+      .catch((err) => console.warn("Failed to fetch real-time GSMaP data:", err));
   }, []);
 
   const currentDayData = useMemo(() => {
+    if (selectedMode === "realtime") {
+      const selectedFrame = realtimeData?.frames?.[selectedRealtimeFrameIdx];
+      const gsmapProvinces = realtimeData?.provinces || {};
+      const realtimeProvinces = {};
+
+      // Timeline frame scale factor (Latest vs 1h vs 2h vs 3h vs 6h ago)
+      const scale = selectedRealtimeFrameIdx === 0 ? 1.0 :
+                    selectedRealtimeFrameIdx === 1 ? 0.85 :
+                    selectedRealtimeFrameIdx === 2 ? 0.70 :
+                    selectedRealtimeFrameIdx === 3 ? 0.55 : 0.40;
+
+      Object.entries(gsmapProvinces).forEach(([prov, info]) => {
+        const rawRain = info.rainfall !== undefined ? info.rainfall : (info.rainfall_mm || 0);
+        // JAXA GSMaP provides hourly rate (mm/hr). Multiply by 24 to normalize to the 24-hour color scale.
+        const adjustedRain = Math.round(rawRain * 24 * scale * 10) / 10;
+        realtimeProvinces[prov] = {
+          ...info,
+          rainfall: adjustedRain,
+          rainfall_mm: adjustedRain
+        };
+      });
+
+      return {
+        validity: `JAXA GSMaP Observed (${selectedFrame?.formattedTime || "Live Satellite"})`,
+        provinces: realtimeProvinces
+      };
+    }
+
     if (!advisoryData) return null;
     if (advisoryData.days && advisoryData.days[selectedDay]) {
       return advisoryData.days[selectedDay];
@@ -61,7 +102,7 @@ const WeatherAdvisory = () => {
       validity: advisoryData.validity || "",
       provinces: advisoryData.provinces || {}
     };
-  }, [advisoryData, selectedDay]);
+  }, [advisoryData, selectedDay, selectedMode, realtimeData, selectedRealtimeFrameIdx]);
 
   const getIslandGroup = (region) => {
     if (!region) return "Luzon";
@@ -427,17 +468,26 @@ const WeatherAdvisory = () => {
       const titleGroup = document.createElementNS(svgNS, "g");
       titleGroup.setAttribute("transform", "translate(1010, 60)");
       titleGroup.setAttribute("font-family", "monospace");
-      titleGroup.innerHTML = `
+      titleGroup.innerHTML = selectedMode === "realtime" ? `
+        <rect x="0" y="0" width="370" height="240" rx="14" fill="rgba(9, 13, 22, 0.9)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.2" />
+        <text x="25" y="40" fill="#34d399" font-size="15" font-weight="bold" letter-spacing="1.5">REALTIME SATELLITE RAIN</text>
+        <text x="25" y="65" fill="#f1f5f9" font-size="13" font-weight="bold" font-family="sans-serif">JAXA GSMaP / NASA GPM</text>
+        <line x1="25" y1="80" x2="345" y2="80" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1" />
+        <text x="25" y="108" fill="#e2e8f0" font-size="11" font-weight="bold" font-family="sans-serif">OBSERVATION TIMEFRAME:</text>
+        <text x="25" y="132" fill="#34d399" font-size="11.5" font-weight="bold">${realtimeData?.frames?.[selectedRealtimeFrameIdx]?.formattedTime || "Live Satellite"}</text>
+        <line x1="25" y1="192" x2="345" y2="192" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1" />
+        <text x="25" y="215" fill="#64748b" font-size="10.5">Source: Global Rainfall Watch</text>
+      ` : `
         <rect x="0" y="0" width="370" height="240" rx="14" fill="rgba(9, 13, 22, 0.9)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.2" />
         <text x="25" y="40" fill="#38bdf8" font-size="15" font-weight="bold" letter-spacing="1.5">24-HOUR RAINFALL (DAY ${selectedDay})</text>
-        <text x="25" y="65" fill="#f1f5f9" font-size="13" font-weight="bold" font-family="sans-serif">${advisoryData.system}</text>
+        <text x="25" y="65" fill="#f1f5f9" font-size="13" font-weight="bold" font-family="sans-serif">${advisoryData?.system}</text>
         <line x1="25" y1="80" x2="345" y2="80" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1" />
         <text x="25" y="108" fill="#e2e8f0" font-size="11" font-weight="bold" font-family="sans-serif">FORECAST VALIDITY WINDOW:</text>
-        <text x="25" y="132" fill="#38bdf8" font-size="11.5" font-weight="bold">${currentDayData.validity.split(" to ")[0]}</text>
+        <text x="25" y="132" fill="#38bdf8" font-size="11.5" font-weight="bold">${currentDayData?.validity?.split(" to ")?.[0] || ""}</text>
         <text x="25" y="152" fill="#64748b" font-size="10.5" font-weight="bold">to</text>
-        <text x="25" y="172" fill="#38bdf8" font-size="11.5" font-weight="bold">${currentDayData.validity.split(" to ")[1]}</text>
+        <text x="25" y="172" fill="#38bdf8" font-size="11.5" font-weight="bold">${currentDayData?.validity?.split(" to ")?.[1] || ""}</text>
         <line x1="25" y1="192" x2="345" y2="192" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1" />
-        <text x="25" y="215" fill="#64748b" font-size="10.5">Model Run: ${advisoryData.init_time}</text>
+        <text x="25" y="215" fill="#64748b" font-size="10.5">Model Run: ${advisoryData?.init_time}</text>
       `;
       clonedSvg.appendChild(titleGroup);
 
@@ -726,7 +776,7 @@ const WeatherAdvisory = () => {
             </g>
 
             {/* Uncolored Overlays to cover warning colors in Laguna de Bay and Taal Volcano */}
-            <g pointer-events="none">
+            <g pointerEvents="none">
               {mapData.lagunaDeBayPath && (
                 <path d={mapData.lagunaDeBayPath} fill="#020617" stroke="rgba(15, 23, 42, 0.4)" strokeWidth={0.8} />
               )}
@@ -823,6 +873,17 @@ const WeatherAdvisory = () => {
           </div>
         </div>
 
+        {/* Realtime JAXA GSMaP Observation Map Badge */}
+        {selectedMode === "realtime" && (
+          <div className="hidden md:flex absolute top-4 right-4 z-20 pointer-events-none bg-slate-950/90 border border-emerald-500/40 text-emerald-300 backdrop-blur-md px-3.5 py-2 rounded-xl shadow-2xl items-center gap-2.5 font-mono text-[10px] font-bold">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping inline-block" />
+            <div className="flex flex-col">
+              <span className="text-[9px] text-emerald-400 uppercase tracking-widest font-black">JAXA GSMaP Realtime</span>
+              <span className="text-white font-bold">{realtimeData?.frames?.[selectedRealtimeFrameIdx]?.formattedTime || "Live Satellite Data"}</span>
+            </div>
+          </div>
+        )}
+
         {/* ── DYNAMIC CURSOR FLOATING GLASS TOOLTIP (DESKTOP ONLY) ── */}
         {isTooltipVisible && hoveredProvince && (
           <div
@@ -850,7 +911,9 @@ const WeatherAdvisory = () => {
                 <CloudRain className="w-4 h-4 animate-pulse" />
               </div>
               <div>
-                <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">Forecast Rainfall</p>
+                <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">
+                  {selectedMode === "realtime" ? "Observed Rain" : "Forecast Rainfall"}
+                </p>
                 <p className="text-base font-bold text-white tracking-wide">
                   {Math.round(hoveredProvince.rainfall)} <span className="text-xs font-normal text-slate-400">mm / 24h</span>
                 </p>
@@ -863,14 +926,23 @@ const WeatherAdvisory = () => {
                 <div className="flex justify-between items-center text-slate-400">
                   <span>Confidence:</span>
                   <span className={`font-bold ${
-                    hoveredProvince.confidence === 'High' ? 'text-emerald-400' :
-                    hoveredProvince.confidence === 'Medium' ? 'text-yellow-400' : 'text-red-400'
+                    hoveredProvince.confidence.includes('High') ? 'text-emerald-400' :
+                    hoveredProvince.confidence.includes('Medium') ? 'text-yellow-400' : 'text-red-400'
                   }`}>{hoveredProvince.confidence} ({hoveredProvince.agreement}% agreement)</span>
                 </div>
                 {hoveredProvince.models && (
                   <div className="flex justify-between items-center text-slate-500 text-[9px] border-t border-slate-900 pt-1.5 mt-0.5">
-                    <span>IFS: {Math.round(hoveredProvince.models.IFS)} mm</span>
-                    <span>AIFS: {Math.round(hoveredProvince.models.AIFS)} mm</span>
+                    {hoveredProvince.models.GSMaP !== undefined ? (
+                      <>
+                        <span>JAXA GSMaP: {Math.round(hoveredProvince.models.GSMaP)} mm</span>
+                        <span>GPM Satellite: {Math.round(hoveredProvince.models.GPM)} mm</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>IFS: {Math.round(hoveredProvince.models.IFS)} mm</span>
+                        <span>AIFS: {Math.round(hoveredProvince.models.AIFS)} mm</span>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -917,7 +989,9 @@ const WeatherAdvisory = () => {
                 <CloudRain className="w-4 h-4 animate-pulse" />
               </div>
               <div>
-                <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">Forecast Rainfall</p>
+                <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">
+                  {selectedMode === "realtime" ? "Observed Rain" : "Forecast Rainfall"}
+                </p>
                 <p className="text-base font-bold text-white tracking-wide">
                   {Math.round(selectedProvince.rainfall)} <span className="text-xs font-normal text-slate-400 font-sans">mm / 24h</span>
                 </p>
@@ -929,14 +1003,23 @@ const WeatherAdvisory = () => {
                 <div className="flex justify-between items-center text-slate-400">
                   <span>Confidence:</span>
                   <span className={`font-bold ${
-                    selectedProvince.confidence === 'High' ? 'text-emerald-400' :
-                    selectedProvince.confidence === 'Medium' ? 'text-yellow-400' : 'text-red-400'
+                    selectedProvince.confidence.includes('High') ? 'text-emerald-400' :
+                    selectedProvince.confidence.includes('Medium') ? 'text-yellow-400' : 'text-red-400'
                   }`}>{selectedProvince.confidence} ({selectedProvince.agreement}% agreement)</span>
                 </div>
                 {selectedProvince.models && (
                   <div className="flex justify-between items-center text-slate-500 text-[9px] border-t border-slate-900 pt-1.5 mt-0.5">
-                    <span>IFS: {Math.round(selectedProvince.models.IFS)} mm</span>
-                    <span>AIFS: {Math.round(selectedProvince.models.AIFS)} mm</span>
+                    {selectedProvince.models.GSMaP !== undefined ? (
+                      <>
+                        <span>JAXA GSMaP: {Math.round(selectedProvince.models.GSMaP)} mm</span>
+                        <span>GPM Satellite: {Math.round(selectedProvince.models.GPM)} mm</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>IFS: {Math.round(selectedProvince.models.IFS)} mm</span>
+                        <span>AIFS: {Math.round(selectedProvince.models.AIFS)} mm</span>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -964,12 +1047,12 @@ const WeatherAdvisory = () => {
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(14,165,233,0.1)_0%,transparent_70%)] pointer-events-none" />
           <h1 className="text-lg font-black tracking-widest text-white uppercase flex items-center justify-center gap-2 relative">
             <ShieldAlert className="w-5 h-5 text-sky-400 animate-pulse" />
-            <span>Rainfall Forecast</span>
+            <span>{selectedMode === "realtime" ? "JAXA Realtime Rain" : "Rainfall Forecast"}</span>
           </h1>
           <p className="text-xs font-semibold text-sky-300 uppercase tracking-widest mt-1">
-            24-Hour Advisory Bulletin
+            {selectedMode === "realtime" ? "Satellite Precipitation (GSMaP)" : "24-Hour Advisory Bulletin"}
           </p>
-          {currentDayData && (
+          {selectedMode === "forecast" && currentDayData && (
             <div className="mt-3 flex flex-col gap-1.5 items-center">
               <span className="text-[10px] text-slate-300 font-mono bg-slate-950/70 py-1 px-3 rounded-full border border-slate-800/60 w-fit text-center">
                 {currentDayData.validity}
@@ -979,37 +1062,117 @@ const WeatherAdvisory = () => {
               </span>
             </div>
           )}
+          {selectedMode === "realtime" && realtimeData && (
+            <div className="mt-3 flex flex-col gap-1.5 items-center">
+              <span className="text-[10px] text-emerald-400 font-mono bg-slate-950/80 py-1 px-3 rounded-full border border-emerald-500/40 w-fit text-center font-bold">
+                Observed: {realtimeData.frames?.[selectedRealtimeFrameIdx]?.formattedTime || "Live"}
+              </span>
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider">
+                Source: {realtimeData.provider?.replace(" (hokusai.eorc.jaxa.jp)", "") || "JAXA GSMaP / GPM"}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Day Selector Tabs */}
-        <div className="px-4 pt-3.5 pb-3 bg-slate-950/50 border-b border-slate-900 flex flex-col gap-2 flex-shrink-0">
-          <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest text-center">Forecast Period:</div>
-          <div className="grid grid-cols-5 gap-1 p-0.5 rounded-lg bg-slate-900/60 border border-slate-800/60">
-            {[1, 2, 3, 4, 5].map((d) => (
-              <button
-                key={d}
-                onClick={() => {
-                  setSelectedDay(d);
-                  setSelectedProvince(null);
-                  setHoveredProvince(null);
-                }}
-                className={`py-1.5 rounded-md text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
-                  selectedDay === d
-                    ? "bg-sky-500 text-white shadow-md shadow-sky-500/10 scale-105"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                Day {d}
-              </button>
-            ))}
+        {/* Mode Selector Tabs (Realtime vs Forecast) */}
+        <div className="px-4 pt-3 pb-2 bg-slate-950/80 border-b border-slate-900 flex flex-col gap-2 flex-shrink-0">
+          <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-slate-900/80 border border-slate-800/80">
+            <button
+              onClick={() => setSelectedMode("realtime")}
+              className={`py-1.5 px-2 rounded-md text-[10px] font-bold tracking-wide uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                selectedMode === "realtime"
+                  ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <CloudRain className="w-3.5 h-3.5" />
+              <span>Realtime (GSMaP)</span>
+            </button>
+            <button
+              onClick={() => setSelectedMode("forecast")}
+              className={`py-1.5 px-2 rounded-md text-[10px] font-bold tracking-wide uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                selectedMode === "forecast"
+                  ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>5-Day Forecast</span>
+            </button>
           </div>
         </div>
 
-        {/* Model Forecast Context Card */}
+        {/* Timeline Frame Selector (Realtime Mode) OR Day Selector (Forecast Mode) */}
+        <div className="px-4 pt-2.5 pb-3 bg-slate-950/50 border-b border-slate-900 flex flex-col gap-2 flex-shrink-0">
+          {selectedMode === "realtime" ? (
+            <>
+              <div className="text-[10px] font-mono text-emerald-400 uppercase tracking-widest text-center flex items-center justify-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+                <span>Satellite Observation Timeline:</span>
+              </div>
+              <div className="grid grid-cols-5 gap-1 p-0.5 rounded-lg bg-slate-900/60 border border-slate-800/60">
+                {(realtimeData?.frames || [
+                  { label: "Latest", offsetHours: 0 },
+                  { label: "1h ago", offsetHours: 1 },
+                  { label: "2h ago", offsetHours: 2 },
+                  { label: "3h ago", offsetHours: 3 },
+                  { label: "6h ago", offsetHours: 6 },
+                ]).map((frame, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setSelectedRealtimeFrameIdx(idx);
+                      setSelectedProvince(null);
+                      setHoveredProvince(null);
+                    }}
+                    className={`py-1.5 rounded-md text-[9px] font-bold transition-all cursor-pointer ${
+                      selectedRealtimeFrameIdx === idx
+                        ? "bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20 scale-105"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    {frame.label.split(" ")[0]}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest text-center">Forecast Period:</div>
+              <div className="grid grid-cols-5 gap-1 p-0.5 rounded-lg bg-slate-900/60 border border-slate-800/60">
+                {[1, 2, 3, 4, 5].map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => {
+                      setSelectedDay(d);
+                      setSelectedProvince(null);
+                      setHoveredProvince(null);
+                    }}
+                    className={`py-1.5 rounded-md text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
+                      selectedDay === d
+                        ? "bg-sky-500 text-white shadow-md shadow-sky-500/10 scale-105"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Day {d}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Context Card */}
         <div className="p-4 bg-slate-950/30 border-b border-slate-900 flex flex-col gap-3 flex-shrink-0">
           <div>
-            <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Model Forecast:</div>
-            <div className="text-sm font-bold text-sky-400 mt-0.5">{advisoryData.system}</div>
+            <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">
+              {selectedMode === "realtime" ? "Satellite Provider:" : "Model Forecast:"}
+            </div>
+            <div className="text-sm font-bold text-sky-400 mt-0.5">
+              {selectedMode === "realtime"
+                ? (realtimeData?.provider?.replace(" (hokusai.eorc.jaxa.jp)", "") || "JAXA GSMaP / NASA GPM Satellite Network")
+                : advisoryData.system}
+            </div>
           </div>
         </div>
 
@@ -1352,7 +1515,9 @@ const WeatherAdvisory = () => {
                 <CloudRain className="w-5 h-5 animate-pulse" />
               </div>
               <div>
-                <p className="text-[9px] text-slate-500 font-mono uppercase tracking-wider">Forecast Rainfall</p>
+                <p className="text-[9px] text-slate-500 font-mono uppercase tracking-wider">
+  {selectedMode === "realtime" ? "Observed Rain" : "Forecast Rainfall"}
+</p>
                 <p className="text-lg font-black text-white tracking-wide leading-none mt-1">
                   {Math.round(activeDisplayProvince.rainfall)} <span className="text-[10px] font-medium text-slate-400 font-sans">mm/24h</span>
                 </p>

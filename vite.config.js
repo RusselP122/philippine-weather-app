@@ -5,10 +5,37 @@ import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 
+import handler from './api/fetch-gsmap.js';
+
+function vercelApiPlugin() {
+  return {
+    name: 'vercel-api',
+    configureServer(server) {
+      server.middlewares.use('/api/fetch-gsmap', async (req, res, next) => {
+         const mockRes = {
+             setHeader: (name, value) => { res.setHeader(name, value); return mockRes; },
+             status: (code) => { res.statusCode = code; return mockRes; },
+             json: (data) => { 
+                res.setHeader('Content-Type', 'application/json'); 
+                res.end(JSON.stringify(data)); 
+             }
+         };
+         try {
+             await handler(req, mockRes);
+         } catch(e) {
+             res.statusCode = 500;
+             res.end(JSON.stringify({error: e.message}));
+         }
+      });
+    }
+  }
+}
+
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    vercelApiPlugin(),
   ],
   server: {
     proxy: {
