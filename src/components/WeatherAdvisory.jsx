@@ -54,37 +54,39 @@ const WeatherAdvisory = () => {
       .then((data) => setAdvisoryData(data))
       .catch((err) => console.error("Failed to load advisory data:", err));
 
-    // Fetch real-time JAXA GSMaP precipitation data
-    fetch("/api/fetch-gsmap")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setRealtimeData(data);
-        }
-      })
-      .catch((err) => console.warn("Failed to fetch real-time GSMaP data:", err));
+    const fetchJaxaData = () => {
+      // Fetch real-time JAXA GSMaP precipitation data
+      fetch("/api/fetch-gsmap")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setRealtimeData(data);
+          }
+        })
+        .catch((err) => console.warn("Failed to fetch real-time GSMaP data:", err));
+    };
+
+    // Initial fetch
+    fetchJaxaData();
+
+    // Auto-refresh ONLY JAXA GSMaP data every 10 minutes (600000 ms)
+    const intervalId = setInterval(fetchJaxaData, 600000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   const currentDayData = useMemo(() => {
     if (selectedMode === "realtime") {
       const selectedFrame = realtimeData?.frames?.[selectedRealtimeFrameIdx];
-      const gsmapProvinces = realtimeData?.provinces || {};
+      const gsmapProvinces = selectedFrame?.provinces || realtimeData?.provinces || {};
       const realtimeProvinces = {};
-
-      // Timeline frame scale factor (Latest vs 1h vs 2h vs 3h vs 6h ago)
-      const scale = selectedRealtimeFrameIdx === 0 ? 1.0 :
-                    selectedRealtimeFrameIdx === 1 ? 0.85 :
-                    selectedRealtimeFrameIdx === 2 ? 0.70 :
-                    selectedRealtimeFrameIdx === 3 ? 0.55 : 0.40;
 
       Object.entries(gsmapProvinces).forEach(([prov, info]) => {
         const rawRain = info.rainfall !== undefined ? info.rainfall : (info.rainfall_mm || 0);
-        // JAXA GSMaP provides hourly rate (mm/hr). Multiply by 24 to normalize to the 24-hour color scale.
-        const adjustedRain = Math.round(rawRain * 24 * scale * 10) / 10;
         realtimeProvinces[prov] = {
           ...info,
-          rainfall: adjustedRain,
-          rainfall_mm: adjustedRain
+          rainfall: rawRain,
+          rainfall_mm: rawRain
         };
       });
 
@@ -321,16 +323,34 @@ const WeatherAdvisory = () => {
     return `${b.minX.toFixed(1)} ${b.minY.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`;
   }, [mapData, activeRegion]);
 
+  
+  const getCategory = (mm) => {
+    if (selectedMode === "realtime") {
+      if (mm >= 30) return "red";
+      if (mm >= 15) return "orange";
+      if (mm >= 7.5) return "yellow";
+      if (mm >= 2.5) return "lightBlue";
+      return "normal";
+    }
+    const roundedMm = Math.round(mm);
+    if (roundedMm >= 200) return "red";
+    if (roundedMm >= 100) return "orange";
+    if (roundedMm >= 50) return "yellow";
+    if (roundedMm >= 25) return "lightBlue";
+    return "normal";
+  };
+
   // Warning metrics summary
   const warningMetrics = useMemo(() => {
     if (!currentDayData || !currentDayData.provinces) return { red: 0, orange: 0, yellow: 0, lightBlue: 0, normal: 0 };
     let red = 0, orange = 0, yellow = 0, lightBlue = 0, normal = 0;
     Object.values(currentDayData.provinces).forEach((p) => {
       const mm = Math.round(p.rainfall !== undefined ? p.rainfall : (p.rainfall_mm || 0));
-      if (mm >= 200) red++;
-      else if (mm >= 100) orange++;
-      else if (mm >= 50) yellow++;
-      else if (mm >= 25) lightBlue++;
+      const cat = getCategory(mm);
+      if (cat === "red") red++;
+      else if (cat === "orange") orange++;
+      else if (cat === "yellow") yellow++;
+      else if (cat === "lightBlue") lightBlue++;
       else normal++;
     });
     return { red, orange, yellow, lightBlue, normal };
@@ -346,10 +366,11 @@ const WeatherAdvisory = () => {
     if (currentDayData && currentDayData.provinces) {
       Object.entries(currentDayData.provinces).forEach(([name, p]) => {
         const mm = Math.round(p.rainfall !== undefined ? p.rainfall : (p.rainfall_mm || 0));
-        if (mm >= 200) red.push(name);
-        else if (mm >= 100) orange.push(name);
-        else if (mm >= 50) yellow.push(name);
-        else if (mm >= 25) lightBlue.push(name);
+        const cat = getCategory(mm);
+        if (cat === "red") red.push(name);
+        else if (cat === "orange") orange.push(name);
+        else if (cat === "yellow") yellow.push(name);
+        else if (cat === "lightBlue") lightBlue.push(name);
       });
       red.sort();
       orange.sort();
@@ -361,20 +382,27 @@ const WeatherAdvisory = () => {
   }, [currentDayData]);
 
   const getRainfallColor = (mm) => {
-    const roundedMm = Math.round(mm);
-    if (roundedMm >= 200) return "#DC2626"; // Red (Severe)
-    if (roundedMm >= 100) return "#F97316"; // Orange (Heavy)
-    if (roundedMm >= 50) return "#EAB308";  // Yellow (Moderate)
-    if (roundedMm >= 25) return "#38BDF8";  // Light Blue (Light-Moderate)
-    return "#334155"; // Default Slate
+    const cat = getCategory(mm);
+    if (cat === "red") return "#DC2626";
+    if (cat === "orange") return "#F97316";
+    if (cat === "yellow") return "#EAB308";
+    if (cat === "lightBlue") return "#38BDF8";
+    return "#334155";
   };
 
   const getAlertLevel = (mm) => {
-    const roundedMm = Math.round(mm);
-    if (roundedMm >= 200) return { title: "Severe Red Warning", style: "bg-red-500/10 text-red-400 border-red-500/25", text: "Severe flooding and widespread landslides are expected. Move to safe high grounds immediately." };
-    if (roundedMm >= 100) return { title: "Heavy Orange Alert", style: "bg-orange-500/10 text-orange-400 border-orange-500/25", text: "Flooding is highly likely. Residents near rivers and hills should prepare to evacuate." };
-    if (roundedMm >= 50) return { title: "Moderate Yellow Advisory", style: "bg-yellow-500/10 text-yellow-400 border-yellow-500/25", text: "Localized minor flooding is possible in low-lying and urban areas." };
-    if (roundedMm >= 25) return { title: "Light Blue Alert", style: "bg-sky-500/10 text-sky-400 border-sky-500/25", text: "Localized minor ponding and wet roads possible. Exercise standard caution." };
+    const cat = getCategory(mm);
+    if (selectedMode === "realtime") {
+      if (cat === "red") return { title: "Torrential Rain", style: "bg-red-500/10 text-red-400 border-red-500/25", text: "Severe torrential rainfall observed (>30 mm/hr)." };
+      if (cat === "orange") return { title: "Heavy Rain", style: "bg-orange-500/10 text-orange-400 border-orange-500/25", text: "Heavy rainfall observed (15-30 mm/hr)." };
+      if (cat === "yellow") return { title: "Moderate Rain", style: "bg-yellow-500/10 text-yellow-400 border-yellow-500/25", text: "Moderate rainfall observed (7.5-15 mm/hr)." };
+      if (cat === "lightBlue") return { title: "Light Rain", style: "bg-sky-500/10 text-sky-400 border-sky-500/25", text: "Light rainfall observed (2.5-7.5 mm/hr)." };
+      return { title: "Clear / Trace", style: "bg-slate-900/60 text-slate-400 border-slate-800/40", text: "No significant rainfall currently." };
+    }
+    if (cat === "red") return { title: "Severe Red Warning", style: "bg-red-500/10 text-red-400 border-red-500/25", text: "Severe flooding and widespread landslides are expected. Move to safe high grounds immediately." };
+    if (cat === "orange") return { title: "Heavy Orange Alert", style: "bg-orange-500/10 text-orange-400 border-orange-500/25", text: "Flooding is highly likely. Residents near rivers and hills should prepare to evacuate." };
+    if (cat === "yellow") return { title: "Moderate Yellow Advisory", style: "bg-yellow-500/10 text-yellow-400 border-yellow-500/25", text: "Localized minor flooding is possible in low-lying and urban areas." };
+    if (cat === "lightBlue") return { title: "Light Blue Alert", style: "bg-sky-500/10 text-sky-400 border-sky-500/25", text: "Localized minor ponding and wet roads possible. Exercise standard caution." };
     return { title: "No Warnings Active", style: "bg-slate-900/60 text-slate-400 border-slate-800/40", text: "Standard background levels. Scattered light rains possible." };
   };
 
@@ -500,20 +528,20 @@ const WeatherAdvisory = () => {
         <text x="25" y="38" fill="#38bdf8" font-size="13" font-weight="bold" letter-spacing="1.5" font-family="monospace">WARNING LEVEL LEGEND</text>
         <line x1="25" y1="50" x2="345" y2="50" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1" />
         <rect x="25" y="68" width="24" height="24" rx="6" fill="#DC2626" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="85" fill="#f1f5f9" font-size="13" font-weight="bold">Red Warning (200+ mm)</text>
-        <text x="62" y="102" fill="#94a3b8" font-size="10.5">Severe widespread flooding & landslides</text>
+        <text x="62" y="85" fill="#f1f5f9" font-size="13" font-weight="bold">${selectedMode === 'realtime' ? 'Torrential Rain (>30 mm/hr)' : 'Red Warning (200+ mm)'}</text>
+        <text x="62" y="102" fill="#94a3b8" font-size="10.5">${selectedMode === 'realtime' ? 'Dangerous torrential downpour' : 'Severe widespread flooding & landslides'}</text>
         <rect x="25" y="124" width="24" height="24" rx="6" fill="#F97316" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="141" fill="#f1f5f9" font-size="13" font-weight="bold">Orange Alert (100 - 200 mm)</text>
-        <text x="62" y="158" fill="#94a3b8" font-size="10.5">High risk of flooding & soil slides</text>
+        <text x="62" y="141" fill="#f1f5f9" font-size="13" font-weight="bold">${selectedMode === 'realtime' ? 'Heavy Rain (15-30 mm/hr)' : 'Orange Alert (100 - 200 mm)'}</text>
+        <text x="62" y="158" fill="#94a3b8" font-size="10.5">${selectedMode === 'realtime' ? 'High intensity rain' : 'High risk of flooding & soil slides'}</text>
         <rect x="25" y="180" width="24" height="24" rx="6" fill="#EAB308" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="197" fill="#f1f5f9" font-size="13" font-weight="bold">Yellow Advisory (50 - 100 mm)</text>
-        <text x="62" y="214" fill="#94a3b8" font-size="10.5">Localized pooling & minor flooding</text>
+        <text x="62" y="197" fill="#f1f5f9" font-size="13" font-weight="bold">${selectedMode === 'realtime' ? 'Moderate Rain (7.5-15 mm/hr)' : 'Yellow Advisory (50 - 100 mm)'}</text>
+        <text x="62" y="214" fill="#94a3b8" font-size="10.5">${selectedMode === 'realtime' ? 'Moderate steady rain' : 'Localized pooling & minor flooding'}</text>
         <rect x="25" y="236" width="24" height="24" rx="6" fill="#38BDF8" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="253" fill="#f1f5f9" font-size="13" font-weight="bold">Light Blue Alert (25 - 50 mm)</text>
-        <text x="62" y="270" fill="#94a3b8" font-size="10.5">Localized minor ponding & wet roads</text>
+        <text x="62" y="253" fill="#f1f5f9" font-size="13" font-weight="bold">${selectedMode === 'realtime' ? 'Light Rain (2.5-7.5 mm/hr)' : 'Light Blue Alert (25 - 50 mm)'}</text>
+        <text x="62" y="270" fill="#94a3b8" font-size="10.5">${selectedMode === 'realtime' ? 'Light steady rain' : 'Localized minor ponding & wet roads'}</text>
         <rect x="25" y="292" width="24" height="24" rx="6" fill="#334155" stroke="rgba(255, 255, 255, 0.2)" stroke-width="0.5" />
-        <text x="62" y="309" fill="#cbd5e1" font-size="13" font-weight="bold">Light / No Warning (&lt; 25 mm)</text>
-        <text x="62" y="326" fill="#64748b" font-size="10.5">Isolated light rains or clear skies</text>
+        <text x="62" y="309" fill="#cbd5e1" font-size="13" font-weight="bold">${selectedMode === 'realtime' ? 'Clear / Trace (< 2.5 mm/hr)' : 'Light / No Warning (< 25 mm)'}</text>
+        <text x="62" y="326" fill="#64748b" font-size="10.5">${selectedMode === 'realtime' ? 'No significant rain' : 'Isolated light rains or clear skies'}</text>
       `;
       clonedSvg.appendChild(legendGroup);
 
@@ -1206,7 +1234,7 @@ const WeatherAdvisory = () => {
           {/* Red Level */}
           <div className="bg-slate-950/40 rounded-xl overflow-hidden border border-red-950 shadow-lg group transition-all duration-300 hover:border-red-900/60">
             <div className="bg-gradient-to-r from-red-700 to-red-600 px-4 py-2 flex justify-between items-center text-white text-xs font-bold tracking-widest uppercase">
-              <span>Red Level (200+ mm)</span>
+              <span>{selectedMode === "realtime" ? "Red Level (>30 mm/hr)" : "Red Level (200+ mm)"}</span>
               {warningMetrics.red > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-slate-950 text-[10px] text-red-400 border border-red-500/35 font-bold shadow-md animate-pulse">
                   {warningMetrics.red} Prov
@@ -1259,7 +1287,7 @@ const WeatherAdvisory = () => {
                               : "bg-red-950/40 text-red-300 border-red-900/40 hover:bg-red-900/30 hover:border-red-700"
                           }`}
                         >
-                          {p} ({Math.round(rainfall)}mm)
+                          {p} ({Math.round(rainfall)}{selectedMode === "realtime" ? "mm/hr" : "mm"})
                         </button>
                       );
                     })}
@@ -1325,7 +1353,7 @@ const WeatherAdvisory = () => {
                               : "bg-orange-950/40 text-orange-300 border-orange-900/40 hover:bg-orange-900/30 hover:border-orange-700"
                           }`}
                         >
-                          {p} ({Math.round(rainfall)}mm)
+                          {p} ({Math.round(rainfall)}{selectedMode === "realtime" ? "mm/hr" : "mm"})
                         </button>
                       );
                     })}
@@ -1391,7 +1419,7 @@ const WeatherAdvisory = () => {
                               : "bg-yellow-950/30 text-yellow-300 border-yellow-900/30 hover:bg-yellow-900/20 hover:border-yellow-700"
                           }`}
                         >
-                          {p} ({Math.round(rainfall)}mm)
+                          {p} ({Math.round(rainfall)}{selectedMode === "realtime" ? "mm/hr" : "mm"})
                         </button>
                       );
                     })}
@@ -1453,7 +1481,7 @@ const WeatherAdvisory = () => {
                               : "bg-sky-950/40 text-sky-300 border-sky-900/40 hover:bg-sky-900/30 hover:border-sky-700"
                           }`}
                         >
-                          {p} ({Math.round(rainfall)}mm)
+                          {p} ({Math.round(rainfall)}{selectedMode === "realtime" ? "mm/hr" : "mm"})
                         </button>
                       );
                     })}
