@@ -19,9 +19,7 @@ from matplotlib.colors import ListedColormap, BoundaryNorm
 
 # Output directory
 OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "rainfall")
-OUTPUT_OVERLAY_DIR = os.path.join(os.getcwd(), "public", "images", "rainfall_overlay")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(OUTPUT_OVERLAY_DIR, exist_ok=True)
 
 # Philippines Bounds
 LAT_MIN, LAT_MAX = 4, 22
@@ -545,21 +543,6 @@ def plot_rainfall(lons, lats, data, filename_id, init_time=None, valid_time_star
     plt.savefig(filepath, dpi=120, bbox_inches='tight', facecolor='white', transparent=False)
     print(f"Saved {filepath}")
     plt.close()
-
-    # --- Overlay Frame (Transparent & Borderless for Leaflet) ---
-    fig_ol = plt.figure(figsize=(10, 10 * (26 - 4) / (138 - 112)), facecolor='none')
-    ax_ol = fig_ol.add_axes([0, 0, 1, 1], projection=ccrs.PlateCarree(), facecolor='none')
-    ax_ol.set_extent([112, 138, 4, 26], crs=ccrs.PlateCarree())
-    ax_ol.set_aspect('auto')
-    ax_ol.axis('off')
-
-    if np.nanmax(data) > 0:
-        ax_ol.contourf(LONS, LATS, data, levels=levels, cmap=cmap, norm=norm,
-                       extend='max', transform=ccrs.PlateCarree(), zorder=2)
-
-    filepath_ol = os.path.join(OUTPUT_OVERLAY_DIR, filename)
-    fig_ol.savefig(filepath_ol, dpi=120, transparent=True)
-    plt.close(fig_ol)
 
 def scheduler_loop():
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] --- GFS Scheduler Started ---")

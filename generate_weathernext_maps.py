@@ -233,10 +233,9 @@ def main():
         plt.close()
         
         # --- Overlay Frame (Transparent & Borderless for Leaflet) ---
-        fig_ol = plt.figure(figsize=(10, 10 * (LAT_MAX - LAT_MIN) / (LON_MAX - LON_MIN)), facecolor='none')
+        fig_ol = plt.figure(figsize=(10, 10), facecolor='none')
         ax_ol = fig_ol.add_axes([0, 0, 1, 1], projection=ccrs.PlateCarree(), facecolor='none')
         ax_ol.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=ccrs.PlateCarree())
-        ax_ol.set_aspect('auto')
         ax_ol.axis('off')
 
         # 1. Draw Precipitation rate
