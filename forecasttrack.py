@@ -968,11 +968,20 @@ def get_jma_official_track(storm, data_dir='public/data'):
                     cols_ret = ['lead_time_hours', 'lat', 'lon']
                     if 'wind' in df.columns: cols_ret.append('wind')
                     if 'pressure' in df.columns: cols_ret.append('pressure')
-                    return df[cols_ret]
+                    # Extract init time from targetDateTime or first forecast point
+                    init_str = "Latest"
+                    target_dt_str = data.get('targetDateTime', '') or data.get('reportDateTime', '')
+                    if target_dt_str:
+                        try:
+                            tdt = datetime.strptime(target_dt_str, "%Y/%m/%d %H:%M")
+                            init_str = tdt.strftime("%Y-%m-%d %HZ")
+                        except (ValueError, TypeError):
+                            pass
+                    return df[cols_ret], init_str
         except Exception:
             continue
             
-    return pd.DataFrame()
+    return pd.DataFrame(), None
 
 
 def load_all_actual_tracks_for_storm(storm):
@@ -1099,10 +1108,10 @@ def load_all_actual_tracks_for_storm(storm):
         print(f"No official JTWC track available for {storm['atcf_id']}; skipping JTWC display.")
 
     # 7. Official JMA track from Japan Meteorological Agency portal (data.jma.go.jp)
-    jma_official = get_jma_official_track(storm, data_dir)
+    jma_official, jma_init_str = get_jma_official_track(storm, data_dir)
     if not jma_official.empty:
         agency_tracks['JMA'] = jma_official
-        track_inits['JMA'] = "2026-08-02 06Z"
+        track_inits['JMA'] = jma_init_str or "Latest"
     else:
         print(f"No official JMA track available for {storm['atcf_id']}; skipping JMA display.")
             
