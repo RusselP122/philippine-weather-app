@@ -1,9 +1,6 @@
 name: Auto Post Weather Alerts to Facebook
 
 on:
-  schedule:
-    # Run every hour at the top of the hour (e.g. 1:00, 2:00, etc.)
-    - cron: '0 * * * *'
   # Allow manual trigger from the GitHub Actions tab
   workflow_dispatch:
 
