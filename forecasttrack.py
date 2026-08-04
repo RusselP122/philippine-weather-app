@@ -564,7 +564,7 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
             pass
 
     if not content.strip():
-        return pd.DataFrame()
+        return pd.DataFrame(), None
 
     curr_lat, curr_lon = storm['lat'], storm['lon']
     short_id = get_short_atcf_id(storm['atcf_id'])
@@ -598,7 +598,7 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
                 continue
 
     if not rows:
-        return pd.DataFrame()
+        return pd.DataFrame(), None
 
     df = pd.DataFrame(rows)
     first_pt = df.iloc[0]
@@ -607,9 +607,9 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
     # Accept PAGASA track if within 650 km or if storm is within Philippine Area of Responsibility
     if dist_km <= 650.0 or (115 <= curr_lon <= 135 and 5 <= curr_lat <= 25):
         print(f"Matched official PAGASA track for {short_id} (dist: {dist_km:.1f}km)")
-        return df[['lead_time_hours', 'lat', 'lon']]
+        return df[['lead_time_hours', 'lat', 'lon']], t0.strftime('%Y-%m-%d %HZ') if t0 else None
         
-    return pd.DataFrame()
+    return pd.DataFrame(), None
 
 
 def get_ecmwf_control_or_paired_track(storm, fpath):
@@ -1092,10 +1092,10 @@ def load_all_actual_tracks_for_storm(storm):
     track_inits['AIGEFS'] = "2026-08-01 18Z"
 
     # 5. Official PAGASA track from cyclone.dat (pubfiles.pagasa.dost.gov.ph)
-    pagasa_official = get_pagasa_official_track(storm, data_dir)
+    pagasa_official, pagasa_init_str = get_pagasa_official_track(storm, data_dir)
     if not pagasa_official.empty:
         agency_tracks['PAGASA'] = pagasa_official
-        track_inits['PAGASA'] = "2026-08-02 00Z"
+        track_inits['PAGASA'] = pagasa_init_str or "Latest"
     else:
         print(f"No official PAGASA track available for {storm['atcf_id']}; skipping PAGASA display.")
 
@@ -1279,33 +1279,33 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     panel_ax.add_patch(rect)
 
     # Section 1: OFFICIAL AGENCIES (Left Section)
-    panel_ax.text(0.03, 0.80, "OFFICIAL AGENCIES", color='#0284c7', fontsize=9.5, weight='bold', transform=panel_ax.transAxes)
+    panel_ax.text(0.03, 0.88, "OFFICIAL AGENCIES", color='#0284c7', fontsize=9.5, weight='bold', transform=panel_ax.transAxes)
     
-    agency_y = 0.52
+    agency_y = 0.72
     for ag_name, ag_color in agency_colors.items():
         if ag_name in agency_tracks and not agency_tracks[ag_name].empty:
             panel_ax.plot([0.03, 0.07], [agency_y, agency_y], color=ag_color, linestyle='-', linewidth=2.5, transform=panel_ax.transAxes)
-            panel_ax.text(0.085, agency_y + 0.05, ag_name, color='#0f172a', fontsize=8.5, weight='bold', transform=panel_ax.transAxes)
+            panel_ax.text(0.085, agency_y + 0.04, ag_name, color='#0f172a', fontsize=8.5, weight='bold', transform=panel_ax.transAxes)
             run_str = track_inits.get(ag_name, 'Latest')
-            panel_ax.text(0.085, agency_y - 0.15, f"Run: {run_str}", color='#64748b', fontsize=7.2, transform=panel_ax.transAxes)
-            agency_y -= 0.38
+            panel_ax.text(0.085, agency_y - 0.10, f"Run: {run_str}", color='#64748b', fontsize=7.2, transform=panel_ax.transAxes)
+            agency_y -= 0.26
 
     # Section 2: ENSEMBLE MEANS (Right Section)
-    panel_ax.text(0.48, 0.80, "ENSEMBLE MEANS", color='#9333ea', fontsize=9.5, weight='bold', transform=panel_ax.transAxes)
+    panel_ax.text(0.48, 0.88, "ENSEMBLE MEANS", color='#9333ea', fontsize=9.5, weight='bold', transform=panel_ax.transAxes)
     
     active_ensemble_items = [(name, color) for name, color in ensemble_colors.items() if name in ensemble_means and not ensemble_means[name].empty]
     for idx, (ens_name, ens_color) in enumerate(active_ensemble_items):
         if idx < 2:
             x_start, x_text = 0.48, 0.535
-            y_val = 0.52 if idx == 0 else 0.14
+            y_val = 0.72 - (idx * 0.26)
         else:
             x_start, x_text = 0.74, 0.795
-            y_val = 0.52 if idx == 2 else 0.14
+            y_val = 0.72 - ((idx - 2) * 0.26)
             
         panel_ax.plot([x_start, x_start + 0.04], [y_val, y_val], color=ens_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
-        panel_ax.text(x_text, y_val + 0.05, ens_name, color='#0f172a', fontsize=8.5, weight='bold', transform=panel_ax.transAxes)
+        panel_ax.text(x_text, y_val + 0.04, ens_name, color='#0f172a', fontsize=8.5, weight='bold', transform=panel_ax.transAxes)
         run_str = track_inits.get(ens_name, 'Latest')
-        panel_ax.text(x_text, y_val - 0.15, f"Run: {run_str}", color='#64748b', fontsize=7.2, transform=panel_ax.transAxes)
+        panel_ax.text(x_text, y_val - 0.10, f"Run: {run_str}", color='#64748b', fontsize=7.2, transform=panel_ax.transAxes)
 
     os.makedirs(os.path.dirname(os.path.abspath(output_filepath)), exist_ok=True)
     
