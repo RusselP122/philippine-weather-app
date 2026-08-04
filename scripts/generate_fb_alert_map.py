@@ -307,10 +307,7 @@ def main():
         valid_geom = group_gdf.geometry.buffer(0)
         mainland = gpd.GeoSeries([valid_geom.union_all()])
         
-        # Soft glow behind the region (Ocean texture/glow)
-        for i in range(1, 6):
-            mainland.plot(ax=ax, color='none', edgecolor='#38bdf8', linewidth=5 + i*4, alpha=0.03)
-        
+        # Soft glow behind the region removed        
         # Plot base map ONLY for this region
         group_gdf.plot(ax=ax, color=COLORS['default'], edgecolor='none', linewidth=0)
         
@@ -368,19 +365,7 @@ def main():
         # Remove axes
         ax.set_axis_off()
         
-        # Add left gradient overlay
-        import numpy as np
-        # Expand gradient to 60% to prevent warning colors bleeding under text
-        grad_ax = fig.add_axes([0, 0, 0.60, 1.0])
-        gradient = np.zeros((1, 256, 4))
-        # Navy blue: #040812 (approx 4, 8, 18)
-        gradient[:, :, 0] = 4/255.
-        gradient[:, :, 1] = 8/255.
-        gradient[:, :, 2] = 18/255.
-        # Alpha fades from 0.98 to 0
-        gradient[:, :, 3] = np.linspace(0.98, 0.0, 256)
-        grad_ax.imshow(gradient, aspect='auto', extent=(0, 1, 0, 1))
-        grad_ax.set_axis_off()
+        # Gradient overlay removed
         
         # TEXT AND LAYOUT ON THE LEFT SIDE
         # Extract weather system from message or headline
@@ -424,7 +409,8 @@ def main():
         fig.text(0.05, 0.68, latest_headline, color="#fbbf24", fontsize=20, fontweight='bold', fontfamily='sans-serif', verticalalignment='top')
         
         # Timestamp
-        timestamp = datetime.datetime.now().strftime("%I:%M %p, %d %B %Y (%A)")
+        pst = datetime.timezone(datetime.timedelta(hours=8))
+        timestamp = datetime.datetime.now(pst).strftime("%I:%M %p, %d %B %Y (%A)")
         fig.text(0.05, 0.58, "LAST UPDATED", color="#64748b", fontsize=14, fontweight='bold', fontfamily='sans-serif')
         fig.text(0.05, 0.55, timestamp, color="#cbd5e1", fontsize=18, fontweight='normal', fontfamily='sans-serif')
         
@@ -525,7 +511,7 @@ def main():
         print(f"Caption successfully saved to {caption_path}")
 
         out_path = OUTPUT_PATH.replace(".png", f"_{target_group}.png")
-        plt.savefig(out_path, facecolor=fig.get_facecolor(), bbox_inches=None, pad_inches=0.1)
+        plt.savefig(out_path, facecolor=fig.get_facecolor(), bbox_inches=None, pad_inches=0.1, dpi=300)
         print(f"Map successfully saved to {out_path}")
         plt.close(fig)
 
