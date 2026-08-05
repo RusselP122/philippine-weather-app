@@ -375,34 +375,47 @@ def main():
         alert_hdln = str(alerts[0].get('headline', 'WEATHER ADVISORY')).upper() if alerts else 'WEATHER ADVISORY'
         
         found_systems = []
-        if 'SUPER TYPHOON' in alert_msg or 'SUPER TYPHOON' in alert_hdln:
-            found_systems.append("SUPER TYPHOON")
-        elif 'TYPHOON' in alert_msg or 'TYPHOON' in alert_hdln:
-            found_systems.append("TYPHOON")
-        elif 'SEVERE TROPICAL STORM' in alert_msg or 'SEVERE TROPICAL STORM' in alert_hdln:
-            found_systems.append("SEVERE TROPICAL STORM")
-        elif 'TROPICAL STORM' in alert_msg or 'TROPICAL STORM' in alert_hdln:
-            found_systems.append("TROPICAL STORM")
-        elif 'TROPICAL DEPRESSION' in alert_msg or 'TROPICAL DEPRESSION' in alert_hdln:
-            found_systems.append("TROPICAL DEPRESSION")
-        elif 'TROPICAL CYCLONE' in alert_msg or 'TROPICAL CYCLONE' in alert_hdln:
-            found_systems.append("TROPICAL CYCLONE")
-            
-        if 'SOUTHWEST MONSOON' in alert_msg or 'SOUTHWEST MONSOON' in alert_hdln:
-            found_systems.append("SOUTHWEST MONSOON")
-        if 'LOW PRESSURE AREA' in alert_msg or 'LOW PRESSURE AREA' in alert_hdln:
-            found_systems.append("LOW PRESSURE AREA")
-        if 'NORTHEAST MONSOON' in alert_msg or 'NORTHEAST MONSOON' in alert_hdln:
-            found_systems.append("NORTHEAST MONSOON")
-        if 'SHEAR LINE' in alert_msg or 'SHEAR LINE' in alert_hdln or 'TAIL-END' in alert_msg:
-            found_systems.append("SHEAR LINE")
-        if 'INTERTROPICAL' in alert_msg or 'ITCZ' in alert_msg or 'INTERTROPICAL' in alert_hdln:
-            found_systems.append("INTERTROPICAL CONVERGENCE ZONE")
-        if 'TROUGH' in alert_msg or 'TROUGH' in alert_hdln:
-            found_systems.append("TROUGH OF LPA")
+        
+        # Try to extract the specific cyclone name using regex
+        combined_text = (alert_msg + " " + alert_hdln).upper()
+        tc_match = re.search(r'(SUPER TYPHOON|TYPHOON|SEVERE TROPICAL STORM|TROPICAL STORM|TROPICAL DEPRESSION|TROPICAL CYCLONE)\s+["\']?([A-Z-]{3,})["\']?', combined_text)
+        
+        if tc_match:
+            tc_type = tc_match.group(1).title()
+            tc_name = tc_match.group(2).upper()
+            found_systems.append(f"{tc_type} {tc_name}")
+        else:
+            if 'SUPER TYPHOON' in combined_text:
+                found_systems.append("Super Typhoon")
+            elif 'TYPHOON' in combined_text:
+                found_systems.append("Typhoon")
+            elif 'SEVERE TROPICAL STORM' in combined_text:
+                found_systems.append("Severe Tropical Storm")
+            elif 'TROPICAL STORM' in combined_text:
+                found_systems.append("Tropical Storm")
+            elif 'TROPICAL DEPRESSION' in combined_text:
+                found_systems.append("Tropical Depression")
+            elif 'TROPICAL CYCLONE' in combined_text:
+                found_systems.append("Tropical Cyclone")
+                
+        if 'SOUTHWEST MONSOON' in combined_text:
+            found_systems.append("Southwest Monsoon (Habagat)")
+        if 'LOW PRESSURE AREA' in combined_text:
+            found_systems.append("Low Pressure Area")
+        if 'NORTHEAST MONSOON' in combined_text:
+            found_systems.append("Northeast Monsoon (Amihan)")
+        if 'SHEAR LINE' in combined_text or 'TAIL-END' in combined_text:
+            found_systems.append("Shear Line")
+        if 'INTERTROPICAL' in combined_text or 'ITCZ' in combined_text:
+            found_systems.append("Intertropical Convergence Zone")
+        if 'TROUGH' in combined_text:
+            found_systems.append("Trough of LPA")
             
         if found_systems:
-            latest_headline = " / ".join(found_systems)
+            if len(found_systems) > 1:
+                latest_headline = " and ".join(found_systems)
+            else:
+                latest_headline = found_systems[0]
         else:
             sys_match = re.search(r'(?:due to|brought by|associated with)\s+(.*)', alert_hdln, re.IGNORECASE)
             if sys_match:
