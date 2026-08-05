@@ -375,6 +375,19 @@ def main():
         alert_hdln = str(alerts[0].get('headline', 'WEATHER ADVISORY')).upper() if alerts else 'WEATHER ADVISORY'
         
         found_systems = []
+        if 'SUPER TYPHOON' in alert_msg or 'SUPER TYPHOON' in alert_hdln:
+            found_systems.append("SUPER TYPHOON")
+        elif 'TYPHOON' in alert_msg or 'TYPHOON' in alert_hdln:
+            found_systems.append("TYPHOON")
+        elif 'SEVERE TROPICAL STORM' in alert_msg or 'SEVERE TROPICAL STORM' in alert_hdln:
+            found_systems.append("SEVERE TROPICAL STORM")
+        elif 'TROPICAL STORM' in alert_msg or 'TROPICAL STORM' in alert_hdln:
+            found_systems.append("TROPICAL STORM")
+        elif 'TROPICAL DEPRESSION' in alert_msg or 'TROPICAL DEPRESSION' in alert_hdln:
+            found_systems.append("TROPICAL DEPRESSION")
+        elif 'TROPICAL CYCLONE' in alert_msg or 'TROPICAL CYCLONE' in alert_hdln:
+            found_systems.append("TROPICAL CYCLONE")
+            
         if 'SOUTHWEST MONSOON' in alert_msg or 'SOUTHWEST MONSOON' in alert_hdln:
             found_systems.append("SOUTHWEST MONSOON")
         if 'LOW PRESSURE AREA' in alert_msg or 'LOW PRESSURE AREA' in alert_hdln:
@@ -437,7 +450,7 @@ def main():
             
             y_pos -= 0.06
         # Footer
-        fig.text(0.05, 0.1, "Map automatically generated from Real-Time DOST-PAGASA Data.\nAlways verify information with official sources.", color="#475569", fontsize=12, fontfamily='sans-serif')
+        fig.text(0.05, 0.1, "Data automatically generated from Real-Time DOST-PAGASA.\nAlways verify information with official sources.", color="#475569", fontsize=12, fontfamily='sans-serif')
         
         # Watermark
         logo_path = 'public/images/logo.png'
@@ -502,7 +515,7 @@ def main():
                 
                 caption_lines.append("")
         
-        caption_lines.append("Map automatically generated from Real-Time DOST-PAGASA Data.")
+        caption_lines.append("Data automatically generated from Real-Time DOST-PAGASA.")
         caption_lines.append("Always verify information with official sources.")
         
         caption_path = OUTPUT_PATH.replace(".png", f"_{target_group}.txt")
