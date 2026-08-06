@@ -24,6 +24,7 @@ const WeatherAdvisory = () => {
   const [advisoryData, setAdvisoryData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(1);
   const [selectedMode, setSelectedMode] = useState("forecast"); // 'forecast' or 'realtime'
+  const [activeHazard, setActiveHazard] = useState("Rainfall"); // 'Rainfall' or 'Wind'
   const [realtimeData, setRealtimeData] = useState(null);
   const [selectedRealtimeFrameIdx, setSelectedRealtimeFrameIdx] = useState(0);
   const [activeRegion, setActiveRegion] = useState("All");
@@ -324,6 +325,18 @@ const WeatherAdvisory = () => {
   }, [mapData, activeRegion]);
 
   
+
+  
+  
+  const getWindCategory = (kph) => {
+    const rounded = Math.round(kph);
+    if (rounded >= 118) return "red";
+    if (rounded >= 89) return "orange";
+    if (rounded >= 62) return "yellow";
+    if (rounded >= 39) return "lightBlue";
+    return "normal";
+  };
+
   const getCategory = (mm) => {
     if (selectedMode === "realtime") {
       if (mm >= 30) return "red";
@@ -345,8 +358,8 @@ const WeatherAdvisory = () => {
     if (!currentDayData || !currentDayData.provinces) return { red: 0, orange: 0, yellow: 0, lightBlue: 0, normal: 0 };
     let red = 0, orange = 0, yellow = 0, lightBlue = 0, normal = 0;
     Object.values(currentDayData.provinces).forEach((p) => {
-      const mm = Math.round(p.rainfall !== undefined ? p.rainfall : (p.rainfall_mm || 0));
-      const cat = getCategory(mm);
+      const val = activeHazard === "Wind" ? (p.wind_kph || 0) : (p.rainfall !== undefined ? p.rainfall : (p.rainfall_mm || 0));
+      const cat = activeHazard === "Wind" ? getWindCategory(val) : getCategory(val);
       if (cat === "red") red++;
       else if (cat === "orange") orange++;
       else if (cat === "yellow") yellow++;
@@ -365,8 +378,8 @@ const WeatherAdvisory = () => {
 
     if (currentDayData && currentDayData.provinces) {
       Object.entries(currentDayData.provinces).forEach(([name, p]) => {
-        const mm = Math.round(p.rainfall !== undefined ? p.rainfall : (p.rainfall_mm || 0));
-        const cat = getCategory(mm);
+        const val = activeHazard === "Wind" ? (p.wind_kph || 0) : (p.rainfall !== undefined ? p.rainfall : (p.rainfall_mm || 0));
+        const cat = activeHazard === "Wind" ? getWindCategory(val) : getCategory(val);
         if (cat === "red") red.push(name);
         else if (cat === "orange") orange.push(name);
         else if (cat === "yellow") yellow.push(name);
@@ -381,8 +394,9 @@ const WeatherAdvisory = () => {
     return { red, orange, yellow, lightBlue };
   }, [currentDayData]);
 
-  const getRainfallColor = (mm) => {
-    const cat = getCategory(mm);
+
+  const getHazardColor = (val) => {
+    const cat = activeHazard === "Wind" ? getWindCategory(val) : getCategory(val);
     if (cat === "red") return "#DC2626";
     if (cat === "orange") return "#F97316";
     if (cat === "yellow") return "#EAB308";
@@ -390,8 +404,18 @@ const WeatherAdvisory = () => {
     return "#334155";
   };
 
-  const getAlertLevel = (mm) => {
-    const cat = getCategory(mm);
+
+    const getAlertLevel = (val) => {
+    const cat = activeHazard === "Wind" ? getWindCategory(val) : getCategory(val);
+    
+    if (activeHazard === "Wind") {
+        if (cat === "red") return { title: "TYPHOON ALERT", style: "bg-red-500/10 text-red-400 border-red-500/25", text: "Extreme damage to structures expected. Evacuate if necessary." };
+        if (cat === "orange") return { title: "SEVERE TS ALERT", style: "bg-orange-500/10 text-orange-400 border-orange-500/25", text: "Significant wind damage possible. Secure loose objects." };
+        if (cat === "yellow") return { title: "TROPICAL STORM", style: "bg-yellow-500/10 text-yellow-400 border-yellow-500/25", text: "Moderate wind threat. Monitor updates closely." };
+        if (cat === "lightBlue") return { title: "DEPRESSION ALERT", style: "bg-sky-500/10 text-sky-400 border-sky-500/25", text: "Breezy conditions. Minor wind impacts possible." };
+        return { title: "NO WARNING", style: "bg-slate-900/60 text-slate-400 border-slate-800/40", text: "Standard conditions." };
+    }
+
     if (selectedMode === "realtime") {
       if (cat === "red") return { title: "Torrential Rain", style: "bg-red-500/10 text-red-400 border-red-500/25", text: "Severe torrential rainfall observed (>30 mm/hr)." };
       if (cat === "orange") return { title: "Heavy Rain", style: "bg-orange-500/10 text-orange-400 border-orange-500/25", text: "Heavy rainfall observed (15-30 mm/hr)." };
@@ -754,7 +778,8 @@ const WeatherAdvisory = () => {
                 const isHovered = hoveredProvince?.id === feature.id;
                 const isSelected = selectedProvince?.id === feature.id;
                 const isActive = isHovered || isSelected;
-                const fill = getRainfallColor(rainfall);
+                const hazardVal = activeHazard === "Wind" ? (provData.wind_kph || 0) : rainfall;
+                const fill = getHazardColor(hazardVal);
 
                 return (
                   <path
@@ -938,13 +963,26 @@ const WeatherAdvisory = () => {
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-sky-500/10 text-sky-400">
                 <CloudRain className="w-4 h-4 animate-pulse" />
               </div>
-              <div>
+                            <div>
                 <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">
-                  {selectedMode === "realtime" ? "Observed Rain" : "Forecast Rainfall"}
+                  {selectedMode === "realtime" ? "Observed Rain" : (activeHazard === "Wind" ? "Max Wind Gust" : "Forecast Rainfall")}
                 </p>
-                <p className="text-base font-bold text-white tracking-wide">
-                  {Math.round(hoveredProvince.rainfall)} <span className="text-xs font-normal text-slate-400">mm / 24h</span>
-                </p>
+                {activeHazard === "Wind" ? (
+                  <p className="text-base font-bold text-white tracking-wide mt-1">
+                    {Math.round(hoveredProvince.wind_kph || 0)} <span className="text-xs font-normal text-slate-400">kph</span>
+                  </p>
+                ) : (
+                  selectedMode === "forecast" && hoveredProvince.min_rainfall !== undefined && hoveredProvince.max_rainfall !== undefined ? (
+                    <p className="text-base font-bold text-white tracking-wide leading-tight mt-1">
+                      {Math.round(hoveredProvince.min_rainfall)} - {Math.round(hoveredProvince.max_rainfall)} <span className="text-[10px] font-medium text-slate-400 font-sans">mm/24h</span>
+                      <br /><span className="text-[9px] font-normal text-slate-400 block mt-0.5">Peak Consensus: {Math.round(hoveredProvince.rainfall)} mm</span>
+                    </p>
+                  ) : (
+                    <p className="text-base font-bold text-white tracking-wide mt-1">
+                      {Math.round(hoveredProvince.rainfall)} <span className="text-xs font-normal text-slate-400">mm / 24h</span>
+                    </p>
+                  )
+                )}
               </div>
             </div>
 
@@ -962,13 +1000,13 @@ const WeatherAdvisory = () => {
                   <div className="flex justify-between items-center text-slate-500 text-[9px] border-t border-slate-900 pt-1.5 mt-0.5">
                     {hoveredProvince.models.GSMaP !== undefined ? (
                       <>
-                        <span>JAXA GSMaP: {Math.round(hoveredProvince.models.GSMaP)} mm</span>
-                        <span>GPM Satellite: {Math.round(hoveredProvince.models.GPM)} mm</span>
+                        <span>JAXA GSMaP: {Math.round(hoveredProvince.models.GSMaP)} {activeHazard === "Wind" ? "kph" : "mm"}</span>
+                        <span>GPM Satellite: {Math.round(hoveredProvince.models.GPM)} {activeHazard === "Wind" ? "kph" : "mm"}</span>
                       </>
                     ) : (
                       <>
-                        <span>IFS: {Math.round(hoveredProvince.models.IFS)} mm</span>
-                        <span>AIFS: {Math.round(hoveredProvince.models.AIFS)} mm</span>
+                        <span>IFS: {Math.round(activeHazard === "Wind" && hoveredProvince.wind_models ? hoveredProvince.wind_models.IFS : hoveredProvince.models.IFS)} {activeHazard === "Wind" ? "kph" : "mm"}</span>
+                        <span>AIFS: {Math.round(activeHazard === "Wind" && hoveredProvince.wind_models ? hoveredProvince.wind_models.AIFS : hoveredProvince.models.AIFS)} {activeHazard === "Wind" ? "kph" : "mm"}</span>
                       </>
                     )}
                   </div>
@@ -1016,13 +1054,26 @@ const WeatherAdvisory = () => {
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-sky-500/10 text-sky-400">
                 <CloudRain className="w-4 h-4 animate-pulse" />
               </div>
-              <div>
+                            <div>
                 <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">
-                  {selectedMode === "realtime" ? "Observed Rain" : "Forecast Rainfall"}
+                  {selectedMode === "realtime" ? "Observed Rain" : (activeHazard === "Wind" ? "Max Wind Gust" : "Forecast Rainfall")}
                 </p>
-                <p className="text-base font-bold text-white tracking-wide">
-                  {Math.round(selectedProvince.rainfall)} <span className="text-xs font-normal text-slate-400 font-sans">mm / 24h</span>
-                </p>
+                {activeHazard === "Wind" ? (
+                  <p className="text-base font-bold text-white tracking-wide mt-1">
+                    {Math.round(selectedProvince.wind_kph || 0)} <span className="text-xs font-normal text-slate-400 font-sans">kph</span>
+                  </p>
+                ) : (
+                  selectedMode === "forecast" && selectedProvince.min_rainfall !== undefined && selectedProvince.max_rainfall !== undefined ? (
+                    <p className="text-base font-bold text-white tracking-wide leading-tight mt-1">
+                      {Math.round(selectedProvince.min_rainfall)} - {Math.round(selectedProvince.max_rainfall)} <span className="text-[10px] font-medium text-slate-400 font-sans">mm/24h</span>
+                      <br /><span className="text-[9px] font-normal text-slate-400 block mt-0.5">Peak Consensus: {Math.round(selectedProvince.rainfall)} mm</span>
+                    </p>
+                  ) : (
+                    <p className="text-base font-bold text-white tracking-wide mt-1">
+                      {Math.round(selectedProvince.rainfall)} <span className="text-xs font-normal text-slate-400 font-sans">mm / 24h</span>
+                    </p>
+                  )
+                )}
               </div>
             </div>
 
@@ -1039,13 +1090,13 @@ const WeatherAdvisory = () => {
                   <div className="flex justify-between items-center text-slate-500 text-[9px] border-t border-slate-900 pt-1.5 mt-0.5">
                     {selectedProvince.models.GSMaP !== undefined ? (
                       <>
-                        <span>JAXA GSMaP: {Math.round(selectedProvince.models.GSMaP)} mm</span>
-                        <span>GPM Satellite: {Math.round(selectedProvince.models.GPM)} mm</span>
+                        <span>JAXA GSMaP: {Math.round(selectedProvince.models.GSMaP)} {activeHazard === "Wind" ? "kph" : "mm"}</span>
+                        <span>GPM Satellite: {Math.round(selectedProvince.models.GPM)} {activeHazard === "Wind" ? "kph" : "mm"}</span>
                       </>
                     ) : (
                       <>
-                        <span>IFS: {Math.round(selectedProvince.models.IFS)} mm</span>
-                        <span>AIFS: {Math.round(selectedProvince.models.AIFS)} mm</span>
+                        <span>IFS: {Math.round(activeHazard === "Wind" && selectedProvince.wind_models ? selectedProvince.wind_models.IFS : selectedProvince.models.IFS)} {activeHazard === "Wind" ? "kph" : "mm"}</span>
+                        <span>AIFS: {Math.round(activeHazard === "Wind" && selectedProvince.wind_models ? selectedProvince.wind_models.AIFS : selectedProvince.models.AIFS)} {activeHazard === "Wind" ? "kph" : "mm"}</span>
                       </>
                     )}
                   </div>
@@ -1128,6 +1179,33 @@ const WeatherAdvisory = () => {
               <span>5-Day Forecast</span>
             </button>
           </div>
+          {selectedMode === "forecast" && (
+            <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-slate-900/80 border border-slate-800/80 mt-1">
+              <button
+                onClick={() => setActiveHazard("Rainfall")}
+                className={`py-1.5 px-2 rounded-md text-[10px] font-bold tracking-wide uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  activeHazard === "Rainfall"
+                    ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <CloudRain className="w-3.5 h-3.5" />
+                <span>Rainfall</span>
+              </button>
+              <button
+                onClick={() => setActiveHazard("Wind")}
+                className={`py-1.5 px-2 rounded-md text-[10px] font-bold tracking-wide uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  activeHazard === "Wind"
+                    ? "bg-fuchsia-600 text-white shadow-md shadow-fuchsia-600/20"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Compass className="w-3.5 h-3.5" />
+                <span>Wind Gusts</span>
+              </button>
+            </div>
+          )}
+
         </div>
 
         {/* Timeline Frame Selector (Realtime Mode) OR Day Selector (Forecast Mode) */}
@@ -1234,7 +1312,7 @@ const WeatherAdvisory = () => {
           {/* Red Level */}
           <div className="bg-slate-950/40 rounded-xl overflow-hidden border border-red-950 shadow-lg group transition-all duration-300 hover:border-red-900/60">
             <div className="bg-gradient-to-r from-red-700 to-red-600 px-4 py-2 flex justify-between items-center text-white text-xs font-bold tracking-widest uppercase">
-              <span>{selectedMode === "realtime" ? "Red Level (>30 mm/hr)" : "Red Level (200+ mm)"}</span>
+              <span>{selectedMode === "realtime" ? "Red Level (>30 mm/hr)" : (activeHazard === "Wind" ? "Typhoon (>118 kph)" : "Red Level (200+ mm)")}</span>
               {warningMetrics.red > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-slate-950 text-[10px] text-red-400 border border-red-500/35 font-bold shadow-md animate-pulse">
                   {warningMetrics.red} Prov
@@ -1244,11 +1322,11 @@ const WeatherAdvisory = () => {
             <div className="p-4 text-xs text-slate-400 leading-relaxed space-y-2">
               <div className="flex items-start gap-2">
                 <ChevronRight className="w-3 h-3 text-red-500 mt-0.5 flex-shrink-0" />
-                <p><strong className="text-slate-200">Flooding:</strong> Extreme widespread flooding expected.</p>
+                <p><strong className="text-slate-200">{activeHazard === "Wind" ? "Wind:" : "Flooding:"}</strong> {activeHazard === "Wind" ? "Extreme damage to structures expected." : "Extreme widespread flooding expected."}</p>
               </div>
               <div className="flex items-start gap-2">
                 <ChevronRight className="w-3 h-3 text-red-500 mt-0.5 flex-shrink-0" />
-                <p><strong className="text-slate-200">Landslides:</strong> Extreme landslides highly likely.</p>
+                <p><strong className="text-slate-200">{activeHazard === "Wind" ? "Hazards:" : "Landslides:"}</strong> {activeHazard === "Wind" ? "Uprooted trees, power outages." : "Extreme landslides highly likely."}</p>
               </div>
               <div className="flex items-start gap-2">
                 <ChevronRight className="w-3 h-3 text-red-500 mt-0.5 flex-shrink-0" />
@@ -1287,7 +1365,7 @@ const WeatherAdvisory = () => {
                               : "bg-red-950/40 text-red-300 border-red-900/40 hover:bg-red-900/30 hover:border-red-700"
                           }`}
                         >
-                          {p} ({Math.round(rainfall)}{selectedMode === "realtime" ? "mm/hr" : "mm"})
+                          {p} ({Math.round(activeHazard === "Wind" ? provData.wind_kph : rainfall)}{selectedMode === "realtime" ? "mm/hr" : (activeHazard === "Wind" ? "kph" : "mm")})
                         </button>
                       );
                     })}
@@ -1300,7 +1378,7 @@ const WeatherAdvisory = () => {
           {/* Orange Level */}
           <div className="bg-slate-950/40 rounded-xl overflow-hidden border border-orange-950 shadow-lg group transition-all duration-300 hover:border-orange-900/60">
             <div className="bg-gradient-to-r from-orange-600 to-orange-500 px-4 py-2 flex justify-between items-center text-white text-xs font-bold tracking-widest uppercase">
-              <span>Orange Level (100-200 mm)</span>
+              <span>{activeHazard === "Wind" ? "Severe TS (89-117 kph)" : "Orange Level (100-200 mm)"}</span>
               {warningMetrics.orange > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-slate-950 text-[10px] text-orange-400 border border-orange-500/35 font-bold shadow-md">
                   {warningMetrics.orange} Prov
@@ -1353,7 +1431,7 @@ const WeatherAdvisory = () => {
                               : "bg-orange-950/40 text-orange-300 border-orange-900/40 hover:bg-orange-900/30 hover:border-orange-700"
                           }`}
                         >
-                          {p} ({Math.round(rainfall)}{selectedMode === "realtime" ? "mm/hr" : "mm"})
+                          {p} ({Math.round(activeHazard === "Wind" ? provData.wind_kph : rainfall)}{selectedMode === "realtime" ? "mm/hr" : (activeHazard === "Wind" ? "kph" : "mm")})
                         </button>
                       );
                     })}
@@ -1366,7 +1444,7 @@ const WeatherAdvisory = () => {
           {/* Yellow Level */}
           <div className="bg-slate-950/40 rounded-xl overflow-hidden border border-yellow-950 shadow-lg group transition-all duration-300 hover:border-yellow-900/60">
             <div className="bg-gradient-to-r from-yellow-500 to-yellow-400 px-4 py-2 flex justify-between items-center text-slate-900 text-xs font-extrabold tracking-widest uppercase">
-              <span>Yellow Level (50-100 mm)</span>
+              <span>{activeHazard === "Wind" ? "Tropical Storm (62-88 kph)" : "Yellow Level (50-100 mm)"}</span>
               {warningMetrics.yellow > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-slate-950 text-[10px] text-yellow-400 border border-yellow-500/35 font-bold shadow-md">
                   {warningMetrics.yellow} Prov
@@ -1419,7 +1497,7 @@ const WeatherAdvisory = () => {
                               : "bg-yellow-950/30 text-yellow-300 border-yellow-900/30 hover:bg-yellow-900/20 hover:border-yellow-700"
                           }`}
                         >
-                          {p} ({Math.round(rainfall)}{selectedMode === "realtime" ? "mm/hr" : "mm"})
+                          {p} ({Math.round(activeHazard === "Wind" ? provData.wind_kph : rainfall)}{selectedMode === "realtime" ? "mm/hr" : (activeHazard === "Wind" ? "kph" : "mm")})
                         </button>
                       );
                     })}
@@ -1432,7 +1510,7 @@ const WeatherAdvisory = () => {
           {/* Light Blue Level */}
           <div className="bg-slate-950/40 rounded-xl overflow-hidden border border-sky-950 shadow-lg group transition-all duration-300 hover:border-sky-900/60">
             <div className="bg-gradient-to-r from-sky-600 to-sky-500 px-4 py-2 flex justify-between items-center text-white text-xs font-bold tracking-widest uppercase">
-              <span>Light Blue Level (25-50 mm)</span>
+              <span>{activeHazard === "Wind" ? "Depression (39-61 kph)" : "Light Blue Level (25-50 mm)"}</span>
               {warningMetrics.lightBlue > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-slate-950 text-[10px] text-sky-400 border border-sky-500/35 font-bold shadow-md">
                   {warningMetrics.lightBlue} Prov
@@ -1481,7 +1559,7 @@ const WeatherAdvisory = () => {
                               : "bg-sky-950/40 text-sky-300 border-sky-900/40 hover:bg-sky-900/30 hover:border-sky-700"
                           }`}
                         >
-                          {p} ({Math.round(rainfall)}{selectedMode === "realtime" ? "mm/hr" : "mm"})
+                          {p} ({Math.round(activeHazard === "Wind" ? provData.wind_kph : rainfall)}{selectedMode === "realtime" ? "mm/hr" : (activeHazard === "Wind" ? "kph" : "mm")})
                         </button>
                       );
                     })}
@@ -1542,13 +1620,26 @@ const WeatherAdvisory = () => {
               <div className="flex items-center justify-center w-9 h-9 rounded-full bg-sky-500/10 text-sky-400 flex-shrink-0">
                 <CloudRain className="w-5 h-5 animate-pulse" />
               </div>
-              <div>
+                            <div>
                 <p className="text-[9px] text-slate-500 font-mono uppercase tracking-wider">
-  {selectedMode === "realtime" ? "Observed Rain" : "Forecast Rainfall"}
-</p>
-                <p className="text-lg font-black text-white tracking-wide leading-none mt-1">
-                  {Math.round(activeDisplayProvince.rainfall)} <span className="text-[10px] font-medium text-slate-400 font-sans">mm/24h</span>
+                  {selectedMode === "realtime" ? "Observed Rain" : (activeHazard === "Wind" ? "Max Wind Gust" : "Forecast Rainfall")}
                 </p>
+                {activeHazard === "Wind" ? (
+                  <p className="text-lg font-black text-white tracking-wide leading-none mt-1">
+                    {Math.round(activeDisplayProvince.wind_kph || 0)} <span className="text-[10px] font-medium text-slate-400 font-sans">kph</span>
+                  </p>
+                ) : (
+                  selectedMode === "forecast" && activeDisplayProvince.min_rainfall !== undefined && activeDisplayProvince.max_rainfall !== undefined ? (
+                    <p className="text-lg font-black text-white tracking-wide leading-tight mt-1">
+                      {Math.round(activeDisplayProvince.min_rainfall)} - {Math.round(activeDisplayProvince.max_rainfall)} <span className="text-[10px] font-medium text-slate-400 font-sans">mm/24h</span>
+                      <br /><span className="text-[9px] font-normal text-slate-400 block mt-0.5">Peak Consensus: {Math.round(activeDisplayProvince.rainfall)} mm</span>
+                    </p>
+                  ) : (
+                    <p className="text-lg font-black text-white tracking-wide leading-none mt-1">
+                      {Math.round(activeDisplayProvince.rainfall)} <span className="text-[10px] font-medium text-slate-400 font-sans">mm/24h</span>
+                    </p>
+                  )
+                )}
               </div>
             </div>
 

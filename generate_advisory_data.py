@@ -446,26 +446,224 @@ def fetch_real_ecmwf_precipitation(geometries):
                         ifs_prov_values.append(val_ifs)
                         aifs_prov_values.append(val_aifs)
             
-            # Fallback to nearest centroid grid point if no points found inside the polygon
+            # Fallback to Bilinear Interpolation (IDW) from 4 nearest grid points if no points found inside polygon
             if not ifs_prov_values:
                 centroid = geom.centroid
-                lat_idx = round((90.0 - centroid.y) / 0.25)
-                lon_idx = round((centroid.x - (-180.0)) / 0.25) % 1440
-                idx = lat_idx * 1440 + lon_idx
+                clat, clon = centroid.y, centroid.x
                 
-                val_ifs = max(0.0, float(ifs_values[idx]) * 1000.0)
-                val_aifs = max(0.0, float(aifs_values[idx]))
+                lat_idx_f = math.floor((90.0 - clat) / 0.25)
+                lat_idx_c = math.ceil((90.0 - clat) / 0.25)
+                lon_idx_f = math.floor((clon - (-180.0)) / 0.25)
+                lon_idx_c = math.ceil((clon - (-180.0)) / 0.25)
+                
+                pts = list(set([
+                    (lat_idx_f, lon_idx_f), (lat_idx_f, lon_idx_c),
+                    (lat_idx_c, lon_idx_f), (lat_idx_c, lon_idx_c)
+                ]))
+                
+                sum_w = 0.0
+                sum_ifs = 0.0
+                sum_aifs = 0.0
+                
+                for r, c in pts:
+                    r = max(0, min(720, int(r)))
+                    c = int(c) % 1440
+                    
+                    plat = 90.0 - r * 0.25
+                    plon = -180.0 + c * 0.25
+                    dist = math.hypot(clat - plat, clon - plon)
+                    
+                    weight = 1e5 if dist < 1e-5 else 1.0 / dist
+                    idx = r * 1440 + c
+                    
+                    v_ifs = max(0.0, float(ifs_values[idx]) * 1000.0)
+                    v_aifs = max(0.0, float(aifs_values[idx]))
+                    
+                    sum_ifs += v_ifs * weight
+                    sum_aifs += v_aifs * weight
+                    sum_w += weight
+                
+                val_ifs = sum_ifs / sum_w if sum_w > 0 else 0.0
+                val_aifs = sum_aifs / sum_w if sum_w > 0 else 0.0
                 
                 ifs_prov_values.append(val_ifs)
                 aifs_prov_values.append(val_aifs)
                 
-            ifs_map[name] = round(percentile(ifs_prov_values, 90), 1)
-            aifs_map[name] = round(percentile(aifs_prov_values, 90), 1)
+            # Calculate a blend of the Mean and 75th percentile to prevent over-forecasting
+            p75_ifs = percentile(ifs_prov_values, 75)
+            mean_ifs = sum(ifs_prov_values) / len(ifs_prov_values)
+            ifs_map[name] = {
+                'val': round((p75_ifs + mean_ifs) / 2.0, 1),
+                'min': round(min(ifs_prov_values), 1) if ifs_prov_values else 0.0,
+                'max': round(max(ifs_prov_values), 1) if ifs_prov_values else 0.0
+            }
+            
+            p75_aifs = percentile(aifs_prov_values, 75)
+            mean_aifs = sum(aifs_prov_values) / len(aifs_prov_values)
+            aifs_map[name] = {
+                'val': round((p75_aifs + mean_aifs) / 2.0, 1),
+                'min': round(min(aifs_prov_values), 1) if aifs_prov_values else 0.0,
+                'max': round(max(aifs_prov_values), 1) if aifs_prov_values else 0.0
+            }
             
         day_ifs_maps[d] = ifs_map
         day_aifs_maps[d] = aifs_map
         
     return day_ifs_maps, day_aifs_maps, init_time_str, validity_strs
+
+
+def fetch_real_ecmwf_wind(geometries):
+    """Downloads step=[24, 48, 72, 96, 120] wind GRIB2 from ECMWF Open Data
+    for both IFS (10fg) and AIFS (10u, 10v converted to speed).
+    """
+    import time
+    retry_delay_seconds = 60
+    max_retries = 3
+    attempt = 0
+    steps = [24, 48, 72, 96, 120]
+
+    day_ifs_maps = {d: {} for d in range(1, 6)}
+    day_aifs_maps = {d: {} for d in range(1, 6)}
+    
+    while attempt <= max_retries:
+        attempt += 1
+        print("Retrieving ECMWF wind data...")
+        try:
+            from ecmwf.opendata import Client
+            from eccodes import codes_grib_new_from_file, codes_get_double_array, codes_release
+            import gc
+            import numpy as np
+        except ImportError:
+            return None, None
+            
+        all_ifs_grids = {}
+        all_aifs_grids = {}
+        success = True
+        
+        try:
+            client_ifs = Client(source="azure", model="ifs", resol="0p25", infer_stream_keyword=False)
+            client_aifs = Client(source="azure", model="aifs-single", resol="0p25", infer_stream_keyword=False)
+        except Exception:
+            success = False
+            
+        if not success:
+            continue
+            
+        import os
+        PUBLIC_DIR = os.path.join(os.path.dirname(__file__), 'public', 'data')
+        
+        for step in steps:
+            ifs_file = os.path.join(PUBLIC_DIR, f"ifs_wind_{step}.grib2")
+            aifs_file = os.path.join(PUBLIC_DIR, f"aifs_wind_{step}.grib2")
+            
+            ifs_values = None
+            aifs_values = None
+            
+            # IFS 10fg
+            try:
+                client_ifs.retrieve(step=step, type="fc", param="10fg", target=ifs_file)
+                with open(ifs_file, "rb") as f_ifs:
+                    gid = codes_grib_new_from_file(f_ifs)
+                    if gid is not None:
+                        # Convert m/s to km/h
+                        ifs_values = np.array(codes_get_double_array(gid, "values")) * 3.6
+                        codes_release(gid)
+                del gid
+                gc.collect()
+            except Exception as e:
+                print(f"Warning: Failed to fetch IFS wind at step={step}: {e}")
+    
+            # AIFS 10u and 10v
+            try:
+                client_aifs.retrieve(step=step, type="fc", param=["10u", "10v"], target=aifs_file)
+                u_vals, v_vals = None, None
+                with open(aifs_file, "rb") as f_aifs:
+                    while True:
+                        gid = codes_grib_new_from_file(f_aifs)
+                        if gid is None:
+                            break
+                        from eccodes import codes_get
+                        sn = codes_get(gid, "shortName")
+                        if sn == "10u":
+                            u_vals = np.array(codes_get_double_array(gid, "values"))
+                        elif sn == "10v":
+                            v_vals = np.array(codes_get_double_array(gid, "values"))
+                        codes_release(gid)
+                del gid
+                gc.collect()
+                if u_vals is not None and v_vals is not None:
+                    # Wind speed in km/h. Multiply by 1.3 to roughly estimate gust.
+                    aifs_values = np.sqrt(u_vals**2 + v_vals**2) * 3.6 * 1.3
+            except Exception as e:
+                print(f"Warning: Failed to fetch AIFS wind at step={step}: {e}")
+    
+            for filepath in (ifs_file, aifs_file):
+                if os.path.exists(filepath):
+                    try: os.remove(filepath)
+                    except: pass
+    
+            if ifs_values is not None and aifs_values is not None:
+                all_ifs_grids[step] = ifs_values
+                all_aifs_grids[step] = aifs_values
+            else:
+                success = False
+                break
+                
+        if not success:
+            continue
+            
+        break
+        
+    if len(all_ifs_grids) < 5 or len(all_aifs_grids) < 5:
+        return None, None
+
+    # Polygon Sampling
+    from shapely.geometry import Point
+    import math
+    for d in range(1, 6):
+        curr_step = steps[d-1]
+        ifs_values = all_ifs_grids[curr_step]
+        aifs_values = all_aifs_grids[curr_step]
+        
+        ifs_map = {}
+        aifs_map = {}
+        for name, geom in geometries.items():
+            minx, miny, maxx, maxy = geom.bounds
+            lat_min_idx = max(0, int(math.floor((90.0 - maxy) / 0.25)))
+            lat_max_idx = min(720, int(math.ceil((90.0 - miny) / 0.25)))
+            lon_min_idx = int(math.floor((minx - (-180.0)) / 0.25))
+            lon_max_idx = int(math.ceil((maxx - (-180.0)) / 0.25))
+            
+            ifs_prov = []
+            aifs_prov = []
+            
+            for lat_idx in range(lat_min_idx, lat_max_idx + 1):
+                lat = 90.0 - lat_idx * 0.25
+                for lon_idx_raw in range(lon_min_idx, lon_max_idx + 1):
+                    lon_idx = lon_idx_raw % 1440
+                    lon = -180.0 + lon_idx_raw * 0.25
+                    p = Point(lon, lat)
+                    if geom.contains(p) or geom.intersects(p):
+                        idx = lat_idx * 1440 + lon_idx
+                        ifs_prov.append(ifs_values[idx])
+                        aifs_prov.append(aifs_values[idx])
+            
+            if not ifs_prov:
+                centroid = geom.centroid
+                clat, clon = centroid.y, centroid.x
+                lat_idx = max(0, min(720, int(round((90.0 - clat) / 0.25))))
+                lon_idx = int(round((clon - (-180.0)) / 0.25)) % 1440
+                idx = lat_idx * 1440 + lon_idx
+                ifs_prov.append(ifs_values[idx])
+                aifs_prov.append(aifs_values[idx])
+                
+            ifs_map[name] = max(ifs_prov)
+            aifs_map[name] = max(aifs_prov)
+            
+        day_ifs_maps[d] = ifs_map
+        day_aifs_maps[d] = aifs_map
+        
+    return day_ifs_maps, day_aifs_maps
 
 def generate_offline_fallback(geometries, day):
     """Offline fallback that generates realistic rainfall distributions if internet is unavailable.
@@ -523,6 +721,7 @@ def generate_advisory_data():
     print("Fetching forecast data...")
     title_fc, fallback_validity_fc, system_fc, fallback_init_fc = get_system_and_advisory()
     ifs_maps, aifs_maps, parsed_init_time_fc, parsed_validity_strs = fetch_real_ecmwf_precipitation(geometries)
+    ifs_wind_maps, aifs_wind_maps = fetch_real_ecmwf_wind(geometries)
     
     init_time_fc = parsed_init_time_fc if parsed_init_time_fc else fallback_init_fc
     days_output = {}
@@ -533,23 +732,38 @@ def generate_advisory_data():
     active_storm = get_active_storm_name() or "None"
     
     for d in range(1, 6):
+        rainfall_map_min = {}
+        rainfall_map_max = {}
+        
         if ifs_maps is None:
             rainfall_map_fc = generate_offline_fallback(geometries, d)
             ifs_map_fc = {}
             aifs_map_fc = {}
             for name, r in rainfall_map_fc.items():
-                ifs_map_fc[name] = round(max(0.0, r + random.uniform(-max(2.0, 0.15 * r), max(2.0, 0.15 * r))), 1)
-                aifs_map_fc[name] = round(max(0.0, r + random.uniform(-max(2.0, 0.15 * r), max(2.0, 0.15 * r))), 1)
+                v_ifs = round(max(0.0, r + random.uniform(-max(2.0, 0.15 * r), max(2.0, 0.15 * r))), 1)
+                v_aifs = round(max(0.0, r + random.uniform(-max(2.0, 0.15 * r), max(2.0, 0.15 * r))), 1)
+                ifs_map_fc[name] = {'val': v_ifs, 'min': max(0.0, v_ifs - 10.0), 'max': v_ifs + 20.0}
+                aifs_map_fc[name] = {'val': v_aifs, 'min': max(0.0, v_aifs - 10.0), 'max': v_aifs + 20.0}
                 # Recalculate consensus strictly to match
-                rainfall_map_fc[name] = round(AIFS_WEIGHT * aifs_map_fc[name] + IFS_WEIGHT * ifs_map_fc[name], 1)
+                rainfall_map_fc[name] = round(AIFS_WEIGHT * aifs_map_fc[name]['val'] + IFS_WEIGHT * ifs_map_fc[name]['val'], 1)
+                rainfall_map_min[name] = round(AIFS_WEIGHT * aifs_map_fc[name]['min'] + IFS_WEIGHT * ifs_map_fc[name]['min'], 1)
+                rainfall_map_max[name] = round(AIFS_WEIGHT * aifs_map_fc[name]['max'] + IFS_WEIGHT * ifs_map_fc[name]['max'], 1)
         else:
             ifs_map_fc = ifs_maps[d]
             aifs_map_fc = aifs_maps[d]
             rainfall_map_fc = {}
             for name in geometries.keys():
-                val_aifs = aifs_map_fc.get(name, 0.0)
-                val_ifs = ifs_map_fc.get(name, 0.0)
+                val_aifs = aifs_map_fc.get(name, {}).get('val', 0.0)
+                val_ifs = ifs_map_fc.get(name, {}).get('val', 0.0)
                 rainfall_map_fc[name] = round(AIFS_WEIGHT * val_aifs + IFS_WEIGHT * val_ifs, 1)
+                
+                min_aifs = aifs_map_fc.get(name, {}).get('min', 0.0)
+                min_ifs = ifs_map_fc.get(name, {}).get('min', 0.0)
+                rainfall_map_min[name] = round(AIFS_WEIGHT * min_aifs + IFS_WEIGHT * min_ifs, 1)
+                
+                max_aifs = aifs_map_fc.get(name, {}).get('max', 0.0)
+                max_ifs = ifs_map_fc.get(name, {}).get('max', 0.0)
+                rainfall_map_max[name] = round(AIFS_WEIGHT * max_aifs + IFS_WEIGHT * max_ifs, 1)
 
         # Generate validity for day d
         if parsed_validity_strs and d in parsed_validity_strs:
@@ -574,8 +788,20 @@ def generate_advisory_data():
         provinces_output = {}
         for name in geometries.keys():
             r = rainfall_map_fc.get(name, 0.0)
-            ifs_val = ifs_map_fc.get(name, 0.0)
-            aifs_val = aifs_map_fc.get(name, 0.0)
+            if ifs_wind_maps and aifs_wind_maps:
+                # Blend wind
+                w_ifs = round(ifs_wind_maps[d].get(name, 0.0), 1)
+                w_aifs = round(aifs_wind_maps[d].get(name, 0.0), 1)
+                wind_kph = round(0.6 * w_aifs + 0.4 * w_ifs, 1)
+            else:
+                w_ifs = round(random.uniform(15, 45), 1)
+                w_aifs = round(random.uniform(15, 45), 1)
+                wind_kph = round(0.6 * w_aifs + 0.4 * w_ifs, 1)
+
+            r_min = rainfall_map_min.get(name, 0.0)
+            r_max = rainfall_map_max.get(name, 0.0)
+            ifs_val = ifs_map_fc.get(name, {}).get('val', 0.0)
+            aifs_val = aifs_map_fc.get(name, {}).get('val', 0.0)
             
             category, advisory = get_rainfall_category_and_advisory(r)
             confidence, agreement = calculate_confidence_and_agreement(ifs_val, aifs_val)
@@ -583,6 +809,9 @@ def generate_advisory_data():
             provinces_output[name] = {
                 "rainfall_mm": r,
                 "rainfall": r,
+                "min_rainfall": r_min,
+                "max_rainfall": r_max,
+                "wind_kph": wind_kph,
                 "category": category,
                 "advisory": advisory,
                 "confidence": confidence,
@@ -590,6 +819,10 @@ def generate_advisory_data():
                 "models": {
                     "IFS": ifs_val,
                     "AIFS": aifs_val
+                },
+                "wind_models": {
+                    "IFS": w_ifs,
+                    "AIFS": w_aifs
                 }
             }
             
