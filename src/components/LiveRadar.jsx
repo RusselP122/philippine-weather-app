@@ -25,109 +25,62 @@ import {
 import { supabase } from "../supabaseClient";
 import html2canvas from "html2canvas";
 import GIF from "gif.js";
+import RadarControls from "./Radar/RadarControls";
+import StationInspector from "./Radar/StationInspector";
+import RadarWorker from "../workers/radarWorker?worker";
+import { 
+  minLon, maxLon, minLat, maxLat, 
+  canvasWidth, canvasHeight, RADAR_STATIONS 
+} from "../data/radarConfig";
 
-// High-fidelity dynamic pixel color swapping helper
-const recolorRadarImage = (imgElement, theme) => {
-  const canvas = document.createElement("canvas");
-  canvas.width = imgElement.naturalWidth || imgElement.width || 1020;
-  canvas.height = imgElement.naturalHeight || imgElement.height || 1393;
+// High-fidelity dynamic pixel color swapping helper via Web Worker
+const recolorRadarImageAsync = (imgElement, theme) => {
+  return new Promise((resolve) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = imgElement.naturalWidth || imgElement.width || canvasWidth;
+    canvas.height = imgElement.naturalHeight || imgElement.height || canvasHeight;
 
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(imgElement, 0, 0);
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(imgElement, 0, 0);
 
-  if (theme === "default") {
+    if (theme === "default") {
+      try {
+        resolve(canvas.toDataURL("image/png"));
+      } catch (e) {
+        console.error("Canvas export error:", e);
+        resolve(imgElement.src);
+      }
+      return;
+    }
+
     try {
-      return canvas.toDataURL("image/png");
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const worker = new RadarWorker();
+
+      worker.onmessage = (e) => {
+        const processedData = new Uint8ClampedArray(e.data.buffer);
+        const newImageData = new ImageData(processedData, e.data.width, e.data.height);
+        ctx.putImageData(newImageData, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+        worker.terminate();
+      };
+
+      worker.onerror = (e) => {
+        console.error("Worker error:", e);
+        resolve(imgElement.src);
+        worker.terminate();
+      };
+
+      worker.postMessage(
+        { buffer: imageData.data.buffer, width: canvas.width, height: canvas.height, theme },
+        [imageData.data.buffer]
+      );
     } catch (e) {
-      console.error("Canvas export error:", e);
-      return imgElement.src;
+      console.error("Dynamic recolor error:", e);
+      resolve(imgElement.src);
     }
-  }
-
-  try {
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const a = data[i + 3];
-
-      if (a < 15) continue; // Skip transparent pixels
-
-      const maxChannel = Math.max(r, g, b);
-      const minChannel = Math.min(r, g, b);
-      const saturation = maxChannel > 0 ? (maxChannel - minChannel) / maxChannel : 0;
-
-      // Skip white/grey outlines/labels and radar clutter (non-colorful pixels)
-      if (saturation < 0.22 || (r > 170 && g > 170 && b > 170 && saturation < 0.16)) {
-        continue;
-      }
-
-      // Classify PAGASA storm cell colors
-      let colorType = "green"; // Light rain default
-      if (g > 200 && b > 200 && r > 100 && r < 160) {
-        colorType = "clutter";
-      } else if (r > 150 && b > 150 && g < 135) {
-        colorType = "purple";
-      } else if (r > 140 && g < 50 && b < 50) {
-        colorType = "red";
-      } else if (r > 200 && g > 120 && b < 100) {
-        colorType = "yellow";
-      } else if (b > g && b > r * 0.9) {
-        colorType = "blue";
-      } else if (g > r && g > b) {
-        colorType = "green";
-      }
-
-      let targetHex = "";
-      if (theme === "vaporwave") {
-        if (colorType === "clutter") targetHex = "#1c1533";
-        else if (colorType === "blue") targetHex = "#00f0ff";
-        else if (colorType === "green") targetHex = "#05d9e8";
-        else if (colorType === "yellow") targetHex = "#ff2a74";
-        else if (colorType === "red") targetHex = "#ff007f";
-        else if (colorType === "purple") targetHex = "#ab00cd";
-      } else if (theme === "storm") {
-        if (colorType === "clutter") targetHex = "#20181b";
-        else if (colorType === "blue") targetHex = "#1e3a8a";
-        else if (colorType === "green") targetHex = "#047857";
-        else if (colorType === "yellow") targetHex = "#d97706";
-        else if (colorType === "red") targetHex = "#dc2626";
-        else if (colorType === "purple") targetHex = "#701a75";
-      } else if (theme === "retro") {
-        if (colorType === "clutter") targetHex = "#041f0f";
-        else if (colorType === "blue") targetHex = "#14532d";
-        else if (colorType === "green") targetHex = "#15803d";
-        else if (colorType === "yellow") targetHex = "#22c55e";
-        else if (colorType === "red") targetHex = "#4ade80";
-        else if (colorType === "purple") targetHex = "#86efac";
-      } else if (theme === "custom") {
-        // High-fidelity custom color palette provided by user (mapping classes to customized levels)
-        if (colorType === "clutter") targetHex = "#075163";      // Clutter / Lowest dBZ
-        else if (colorType === "blue") targetHex = "#0a6f87";      // 10 dBZ: rgb(10, 111, 135)
-        else if (colorType === "green") targetHex = "#31ab12";   // 20 dBZ: rgb(49, 171, 18)
-        else if (colorType === "yellow") targetHex = "#f0ec00";  // 35 dBZ: rgb(240, 236, 0)
-        else if (colorType === "red") targetHex = "#ff0000";     // 50 dBZ: rgb(255, 0, 0)
-        else if (colorType === "purple") targetHex = "#dcbae6";  // 65 dBZ: rgb(220, 186, 230) for extreme core
-      }
-
-      if (targetHex) {
-        const hex = targetHex.replace("#", "");
-        data[i] = parseInt(hex.substring(0, 2), 16);
-        data[i + 1] = parseInt(hex.substring(2, 4), 16);
-        data[i + 2] = parseInt(hex.substring(4, 6), 16);
-      }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-    return canvas.toDataURL("image/png");
-  } catch (e) {
-    console.error("Dynamic recolor error:", e);
-    return imgElement.src;
-  }
+  });
 };
 
 const getIslandGroupOfRegion = (regionStr) => {
@@ -153,25 +106,6 @@ const getIslandGroupOfRegion = (regionStr) => {
   }
   return "luzon";
 };
-
-const RADAR_STATIONS = [
-  { id: "basco", name: "Basco Station", lat: 20.45, lon: 121.97, region: "luzon", status: "online", desc: "Northernmost early warning station monitoring the Luzon Strait and Taiwan region." },
-  { id: "aparri", name: "Aparri Station", lat: 18.36, lon: 121.63, region: "luzon", status: "online", desc: "Covers Cagayan Valley & Northern Luzon corridor." },
-  { id: "baguio", name: "Baguio Station", lat: 16.41, lon: 120.60, region: "luzon", status: "online", desc: "Monitors Cordillera mountains & Ilocos region." },
-  { id: "alaminos", name: "Alaminos Station", lat: 16.15, lon: 119.98, region: "luzon", status: "online", desc: "Monitors the Lingayen Gulf, West Philippine Sea, & Northern Luzon basin." },
-  { id: "baler", name: "Baler Station", lat: 15.76, lon: 121.63, region: "luzon", status: "online", desc: "Scans the Pacific Ocean and Sierra Madre mountains for incoming typhoons." },
-  { id: "subic", name: "Subic Station", lat: 14.82, lon: 120.27, region: "luzon", status: "online", desc: "Monitors West Philippine Sea & Central Luzon." },
-  { id: "tagaytay", name: "Tagaytay Station", lat: 14.13, lon: 120.97, region: "luzon", status: "online", desc: "Key station for Metro Manila, CALABARZON, & Taal region." },
-  { id: "daet", name: "Daet Station", lat: 14.12, lon: 122.98, region: "luzon", status: "online", desc: "Tracks storms entering the Bicol peninsula." },
-  { id: "virac", name: "Virac Station", lat: 13.58, lon: 124.23, region: "luzon", status: "standby", desc: "Primary early warning station facing the Pacific Ocean." },
-  { id: "busuanga", name: "Busuanga Station", lat: 12.18, lon: 120.10, region: "luzon", status: "online", desc: "Covers Northern Palawan & Mindoro Strait." },
-  { id: "iloilo", name: "Iloilo Station", lat: 10.70, lon: 122.56, region: "visayas", status: "online", desc: "Covers Western Visayas & Panay Gulf." },
-  { id: "cebu", name: "Cebu Station", lat: 10.33, lon: 123.90, region: "visayas", status: "online", desc: "Centrally positioned to scan Central Visayas & Bohol Sea." },
-  { id: "guiuan", name: "Guiuan Station", lat: 11.03, lon: 125.72, region: "visayas", status: "maintenance", desc: "Eastern Pacific gateway radar. Rebuilding infrastructure." },
-  { id: "hinatuan", name: "Hinatuan Station", lat: 8.37, lon: 126.33, region: "mindanao", status: "online", desc: "Covers Caraga region & Eastern Mindanao sea." },
-  { id: "tampakan", name: "Tampakan Station", lat: 6.27, lon: 125.02, region: "mindanao", status: "online", desc: "Monitors SOCCSKSARGEN & Southern Mindanao." },
-  { id: "zamboanga", name: "Zamboanga Station", lat: 6.91, lon: 122.06, region: "mindanao", status: "online", desc: "Monitors Zamboanga Peninsula & Sulu Archipelago." }
-];
 
 const LiveRadar = () => {
   // Timeline State
@@ -252,14 +186,6 @@ const LiveRadar = () => {
       .then((data) => setGeoData(data))
       .catch((err) => console.error("Failed to load provinces map:", err));
   }, []);
-
-  // Strict bounding coordinates of PAGASA's Doppler Radar Composite Canvas
-  const minLon = 115.5; // Official PAGASA Composite bounds
-  const maxLon = 129.5; // Official PAGASA Composite bounds
-  const minLat = 4.0;   // Official PAGASA Composite bounds
-  const maxLat = 22.5;  // Official PAGASA Composite bounds
-  const canvasWidth = 1020;
-  const canvasHeight = 1393;
 
   // Project province coordinates linearly to match radar image aspects perfectly (EPSG:4326 equivalence)
   const projectedFeatures = useMemo(() => {
@@ -769,7 +695,7 @@ const LiveRadar = () => {
           resolve();
         }, 10000);
 
-        img.onload = () => {
+        img.onload = async () => {
           clearTimeout(timeoutId);
           if (!active) {
             resolve();
@@ -780,8 +706,8 @@ const LiveRadar = () => {
           if (!frame.rawBase64) {
             try {
               const canvas = document.createElement("canvas");
-              canvas.width = img.naturalWidth || img.width || 1020;
-              canvas.height = img.naturalHeight || img.height || 1393;
+              canvas.width = img.naturalWidth || img.width || canvasWidth;
+              canvas.height = img.naturalHeight || img.height || canvasHeight;
               const ctx = canvas.getContext("2d");
               ctx.drawImage(img, 0, 0);
               frame.rawBase64 = canvas.toDataURL("image/png");
@@ -790,12 +716,14 @@ const LiveRadar = () => {
             }
           }
 
-          const dataUrl = recolorRadarImage(img, colorTheme);
-          currentCache[cacheKey] = dataUrl;
-          setCachedFrameUrls((prev) => ({
-            ...prev,
-            [cacheKey]: dataUrl
-          }));
+          const dataUrl = await recolorRadarImageAsync(img, colorTheme);
+          if (active) {
+            currentCache[cacheKey] = dataUrl;
+            setCachedFrameUrls((prev) => ({
+              ...prev,
+              [cacheKey]: dataUrl
+            }));
+          }
           resolve();
         };
         img.onerror = () => {
@@ -1082,7 +1010,7 @@ const LiveRadar = () => {
     ctx.textBaseline = "alphabetic";
   };
 
-  const renderFrameToCanvas = async (frame, exportScale = 4, selectedStation = null) => {
+  const renderFrameToCanvas = async (frame, exportScale = 4, selectedStation = null, cachedLayers = null) => {
     const canvas = document.createElement("canvas");
     canvas.width = 1020 * exportScale;
     canvas.height = 1393 * exportScale;
@@ -1121,9 +1049,14 @@ const LiveRadar = () => {
     };
 
     // 1. Draw Base Map (fill landmass #111625)
-    const baseMapSvgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 1393" width="${1020 * exportScale}" height="${1393 * exportScale}">${projectedFeatures.map(prov => `<path d="${prov.d}" fill="#111625" stroke="none" />`).join('')}</svg>`;
-    const baseMapImg = await loadSvgAsImage(baseMapSvgString);
-    ctx.drawImage(baseMapImg, 0, 0);
+    if (cachedLayers && cachedLayers.baseMapImg) {
+      ctx.drawImage(cachedLayers.baseMapImg, 0, 0);
+    } else {
+      const baseMapSvgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 1393" width="${1020 * exportScale}" height="${1393 * exportScale}">${projectedFeatures.map(prov => `<path d="${prov.d}" fill="#111625" stroke="none" />`).join('')}</svg>`;
+      const baseMapImg = await loadSvgAsImage(baseMapSvgString);
+      if (cachedLayers) cachedLayers.baseMapImg = baseMapImg;
+      ctx.drawImage(baseMapImg, 0, 0);
+    }
 
     // 2. Draw Radar image (with custom theme colors)
     const frameIndex = frames.findIndex(f => f.observed_at === frame.observed_at);
@@ -1183,9 +1116,14 @@ const LiveRadar = () => {
     ctx.imageSmoothingEnabled = true;
 
     // 3. Draw Borders Overlay (stroke #334155, stroke-width 0.4)
-    const bordersSvgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 1393" width="${1020 * exportScale}" height="${1393 * exportScale}">${projectedFeatures.map(prov => `<path d="${prov.d}" fill="none" stroke="#334155" stroke-width="0.4" />`).join('')}</svg>`;
-    const bordersImg = await loadSvgAsImage(bordersSvgString);
-    ctx.drawImage(bordersImg, 0, 0);
+    if (cachedLayers && cachedLayers.bordersImg) {
+      ctx.drawImage(cachedLayers.bordersImg, 0, 0);
+    } else {
+      const bordersSvgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 1393" width="${1020 * exportScale}" height="${1393 * exportScale}">${projectedFeatures.map(prov => `<path d="${prov.d}" fill="none" stroke="#334155" stroke-width="0.4" />`).join('')}</svg>`;
+      const bordersImg = await loadSvgAsImage(bordersSvgString);
+      if (cachedLayers) cachedLayers.bordersImg = bordersImg;
+      ctx.drawImage(bordersImg, 0, 0);
+    }
 
     // Draw active station range ring on canvas so they are captured
     if (showRangeCircles) {
@@ -1445,14 +1383,17 @@ const LiveRadar = () => {
             downloadFileName = `doppler_radar_${selectedStation.id}_scope_${activeFrame.observed_at.replace(/[\s-:]/g, "_")}.png`;
           }
 
-          const dataUrl = exportCanvas.toDataURL("image/png");
-          const link = document.createElement("a");
-          link.href = dataUrl;
-          link.download = downloadFileName;
-          link.target = "_blank";
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+          exportCanvas.toBlob((blob) => {
+            const dataUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = dataUrl;
+            link.download = downloadFileName;
+            link.target = "_blank";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(dataUrl);
+          }, "image/png");
 
         } catch (e) {
           console.error("Canvas export composition failed, falling back:", e);
@@ -1509,11 +1450,13 @@ const LiveRadar = () => {
 
       setGifMessage(`Stitching ${frames.length} frames...`);
 
+      const cachedLayers = {};
+
       for (let i = 0; i < frames.length; i++) {
         setGifProgress(Math.floor((i / frames.length) * 60));
         setGifMessage(`Rasterizing frame ${i + 1} of ${frames.length}...`);
         
-        const frameCanvas = await renderFrameToCanvas(frames[i], gifScale, selectedStation);
+        const frameCanvas = await renderFrameToCanvas(frames[i], gifScale, selectedStation, cachedLayers);
         gif.addFrame(frameCanvas, { delay: intervalMs });
       }
 
@@ -1540,6 +1483,8 @@ const LiveRadar = () => {
         document.body.removeChild(link);
 
         URL.revokeObjectURL(workerUrl);
+        URL.revokeObjectURL(dataUrl);
+        
         setTimeout(() => {
           setIsCreatingGif(false);
         }, 1000);
@@ -1878,372 +1823,44 @@ const LiveRadar = () => {
       </div>
 
       {/* Floating Left Control Panel */}
-      <div
-        className={`absolute left-0 md:left-4 top-20 bottom-0 md:bottom-28 w-full md:w-80 z-45 md:z-30 transition-all duration-300 ease-out flex flex-col pointer-events-auto ${showLeftPanel
-          ? "translate-x-0 opacity-100"
-          : "-translate-x-full md:-translate-x-[110%] opacity-0 pointer-events-none"
-        }`}
-      >
-        <div className="bg-slate-950/95 md:bg-slate-900/80 backdrop-blur-xl border border-slate-800/85 md:rounded-3xl p-5 shadow-2xl flex-grow overflow-y-auto flex flex-col gap-6 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
-          
-          <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-            <div className="flex items-center gap-2">
-              <Settings className="h-4.5 w-4.5 text-cyan-400 animate-pulse" />
-              <span className="font-bold tracking-widest text-xs text-slate-300 font-mono uppercase">Control Console</span>
-            </div>
-            <button
-              onClick={() => setShowLeftPanel(false)}
-              className="md:hidden text-slate-400 hover:text-white p-1"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* Diagnostics readout */}
-          <div className="bg-slate-950/80 border border-slate-800/60 rounded-2xl p-4 flex flex-col gap-2 font-mono text-[10px]">
-            <div className="flex justify-between text-cyan-400">
-              <span className="font-semibold text-slate-400 uppercase tracking-widest text-[9px]">SYSTEM TEL</span>
-              <span className="animate-pulse text-cyan-400">● STABLE</span>
-            </div>
-            <div className="grid grid-cols-1 gap-1.5 mt-1 text-slate-400">
-              <div className="flex justify-between">
-                <span>GRID:</span>
-                <span className="text-slate-200">EPSG:4326</span>
-              </div>
-              <div className="flex justify-between">
-                <span>ZOOM LEVEL:</span>
-                <span className="text-slate-200">{scale.toFixed(1)}x</span>
-              </div>
-              <div className="flex justify-between">
-                <span>FRAMES:</span>
-                <span className="text-slate-200">{frames.length} DEPTH</span>
-              </div>
-              <div className="flex justify-between">
-                <span>REFRESH INTR:</span>
-                <span className="text-slate-200">3 MIN (AUTO)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Tactical Region Focus */}
-          <div className="flex flex-col gap-2.5">
-            <span className="text-slate-400 font-mono text-[10px] font-bold uppercase tracking-widest">Tactical Region Focus</span>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { id: "luzon", label: "Luzon Focus" },
-                { id: "visayas", label: "Visayas Focus" },
-                { id: "mindanao", label: "Mindanao Focus" },
-                { id: "all", label: "Full Network" }
-              ].map((region) => (
-                <button
-                  key={region.id}
-                  onClick={() => focusOnRegion(region.id)}
-                  className={`py-2.5 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer text-center active:scale-95 ${activeRegion === region.id
-                    ? "bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-900/30"
-                    : "bg-slate-950/60 border-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-900/80 hover:border-slate-700"
-                  }`}
-                >
-                  {region.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Temporal depth and delay */}
-          <div className="flex flex-col gap-4 border-t border-slate-800/60 pt-4">
-            {/* Temporal Frame Depth */}
-            <div className="flex flex-col gap-2">
-              <span className="text-slate-400 font-mono text-[10px] font-bold uppercase tracking-widest">Temporal Frame Depth</span>
-              <div className="grid grid-cols-3 gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800/60">
-                {[16, 24, 36].map((num) => (
-                  <button
-                    key={num}
-                    onClick={() => {
-                      if (playbackFramesCount !== num) {
-                        setIsPlaying(false);
-                        setPlaybackFramesCount(num);
-                        setIsInteractiveLoading(true);
-                        setTimeout(() => {
-                          fetchTimeline(true, num);
-                        }, 50);
-                      }
-                    }}
-                    className={`py-1.5 px-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer active:scale-95 text-center ${playbackFramesCount === num
-                      ? "bg-cyan-600 text-white shadow-md"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
-                    }`}
-                  >
-                    {num} F
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Playback Scan Delay */}
-            <div className="flex flex-col gap-2">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-400 font-mono text-[10px] font-bold uppercase tracking-widest">Scan Delay</span>
-                <span className="text-xs font-mono font-bold text-cyan-400">{intervalMs} ms</span>
-              </div>
-              <div className="flex bg-slate-950/80 border border-slate-800/60 rounded-xl p-1 items-center justify-between">
-                <button
-                  onClick={() => setIntervalMs(Math.max(100, intervalMs - 100))}
-                  className="h-8 w-8 rounded-lg bg-slate-900 hover:bg-slate-800 flex items-center justify-center text-slate-400 font-bold transition-colors cursor-pointer active:scale-95"
-                >
-                  -
-                </button>
-                <input
-                  type="range"
-                  min="100"
-                  max="2000"
-                  step="100"
-                  value={intervalMs}
-                  onChange={(e) => setIntervalMs(parseInt(e.target.value, 10))}
-                  className="flex-grow mx-3 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer focus:outline-none accent-cyan-400"
-                />
-                <button
-                  onClick={() => setIntervalMs(Math.min(2000, intervalMs + 100))}
-                  className="h-8 w-8 rounded-lg bg-slate-900 hover:bg-slate-800 flex items-center justify-center text-slate-400 font-bold transition-colors cursor-pointer active:scale-95"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Telemetry compiler / Compile radar animation loop */}
-          <div className="mt-auto border-t border-slate-800/60 pt-4 flex flex-col gap-3">
-            <span className="text-slate-400 font-mono text-[10px] font-bold uppercase tracking-widest">Telemetry Exporter</span>
-            <button
-              onClick={handleGenerateGif}
-              disabled={frames.length === 0 || isCompiling || isCreatingGif}
-              className={`w-full py-3 px-4 rounded-xl font-bold text-xs tracking-wider uppercase flex items-center justify-center gap-2 transition-all border active:scale-95 ${frames.length === 0 || isCompiling || isCreatingGif
-                ? "bg-slate-950/40 text-slate-500 border-slate-900 cursor-not-allowed opacity-50"
-                : "bg-cyan-600 hover:bg-cyan-500 text-white border-cyan-500 shadow-md shadow-cyan-900/20 cursor-pointer"
-              }`}
-            >
-              {isCompiling ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
-                  Capturing...
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4" />
-                  Capture Radar Frame
-                </>
-              )}
-            </button>
-
-            {isCompiling && (
-              <div className="bg-slate-950/80 border border-slate-800/40 rounded-xl p-3 flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="flex justify-between items-center text-[9px] font-mono leading-none">
-                  <span className="text-cyan-400 font-bold">{compilingMessage}</span>
-                  <span className="text-slate-400">{compilingProgress}%</span>
-                </div>
-                <div className="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-cyan-500 to-indigo-500 h-full rounded-full transition-all duration-300"
-                    style={{ width: `${compilingProgress}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
-
-            <button
-              onClick={handleCompileGif}
-              disabled={frames.length === 0 || isCreatingGif || isCompiling}
-              className={`w-full py-3 px-4 rounded-xl font-bold text-xs tracking-wider uppercase flex items-center justify-center gap-2 transition-all border active:scale-95 ${frames.length === 0 || isCreatingGif || isCompiling
-                ? "bg-slate-950/40 text-slate-500 border-slate-900 cursor-not-allowed opacity-50"
-                : "bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-md shadow-indigo-900/20 cursor-pointer"
-              }`}
-            >
-              {isCreatingGif ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
-                  Building Loop...
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 fill-current text-indigo-400" />
-                  Compile Radar Loop
-                </>
-              )}
-            </button>
-
-            {isCreatingGif && (
-              <div className="bg-slate-950/80 border border-slate-800/40 rounded-xl p-3 flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="flex justify-between items-center text-[9px] font-mono leading-none">
-                  <span className="text-indigo-400 font-bold">{gifMessage}</span>
-                  <span className="text-slate-400">{gifProgress}%</span>
-                </div>
-                <div className="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-indigo-500 to-cyan-500 h-full rounded-full transition-all duration-300"
-                    style={{ width: `${gifProgress}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
-          </div>
-
-        </div>
-      </div>
+      <RadarControls
+        showLeftPanel={showLeftPanel}
+        setShowLeftPanel={setShowLeftPanel}
+        scale={scale}
+        frames={frames}
+        activeRegion={activeRegion}
+        focusOnRegion={focusOnRegion}
+        playbackFramesCount={playbackFramesCount}
+        setPlaybackFramesCount={setPlaybackFramesCount}
+        setIsPlaying={setIsPlaying}
+        setIsInteractiveLoading={setIsInteractiveLoading}
+        fetchTimeline={fetchTimeline}
+        intervalMs={intervalMs}
+        setIntervalMs={setIntervalMs}
+        handleGenerateGif={handleGenerateGif}
+        isCompiling={isCompiling}
+        compilingMessage={compilingMessage}
+        compilingProgress={compilingProgress}
+        handleCompileGif={handleCompileGif}
+        isCreatingGif={isCreatingGif}
+        gifMessage={gifMessage}
+        gifProgress={gifProgress}
+      />
 
       {/* Floating Right Status/Preset Panel */}
-      <div
-        className={`absolute right-0 md:right-4 top-20 bottom-0 md:bottom-28 w-full md:w-80 z-45 md:z-30 transition-all duration-300 ease-out flex flex-col pointer-events-auto ${showRightPanel
-          ? "translate-x-0 opacity-100"
-          : "translate-x-full md:translate-x-[110%] opacity-0 pointer-events-none"
-        }`}
-      >
-        <div className="bg-slate-950/95 md:bg-slate-900/80 backdrop-blur-xl border border-slate-800/85 md:rounded-3xl p-5 shadow-2xl flex-grow overflow-y-auto flex flex-col gap-6 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
-          
-          <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-            <div className="flex items-center gap-2">
-              <Radio className="h-4.5 w-4.5 text-cyan-400 animate-pulse" />
-              <span className="font-bold tracking-widest text-xs text-slate-300 font-mono uppercase">Network Diagnostic</span>
-            </div>
-            <button
-              onClick={() => setShowRightPanel(false)}
-              className="md:hidden text-slate-400 hover:text-white p-1"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* Dynamic Station Inspector card */}
-          {(selectedStationId || hoveredStationId) ? (() => {
-            const activeId = hoveredStationId || selectedStationId;
-            const station = stations.find(s => s.id === activeId);
-            if (!station) return null;
-
-            let markerColorClass = "bg-slate-400 text-slate-950";
-            if (station.status === "online") markerColorClass = "bg-cyan-500/20 text-cyan-400 border border-cyan-500/35";
-            else if (station.status === "maintenance") markerColorClass = "bg-red-500/20 text-red-400 border border-red-500/35";
-            else if (station.status === "standby") markerColorClass = "bg-yellow-500/20 text-yellow-400 border border-yellow-500/35";
-
-            return (
-              <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-cyan-500/20 rounded-2xl p-4 flex flex-col gap-2.5 shadow-lg relative overflow-hidden group animate-in fade-in zoom-in-95 duration-200">
-                <div className="absolute top-0 right-0 h-16 w-16 bg-cyan-500/5 rounded-bl-full pointer-events-none"></div>
-                <div className="flex justify-between items-start gap-2">
-                  <div className="flex flex-col">
-                    <span className="font-bold text-slate-100 text-sm leading-tight">{station.name}</span>
-                    <span className="text-[9px] text-slate-400 font-mono mt-0.5">{station.lat.toFixed(2)}°N, {station.lon.toFixed(2)}°E</span>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider font-mono ${markerColorClass}`}>
-                    {station.status}
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-300 leading-relaxed font-sans">{station.desc}</p>
-                {station.status !== "maintenance" && (
-                  <div className="flex items-center gap-1.5 text-[9px] text-cyan-400 font-mono mt-1 leading-none">
-                    <span className="flex h-1.5 w-1.5 rounded-full bg-cyan-400 animate-ping"></span>
-                    <span>240KM COMPOSITE RANGE OVERLAY ACTIVE</span>
-                  </div>
-                )}
-              </div>
-            );
-          })() : (
-            <div className="border border-dashed border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center text-center gap-2 text-slate-500 py-6">
-              <Info className="h-6 w-6 text-slate-600" />
-              <div className="flex flex-col">
-                <span className="text-[11px] font-bold text-slate-400">Station Inspector</span>
-                <span className="text-[9px] mt-0.5">Click or hover any station marker on the map to inspect telemetry data</span>
-              </div>
-            </div>
-          )}
-
-          {/* Spectral Theme Presets selection */}
-          <div className="flex flex-col gap-3 border-t border-slate-800/60 pt-4">
-            <div className="flex items-center gap-2">
-              <Palette className="h-4 w-4 text-cyan-400" />
-              <span className="text-slate-400 font-mono text-[10px] font-bold uppercase tracking-widest">Spectral Presets</span>
-            </div>
-            
-            <div className="flex flex-col gap-2">
-              {[
-                { id: "custom", label: "Custom Smooth", colors: ["#075163", "#31ab12", "#dcbae6"] },
-                { id: "default", label: "Default PAGASA", colors: ["#1d4ed8", "#facc15", "#dc2626"] },
-                { id: "storm", label: "Storm Core", colors: ["#1e3a8a", "#d97706", "#dc2626"] },
-                { id: "vaporwave", label: "Vaporwave Neon", colors: ["#1c1533", "#00f0ff", "#ff007f"] },
-                { id: "retro", label: "Retro Phosphor", colors: ["#041f0f", "#15803d", "#86efac"] }
-              ].map((themeItem) => (
-                <button
-                  key={themeItem.id}
-                  onClick={() => {
-                    setIsPlaying(false);
-                    setColorTheme(themeItem.id);
-                  }}
-                  className={`w-full p-2.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer text-left active:scale-[0.98] ${colorTheme === themeItem.id
-                    ? "bg-cyan-500/10 border-cyan-500/50 shadow-md"
-                    : "bg-slate-950/60 border-slate-800/60 hover:bg-slate-900/80 hover:border-slate-700"
-                  }`}
-                >
-                  <span className={`text-[11px] font-bold ${colorTheme === themeItem.id ? "text-cyan-400" : "text-slate-350"}`}>
-                    {themeItem.label}
-                  </span>
-                  
-                  {/* Swatches indicator */}
-                  <div className="flex gap-0.5">
-                    {themeItem.colors.map((c, idx) => (
-                      <span
-                        key={idx}
-                        className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: c }}
-                      ></span>
-                    ))}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Network Stations status list */}
-          <div className="flex flex-col gap-2.5 border-t border-slate-800/60 pt-4 flex-grow overflow-hidden">
-            <span className="text-slate-400 font-mono text-[10px] font-bold uppercase tracking-widest">Radar Network Status</span>
-            
-            <div className="flex-grow overflow-y-auto pr-1 flex flex-col gap-1.5 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
-              {stations.map((station) => {
-                const isSelected = selectedStationId === station.id;
-                let textStatusColor = "text-slate-500";
-                let dotStatusColor = "bg-slate-500";
-                
-                if (station.status === "online") {
-                  textStatusColor = "text-cyan-400";
-                  dotStatusColor = "bg-cyan-500";
-                } else if (station.status === "maintenance") {
-                  textStatusColor = "text-red-400";
-                  dotStatusColor = "bg-red-500";
-                } else if (station.status === "standby") {
-                  textStatusColor = "text-yellow-400";
-                  dotStatusColor = "bg-yellow-500";
-                }
-
-                return (
-                  <div
-                    key={station.id}
-                    onClick={() => setSelectedStationId(selectedStationId === station.id ? null : station.id)}
-                    className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${isSelected
-                      ? "bg-slate-800 border-slate-700"
-                      : "bg-slate-950/40 border-transparent hover:border-slate-800/60"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={`h-1.5 w-1.5 rounded-full ${dotStatusColor} ${station.status === "online" ? "animate-pulse" : ""}`}></span>
-                      <span className="text-[10px] font-semibold text-slate-300">{station.name.replace(" Doppler Radar", "").replace(" Station", "")}</span>
-                    </div>
-                    <span className={`text-[8px] font-bold font-mono tracking-wider uppercase ${textStatusColor}`}>
-                      {station.status}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-        </div>
-      </div>
+      <StationInspector
+        showRightPanel={showRightPanel}
+        setShowRightPanel={setShowRightPanel}
+        stations={stations}
+        hoveredStationId={hoveredStationId}
+        selectedStationId={selectedStationId}
+        setHoveredStationId={setHoveredStationId}
+        setSelectedStationId={setSelectedStationId}
+        colorTheme={colorTheme}
+        setColorTheme={setColorTheme}
+        setIsPlaying={setIsPlaying}
+        scale={scale}
+      />
 
       {/* Floating Legend Panel */}
       <div className={`absolute bottom-[195px] md:bottom-28 z-35 bg-slate-900/80 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-3 flex-col select-none pointer-events-auto shadow-2xl text-[9px] text-slate-350 max-w-[130px] transition-all duration-300 ${showLeftPanel || showRightPanel ? "hidden md:flex" : "flex"} ${showLeftPanel ? "left-4 md:left-[352px]" : "left-4"}`}>
