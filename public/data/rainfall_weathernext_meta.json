@@ -1,0 +1,23 @@
+{
+  "model": "WeatherNext 2",
+  "source": "Google DeepMind / GCS",
+  "generated_at": "2026-08-07 05:31 AM",
+  "run_time": "2026-08-06 18:00 UTC",
+  "animation_frames": [
+    "weathernext_day_1",
+    "weathernext_day_2",
+    "weathernext_day_3",
+    "weathernext_day_4",
+    "weathernext_day_5",
+    "weathernext_day_6",
+    "weathernext_day_7",
+    "weathernext_day_8",
+    "weathernext_day_9",
+    "weathernext_day_10",
+    "weathernext_day_11",
+    "weathernext_day_12",
+    "weathernext_day_13",
+    "weathernext_day_14",
+    "weathernext_day_15"
+  ]
+}
