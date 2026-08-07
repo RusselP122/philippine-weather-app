@@ -1,0 +1,15 @@
+{
+  "model": "GFS 0.25\u00b0",
+  "source": "NOAA NOMADS / THREDDS",
+  "generated_at": "2026-08-07 04:56 AM",
+  "run_time": "2026-08-06 21:00 UTC",
+  "animation_frames": [
+    "gfs_day_1",
+    "gfs_day_2",
+    "gfs_day_3",
+    "gfs_day_4",
+    "gfs_day_5",
+    "gfs_day_6",
+    "gfs_day_7"
+  ]
+}
