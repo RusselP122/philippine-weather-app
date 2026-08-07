@@ -31,3 +31,24 @@ yarn-error.log*
 # GCP Service Account keys & temp folders
 gcp-key.json
 /weathernext_frames/
+# Generated Data and Images
+public/data/
+public/assets/
+public/images/wind/
+public/images/rainfall/
+public/images/precip_mslp/
+public/images/precip_mslp_aifs/
+public/images/precip_mslp_weathernext/
+public/images/precip_mslp_weathernext_overlay/
+public/images/rainfall_weathernext/
+public/images/rainfall_weathernext_overlay/
+public/images/wind_weathernext/
+public/images/wind_weathernext_overlay/
+public/images/wind_gfs/
+public/images/thunderstorm_ifs/
+public/images/thunderstorm_weathernext/
+public/images/vorticity_ifs/
+public/images/gpi_weathernext/
+public/images/risk_maps/
+*.nc
+*.csv
