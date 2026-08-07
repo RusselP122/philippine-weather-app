@@ -1,8 +1,8 @@
 {
   "model": "WeatherNext 2",
   "source": "Google DeepMind / GCS",
-  "generated_at": "2026-08-07 10:43 AM",
-  "run_time": "2026-08-07 00:00 UTC",
+  "generated_at": "2026-08-07 04:42 PM",
+  "run_time": "2026-08-07 06:00 UTC",
   "animation_frames": [
     "precip_mslp_006",
     "precip_mslp_012",
