@@ -3,14 +3,14 @@
   "storm_name": "TC 14W (Invest 96W)",
   "track_id": "WP142026",
   "latest": {
-    "lat": 29.7,
-    "lon": 160.4,
+    "lat": 31.0,
+    "lon": 159.8,
     "pressure_hpa": 987.0,
-    "wind_kt": 39.0,
-    "wind_kmh": 72,
-    "movement": "NW at 11.3 km/h (6.1 kt)",
-    "init_time": "2026-08-07 06:00",
-    "category": "Tropical Storm"
+    "wind_kt": 29.0,
+    "wind_kmh": 54,
+    "movement": "NNW at 25.9 km/h (14.0 kt)",
+    "init_time": "2026-08-07 12:00",
+    "category": "Tropical Depression"
   },
   "history": [
     {
@@ -66,6 +66,15 @@
       "wind_kt": 39.0,
       "wind_kmh": 72,
       "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-08-07 12:00",
+      "lat": 31.0,
+      "lon": 159.8,
+      "pressure_hpa": 987.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
+      "category": "Tropical Depression"
     }
   ]
 }

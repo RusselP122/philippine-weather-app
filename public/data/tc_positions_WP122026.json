@@ -3,13 +3,13 @@
   "storm_name": "TC 12W",
   "track_id": "WP122026",
   "latest": {
-    "lat": 26.7,
-    "lon": 128.1,
+    "lat": 27.2,
+    "lon": 127.2,
     "pressure_hpa": 951.0,
     "wind_kt": 89.0,
     "wind_kmh": 165,
-    "movement": "SW at 14.8 km/h (8.0 kt)",
-    "init_time": "2026-08-07 06:00",
+    "movement": "WNW at 17.5 km/h (9.5 kt)",
+    "init_time": "2026-08-07 12:00",
     "category": "Typhoon"
   },
   "history": [
@@ -71,6 +71,15 @@
       "cycle": "2026-08-07 06:00",
       "lat": 26.7,
       "lon": 128.1,
+      "pressure_hpa": 951.0,
+      "wind_kt": 89.0,
+      "wind_kmh": 165,
+      "category": "Typhoon"
+    },
+    {
+      "cycle": "2026-08-07 12:00",
+      "lat": 27.2,
+      "lon": 127.2,
       "pressure_hpa": 951.0,
       "wind_kt": 89.0,
       "wind_kmh": 165,
