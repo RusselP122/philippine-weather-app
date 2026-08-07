@@ -1,0 +1,20 @@
+[
+  {
+    "track_id": "WP122026",
+    "storm_name": "TC 12W",
+    "active": true,
+    "last_updated": "2026-08-06 18:00",
+    "latest_lat": 26.9,
+    "latest_lon": 130.4,
+    "category": "Typhoon"
+  },
+  {
+    "track_id": "WP962026",
+    "storm_name": "Invest 96W",
+    "active": true,
+    "last_updated": "2026-08-06 18:00",
+    "latest_lat": 28.2,
+    "latest_lon": 162.1,
+    "category": "Tropical Storm"
+  }
+]
