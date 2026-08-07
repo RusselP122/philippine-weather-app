@@ -26,8 +26,7 @@ import Lightning from "./components/Lightning";
 import LiveRadar from "./components/LiveRadar";
 import RiskArea from "./components/RiskArea";
 import SupportUs from "./components/SupportUs";
-import ForecastTrackComparison from "./components/ForecastTrackComparison";
-import UnofficialForecastTrack from "./components/UnofficialForecastTrack";
+
 
 function AppContent() {
   const path = window.location.pathname;
@@ -124,29 +123,6 @@ function AppContent() {
     );
   }
 
-  if (path === "/forecast-track-comparison") {
-    return (
-      <div className="min-h-screen flex flex-col bg-slate-950">
-        <Navbar />
-        <main className="flex-grow">
-          <ForecastTrackComparison />
-        </main>
-        <Footer />
-      </div>
-    );
-  }
-
-  if (path === "/unofficial-forecast-track") {
-    return (
-      <div className="min-h-screen flex flex-col bg-slate-950">
-        <Navbar />
-        <main className="flex-grow">
-          <UnofficialForecastTrack />
-        </main>
-        <Footer />
-      </div>
-    );
-  }
 
   if (path === "/tc-positions") {
     return (

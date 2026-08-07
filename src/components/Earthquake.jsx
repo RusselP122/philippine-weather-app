@@ -2,9 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap, Marker, Popup, useMapEvents, GeoJSON } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import * as toGeoJSON from "@tmcw/togeojson";
-import JSZip from "jszip";
 import { Activity, AlertTriangle, Layers, Calendar, ChevronDown, ChevronUp } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import EarthquakeWorker from "../workers/earthquakeWorker?worker";
 
 // Internal component to handle map movement
 const MapController = ({ center, zoom }) => {
@@ -83,6 +83,15 @@ const getMagRadius = (mag) => {
     return Math.max(mag * 3, 5);
 };
 
+// Helper for relative time
+const getRelativeTime = (time) => {
+    const ageMs = Date.now() - time.getTime();
+    if (ageMs < 60000) return `${Math.floor(ageMs / 1000)}s ago`;
+    if (ageMs < 3600000) return `${Math.floor(ageMs / 60000)}m ago`;
+    if (ageMs < 86400000) return `${Math.floor(ageMs / 3600000)}h ago`;
+    return time.toLocaleDateString();
+};
+
 const Earthquake = () => {
     const [quakes, setQuakes] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -106,40 +115,19 @@ const Earthquake = () => {
 
     // Load Fault Line Data Once
     useEffect(() => {
-        const loadFaults = async () => {
-            try {
-                const response = await fetch("/gem_active_faults.kml");
-                if (!response.ok) throw new Error("Failed to fetch KML");
-
-                const kmlText = await response.text();
-                const parser = new DOMParser();
-                const kmlDom = parser.parseFromString(kmlText, "text/xml");
-                const geoJson = toGeoJSON.kml(kmlDom);
-
-                // Filter for Philippines only (Approximate Bounding Box)
-                const MIN_LAT = 4, MAX_LAT = 22.5;
-                const MIN_LON = 116, MAX_LON = 129;
-
-                const filteredFeatures = geoJson.features.filter(feature => {
-                    if (!feature.geometry || !feature.geometry.coordinates) return false;
-
-                    const coords = feature.geometry.type === "MultiLineString"
-                        ? feature.geometry.coordinates.flat()
-                        : feature.geometry.coordinates;
-
-                    return coords.some(([lon, lat]) =>
-                        lat >= MIN_LAT && lat <= MAX_LAT &&
-                        lon >= MIN_LON && lon <= MAX_LON
-                    );
-                });
-
-                setFaultLineData({ ...geoJson, features: filteredFeatures });
-            } catch (error) {
-                console.error("Error loading fault lines:", error);
+        const worker = new EarthquakeWorker();
+        
+        worker.onmessage = (e) => {
+            if (e.data.type === "FAULTS_LOADED") {
+                setFaultLineData(e.data.payload);
+            } else if (e.data.type === "FAULTS_ERROR") {
+                console.error("Error loading fault lines via worker:", e.data.error);
             }
         };
 
-        loadFaults();
+        worker.postMessage({ type: "LOAD_FAULTS" });
+
+        return () => worker.terminate();
     }, []);
 
     const handleQuakeClick = (quake) => {
@@ -154,7 +142,7 @@ const Earthquake = () => {
         const now = new Date();
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-        return quakes.filter(q => {
+        const filtered = quakes.filter(q => {
             if (!q.properties || !q.properties.time) return false;
             const qDate = new Date(q.properties.time);
 
@@ -181,6 +169,9 @@ const Earthquake = () => {
                     return true;
             }
         });
+
+        // Sort chronologically (newest first)
+        return filtered.sort((a, b) => new Date(b.properties.time).getTime() - new Date(a.properties.time).getTime());
     }, [quakes, filterType, customDate]);
 
     useEffect(() => {
@@ -340,6 +331,7 @@ const Earthquake = () => {
                             minZoom={4.5}
                             maxZoom={11}
                             scrollWheelZoom
+                            preferCanvas={true}
                             className="h-[60vh] w-full"
                             maxBounds={PH_BOUNDS}
                             maxBoundsViscosity={0.8}
@@ -408,18 +400,19 @@ const Earthquake = () => {
                                 }
 
                                 const color = getMagColor(mag);
+                                const isRecent = (Date.now() - new Date(quake.properties.time).getTime()) < 3600000;
 
                                 return (
                                     <CircleMarker
                                         key={quake.id}
                                         center={[lat, lon]}
                                         pathOptions={{
-                                            color: color,
+                                            color: isRecent ? '#ffffff' : color,
                                             fillColor: color,
-                                            fillOpacity: 0.5,
-                                            weight: 1
+                                            fillOpacity: isRecent ? 0.9 : 0.5,
+                                            weight: isRecent ? 2 : 1
                                         }}
-                                        radius={getMagRadius(mag)}
+                                        radius={getMagRadius(mag) * (isRecent ? 1.2 : 1)}
                                     >
                                         <Tooltip sticky className="custom-leaflet-tooltip">
                                             <div className="text-xs p-1">
@@ -514,65 +507,72 @@ const Earthquake = () => {
                                 </div>
                             )}
 
-                            {!loading && !error && filteredQuakes.map((quake) => {
-                                if (!quake || !quake.properties || !quake.geometry) return null;
+                            <AnimatePresence initial={false}>
+                                {!loading && !error && filteredQuakes.map((quake) => {
+                                    if (!quake || !quake.properties || !quake.geometry) return null;
 
-                                const mag = Number(quake.properties.mag) || 0;
-                                const place = quake.properties.place || "Unknown";
-                                let time = new Date();
-                                let isRecent = false;
+                                    const mag = Number(quake.properties.mag) || 0;
+                                    const place = quake.properties.place || "Unknown";
+                                    let time = new Date();
+                                    let isRecent = false;
 
-                                try {
-                                    time = new Date(quake.properties.time);
-                                    if (isNaN(time.getTime())) {
-                                        time = new Date(); // Fallback
-                                    } else {
-                                        isRecent = (new Date() - time) < 1 * 60 * 60 * 1000;
+                                    try {
+                                        time = new Date(quake.properties.time);
+                                        if (isNaN(time.getTime())) {
+                                            time = new Date(); // Fallback
+                                        } else {
+                                            isRecent = (new Date() - time) < 1 * 60 * 60 * 1000;
+                                        }
+                                    } catch (e) {
+                                        console.error("Date parse error", e);
                                     }
-                                } catch (e) {
-                                    console.error("Date parse error", e);
-                                }
 
-                                const depth = quake.geometry.coordinates && quake.geometry.coordinates[2]
-                                    ? Number(quake.geometry.coordinates[2])
-                                    : 0;
+                                    const depth = quake.geometry.coordinates && quake.geometry.coordinates[2]
+                                        ? Number(quake.geometry.coordinates[2])
+                                        : 0;
 
-                                return (
-                                    <div
-                                        key={quake.id}
-                                        onClick={() => handleQuakeClick(quake)}
-                                        className="group relative rounded-lg border border-slate-800 bg-slate-900/50 p-3 hover:bg-slate-800/80 hover:border-violet-500/30 transition-all cursor-pointer"
-                                    >
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-xs font-medium text-slate-200 truncate" title={place}>
-                                                    {place}
-                                                </p>
-                                                <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400">
-                                                    <span>{time.toLocaleDateString()}</span>
-                                                    <span>{time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                    {isRecent && (
-                                                        <span className="bg-violet-500/20 text-violet-300 px-1.5 py-0.5 rounded text-[9px] border border-violet-500/30">
-                                                            NEW
-                                                        </span>
-                                                    )}
+                                    return (
+                                        <motion.div
+                                            key={quake.id}
+                                            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.95 }}
+                                            transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                                            onClick={() => handleQuakeClick(quake)}
+                                            className="group relative rounded-lg border border-slate-800 bg-slate-900/50 p-3 hover:bg-slate-800/80 hover:border-violet-500/30 transition-all cursor-pointer overflow-hidden"
+                                        >
+                                            {isRecent && <div className="absolute inset-0 bg-violet-500/5 animate-pulse pointer-events-none" />}
+                                            <div className="flex items-start justify-between gap-3 relative z-10">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-medium text-slate-200 truncate" title={place}>
+                                                        {place}
+                                                    </p>
+                                                    <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400 font-mono">
+                                                        <span>{getRelativeTime(time)}</span>
+                                                        <span className="opacity-60 hidden sm:inline">• {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                        {isRecent && (
+                                                            <span className="bg-violet-500/20 text-violet-300 px-1.5 py-0.5 rounded text-[9px] border border-violet-500/30 animate-pulse">
+                                                                NEW
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col items-end shrink-0">
+                                                    <span
+                                                        className="font-black text-sm"
+                                                        style={{ color: getMagColor(mag), textShadow: `0 0 10px ${getMagColor(mag)}40` }}
+                                                    >
+                                                        M {mag.toFixed(1)}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-500 font-mono">
+                                                        {depth.toFixed(0)} km
+                                                    </span>
                                                 </div>
                                             </div>
-                                            <div className="flex flex-col items-end">
-                                                <span
-                                                    className="font-bold text-sm"
-                                                    style={{ color: getMagColor(mag) }}
-                                                >
-                                                    M{mag.toFixed(1)}
-                                                </span>
-                                                <span className="text-[10px] text-slate-500">
-                                                    {depth.toFixed(0)}km
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                                        </motion.div>
+                                    );
+                                })}
+                            </AnimatePresence>
                         </div>
                     </aside >
                 </div >
