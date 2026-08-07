@@ -306,5 +306,137 @@
     "filename": "WP13_20260807_00Z_gdm_fnv3.png",
     "alt_filename": "13W_20260807_00Z_gdm_fnv3.png",
     "timestamp": "2026-08-07T09:05:54.458883+00:00"
+  },
+  {
+    "storm_id": "WP97",
+    "atcf_id": "97W",
+    "init_date": "20260807",
+    "cycle": "06Z",
+    "model": "ecmwf_aifs",
+    "unique_key": "WP97_20260807T06Z",
+    "filename": "WP97_20260807_06Z_ecmwf_aifs.png",
+    "alt_filename": "97W_20260807_06Z_ecmwf_aifs.png",
+    "timestamp": "2026-08-07T13:36:43.569383+00:00"
+  },
+  {
+    "storm_id": "WP14",
+    "atcf_id": "14W",
+    "init_date": "20260807",
+    "cycle": "06Z",
+    "model": "ecmwf_aifs",
+    "unique_key": "WP14_20260807T06Z",
+    "filename": "WP14_20260807_06Z_ecmwf_aifs.png",
+    "alt_filename": "14W_20260807_06Z_ecmwf_aifs.png",
+    "timestamp": "2026-08-07T13:36:57.578495+00:00"
+  },
+  {
+    "storm_id": "WP14",
+    "atcf_id": "14W",
+    "init_date": "20260807",
+    "cycle": "06Z",
+    "model": "ecmwf_ifs",
+    "unique_key": "WP14_20260807T06Z",
+    "filename": "WP14_20260807_06Z_ecmwf_ifs.png",
+    "alt_filename": "14W_20260807_06Z_ecmwf_ifs.png",
+    "timestamp": "2026-08-07T13:37:00.403131+00:00"
+  },
+  {
+    "storm_id": "WP12",
+    "atcf_id": "12W",
+    "init_date": "20260807",
+    "cycle": "06Z",
+    "model": "ecmwf_ifs",
+    "unique_key": "WP12_20260807T06Z",
+    "filename": "WP12_20260807_06Z_ecmwf_ifs.png",
+    "alt_filename": "12W_20260807_06Z_ecmwf_ifs.png",
+    "timestamp": "2026-08-07T13:37:01.659960+00:00"
+  },
+  {
+    "storm_id": "WP13",
+    "atcf_id": "13W",
+    "init_date": "20260807",
+    "cycle": "06Z",
+    "model": "ecmwf_ifs",
+    "unique_key": "WP13_20260807T06Z",
+    "filename": "WP13_20260807_06Z_ecmwf_ifs.png",
+    "alt_filename": "13W_20260807_06Z_ecmwf_ifs.png",
+    "timestamp": "2026-08-07T13:37:02.602551+00:00"
+  },
+  {
+    "storm_id": "WP97",
+    "atcf_id": "97W",
+    "init_date": "20260807",
+    "cycle": "06Z",
+    "model": "ecmwf_ifs",
+    "unique_key": "WP97_20260807T06Z",
+    "filename": "WP97_20260807_06Z_ecmwf_ifs.png",
+    "alt_filename": "97W_20260807_06Z_ecmwf_ifs.png",
+    "timestamp": "2026-08-07T13:37:12.034828+00:00"
+  },
+  {
+    "storm_id": "WP98",
+    "atcf_id": "98W",
+    "init_date": "20260807",
+    "cycle": "06Z",
+    "model": "ecmwf_ifs",
+    "unique_key": "WP98_20260807T06Z",
+    "filename": "WP98_20260807_06Z_ecmwf_ifs.png",
+    "alt_filename": "98W_20260807_06Z_ecmwf_ifs.png",
+    "timestamp": "2026-08-07T13:37:13.112326+00:00"
+  },
+  {
+    "storm_id": "WP14",
+    "atcf_id": "14W",
+    "init_date": "20260807",
+    "cycle": "06Z",
+    "model": "gdm_fnv3",
+    "unique_key": "WP14_20260807T06Z",
+    "filename": "WP14_20260807_06Z_gdm_fnv3.png",
+    "alt_filename": "14W_20260807_06Z_gdm_fnv3.png",
+    "timestamp": "2026-08-07T13:37:14.895472+00:00"
+  },
+  {
+    "storm_id": "WP12",
+    "atcf_id": "12W",
+    "init_date": "20260807",
+    "cycle": "06Z",
+    "model": "gdm_fnv3",
+    "unique_key": "WP12_20260807T06Z",
+    "filename": "WP12_20260807_06Z_gdm_fnv3.png",
+    "alt_filename": "12W_20260807_06Z_gdm_fnv3.png",
+    "timestamp": "2026-08-07T13:37:15.968936+00:00"
+  },
+  {
+    "storm_id": "WP13",
+    "atcf_id": "13W",
+    "init_date": "20260807",
+    "cycle": "06Z",
+    "model": "gdm_fnv3",
+    "unique_key": "WP13_20260807T06Z",
+    "filename": "WP13_20260807_06Z_gdm_fnv3.png",
+    "alt_filename": "13W_20260807_06Z_gdm_fnv3.png",
+    "timestamp": "2026-08-07T13:37:16.881069+00:00"
+  },
+  {
+    "storm_id": "WP97",
+    "atcf_id": "97W",
+    "init_date": "20260807",
+    "cycle": "06Z",
+    "model": "gdm_fnv3",
+    "unique_key": "WP97_20260807T06Z",
+    "filename": "WP97_20260807_06Z_gdm_fnv3.png",
+    "alt_filename": "97W_20260807_06Z_gdm_fnv3.png",
+    "timestamp": "2026-08-07T13:37:17.908644+00:00"
+  },
+  {
+    "storm_id": "WP98",
+    "atcf_id": "98W",
+    "init_date": "20260807",
+    "cycle": "06Z",
+    "model": "gdm_fnv3",
+    "unique_key": "WP98_20260807T06Z",
+    "filename": "WP98_20260807_06Z_gdm_fnv3.png",
+    "alt_filename": "98W_20260807_06Z_gdm_fnv3.png",
+    "timestamp": "2026-08-07T13:37:18.623471+00:00"
   }
 ]
