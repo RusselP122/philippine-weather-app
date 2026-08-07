@@ -1,0 +1,26 @@
+{
+  "active": true,
+  "storm_name": "TC 13W",
+  "track_id": "WP132026",
+  "latest": {
+    "lat": 17.6,
+    "lon": 132.9,
+    "pressure_hpa": 1000.0,
+    "wind_kt": 29.0,
+    "wind_kmh": 54,
+    "movement": "Stationary",
+    "init_time": "2026-08-07 06:00",
+    "category": "Tropical Depression"
+  },
+  "history": [
+    {
+      "cycle": "2026-08-07 06:00",
+      "lat": 17.6,
+      "lon": 132.9,
+      "pressure_hpa": 1000.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
+      "category": "Tropical Depression"
+    }
+  ]
+}
