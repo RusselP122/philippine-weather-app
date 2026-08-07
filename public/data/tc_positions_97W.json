@@ -1,0 +1,26 @@
+{
+  "active": true,
+  "storm_name": "Invest 97W",
+  "track_id": "WP972026",
+  "latest": {
+    "lat": 19.8,
+    "lon": 108.1,
+    "pressure_hpa": 1009.0,
+    "wind_kt": 16.0,
+    "wind_kmh": 30,
+    "movement": "Stationary",
+    "init_time": "2026-08-07 00:00",
+    "category": "Low Pressure Area"
+  },
+  "history": [
+    {
+      "cycle": "2026-08-07 00:00",
+      "lat": 19.8,
+      "lon": 108.1,
+      "pressure_hpa": 1009.0,
+      "wind_kt": 16.0,
+      "wind_kmh": 30,
+      "category": "Low Pressure Area"
+    }
+  ]
+}
