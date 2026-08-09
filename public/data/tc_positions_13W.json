@@ -3,13 +3,13 @@
   "storm_name": "TC 13W",
   "track_id": "WP132026",
   "latest": {
-    "lat": 21.2,
-    "lon": 142.7,
-    "pressure_hpa": 998.0,
+    "lat": 20.8,
+    "lon": 144.0,
+    "pressure_hpa": 999.0,
     "wind_kt": 35.0,
     "wind_kmh": 65,
-    "movement": "SE at 26.6 km/h (14.3 kt)",
-    "init_time": "2026-08-09 06:00",
+    "movement": "ESE at 23.7 km/h (12.8 kt)",
+    "init_time": "2026-08-09 12:00",
     "category": "Tropical Storm"
   },
   "history": [
@@ -63,6 +63,15 @@
       "lat": 21.2,
       "lon": 142.7,
       "pressure_hpa": 998.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-08-09 12:00",
+      "lat": 20.8,
+      "lon": 144.0,
+      "pressure_hpa": 999.0,
       "wind_kt": 35.0,
       "wind_kmh": 65,
       "category": "Tropical Storm"
