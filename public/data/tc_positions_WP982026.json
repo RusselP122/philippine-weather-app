@@ -3,13 +3,13 @@
   "storm_name": "Invest 98W",
   "track_id": "WP982026",
   "latest": {
-    "lat": 20.5,
-    "lon": 152.5,
+    "lat": 21.1,
+    "lon": 154.5,
     "pressure_hpa": 1001.0,
     "wind_kt": 25.0,
     "wind_kmh": 46,
-    "movement": "Stationary",
-    "init_time": "2026-08-08 12:00",
+    "movement": "ENE at 36.4 km/h (19.6 kt)",
+    "init_time": "2026-08-08 18:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -17,6 +17,15 @@
       "cycle": "2026-08-08 12:00",
       "lat": 20.5,
       "lon": 152.5,
+      "pressure_hpa": 1001.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-08 18:00",
+      "lat": 21.1,
+      "lon": 154.5,
       "pressure_hpa": 1001.0,
       "wind_kt": 25.0,
       "wind_kmh": 46,

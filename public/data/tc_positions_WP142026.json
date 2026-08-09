@@ -3,13 +3,13 @@
   "storm_name": "TC 14W",
   "track_id": "WP142026",
   "latest": {
-    "lat": 33.1,
-    "lon": 153.2,
-    "pressure_hpa": 991.0,
+    "lat": 32.7,
+    "lon": 151.7,
+    "pressure_hpa": 988.0,
     "wind_kt": 39.0,
     "wind_kmh": 72,
-    "movement": "W at 26.5 km/h (14.3 kt)",
-    "init_time": "2026-08-08 12:00",
+    "movement": "WSW at 24.5 km/h (13.2 kt)",
+    "init_time": "2026-08-08 18:00",
     "category": "Tropical Storm"
   },
   "history": [
@@ -108,6 +108,15 @@
       "lat": 33.1,
       "lon": 153.2,
       "pressure_hpa": 991.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
+      "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-08-08 18:00",
+      "lat": 32.7,
+      "lon": 151.7,
+      "pressure_hpa": 988.0,
       "wind_kt": 39.0,
       "wind_kmh": 72,
       "category": "Tropical Storm"
