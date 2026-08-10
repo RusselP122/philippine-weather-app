@@ -1,170 +1,170 @@
 {
   "active": true,
-  "storm_name": "TC 12W",
-  "track_id": "WP122026",
+  "storm_name": "TC 14W",
+  "track_id": "WP142026",
   "latest": {
-    "lat": 27.9,
-    "lon": 119.7,
-    "pressure_hpa": 970.0,
-    "wind_kt": 54.0,
-    "wind_kmh": 100,
-    "movement": "W at 14.7 km/h (8.0 kt)",
-    "init_time": "2026-08-09 18:00",
-    "category": "Severe Tropical Storm"
+    "lat": 33.7,
+    "lon": 149.7,
+    "pressure_hpa": 986.0,
+    "wind_kt": 39.0,
+    "wind_kmh": 72,
+    "movement": "NW at 12.1 km/h (6.5 kt)",
+    "init_time": "2026-08-10 00:00",
+    "category": "Tropical Storm"
   },
   "history": [
     {
-      "cycle": "2026-08-05 18:00",
-      "lat": 26.3,
-      "lon": 135.0,
-      "pressure_hpa": 956.0,
-      "wind_kt": 80.0,
-      "wind_kmh": 148,
-      "category": "Typhoon"
-    },
-    {
       "cycle": "2026-08-06 00:00",
-      "lat": 26.2,
-      "lon": 133.5,
-      "pressure_hpa": 956.0,
-      "wind_kt": 80.0,
-      "wind_kmh": 148,
-      "category": "Typhoon"
+      "lat": 24.5,
+      "lon": 165.2,
+      "pressure_hpa": 993.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-06 06:00",
-      "lat": 26.6,
-      "lon": 132.6,
-      "pressure_hpa": 956.0,
-      "wind_kt": 80.0,
-      "wind_kmh": 148,
-      "category": "Typhoon"
+      "lat": 25.7,
+      "lon": 164.5,
+      "pressure_hpa": 993.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-06 12:00",
-      "lat": 26.5,
-      "lon": 131.5,
-      "pressure_hpa": 957.0,
-      "wind_kt": 80.0,
-      "wind_kmh": 148,
-      "category": "Typhoon"
+      "lat": 27.2,
+      "lon": 162.5,
+      "pressure_hpa": 993.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-06 18:00",
-      "lat": 26.9,
-      "lon": 130.4,
-      "pressure_hpa": 957.0,
-      "wind_kt": 80.0,
-      "wind_kmh": 148,
-      "category": "Typhoon"
+      "lat": 28.2,
+      "lon": 162.1,
+      "pressure_hpa": 987.0,
+      "wind_kt": 45.0,
+      "wind_kmh": 83,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-07 00:00",
-      "lat": 27.2,
-      "lon": 128.8,
-      "pressure_hpa": 955.0,
-      "wind_kt": 84.0,
-      "wind_kmh": 156,
-      "category": "Typhoon"
+      "lat": 29.2,
+      "lon": 160.8,
+      "pressure_hpa": 987.0,
+      "wind_kt": 45.0,
+      "wind_kmh": 83,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-07 06:00",
-      "lat": 26.7,
-      "lon": 128.1,
-      "pressure_hpa": 951.0,
-      "wind_kt": 89.0,
-      "wind_kmh": 165,
-      "category": "Typhoon"
+      "lat": 29.7,
+      "lon": 160.4,
+      "pressure_hpa": 987.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-07 12:00",
-      "lat": 27.2,
-      "lon": 127.2,
-      "pressure_hpa": 951.0,
-      "wind_kt": 89.0,
-      "wind_kmh": 165,
-      "category": "Typhoon"
+      "lat": 31.0,
+      "lon": 159.8,
+      "pressure_hpa": 987.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
+      "category": "Tropical Depression"
     },
     {
       "cycle": "2026-08-07 18:00",
-      "lat": 26.6,
-      "lon": 126.5,
-      "pressure_hpa": 948.0,
-      "wind_kt": 89.0,
-      "wind_kmh": 165,
-      "category": "Typhoon"
+      "lat": 32.0,
+      "lon": 158.1,
+      "pressure_hpa": 990.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
+      "category": "Tropical Depression"
     },
     {
       "cycle": "2026-08-08 00:00",
-      "lat": 27.0,
-      "lon": 126.0,
-      "pressure_hpa": 954.0,
-      "wind_kt": 80.0,
-      "wind_kmh": 148,
-      "category": "Typhoon"
+      "lat": 32.4,
+      "lon": 156.5,
+      "pressure_hpa": 990.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-08 06:00",
-      "lat": 26.9,
-      "lon": 125.2,
-      "pressure_hpa": 956.0,
-      "wind_kt": 74.0,
-      "wind_kmh": 137,
-      "category": "Typhoon"
+      "lat": 33.0,
+      "lon": 154.9,
+      "pressure_hpa": 993.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-08 12:00",
-      "lat": 27.0,
-      "lon": 124.8,
-      "pressure_hpa": 950.0,
-      "wind_kt": 74.0,
-      "wind_kmh": 137,
-      "category": "Typhoon"
+      "lat": 33.1,
+      "lon": 153.2,
+      "pressure_hpa": 991.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-08 18:00",
-      "lat": 27.2,
-      "lon": 124.0,
-      "pressure_hpa": 955.0,
-      "wind_kt": 74.0,
-      "wind_kmh": 137,
-      "category": "Typhoon"
+      "lat": 32.7,
+      "lon": 151.7,
+      "pressure_hpa": 988.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-09 00:00",
-      "lat": 27.8,
-      "lon": 123.2,
-      "pressure_hpa": 959.0,
-      "wind_kt": 70.0,
-      "wind_kmh": 130,
-      "category": "Typhoon"
+      "lat": 32.4,
+      "lon": 151.0,
+      "pressure_hpa": 987.0,
+      "wind_kt": 45.0,
+      "wind_kmh": 83,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-09 06:00",
-      "lat": 28.1,
-      "lon": 121.9,
-      "pressure_hpa": 954.0,
-      "wind_kt": 74.0,
-      "wind_kmh": 137,
-      "category": "Typhoon"
+      "lat": 32.3,
+      "lon": 150.7,
+      "pressure_hpa": 987.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-09 12:00",
-      "lat": 27.9,
-      "lon": 120.6,
-      "pressure_hpa": 958.0,
-      "wind_kt": 64.0,
-      "wind_kmh": 119,
-      "category": "Typhoon"
+      "lat": 32.3,
+      "lon": 150.7,
+      "pressure_hpa": 990.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-09 18:00",
-      "lat": 27.9,
-      "lon": 119.7,
-      "pressure_hpa": 970.0,
-      "wind_kt": 54.0,
-      "wind_kmh": 100,
-      "category": "Severe Tropical Storm"
+      "lat": 33.2,
+      "lon": 150.2,
+      "pressure_hpa": 989.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-08-10 00:00",
+      "lat": 33.7,
+      "lon": 149.7,
+      "pressure_hpa": 986.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
+      "category": "Tropical Storm"
     }
   ]
 }
