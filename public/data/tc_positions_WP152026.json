@@ -3,14 +3,14 @@
   "storm_name": "TC 15W (Invest 98W)",
   "track_id": "WP152026",
   "latest": {
-    "lat": 27.1,
-    "lon": 160.7,
-    "pressure_hpa": 993.0,
-    "wind_kt": 35.0,
-    "wind_kmh": 65,
-    "movement": "NNE at 29.5 km/h (15.9 kt)",
-    "init_time": "2026-08-10 06:00",
-    "category": "Tropical Storm"
+    "lat": 27.5,
+    "lon": 160.6,
+    "pressure_hpa": 996.0,
+    "wind_kt": 29.0,
+    "wind_kmh": 54,
+    "movement": "NNW at 7.6 km/h (4.1 kt)",
+    "init_time": "2026-08-10 12:00",
+    "category": "Tropical Depression"
   },
   "history": [
     {
@@ -84,6 +84,15 @@
       "wind_kt": 35.0,
       "wind_kmh": 65,
       "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-08-10 12:00",
+      "lat": 27.5,
+      "lon": 160.6,
+      "pressure_hpa": 996.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
+      "category": "Tropical Depression"
     }
   ]
 }
