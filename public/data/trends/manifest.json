@@ -155,12 +155,12 @@
       "wide": "/data/trends/large_15day_98W_wide.png"
     },
     {
-      "id": "dist_20260808_12_6",
+      "id": "dist_20260808_18_6",
       "local_id": 5,
       "name": "Disturbance 5",
       "trackCount": 829,
-      "standard": "/data/trends/large_15day_dist_20260808_12_6_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260808_12_6_wide.png"
+      "standard": "/data/trends/large_15day_dist_20260808_18_6_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260808_18_6_wide.png"
     },
     {
       "id": "dist_20260809_12_6",
