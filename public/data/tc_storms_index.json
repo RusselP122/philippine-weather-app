@@ -3,27 +3,27 @@
     "track_id": "WP142026",
     "storm_name": "TC 14W",
     "active": true,
-    "last_updated": "2026-08-10 18:00",
+    "last_updated": "2026-08-11 00:00",
     "latest_lat": 36.8,
-    "latest_lon": 145.9,
-    "category": "Tropical Storm"
+    "latest_lon": 143.7,
+    "category": "Severe Tropical Storm"
   },
   {
     "track_id": "WP132026",
     "storm_name": "TC 13W",
     "active": true,
-    "last_updated": "2026-08-10 18:00",
-    "latest_lat": 22.4,
-    "latest_lon": 154.1,
+    "last_updated": "2026-08-11 00:00",
+    "latest_lat": 24.4,
+    "latest_lon": 155.8,
     "category": "Tropical Storm"
   },
   {
     "track_id": "WP152026",
-    "storm_name": "TC 15W (Invest 98W)",
+    "storm_name": "TC 15W",
     "active": true,
-    "last_updated": "2026-08-10 18:00",
-    "latest_lat": 27.5,
-    "latest_lon": 160.2,
+    "last_updated": "2026-08-11 00:00",
+    "latest_lat": 28.4,
+    "latest_lon": 160.8,
     "category": "Tropical Depression"
   },
   {
