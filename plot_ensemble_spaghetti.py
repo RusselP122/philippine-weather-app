@@ -572,7 +572,7 @@ def detect_model_name(file_path):
     elif 'ifs' in name:
         return 'ECMWF IFS'
     elif 'fnv3' in name:
-        return 'GDM FNV3'
+        return 'GDM WNC'
     elif 'oper' in name:
         return 'GDM OPER'
     else:

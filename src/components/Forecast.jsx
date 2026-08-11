@@ -70,13 +70,13 @@ const FORECAST_DATES = [todayDateStr, yesterdayDateStr];
 
 const MODEL_INFO = {
   fnv3_base: {
-    name: "GDM FNV3P2",
-    desc: "Google DeepMind FuXi-Nazca V3 core meteorological forecasting model ensemble (FNV3P2).",
+    name: "GDM WNCP2",
+    desc: "Google DeepMind FuXi-Nazca V3 core meteorological forecasting model ensemble (WNCP2).",
     type: "Machine Learning (ML)",
     resolution: "High Resolution / Fast Convergence"
   },
   fnv3p1: {
-    name: "GDM FNV3P1",
+    name: "GDM WNCP1",
     desc: "Earlier version of Google's AI cyclone model with an upgraded tracker. Operational Sept 2025 - May 2026.",
     type: "Machine Learning (ML)",
     resolution: "High Resolution"
@@ -88,7 +88,7 @@ const MODEL_INFO = {
     resolution: "Continuous Forecast History"
   },
   fnv3_large: {
-    name: "FNV3 Large Ensemble",
+    name: "WNC Large Ensemble",
     desc: "DeepMind Nazca Large-scale track ensemble providing enhanced dispersion paths.",
     type: "AI Ensemble Deep-Learning",
     resolution: "Medium Span / High Dispersion"

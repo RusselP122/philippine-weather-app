@@ -143,16 +143,7 @@ try:
     latest_utc = datetime.strptime(f"{date_str} {hour_str}", "%Y_%m_%d %H").replace(tzinfo=timezone.utc)
     ph_zone = timezone(timedelta(hours=8))
     latest_ph = latest_utc.astimezone(ph_zone)
-    if hour_str == "00":
-        time_label = "4:00 PM"
-    elif hour_str == "06":
-        time_label = "10:00 PM"
-    elif hour_str == "12":
-        time_label = "4:00 AM"
-    elif hour_str == "18":
-        time_label = "10:00 AM"
-    else:
-        time_label = latest_ph.strftime("%I:%M %p").lstrip("0")
+    time_label = latest_ph.strftime("%I:%M %p").lstrip("0")
 
     init_text = f"{time_label} PHT, {latest_ph.strftime('%B %d, %Y')}"
 except subprocess.CalledProcessError as e:

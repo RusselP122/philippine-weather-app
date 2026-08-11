@@ -1376,7 +1376,7 @@ def main():
         ensemble_lbl = f"{member_count} Ensemble {days_lbl}"
         cycle_time_clean = latest_run['cycle_time'].replace('T', ' ')
         cycle_date = cycle_time_clean.split(' ')[0]
-        title_text = f"FNV3 {ensemble_lbl} Track Trends{storm_label}\nWestern Pacific ({cycle_date})"
+        title_text = f"WNC {ensemble_lbl} Track Trends{storm_label}\nWestern Pacific ({cycle_date})"
         ax_map.set_title(title_text, fontsize=12, weight='bold', pad=10)
         
         ax_gen = fig.add_subplot(gs[0, 2])

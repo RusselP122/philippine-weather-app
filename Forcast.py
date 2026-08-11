@@ -157,16 +157,7 @@ def process_and_plot(model, latest_url, date_str, hour_str, is_base_model):
     ph_zone = timezone(timedelta(hours=8))
     latest_ph = latest_utc.astimezone(ph_zone)
 
-    if hour_str == "00":
-        time_label = "4:00 PM"
-    elif hour_str == "06":
-        time_label = "10:00 PM"
-    elif hour_str == "12":
-        time_label = "4:00 AM"
-    elif hour_str == "18":
-        time_label = "10:00 AM"
-    else:
-        time_label = latest_ph.strftime("%I:%M %p").lstrip("0")
+    time_label = latest_ph.strftime("%I:%M %p").lstrip("0")
 
     latest_runtime_text = f"{time_label} PHT, {latest_ph.strftime('%B %d, %Y')}"
     forecast_start_date_text = latest_ph.strftime("%Y-%m-%d")
@@ -335,8 +326,8 @@ def process_and_plot(model, latest_url, date_str, hour_str, is_base_model):
     )
 
     model_display = {
-        "FNV3P2": "GDM FNV3P2",
-        "FNV3P1": "GDM FNV3P1",
+        "FNV3P2": "GDM WNCP2",
+        "FNV3P1": "GDM WNCP1",
         "OPER": "GDM OPER"
     }.get(model, model)
 

@@ -56,7 +56,7 @@ const SupportUs = () => {
             </div>
             <h3 className="text-base font-bold text-white mb-1">Server & API Operations</h3>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Powers 24/7 data processing for ECMWF IFS, AIFS, GDM FNV3, satellite imagery, and live Doppler radars.
+              Powers 24/7 data processing for ECMWF IFS, AIFS, GDM WNC, satellite imagery, and live Doppler radars.
             </p>
           </div>
 

@@ -1905,7 +1905,7 @@ const OutlookLayerLogic = ({ data, onSelectArea, week }) => {
                 week: week,
                 color: tc.color,
                 label: tc.label || "Active Tropical Cyclone Area",
-                summary: `Active FNV3 ensemble track ID ${tc.track_id} centered at ${tc.center[0].toFixed(2)}°N, ${tc.center[1].toFixed(2)}°E.`,
+                summary: `Active WNC ensemble track ID ${tc.track_id} centered at ${tc.center[0].toFixed(2)}°N, ${tc.center[1].toFixed(2)}°E.`,
                 initialization: data.initialization
               });
             });

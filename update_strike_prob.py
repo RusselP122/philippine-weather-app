@@ -706,7 +706,7 @@ def pre_render_maps(ds, date_str, hour_str, time_dim, n_steps, variables):
                 fontsize=13, color='#0f172a', weight='bold', va='bottom', ha='left', zorder=10)
                 
         # Metadata (Top-Right)
-        ax.text(1.0, 1.07, "Model: GDM-FNV3", transform=ax.transAxes,
+        ax.text(1.0, 1.07, "Model: GDM-WNC", transform=ax.transAxes,
                 fontsize=8.5, color='#475569', weight='bold', va='bottom', ha='right', zorder=10)
         ax.text(1.0, 1.01, f"Run: {date_str.replace('_', '-')} {hour_str}:00 UTC", transform=ax.transAxes,
                 fontsize=8.5, color='#475569', weight='bold', va='bottom', ha='right', zorder=10)

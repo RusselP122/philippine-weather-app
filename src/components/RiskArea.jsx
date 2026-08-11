@@ -152,7 +152,7 @@ const RiskArea = () => {
                 <span>15-Day Cumulative Risk Map</span>
               </span>
               <span className="font-mono text-[10px] text-slate-400 font-bold bg-slate-900 px-3 py-1 rounded-xl border border-white/5">
-                MODEL: GDM-FNV3 LARGE
+                MODEL: GDM-WNC
               </span>
             </div>
 
@@ -164,8 +164,8 @@ const RiskArea = () => {
                     key={varKey}
                     onClick={() => handleVariableChange(varKey)}
                     className={`px-3 py-2.5 rounded-xl text-[11px] font-black tracking-wider transition-all duration-300 border cursor-pointer whitespace-normal text-center leading-tight ${selectedVariable === varKey
-                        ? "bg-slate-800 text-cyan-400 border-white/10 shadow-lg shadow-black/40"
-                        : "bg-slate-950/60 border-white/5 text-slate-500 hover:text-slate-200"
+                      ? "bg-slate-800 text-cyan-400 border-white/10 shadow-lg shadow-black/40"
+                      : "bg-slate-950/60 border-white/5 text-slate-500 hover:text-slate-200"
                       }`}
                   >
                     {VARIABLE_INFO[varKey].name}
@@ -287,7 +287,7 @@ const RiskArea = () => {
               </h2>
               <div className="text-xs text-slate-400 space-y-2.5 leading-relaxed font-medium">
                 <p>
-                  These risk assessment maps are derived from the experimental **Google DeepMind FuXi-Nazca V3 (FNV3)** weather model.
+                  These risk assessment maps are derived from the experimental **Google DeepMind FuXi-Nazca V3 (WNC)** weather model.
                 </p>
                 <p>
                   A <strong>"Strike"</strong> is defined as the storm center passing within 120 km of a location. Higher percentages indicate a greater consensus among the 1,000 ensemble members that a storm will affect that province.

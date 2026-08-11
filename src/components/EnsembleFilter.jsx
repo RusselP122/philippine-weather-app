@@ -172,7 +172,7 @@ export default function EnsembleFilter({ tracks, onFilterChange, isActive, isLoc
             {isLocked && (
                 <div className="absolute top-[28px] inset-x-0 bottom-0 z-10 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-[2px] rounded-xl border border-slate-700/50 mt-2">
                     <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" className="text-slate-400 mb-2"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Requires FNV3 Large</span>
+                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Requires WNC Large</span>
                 </div>
             )}
 
