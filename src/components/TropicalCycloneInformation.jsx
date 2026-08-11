@@ -232,7 +232,7 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
   const [isImageDownloading, setIsImageDownloading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("satellite"); // "satellite" | "spaghetti" | "windy"
-  const [selectedModel, setSelectedModel] = useState("gdm_fnv3"); // "gdm_fnv3" | "ecmwf_ifs" | "ecmwf_aifs"
+  const [selectedModel, setSelectedModel] = useState("gdm_wnc"); // "gdm_wnc" | "ecmwf_ifs" | "ecmwf_aifs"
   const [selectedCycle, setSelectedCycle] = useState(stormData.initCycle || "00Z");
   const [spaghettiError, setSpaghettiError] = useState(false);
   const [spaghettiLoading, setSpaghettiLoading] = useState(true);
@@ -467,7 +467,7 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
   );
 
   const SpaghettiView = () => (
-    <div 
+    <div
       className="absolute inset-0 flex items-center justify-center bg-[#1e1e2d] overflow-hidden select-none"
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -585,13 +585,12 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
                       key={cycle}
                       disabled={!isAvailable}
                       onClick={() => setSelectedCycle(cycle)}
-                      className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
-                        isSelected
+                      className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${isSelected
                           ? "bg-cyan-500 text-slate-950 font-bold shadow"
                           : isAvailable
-                          ? "text-slate-300 hover:bg-slate-800 hover:text-white"
-                          : "opacity-40 cursor-not-allowed bg-slate-900/50 text-slate-600"
-                      }`}
+                            ? "text-slate-300 hover:bg-slate-800 hover:text-white"
+                            : "opacity-40 cursor-not-allowed bg-slate-900/50 text-slate-600"
+                        }`}
                     >
                       {cycle}
                     </button>
@@ -602,8 +601,8 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
               {/* Model Selector */}
               <div className="flex bg-slate-950/80 border border-slate-800 rounded-lg p-0.5 shadow-inner flex-wrap gap-0.5">
                 <button
-                  onClick={() => setSelectedModel("gdm_fnv3")}
-                  className={`px-2.5 py-1.5 text-[10px] font-semibold rounded-md transition-all cursor-pointer text-center whitespace-nowrap ${selectedModel === "gdm_fnv3" ? "bg-cyan-500 text-slate-950 font-bold shadow" : "text-slate-400 hover:text-slate-200"
+                  onClick={() => setSelectedModel("gdm_wnc")}
+                  className={`px-2.5 py-1.5 text-[10px] font-semibold rounded-md transition-all cursor-pointer text-center whitespace-nowrap ${selectedModel === "gdm_wnc" ? "bg-cyan-500 text-slate-950 font-bold shadow" : "text-slate-400 hover:text-slate-200"
                     }`}
                 >
                   GDM WNC
