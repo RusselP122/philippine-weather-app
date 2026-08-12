@@ -3,15 +3,24 @@
     "track_id": "WP132026",
     "storm_name": "TC 13W",
     "active": true,
-    "last_updated": "2026-08-12 06:00",
-    "latest_lat": 30.1,
-    "latest_lon": 162.7,
+    "last_updated": "2026-08-12 12:00",
+    "latest_lat": 30.3,
+    "latest_lon": 163.5,
+    "category": "Tropical Depression"
+  },
+  {
+    "track_id": "WP162026",
+    "storm_name": "TC 16W (Invest 91W)",
+    "active": true,
+    "last_updated": "2026-08-12 12:00",
+    "latest_lat": 23.0,
+    "latest_lon": 144.8,
     "category": "Tropical Depression"
   },
   {
     "track_id": "WP912026",
     "storm_name": "Invest 91W",
-    "active": true,
+    "active": false,
     "last_updated": "2026-08-12 06:00",
     "latest_lat": 21.9,
     "latest_lon": 143.3,
