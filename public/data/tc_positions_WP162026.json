@@ -3,13 +3,13 @@
   "storm_name": "TC 16W (Invest 91W)",
   "track_id": "WP162026",
   "latest": {
-    "lat": 24.7,
-    "lon": 146.4,
+    "lat": 26.5,
+    "lon": 148.2,
     "pressure_hpa": 998.0,
     "wind_kt": 29.0,
     "wind_kmh": 54,
-    "movement": "NE at 41.6 km/h (22.4 kt)",
-    "init_time": "2026-08-12 18:00",
+    "movement": "NE at 44.9 km/h (24.3 kt)",
+    "init_time": "2026-08-13 00:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -44,6 +44,15 @@
       "cycle": "2026-08-12 18:00",
       "lat": 24.7,
       "lon": 146.4,
+      "pressure_hpa": 998.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-13 00:00",
+      "lat": 26.5,
+      "lon": 148.2,
       "pressure_hpa": 998.0,
       "wind_kt": 29.0,
       "wind_kmh": 54,
