@@ -3,13 +3,13 @@
   "storm_name": "TC 16W",
   "track_id": "WP162026",
   "latest": {
-    "lat": 28.4,
-    "lon": 158.0,
-    "pressure_hpa": 1000.0,
+    "lat": 28.3,
+    "lon": 158.9,
+    "pressure_hpa": 1002.0,
     "wind_kt": 19.0,
     "wind_kmh": 35,
-    "movement": "E at 24.8 km/h (13.4 kt)",
-    "init_time": "2026-08-15 06:00",
+    "movement": "E at 14.8 km/h (8.0 kt)",
+    "init_time": "2026-08-15 12:00",
     "category": "Low Pressure Area"
   },
   "history": [
@@ -135,6 +135,15 @@
       "lat": 28.4,
       "lon": 158.0,
       "pressure_hpa": 1000.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-08-15 12:00",
+      "lat": 28.3,
+      "lon": 158.9,
+      "pressure_hpa": 1002.0,
       "wind_kt": 19.0,
       "wind_kmh": 35,
       "category": "Low Pressure Area"
