@@ -3,13 +3,13 @@
   "storm_name": "Invest 93W",
   "track_id": "WP932026",
   "latest": {
-    "lat": 23.9,
-    "lon": 144.8,
+    "lat": 24.7,
+    "lon": 144.7,
     "pressure_hpa": 1001.0,
     "wind_kt": 19.0,
     "wind_kmh": 35,
-    "movement": "Stationary",
-    "init_time": "2026-08-15 12:00",
+    "movement": "N at 14.9 km/h (8.1 kt)",
+    "init_time": "2026-08-15 18:00",
     "category": "Low Pressure Area"
   },
   "history": [
@@ -71,6 +71,15 @@
       "cycle": "2026-08-15 12:00",
       "lat": 23.9,
       "lon": 144.8,
+      "pressure_hpa": 1001.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-08-15 18:00",
+      "lat": 24.7,
+      "lon": 144.7,
       "pressure_hpa": 1001.0,
       "wind_kt": 19.0,
       "wind_kmh": 35,
