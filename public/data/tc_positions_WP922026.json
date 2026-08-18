@@ -4,12 +4,12 @@
   "track_id": "WP922026",
   "latest": {
     "lat": 7.9,
-    "lon": 155.3,
-    "pressure_hpa": 1008.0,
+    "lon": 154.9,
+    "pressure_hpa": 1005.0,
     "wind_kt": 19.0,
     "wind_kmh": 35,
-    "movement": "Stationary",
-    "init_time": "2026-08-18 00:00",
+    "movement": "W at 7.3 km/h (4.0 kt)",
+    "init_time": "2026-08-18 06:00",
     "category": "Low Pressure Area"
   },
   "history": [
@@ -18,6 +18,15 @@
       "lat": 7.9,
       "lon": 155.3,
       "pressure_hpa": 1008.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-08-18 06:00",
+      "lat": 7.9,
+      "lon": 154.9,
+      "pressure_hpa": 1005.0,
       "wind_kt": 19.0,
       "wind_kmh": 35,
       "category": "Low Pressure Area"
