@@ -1,0 +1,26 @@
+{
+  "active": true,
+  "storm_name": "Invest 92W",
+  "track_id": "WP922026",
+  "latest": {
+    "lat": 7.9,
+    "lon": 155.3,
+    "pressure_hpa": 1008.0,
+    "wind_kt": 19.0,
+    "wind_kmh": 35,
+    "movement": "Stationary",
+    "init_time": "2026-08-18 00:00",
+    "category": "Low Pressure Area"
+  },
+  "history": [
+    {
+      "cycle": "2026-08-18 00:00",
+      "lat": 7.9,
+      "lon": 155.3,
+      "pressure_hpa": 1008.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    }
+  ]
+}

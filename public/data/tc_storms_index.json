@@ -1,5 +1,14 @@
 [
   {
+    "track_id": "WP922026",
+    "storm_name": "Invest 92W",
+    "active": true,
+    "last_updated": "2026-08-18 00:00",
+    "latest_lat": 7.9,
+    "latest_lon": 155.3,
+    "category": "Low Pressure Area"
+  },
+  {
     "track_id": "WP162026",
     "storm_name": "TC 16W",
     "active": false,
