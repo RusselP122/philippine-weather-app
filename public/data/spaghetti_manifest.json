@@ -4287,7 +4287,7 @@
     "unique_key": "WP92_20260817T18Z",
     "filename": "WP92_20260817_18Z_ecmwf_ifs.png",
     "alt_filename": "92W_20260817_18Z_ecmwf_ifs.png",
-    "timestamp": "2026-08-18T01:40:29.023151+00:00"
+    "timestamp": "2026-08-18T07:35:06.054494+00:00"
   },
   {
     "storm_id": "WP92",
@@ -4310,5 +4310,60 @@
     "filename": "WP95_20260817_18Z_gdm_wnc.png",
     "alt_filename": "95W_20260817_18Z_gdm_wnc.png",
     "timestamp": "2026-08-18T01:40:32.146278+00:00"
+  },
+  {
+    "storm_id": "WP95",
+    "atcf_id": "95W",
+    "init_date": "20260818",
+    "cycle": "00Z",
+    "model": "ecmwf_aifs",
+    "unique_key": "WP95_20260818T00Z",
+    "filename": "WP95_20260818_00Z_ecmwf_aifs.png",
+    "alt_filename": "95W_20260818_00Z_ecmwf_aifs.png",
+    "timestamp": "2026-08-18T07:35:03.205509+00:00"
+  },
+  {
+    "storm_id": "WP92",
+    "atcf_id": "92W",
+    "init_date": "20260818",
+    "cycle": "00Z",
+    "model": "ecmwf_aifs",
+    "unique_key": "WP92_20260818T00Z",
+    "filename": "WP92_20260818_00Z_ecmwf_aifs.png",
+    "alt_filename": "92W_20260818_00Z_ecmwf_aifs.png",
+    "timestamp": "2026-08-18T07:35:04.602018+00:00"
+  },
+  {
+    "storm_id": "WP92",
+    "atcf_id": "92W",
+    "init_date": "20260818",
+    "cycle": "00Z",
+    "model": "gdm_wnc",
+    "unique_key": "WP92_20260818T00Z",
+    "filename": "WP92_20260818_00Z_gdm_wnc.png",
+    "alt_filename": "92W_20260818_00Z_gdm_wnc.png",
+    "timestamp": "2026-08-18T07:35:07.844255+00:00"
+  },
+  {
+    "storm_id": "WP95",
+    "atcf_id": "95W",
+    "init_date": "20260818",
+    "cycle": "00Z",
+    "model": "gdm_wnc",
+    "unique_key": "WP95_20260818T00Z",
+    "filename": "WP95_20260818_00Z_gdm_wnc.png",
+    "alt_filename": "95W_20260818_00Z_gdm_wnc.png",
+    "timestamp": "2026-08-18T07:35:08.862938+00:00"
+  },
+  {
+    "storm_id": "WP94",
+    "atcf_id": "94W",
+    "init_date": "20260818",
+    "cycle": "00Z",
+    "model": "gdm_wnc",
+    "unique_key": "WP94_20260818T00Z",
+    "filename": "WP94_20260818_00Z_gdm_wnc.png",
+    "alt_filename": "94W_20260818_00Z_gdm_wnc.png",
+    "timestamp": "2026-08-18T07:35:09.587238+00:00"
   }
 ]
