@@ -13,6 +13,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.patheffects as path_effects
 from matplotlib.patches import FancyBboxPatch
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -25,24 +26,62 @@ from datetime import datetime, timezone, timedelta
 LEAD_STANDARD = [0,  12,  24,  36,  48,   60,   72,   96,  120,  144]
 RADII_NM      = [0,  26,  38,  50,  59,   71,   83,  113,  146,  180]
 
-# ── Forecast Panel Palette Constants ─────────────────────────────
-PANEL_BG     = "#0f1923"   # deep navy
-CARD_BG      = "#162130"   # surface card
-CARD_BORDER  = "#1e3247"   # subtle border
-ACCENT_LINE  = "#2a78d6"   # blue — trend line
-MSLP_LINE    = "#eb6834"   # orange — pressure line
-WIND_HIGH    = "#e34948"   # red tint for high wind
-WIND_MID     = "#eda100"   # amber for moderate
-WIND_LOW     = "#1baf7a"   # green for low
-TEXT_PRI     = "#e8eef4"   # near-white primary text
-TEXT_SEC     = "#7a9ab5"   # muted blue-gray secondary
-TEXT_MUT     = "#4a6a84"   # very muted for labels
-GRIDLINE     = "#1a2d3f"   # gridlines
+# ── Deep Slate Dark Theme Palette Constants ───────────────────────
+BG_DARK       = "#070d18"   # Deep canvas background
+OCEAN_COLOR   = "#08101e"   # Deep midnight slate ocean
+LAND_COLOR    = "#152234"   # Dark slate landmass
+LAND_EDGE     = "#293c56"   # Coastline and borders
+PROVINCE_EDGE = "#334b6e"   # Subtle Philippine provinces
+PAR_COLOR     = "#f97316"   # Glowing orange PAR boundary
+GRID_COLOR    = "#142236"   # Gridlines
+GRID_TEXT     = "#64748b"   # Lat/Lon grid labels
+
+HEADER_BG     = "#0c1524"   # Glassmorphism header card
+HEADER_BORDER = "#1e2e46"   # Header border
+
+PANEL_BG      = "#070d18"   # Forecast panel background
+CARD_BG       = "#0f1a2c"   # Surface card
+CARD_BORDER   = "#1e314b"   # Card border
+
+ACCENT_LINE   = "#38bdf8"   # Cyan trend line
+MSLP_LINE     = "#fb923c"   # Orange pressure line
+
+TEXT_PRI      = "#f8fafc"   # Near-white primary text
+TEXT_SEC      = "#94a3b8"   # Muted slate secondary
+TEXT_MUT      = "#64748b"   # Muted label text
+
+# Official Agencies (Neon Glow Colors)
+AGENCY_COLORS = {
+    'PAGASA': '#00d2ff',  # Electric Sky Blue
+    'JTWC':   '#f43f5e',  # Bright Crimson Rose
+    'JMA':    '#10b981'   # Radiant Emerald Green
+}
+
+# Ensemble Means (Distinct High-Contrast Accents)
+ENSEMBLE_COLORS = {
+    'WeatherNext Cyclone': '#a855f7',  # Radiant Violet
+    'ECMWF IFS':           '#fbbf24',  # Warm Amber / Gold
+    'ECMWF AIFS':          '#2dd4bf',  # Bright Mint / Teal
+    'AIGEFS':              '#fb923c'   # Coral Orange
+}
+
+# Intensity Scale (PAGASA Standard in km/h)
+INTENSITY_PALETTE = {
+    'LPA': ('#38bdf8', 'Low Pressure Area'),
+    'TD':  ('#34d399', 'Tropical Depression'),
+    'TS':  ('#facc15', 'Tropical Storm'),
+    'STS': ('#fb923c', 'Severe Tropical Storm'),
+    'TY':  ('#ef4444', 'Typhoon'),
+    'STY': ('#f43f5e', 'Super Typhoon')
+}
 
 def wind_color(kmh):
-    if kmh >= 62: return WIND_HIGH
-    if kmh >= 52: return WIND_MID
-    return WIND_LOW
+    if kmh >= 118: return "#ef4444"
+    if kmh >= 89:  return "#fb923c"
+    if kmh >= 62:  return "#facc15"
+    if kmh >= 45:  return "#34d399"
+    return "#38bdf8"
+
 
 
 def clean_storm_id_no_dot(raw_id):
@@ -604,8 +643,8 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
     first_pt = df.iloc[0]
     dist_km = haversine_km(first_pt['lat'], first_pt['lon'], curr_lat, curr_lon)
     
-    # Accept PAGASA track if within 650 km or if storm is within Philippine Area of Responsibility
-    if dist_km <= 650.0 or (115 <= curr_lon <= 135 and 5 <= curr_lat <= 25):
+    # Accept PAGASA track ONLY if within 350 km of the storm center
+    if dist_km <= 350.0:
         print(f"Matched official PAGASA track for {short_id} (dist: {dist_km:.1f}km)")
         return df[['lead_time_hours', 'lat', 'lon']], t0.strftime('%Y-%m-%d %HZ') if t0 else None
         
@@ -658,63 +697,6 @@ def get_ecmwf_control_or_paired_track(storm, fpath):
             return res
             
     return pd.DataFrame()
-
-
-def load_all_actual_tracks_for_storm(storm):
-    """
-    Scans public/data to extract actual ensemble means for:
-    - FNV3p2 (prefers paired track if available, else calculated ensemble mean)
-    - ECMWF IFS (prefers control/paired track if available, else calculated ensemble mean)
-    - ECMWF AIFS (prefers control/paired track if available, else calculated ensemble mean)
-    - AIGEFS (prefers aimn track if available, else calculated ensemble mean)
-    And official agency tracks (PAGASA from cyclone.dat, JTWC, JMA).
-    """
-    agency_tracks = {}
-    ensemble_means = {}
-    
-    data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public', 'data')
-    
-    # 1. FNV3p2: Check paired file first, fallback to calculated ensemble mean
-    fnv3_paired = get_fnv3_paired_mean_track(storm, data_dir)
-    if not fnv3_paired.empty:
-        ensemble_means['FNV3p2'] = fnv3_paired
-    else:
-        fnv3_calc = get_actual_ensemble_mean_for_storm(storm, os.path.join(data_dir, 'fnv3p2_latest.dat'))
-        if not fnv3_calc.empty:
-            ensemble_means['FNV3p2'] = fnv3_calc
-
-    # 2. ECMWF IFS: Check control/paired track first, fallback to calculated ensemble mean
-    for fpath in [os.path.join(data_dir, 'ifs_tc_latest.dat'), os.path.join(data_dir, 'ifs_tc_latest.csv')]:
-        if os.path.exists(fpath):
-            ifs_ctrl = get_ecmwf_control_or_paired_track(storm, fpath)
-            if not ifs_ctrl.empty:
-                ensemble_means['ECMWF IFS'] = ifs_ctrl
-            else:
-                ifs_calc = get_actual_ensemble_mean_for_storm(storm, fpath)
-                if not ifs_calc.empty:
-                    ensemble_means['ECMWF IFS'] = ifs_calc
-            break
-
-    # 3. ECMWF AIFS: Check control/paired track first, fallback to calculated ensemble mean
-    for fpath in [os.path.join(data_dir, 'aifs_tc_latest.csv'), os.path.join(data_dir, 'aifs_tc_latest.dat')]:
-        if os.path.exists(fpath):
-            aifs_ctrl = get_ecmwf_control_or_paired_track(storm, fpath)
-            if not aifs_ctrl.empty:
-                ensemble_means['ECMWF AIFS'] = aifs_ctrl
-            else:
-                aifs_calc = get_actual_ensemble_mean_for_storm(storm, fpath)
-                if not aifs_calc.empty:
-                    ensemble_means['ECMWF AIFS'] = aifs_calc
-            break
-
-    # 4. AIGEFS: Check aimn mean track file first, fallback to calculated ensemble mean
-    aigefs_aimn = get_aigefs_aimn_mean_track(storm, data_dir)
-    if not aigefs_aimn.empty:
-        ensemble_means['AIGEFS'] = aigefs_aimn
-    else:
-        aigefs_calc = get_actual_ensemble_mean_for_storm(storm, os.path.join(data_dir, 'aigefs_tc_latest.dat'))
-        if not aigefs_calc.empty:
-            ensemble_means['AIGEFS'] = aigefs_calc
 
 def get_jtwc_official_track(storm, data_dir='public/data'):
     """
@@ -1001,14 +983,14 @@ def load_all_actual_tracks_for_storm(storm):
     
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public', 'data')
     
-    # 1. FNV3p2: Check paired file first, fallback to calculated ensemble mean
+    # 1. WeatherNext Cyclone (FNV3p2): Check paired file first, fallback to calculated ensemble mean
     fnv3_paired = get_fnv3_paired_mean_track(storm, data_dir)
     if not fnv3_paired.empty:
-        ensemble_means['FNV3p2'] = fnv3_paired
+        ensemble_means['WeatherNext Cyclone'] = fnv3_paired
     else:
         fnv3_calc = get_actual_ensemble_mean_for_storm(storm, os.path.join(data_dir, 'fnv3p2_latest.dat'))
         if not fnv3_calc.empty:
-            ensemble_means['FNV3p2'] = fnv3_calc
+            ensemble_means['WeatherNext Cyclone'] = fnv3_calc
 
     for fnv3_f in [os.path.join(data_dir, 'fnv3p2_paired_latest.dat'), os.path.join(data_dir, 'fnv3p2_latest.dat')]:
         if os.path.exists(fnv3_f):
@@ -1016,12 +998,12 @@ def load_all_actual_tracks_for_storm(storm):
             if 'init_time' in df_fnv3.columns and not df_fnv3['init_time'].dropna().empty:
                 try:
                     dt = pd.to_datetime(df_fnv3['init_time'].dropna().iloc[0])
-                    track_inits['FNV3p2'] = dt.strftime('%Y-%m-%d %HZ')
+                    track_inits['WeatherNext Cyclone'] = dt.strftime('%Y-%m-%d %HZ')
                     break
                 except Exception:
                     pass
-    if 'FNV3p2' not in track_inits:
-        track_inits['FNV3p2'] = "2026-08-01 18Z"
+    if 'WeatherNext Cyclone' not in track_inits:
+        track_inits['WeatherNext Cyclone'] = "2026-08-01 18Z"
 
     # 2. ECMWF IFS: Check control/paired track first, fallback to calculated ensemble mean
     ifs_files = [os.path.join(data_dir, 'ifs_tc_latest.dat'), os.path.join(data_dir, 'ifs_tc_latest.csv')]
@@ -1118,203 +1100,122 @@ def load_all_actual_tracks_for_storm(storm):
     return agency_tracks, ensemble_means, track_inits
 
 
-def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepath, init_time_str="Latest", track_inits=None):
+def get_adaptive_viewport(lats, lons, target_aspect=1.75):
     """
-    Renders a horizontal forecast track map using the exact visual style of plot_ensemble_spaghetti.py:
-    - Base map: Sky blue ocean (#87CEEB), Tan land (#DEB887), Brown coastlines/borders (#8B4513 / #654321).
-    - Top header layout matching plot_ensemble_spaghetti.py exactly.
-    - Legend panel positioned cleanly outside & below the map for mobile users.
+    Calculates an adaptive bounding box around all storm and track points,
+    enforcing padding, minimum geographic span, and aspect ratio matching.
     """
-    if track_inits is None:
-        track_inits = {}
-
-    clean_id = clean_storm_id_no_dot(storm['atcf_id'])
-    short_id = get_short_atcf_id(storm['atcf_id'])
-    storm_name = storm.get('name', 'INVEST').upper()
-    full_storm_title = f"{clean_id}" if 'INVEST' in clean_id or 'STORM' in clean_id else f"{storm_name} ({clean_id})"
+    valid_lats = [float(la) for la in lats if not pd.isna(la) and not math.isnan(la)]
+    valid_lons = [float(lo) for lo in lons if not pd.isna(lo) and not math.isnan(lo)]
     
-    # Horizontal figure geometry (Width 12in x Height 7.2in - matches plot_ensemble_spaghetti.py horizontal feel)
-    fig = plt.figure(figsize=(12, 7.2), facecolor='white')
+    if not valid_lats or not valid_lons:
+        return [110.0, 145.0, 5.0, 25.0]
+        
+    raw_min_lat, raw_max_lat = min(valid_lats), max(valid_lats)
+    raw_min_lon, raw_max_lon = min(valid_lons), max(valid_lons)
     
-    # Position map axes cleanly inside figure to save top space for headers & bottom space for legend
-    ax = fig.add_axes([0.08, 0.22, 0.88, 0.64], projection=ccrs.PlateCarree())
+    # Adaptive padding
+    pad_lat = max(2.5, (raw_max_lat - raw_min_lat) * 0.18)
+    pad_lon = max(3.5, (raw_max_lon - raw_min_lon) * 0.18)
     
-    # 1. Base Map Setup (matching plot_ensemble_spaghetti.py style)
-    ax.set_facecolor('#87CEEB')  # Sky blue ocean background
-    ax.add_feature(cfeature.LAND, facecolor='#DEB887', edgecolor='#8B4513', linewidth=0.8, zorder=1)
-    ax.add_feature(cfeature.OCEAN, facecolor='#87CEEB', zorder=0)
-    ax.add_feature(cfeature.COASTLINE, edgecolor='#8B4513', linewidth=0.8, zorder=2)
-    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='#654321', linewidth=0.8, zorder=2)
-
-    # Philippine Province Overlay (matching plot_ensemble_spaghetti.py)
-    try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        geojson_paths = [
-            os.path.join(script_dir, "public", "data", "ph_provinces.json"),
-            "public/data/ph_provinces.json"
-        ]
-        found_geojson = next((p for p in geojson_paths if os.path.exists(p)), None)
-        if found_geojson:
-            with open(found_geojson, 'r', encoding='utf-8') as gf:
-                geojson_data = json.load(gf)
-            prov_geoms = [shape(feature['geometry']) for feature in geojson_data['features']]
-            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#654321', linewidth=0.4, alpha=0.5, zorder=3)
-    except Exception:
-        pass
-
-    # Sea Text Labels (matching plot_ensemble_spaghetti.py)
-    ax.text(
-        118, 13, 'West Philippine\nSea', fontsize=5, color='navy', weight='bold',
-        transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3
-    )
-    ax.text(
-        130, 20, 'Philippine\nSea', fontsize=7, color='navy', weight='bold',
-        transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3
-    )
-
-    # Philippine Area of Responsibility (PAR) Boundary (matching plot_ensemble_spaghetti.py)
-    par_vertices = [
-        (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
-        (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
-    ]
-    ax.add_patch(mpatches.Polygon(par_vertices, facecolor='none', edgecolor='#FF6B35', 
-                                 linestyle='-', linewidth=2.8, alpha=0.85, 
-                                 transform=ccrs.PlateCarree(), zorder=3, label='PAR'))
-    ax.text(134.5, 24.2, 'PAR', color='#FF6B35', fontsize=9.5, weight='bold', transform=ccrs.PlateCarree(), ha='right', va='top', zorder=4)
-
-    # Gridlines Configuration (matching plot_ensemble_spaghetti.py)
-    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
-    gl.xlocator = plt.FixedLocator(np.arange(90, 181, 5))
-    gl.ylocator = plt.FixedLocator(np.arange(-10, 51, 5))
-    gl.xlabel_style = {'size': 9.5, 'weight': 'bold', 'color': '#475569'}
-    gl.ylabel_style = {'size': 9.5, 'weight': 'bold', 'color': '#475569'}
-    gl.top_labels = False
-    gl.right_labels = False
-
-    # Determine viewport extent dynamically around storm and forecast tracks
-    all_lats = [storm['lat']]
-    all_lons = [storm['lon']]
-    for df in list(agency_tracks.values()) + list(ensemble_means.values()):
-        if not df.empty:
-            all_lats.extend(df['lat'].dropna().tolist())
-            all_lons.extend(df['lon'].dropna().tolist())
-            
-    min_lon, max_lon = min(all_lons) - 5.0, max(all_lons) + 5.0
-    min_lat, max_lat = min(all_lats) - 4.0, max(all_lats) + 4.0
+    min_lat = raw_min_lat - pad_lat
+    max_lat = raw_max_lat + pad_lat
+    min_lon = raw_min_lon - pad_lon
+    max_lon = raw_max_lon + pad_lon
     
-    min_lon = max(105.0, min_lon)
-    max_lon = min(155.0, max(145.0, max_lon))
+    # Ensure minimum span so localized storms have good Philippine context
+    min_span_lat = 10.0
+    min_span_lon = 16.0
+    
+    if (max_lat - min_lat) < min_span_lat:
+        center_lat = (max_lat + min_lat) / 2.0
+        min_lat = center_lat - min_span_lat / 2.0
+        max_lat = center_lat + min_span_lat / 2.0
+        
+    if (max_lon - min_lon) < min_span_lon:
+        center_lon = (max_lon + min_lon) / 2.0
+        min_lon = center_lon - min_span_lon / 2.0
+        max_lon = center_lon + min_span_lon / 2.0
+        
+    # Enforce aspect ratio (width / height)
+    curr_w = max_lon - min_lon
+    curr_h = max_lat - min_lat
+    curr_aspect = curr_w / max(0.1, curr_h)
+    
+    if curr_aspect < target_aspect:
+        needed_w = curr_h * target_aspect
+        diff_w = needed_w - curr_w
+        min_lon -= diff_w / 2.0
+        max_lon += diff_w / 2.0
+    elif curr_aspect > target_aspect:
+        needed_h = curr_w / target_aspect
+        diff_h = needed_h - curr_h
+        min_lat -= diff_h / 2.0
+        max_lat += diff_h / 2.0
+        
+    # Regional boundary clamping (Western Pacific / PAR)
+    min_lon = max(102.0, min_lon)
+    max_lon = min(160.0, max_lon)
     min_lat = max(0.0, min_lat)
-    max_lat = min(40.0, max(30.0, max_lat))
+    max_lat = min(42.0, max_lat)
     
-    ax.set_extent([min_lon, max_lon, min_lat, max_lat], crs=ccrs.PlateCarree())
+    return [min_lon, max_lon, min_lat, max_lat]
 
-    # Colors Definition
-    # Official Agencies (Solid lines)
-    agency_colors = {
-        'PAGASA': '#0055ff',  # Blue
-        'JTWC': '#e11d48',    # Red
-        'JMA': '#16a34a'      # Green
-    }
 
-    # Ensemble Means (Solid lines)
-    ensemble_colors = {
-        'FNV3p2': '#000080',    # Navy
-        'ECMWF IFS': '#334155', # Dark Gray
-        'ECMWF AIFS': '#0d9488',# Teal
-        'AIGEFS': '#78350f'     # Brown
-    }
+def draw_current_storm_glyph(ax, lon, lat, color='#ffffff', size=130):
+    """Draws a broadcast-grade glowing hurricane eye center glyph at initial fix."""
+    # Outer glow ring
+    ax.scatter(lon, lat, s=size*1.9, facecolor='none', edgecolor=color, linewidth=2.2, alpha=0.45, transform=ccrs.PlateCarree(), zorder=18)
+    # Mid ring
+    ax.scatter(lon, lat, s=size, facecolor=BG_DARK, edgecolor=color, linewidth=2.0, alpha=0.95, transform=ccrs.PlateCarree(), zorder=19)
+    # Center core dot
+    ax.scatter(lon, lat, s=size*0.22, facecolor=color, edgecolor='none', transform=ccrs.PlateCarree(), zorder=20)
 
-    # 1. Plot Official Agency Tracks
-    for name, df in agency_tracks.items():
-        if df.empty:
-            continue
-        color = agency_colors.get(name, '#000000')
-        lats = df['lat'].values
-        lons = df['lon'].values
-        hours = df['lead_time_hours'].values
+
+def resample_track_to_regular_intervals(df, interval_hours=6.0):
+    """
+    Resamples a track DataFrame to regular lead times (0, 6, 12, 18, ...)
+    using linear interpolation on lat, lon, wind, and pressure.
+    """
+    if df.empty or 'lead_time_hours' not in df.columns or 'lat' not in df.columns or 'lon' not in df.columns:
+        return pd.DataFrame()
         
-        # Solid line without dot clutter along path
-        ax.plot(lons, lats, color=color, linestyle='-', linewidth=1.0, label=name, transform=ccrs.PlateCarree(), zorder=10)
+    df_clean = df.dropna(subset=['lead_time_hours', 'lat', 'lon']).sort_values('lead_time_hours').drop_duplicates(subset=['lead_time_hours'])
+    if len(df_clean) < 1:
+        return pd.DataFrame()
+    if len(df_clean) == 1:
+        return df_clean.copy()
         
-        # Forecast hour markers at key lead times
-        for i, (h, la, lo) in enumerate(zip(hours, lats, lons)):
-            if h in [24, 48, 72, 96, 120]:
-                ax.scatter(lo, la, color=color, edgecolor='white', s=35, zorder=11, transform=ccrs.PlateCarree())
-
-    # 2. Plot Ensemble Mean Tracks
-    for name, df in ensemble_means.items():
-        if df.empty:
-            continue
-        color = ensemble_colors.get(name, '#333333')
-        lats = df['lat'].values
-        lons = df['lon'].values
-        hours = df['lead_time_hours'].values
-        
-        # Solid line without dot clutter along path
-        ax.plot(lons, lats, color=color, linestyle='-', linewidth=1.0, label=name, transform=ccrs.PlateCarree(), zorder=8)
-        
-        # Forecast hour markers
-        for i, (h, la, lo) in enumerate(zip(hours, lats, lons)):
-            if h in [24, 48, 72, 96, 120]:
-                ax.scatter(lo, la, color=color, marker='s', edgecolor='white', s=25, zorder=9, transform=ccrs.PlateCarree())
-
-    # Top Header Layout (exact match to plot_ensemble_spaghetti.py style)
-    fig.text(0.08, 0.94, f"{full_storm_title} – Forecast Track Comparison", fontsize=13, weight='bold', color='black', ha='left', va='bottom')
-    fig.text(0.08, 0.90, f"Initialized at {init_time_str}", fontsize=11, color='#475569', ha='left', va='bottom')
+    taus = df_clean['lead_time_hours'].values.astype(float)
+    min_tau = 0.0 if taus[0] >= 0 else float(taus[0])
+    max_tau = float(taus[-1])
     
-    fig.text(0.96, 0.94, "Philippine Typhoon/Weather", fontsize=11, weight='bold', color='black', ha='right', va='bottom')
-    fig.text(0.96, 0.90, "Data: Official Agencies & Ensemble Means", fontsize=10, color='#475569', ha='right', va='bottom')
-
-    # ── LEGEND PANEL BELOW THE MAP (TRACK LEGEND REMOVED PER USER REQUEST) ─────
-    panel_ax = fig.add_axes([0.08, 0.015, 0.88, 0.175])
-    panel_ax.set_facecolor('#f8fafc')
-    panel_ax.set_xlim(0, 1)
-    panel_ax.set_ylim(0, 1)
-    panel_ax.axis('off')
-
-    # Draw panel border box
-    rect = mpatches.Rectangle((0, 0), 1, 1, transform=panel_ax.transAxes,
-                              facecolor='#f8fafc', edgecolor='#cbd5e1', linewidth=1.2)
-    panel_ax.add_patch(rect)
-
-    # Section 1: OFFICIAL AGENCIES (Left Section)
-    panel_ax.text(0.03, 0.88, "OFFICIAL AGENCIES", color='#0284c7', fontsize=9.5, weight='bold', transform=panel_ax.transAxes)
+    grid_taus = np.arange(min_tau, max_tau + 0.01, interval_hours)
     
-    agency_y = 0.72
-    for ag_name, ag_color in agency_colors.items():
-        if ag_name in agency_tracks and not agency_tracks[ag_name].empty:
-            panel_ax.plot([0.03, 0.07], [agency_y, agency_y], color=ag_color, linestyle='-', linewidth=2.5, transform=panel_ax.transAxes)
-            panel_ax.text(0.085, agency_y + 0.04, ag_name, color='#0f172a', fontsize=8.5, weight='bold', transform=panel_ax.transAxes)
-            run_str = track_inits.get(ag_name, 'Latest')
-            panel_ax.text(0.085, agency_y - 0.10, f"Run: {run_str}", color='#64748b', fontsize=7.2, transform=panel_ax.transAxes)
-            agency_y -= 0.26
-
-    # Section 2: ENSEMBLE MEANS (Right Section)
-    panel_ax.text(0.48, 0.88, "ENSEMBLE MEANS", color='#9333ea', fontsize=9.5, weight='bold', transform=panel_ax.transAxes)
+    interp_lats = np.interp(grid_taus, taus, df_clean['lat'].values.astype(float))
+    interp_lons = np.interp(grid_taus, taus, df_clean['lon'].values.astype(float))
     
-    active_ensemble_items = [(name, color) for name, color in ensemble_colors.items() if name in ensemble_means and not ensemble_means[name].empty]
-    for idx, (ens_name, ens_color) in enumerate(active_ensemble_items):
-        if idx < 2:
-            x_start, x_text = 0.48, 0.535
-            y_val = 0.72 - (idx * 0.26)
-        else:
-            x_start, x_text = 0.74, 0.795
-            y_val = 0.72 - ((idx - 2) * 0.26)
+    out_df = pd.DataFrame({
+        'lead_time_hours': grid_taus,
+        'lat': interp_lats,
+        'lon': interp_lons
+    })
+    
+    if 'wind' in df_clean.columns:
+        w_valid = df_clean.dropna(subset=['wind'])
+        if len(w_valid) > 1:
+            out_df['wind'] = np.interp(grid_taus, w_valid['lead_time_hours'].values.astype(float), w_valid['wind'].values.astype(float))
+        elif len(w_valid) == 1:
+            out_df['wind'] = float(w_valid['wind'].iloc[0])
             
-        panel_ax.plot([x_start, x_start + 0.04], [y_val, y_val], color=ens_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
-        panel_ax.text(x_text, y_val + 0.04, ens_name, color='#0f172a', fontsize=8.5, weight='bold', transform=panel_ax.transAxes)
-        run_str = track_inits.get(ens_name, 'Latest')
-        panel_ax.text(x_text, y_val - 0.10, f"Run: {run_str}", color='#64748b', fontsize=7.2, transform=panel_ax.transAxes)
-
-    os.makedirs(os.path.dirname(os.path.abspath(output_filepath)), exist_ok=True)
-    
-    os.makedirs(os.path.dirname(os.path.abspath(output_filepath)), exist_ok=True)
-    
-    # Save image publication quality matching plot_ensemble_spaghetti.py
-    plt.savefig(output_filepath, dpi=200, bbox_inches='tight', facecolor='white')
-    plt.close(fig)
-    print(f"Successfully generated publication-quality forecast track plot: {output_filepath}")
+    if 'pressure' in df_clean.columns:
+        p_valid = df_clean.dropna(subset=['pressure'])
+        if len(p_valid) > 1:
+            out_df['pressure'] = np.interp(grid_taus, p_valid['lead_time_hours'].values.astype(float), p_valid['pressure'].values.astype(float))
+        elif len(p_valid) == 1:
+            out_df['pressure'] = float(p_valid['pressure'].iloc[0])
+            
+    return out_df
 
 
 def offset_point(lat, lon, distance_km, bearing_deg):
@@ -1364,31 +1265,52 @@ def build_cone_polygon(lats, lons, lead_times):
     return cone_geom
 
 
-def get_intensity_color(wind, pressure=None):
-    if pd.isna(wind) or wind is None or wind <= 0:
-        return '#3498DB', 'Low Pressure Area'
-    wind = float(wind)
-    if wind <= 61:
-        return '#2ECC71', 'Tropical Depression'
-    elif wind <= 88:
-        return '#F1C40F', 'Tropical Storm'
-    elif wind <= 117:
-        return '#E67E22', 'Severe Tropical Storm'
-    elif wind <= 184:
-        return '#A83232', 'Typhoon'
+def get_intensity_color(wind_kmh, pressure=None):
+    if pd.isna(wind_kmh) or wind_kmh is None or wind_kmh <= 0:
+        return INTENSITY_PALETTE['LPA']
+    w = float(wind_kmh)
+    if w <= 61:
+        return INTENSITY_PALETTE['TD']
+    elif w <= 88:
+        return INTENSITY_PALETTE['TS']
+    elif w <= 117:
+        return INTENSITY_PALETTE['STS']
+    elif w <= 184:
+        return INTENSITY_PALETTE['TY']
     else:
-        return '#5B0E2D', 'Super Typhoon'
+        return INTENSITY_PALETTE['STY']
 
 
 def compute_compiled_mean_track(agency_tracks, ensemble_means):
-    all_dfs = list(agency_tracks.values()) + list(ensemble_means.values())
-    valid_dfs = [
-        df for df in all_dfs 
-        if isinstance(df, pd.DataFrame) and not df.empty and 'lat' in df.columns and 'lon' in df.columns and 'lead_time_hours' in df.columns
-    ]
-    if not valid_dfs:
+    """
+    Harmonizes wind metrics (1-min kt -> 10-min kt), resamples all valid tracks
+    to standard 6-hour intervals, and averages coordinates/intensities into a
+    smooth consensus forecast track.
+    """
+    resampled_tracks = []
+    
+    # 1. Process agency tracks
+    for name, df in agency_tracks.items():
+        if isinstance(df, pd.DataFrame) and not df.empty and len(df) >= 1:
+            df_copy = df.copy()
+            # JTWC issues 1-min sustained kt; convert to 10-min kt equivalent (~0.88x)
+            if name == 'JTWC' and 'wind' in df_copy.columns:
+                df_copy['wind'] = df_copy['wind'] * 0.88
+            resampled = resample_track_to_regular_intervals(df_copy, 6.0)
+            if not resampled.empty:
+                resampled_tracks.append(resampled)
+                
+    # 2. Process ensemble means
+    for name, df in ensemble_means.items():
+        if isinstance(df, pd.DataFrame) and not df.empty and len(df) >= 1:
+            resampled = resample_track_to_regular_intervals(df, 6.0)
+            if not resampled.empty:
+                resampled_tracks.append(resampled)
+                
+    if not resampled_tracks:
         return pd.DataFrame()
-    combined = pd.concat(valid_dfs, ignore_index=True)
+        
+    combined = pd.concat(resampled_tracks, ignore_index=True)
     combined = combined.dropna(subset=['lat', 'lon', 'lead_time_hours'])
     if combined.empty:
         return pd.DataFrame()
@@ -1405,8 +1327,8 @@ def compute_compiled_mean_track(agency_tracks, ensemble_means):
             if 'wind' in valid_pts.columns:
                 v_winds = pd.to_numeric(valid_pts['wind'], errors='coerce').dropna()
                 if not v_winds.empty:
-                    # Wind values are in raw knots from source parsers
-                    row['wind'] = float(v_winds.mean())
+                    # Convert 10-min sustained knots to km/h
+                    row['wind'] = float(v_winds.mean()) * 1.852
             if 'pressure' in valid_pts.columns:
                 v_press = pd.to_numeric(valid_pts['pressure'], errors='coerce').dropna()
                 if not v_press.empty:
@@ -1416,14 +1338,292 @@ def compute_compiled_mean_track(agency_tracks, ensemble_means):
     mean_df = pd.DataFrame(mean_rows).sort_values('lead_time_hours')
     if 'wind' in mean_df.columns:
         mean_df['wind'] = mean_df['wind'].interpolate(method='linear', limit_direction='both')
-        # Convert 10-min sustained knots to km/h
-        mean_df['wind'] = mean_df['wind'] * 1.852
     if 'pressure' in mean_df.columns:
         mean_df['pressure'] = mean_df['pressure'].ffill().bfill()
+        
     return mean_df
 
 
+def render_sea_labels(ax, extent):
+    """
+    Renders official 'West Philippine Sea' and 'Philippine Sea' labels strictly within
+    their designated official bounding coordinates:
+      - West Philippine Sea: 116°40'E to 126°34'E (116.67°E - 126.57°E) and 4°40'N to 21°10'N (4.67°N - 21.17°N)
+      - Philippine Sea: 120°06'E to 146°03'E (120.10°E - 146.05°E) and 2°30'N to 35°15'N (2.50°N - 35.25°N)
+    Dynamically adjusts font size based on zoom extent and ensures label placement stays strictly in open water,
+    rendered at zorder=1 (underneath land and PAR boundary) to guarantee zero overlay on land or borders.
+    """
+    min_lon, max_lon, min_lat, max_lat = extent
+    span_lon = max_lon - min_lon
+    
+    # 1. West Philippine Sea (116°40'E - 126°34'E, 4°40'N - 21°10'N)
+    # Open water channel west of Luzon/Mindoro:
+    wps_lon = 117.5
+    wps_lat = 13.8
+    wps_in_official_bounds = (116.667 <= wps_lon <= 126.567) and (4.667 <= wps_lat <= 21.167)
+    
+    if wps_in_official_bounds and (min_lon + 1.0) <= wps_lon <= (max_lon - 1.0) and (min_lat + 1.0) <= wps_lat <= (max_lat - 1.0):
+        if span_lon > 32.0:
+            # Zoomed out: compact 3-line stack with small footprint to fit within open water corridor
+            wps_txt = 'West\nPhilippine\nSea'
+            fs_wps = 4.8
+            alpha_wps = 0.55
+        else:
+            # Zoomed in: 2-line layout
+            wps_txt = 'West Philippine\nSea'
+            fs_wps = max(6.2, min(8.8, 9.8 - (span_lon * 0.10)))
+            alpha_wps = 0.68
+            
+        ax.text(
+            wps_lon, wps_lat, wps_txt,
+            fontsize=fs_wps, color='#3b5275', weight='bold',
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=alpha_wps,
+            zorder=1, clip_on=True,
+            path_effects=[path_effects.withStroke(linewidth=1.8, foreground=OCEAN_COLOR)]
+        )
+        
+    # 2. Philippine Sea (120°06'E - 146°03'E, 2°30'N - 35°15'N)
+    # Open water placement east of the archipelago inside official domain:
+    ps_lon = 130.5
+    ps_lat = 14.0
+    ps_in_official_bounds = (120.10 <= ps_lon <= 146.05) and (2.50 <= ps_lat <= 35.25)
+    
+    if ps_in_official_bounds and (min_lon + 1.5) <= ps_lon <= (max_lon - 1.5) and (min_lat + 1.2) <= ps_lat <= (max_lat - 1.2):
+        fs_ps = max(6.0, min(10.0, 11.2 - (span_lon * 0.095)))
+        ax.text(
+            ps_lon, ps_lat, 'Philippine Sea',
+            fontsize=fs_ps, color='#3b5275', weight='bold',
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.68,
+            zorder=1, clip_on=True,
+            path_effects=[path_effects.withStroke(linewidth=2.2, foreground=OCEAN_COLOR)]
+        )
+
+
+def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepath, init_time_str="Latest", track_inits=None):
+    """
+    Renders a broadcast-grade multi-agency & ensemble comparison forecast track map
+    styled in Option A (Deep Slate Dark Theme).
+    """
+    if track_inits is None:
+        track_inits = {}
+
+    clean_id = clean_storm_id_no_dot(storm['atcf_id'])
+    short_id = get_short_atcf_id(storm['atcf_id'])
+    storm_name = storm.get('name', 'INVEST').upper()
+    full_storm_title = f"{clean_id}" if 'INVEST' in clean_id or 'STORM' in clean_id else f"{storm_name} ({clean_id})"
+    
+    curr_lat, curr_lon = float(storm['lat']), float(storm['lon'])
+    
+    fig = plt.figure(figsize=(12, 7.6), facecolor=BG_DARK)
+    
+    # ── 1. Top Header Glassmorphism Card ─────────────────────────────
+    ax_head = fig.add_axes([0.05, 0.865, 0.90, 0.115])
+    ax_head.set_facecolor(HEADER_BG)
+    ax_head.set_xlim(0, 1)
+    ax_head.set_ylim(0, 1)
+    ax_head.axis('off')
+    
+    head_box = FancyBboxPatch(
+        (0, 0), 1, 1, boxstyle="round,pad=0.015,rounding_size=0.04",
+        facecolor=HEADER_BG, edgecolor=HEADER_BORDER, linewidth=1.2, transform=ax_head.transAxes
+    )
+    ax_head.add_patch(head_box)
+    
+    # Title & Left Column
+    ax_head.text(
+        0.025, 0.68, f"{full_storm_title} — Forecast Track Comparison",
+        fontsize=13.5, fontweight='bold', color=TEXT_PRI, transform=ax_head.transAxes, va='center'
+    )
+    ax_head.text(
+        0.025, 0.28, f"Latest Center Fix: {curr_lat:.1f}°N, {curr_lon:.1f}°E  |  Initialized: {init_time_str}",
+        fontsize=9.5, color=TEXT_SEC, transform=ax_head.transAxes, va='center'
+    )
+    
+    # Right Column Branding
+    ax_head.text(
+        0.975, 0.68, "Philippine Typhoon/Weather",
+        fontsize=11.5, fontweight='bold', color=TEXT_PRI, transform=ax_head.transAxes, ha='right', va='center'
+    )
+    ax_head.text(
+        0.975, 0.28, "Official Agencies & Multi-Model Ensembles",
+        fontsize=9.0, color='#38bdf8', transform=ax_head.transAxes, ha='right', va='center'
+    )
+    
+    # ── 2. Cartopy Map Canvas ─────────────────────────────────────────
+    ax = fig.add_axes([0.05, 0.235, 0.90, 0.615], projection=ccrs.PlateCarree())
+    ax.set_facecolor(OCEAN_COLOR)
+    
+    # Base Map Features
+    ax.add_feature(cfeature.OCEAN, facecolor=OCEAN_COLOR, zorder=0)
+    ax.add_feature(cfeature.LAND, facecolor=LAND_COLOR, edgecolor=LAND_EDGE, linewidth=0.8, zorder=2)
+    ax.add_feature(cfeature.COASTLINE, edgecolor=LAND_EDGE, linewidth=0.9, zorder=3)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor=LAND_EDGE, linewidth=0.7, zorder=3)
+    
+    # Philippine Province Overlay
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        geojson_paths = [
+            os.path.join(script_dir, "public", "data", "ph_provinces.json"),
+            "public/data/ph_provinces.json"
+        ]
+        found_geojson = next((p for p in geojson_paths if os.path.exists(p)), None)
+        if found_geojson:
+            with open(found_geojson, 'r', encoding='utf-8') as gf:
+                geojson_data = json.load(gf)
+            prov_geoms = [shape(feature['geometry']) for feature in geojson_data['features']]
+            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor=PROVINCE_EDGE, linewidth=0.45, alpha=0.55, zorder=3)
+    except Exception:
+        pass
+        
+    # PAR Boundary Polygon
+    par_vertices = [
+        (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
+        (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
+    ]
+    ax.add_patch(mpatches.Polygon(
+        par_vertices, facecolor='none', edgecolor=PAR_COLOR,
+        linestyle='-', linewidth=2.4, alpha=0.9,
+        transform=ccrs.PlateCarree(), zorder=4, label='PAR',
+        path_effects=[path_effects.Stroke(linewidth=4.0, foreground='#7c2d12', alpha=0.6), path_effects.Normal()]
+    ))
+    
+    # Gridlines Configuration
+    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color=GRID_COLOR, alpha=0.7, linestyle='--')
+    gl.xlocator = plt.FixedLocator(np.arange(90, 181, 5))
+    gl.ylocator = plt.FixedLocator(np.arange(-10, 51, 5))
+    gl.xlabel_style = {'size': 9.0, 'weight': 'bold', 'color': GRID_TEXT}
+    gl.ylabel_style = {'size': 9.0, 'weight': 'bold', 'color': GRID_TEXT}
+    gl.top_labels = False
+    gl.right_labels = False
+    
+    # Determine adaptive bounding box extent
+    all_lats = [curr_lat]
+    all_lons = [curr_lon]
+    for df in list(agency_tracks.values()) + list(ensemble_means.values()):
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            all_lats.extend(df['lat'].dropna().tolist())
+            all_lons.extend(df['lon'].dropna().tolist())
+            
+    extent = get_adaptive_viewport(all_lats, all_lons, target_aspect=1.75)
+    ax.set_extent(extent, crs=ccrs.PlateCarree())
+    
+    # Sea Text Labels (strictly bounded and zoom-scaled)
+    render_sea_labels(ax, extent)
+    
+    # Plot Official Agency Tracks
+    for name, color in AGENCY_COLORS.items():
+        df = agency_tracks.get(name)
+        if df is None or df.empty:
+            continue
+        lats = df['lat'].values
+        lons = df['lon'].values
+        hours = df['lead_time_hours'].values
+        
+        # Smooth line with dark halo
+        ax.plot(
+            lons, lats, color=color, linestyle='-', linewidth=2.4, label=name,
+            transform=ccrs.PlateCarree(), zorder=10,
+            path_effects=[path_effects.Stroke(linewidth=4.2, foreground=BG_DARK), path_effects.Normal()]
+        )
+        
+        # Key waypoint markers
+        for h, la, lo in zip(hours, lats, lons):
+            if int(round(h)) in [24, 48, 72, 96, 120]:
+                ax.scatter(
+                    lo, la, color=color, edgecolor='#ffffff', linewidth=1.2, s=46,
+                    zorder=12, transform=ccrs.PlateCarree()
+                )
+                ax.text(
+                    lo + 0.25, la + 0.25, f"+{int(round(h))}h", color=TEXT_PRI, fontsize=7.2, weight='bold',
+                    transform=ccrs.PlateCarree(), zorder=13, clip_on=True,
+                    path_effects=[path_effects.withStroke(linewidth=2.5, foreground=BG_DARK)]
+                )
+                
+    # Plot Ensemble Mean Tracks
+    for name, color in ENSEMBLE_COLORS.items():
+        df = ensemble_means.get(name)
+        if df is None or df.empty:
+            continue
+        lats = df['lat'].values
+        lons = df['lon'].values
+        hours = df['lead_time_hours'].values
+        
+        ax.plot(
+            lons, lats, color=color, linestyle='-', linewidth=2.0, label=name,
+            transform=ccrs.PlateCarree(), zorder=8,
+            path_effects=[path_effects.Stroke(linewidth=3.6, foreground=BG_DARK), path_effects.Normal()]
+        )
+        
+        for h, la, lo in zip(hours, lats, lons):
+            if int(round(h)) in [24, 48, 72, 96, 120]:
+                ax.scatter(
+                    lo, la, color=color, marker='s', edgecolor='#ffffff', linewidth=1.0, s=34,
+                    zorder=9, transform=ccrs.PlateCarree()
+                )
+    
+    # ── 3. Bottom Legend & Model Run Panel ────────────────────────────
+    panel_ax = fig.add_axes([0.05, 0.015, 0.90, 0.175])
+    panel_ax.set_facecolor(CARD_BG)
+    panel_ax.set_xlim(0, 1)
+    panel_ax.set_ylim(0, 1)
+    panel_ax.axis('off')
+    
+    panel_box = FancyBboxPatch(
+        (0, 0), 1, 1, boxstyle="round,pad=0.015,rounding_size=0.04",
+        facecolor=CARD_BG, edgecolor=CARD_BORDER, linewidth=1.2, transform=panel_ax.transAxes
+    )
+    panel_ax.add_patch(panel_box)
+    
+    # Left Section: OFFICIAL AGENCIES
+    panel_ax.text(0.025, 0.88, "OFFICIAL AGENCIES", color='#00d2ff', fontsize=9.5, weight='bold', transform=panel_ax.transAxes)
+    agency_y = 0.68
+    active_agencies = [(n, c) for n, c in AGENCY_COLORS.items() if n in agency_tracks and not agency_tracks[n].empty]
+    for ag_name, ag_color in AGENCY_COLORS.items():
+        is_active = ag_name in agency_tracks and not agency_tracks[ag_name].empty
+        line_color = ag_color if is_active else '#334155'
+        text_color = TEXT_PRI if is_active else TEXT_MUT
+        
+        panel_ax.plot([0.025, 0.065], [agency_y, agency_y], color=line_color, linestyle='-', linewidth=2.8, transform=panel_ax.transAxes)
+        panel_ax.scatter(0.045, agency_y, color=line_color, edgecolor='#ffffff' if is_active else 'none', s=24, zorder=3, transform=panel_ax.transAxes)
+        panel_ax.text(0.08, agency_y + 0.03, ag_name, color=text_color, fontsize=8.8, weight='bold', transform=panel_ax.transAxes)
+        run_str = track_inits.get(ag_name, 'Latest' if is_active else 'Not Available')
+        panel_ax.text(0.08, agency_y - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=7.2, transform=panel_ax.transAxes)
+        agency_y -= 0.28
+        
+    # Vertical Divider Line
+    panel_ax.axvline(0.44, ymin=0.1, ymax=0.9, color=CARD_BORDER, linewidth=1.0)
+    
+    # Right Section: ENSEMBLE MEANS
+    panel_ax.text(0.47, 0.88, "ENSEMBLE MEANS & AI MODELS", color='#a855f7', fontsize=9.5, weight='bold', transform=panel_ax.transAxes)
+    for idx, (ens_name, ens_color) in enumerate(ENSEMBLE_COLORS.items()):
+        is_active = ens_name in ensemble_means and not ensemble_means[ens_name].empty
+        line_color = ens_color if is_active else '#334155'
+        text_color = TEXT_PRI if is_active else TEXT_MUT
+        
+        if idx < 2:
+            x_start, x_text = 0.47, 0.525
+            y_val = 0.68 - (idx * 0.28)
+        else:
+            x_start, x_text = 0.73, 0.785
+            y_val = 0.68 - ((idx - 2) * 0.28)
+            
+        panel_ax.plot([x_start, x_start + 0.04], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
+        panel_ax.scatter(x_start + 0.02, y_val, color=line_color, marker='s', edgecolor='#ffffff' if is_active else 'none', s=20, zorder=3, transform=panel_ax.transAxes)
+        panel_ax.text(x_text, y_val + 0.03, ens_name, color=text_color, fontsize=8.8, weight='bold', transform=panel_ax.transAxes)
+        run_str = track_inits.get(ens_name, 'Latest' if is_active else 'Not Available')
+        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=7.2, transform=panel_ax.transAxes)
+        
+    os.makedirs(os.path.dirname(os.path.abspath(output_filepath)), exist_ok=True)
+    plt.savefig(output_filepath, dpi=200, bbox_inches='tight', facecolor=BG_DARK)
+    plt.close(fig)
+    print(f"Successfully generated publication-quality forecast track plot: {output_filepath}")
+
+
 def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepath, init_time_str="Latest", track_inits=None):
+    """
+    Renders a broadcast-grade consensus mean forecast track map with Cone of Uncertainty
+    and an overhaul of the bottom Forecast Summary & Intensity Dashboard.
+    """
     if track_inits is None:
         track_inits = {}
 
@@ -1440,17 +1640,52 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             is_invest = True
         full_storm_title = f"{short_id} INVEST" if is_invest else f"{short_id} STORM"
 
+    curr_lat, curr_lon = float(storm['lat']), float(storm['lon'])
     mean_track = compute_compiled_mean_track(agency_tracks, ensemble_means)
     
-    fig = plt.figure(figsize=(12, 7.2), facecolor='white')
-    ax = fig.add_axes([0.08, 0.22, 0.88, 0.64], projection=ccrs.PlateCarree())
+    fig = plt.figure(figsize=(12, 7.6), facecolor=BG_DARK)
     
-    ax.set_facecolor('#87CEEB')
-    ax.add_feature(cfeature.LAND, facecolor='#DEB887', edgecolor='#8B4513', linewidth=0.8, zorder=1)
-    ax.add_feature(cfeature.OCEAN, facecolor='#87CEEB', zorder=0)
-    ax.add_feature(cfeature.COASTLINE, edgecolor='#8B4513', linewidth=0.8, zorder=2)
-    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='#654321', linewidth=0.8, zorder=2)
-
+    # ── 1. Top Header Glassmorphism Card ─────────────────────────────
+    ax_head = fig.add_axes([0.05, 0.865, 0.90, 0.115])
+    ax_head.set_facecolor(HEADER_BG)
+    ax_head.set_xlim(0, 1)
+    ax_head.set_ylim(0, 1)
+    ax_head.axis('off')
+    
+    head_box = FancyBboxPatch(
+        (0, 0), 1, 1, boxstyle="round,pad=0.015,rounding_size=0.04",
+        facecolor=HEADER_BG, edgecolor=HEADER_BORDER, linewidth=1.2, transform=ax_head.transAxes
+    )
+    ax_head.add_patch(head_box)
+    
+    ax_head.text(
+        0.025, 0.68, f"{full_storm_title} — Consensus Mean Track & Cone of Uncertainty",
+        fontsize=13.5, fontweight='bold', color=TEXT_PRI, transform=ax_head.transAxes, va='center'
+    )
+    ax_head.text(
+        0.025, 0.28, f"Compiled Multi-Model & Agency Ensemble Consensus  |  Initialized: {init_time_str}",
+        fontsize=9.5, color=TEXT_SEC, transform=ax_head.transAxes, va='center'
+    )
+    
+    ax_head.text(
+        0.975, 0.68, "Philippine Typhoon/Weather",
+        fontsize=11.5, fontweight='bold', color=TEXT_PRI, transform=ax_head.transAxes, ha='right', va='center'
+    )
+    ax_head.text(
+        0.975, 0.28, "Unofficial Forecast Consensus",
+        fontsize=9.0, color='#38bdf8', transform=ax_head.transAxes, ha='right', va='center'
+    )
+    
+    # ── 2. Cartopy Map Canvas ─────────────────────────────────────────
+    ax = fig.add_axes([0.05, 0.235, 0.90, 0.615], projection=ccrs.PlateCarree())
+    ax.set_facecolor(OCEAN_COLOR)
+    
+    ax.add_feature(cfeature.OCEAN, facecolor=OCEAN_COLOR, zorder=0)
+    ax.add_feature(cfeature.LAND, facecolor=LAND_COLOR, edgecolor=LAND_EDGE, linewidth=0.8, zorder=2)
+    ax.add_feature(cfeature.COASTLINE, edgecolor=LAND_EDGE, linewidth=0.9, zorder=3)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor=LAND_EDGE, linewidth=0.7, zorder=3)
+    
+    # Philippine Province Overlay
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         geojson_paths = [
@@ -1462,48 +1697,44 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             with open(found_geojson, 'r', encoding='utf-8') as gf:
                 geojson_data = json.load(gf)
             prov_geoms = [shape(feature['geometry']) for feature in geojson_data['features']]
-            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#654321', linewidth=0.4, alpha=0.5, zorder=3)
+            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor=PROVINCE_EDGE, linewidth=0.45, alpha=0.55, zorder=3)
     except Exception:
         pass
-
-    ax.text(118, 13, 'West Philippine\nSea', fontsize=5, color='navy', weight='bold',
-            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3)
-    ax.text(130, 20, 'Philippine\nSea', fontsize=7, color='navy', weight='bold',
-            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3)
-
+    
+    # PAR Boundary Polygon
     par_vertices = [
         (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
         (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
     ]
-    ax.add_patch(mpatches.Polygon(par_vertices, facecolor='none', edgecolor='#FF6B35', 
-                                 linestyle='-', linewidth=2.8, alpha=0.85, 
-                                 transform=ccrs.PlateCarree(), zorder=3, label='PAR'))
-    ax.text(134.5, 24.2, 'PAR', color='#FF6B35', fontsize=9.5, weight='bold', transform=ccrs.PlateCarree(), ha='right', va='top', zorder=4)
-
-    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+    ax.add_patch(mpatches.Polygon(
+        par_vertices, facecolor='none', edgecolor=PAR_COLOR,
+        linestyle='-', linewidth=2.4, alpha=0.9,
+        transform=ccrs.PlateCarree(), zorder=4, label='PAR',
+        path_effects=[path_effects.Stroke(linewidth=4.0, foreground='#7c2d12', alpha=0.6), path_effects.Normal()]
+    ))
+    
+    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color=GRID_COLOR, alpha=0.7, linestyle='--')
     gl.xlocator = plt.FixedLocator(np.arange(90, 181, 5))
     gl.ylocator = plt.FixedLocator(np.arange(-10, 51, 5))
-    gl.xlabel_style = {'size': 9.5, 'weight': 'bold', 'color': '#475569'}
-    gl.ylabel_style = {'size': 9.5, 'weight': 'bold', 'color': '#475569'}
+    gl.xlabel_style = {'size': 9.0, 'weight': 'bold', 'color': GRID_TEXT}
+    gl.ylabel_style = {'size': 9.0, 'weight': 'bold', 'color': GRID_TEXT}
     gl.top_labels = False
     gl.right_labels = False
-
-    all_lats = [storm['lat']]
-    all_lons = [storm['lon']]
+    
+    # Adaptive Viewport
+    all_lats = [curr_lat]
+    all_lons = [curr_lon]
     if not mean_track.empty:
         all_lats.extend(mean_track['lat'].dropna().tolist())
         all_lons.extend(mean_track['lon'].dropna().tolist())
-            
-    min_lon, max_lon = min(all_lons) - 5.0, max(all_lons) + 5.0
-    min_lat, max_lat = min(all_lats) - 4.0, max(all_lats) + 4.0
+        
+    extent = get_adaptive_viewport(all_lats, all_lons, target_aspect=1.75)
+    ax.set_extent(extent, crs=ccrs.PlateCarree())
     
-    min_lon = max(105.0, min_lon)
-    max_lon = min(155.0, max(145.0, max_lon))
-    min_lat = max(0.0, min_lat)
-    max_lat = min(40.0, max(30.0, max_lat))
+    # Sea Text Labels (strictly bounded and zoom-scaled)
+    render_sea_labels(ax, extent)
     
-    ax.set_extent([min_lon, max_lon, min_lat, max_lat], crs=ccrs.PlateCarree())
-
+    # Cone of Uncertainty
     if not mean_track.empty and len(mean_track) > 0:
         lats = mean_track['lat'].values
         lons = mean_track['lon'].values
@@ -1521,55 +1752,87 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             if geoms:
                 ax.add_geometries(
                     geoms, crs=ccrs.PlateCarree(),
-                    facecolor='white', alpha=0.35,
-                    edgecolor='white', linestyle='-', linewidth=1.8,
+                    facecolor='#38bdf8', alpha=0.18,
+                    edgecolor='#7dd3fc', linestyle='--', linewidth=1.6,
                     zorder=6, label='Cone of Uncertainty'
                 )
-
-        ax.plot(lons, lats, color='black', linestyle='-', linewidth=1.0, label='Unofficial Mean Track', transform=ccrs.PlateCarree(), zorder=10)
+                
+        # Spline Consensus Track Line
+        ax.plot(
+            lons, lats, color='#f1f5f9', linestyle='-', linewidth=2.8,
+            label='Unofficial Mean Track', transform=ccrs.PlateCarree(), zorder=10,
+            path_effects=[path_effects.Stroke(linewidth=4.8, foreground=BG_DARK), path_effects.Normal()]
+        )
         
-        for _, row in mean_track.iterrows():
-            h = int(row['lead_time_hours'])
-            la = row['lat']
-            lo = row['lon']
-            w = row.get('wind')
-            wind_for_color = w if (w is not None and not pd.isna(w) and w > 0) else 46
+        # Waypoints at 24h, 48h, 72h, 96h, 120h with perpendicular track offsets
+        waypoints = [r for _, r in mean_track.iterrows() if int(round(r['lead_time_hours'])) in [24, 48, 72, 96, 120]]
+        N_pts = len(waypoints)
+        for idx, row in enumerate(waypoints):
+            h = int(round(row['lead_time_hours']))
+            la = float(row['lat'])
+            lo = float(row['lon'])
+            w = row.get('wind', 45)
+            wind_for_color = w if (w is not None and not pd.isna(w) and w > 0) else 45
+            pt_color, cat_name = get_intensity_color(wind_for_color)
             
-            if h in [0, 24, 48, 72, 96, 120]:
-                pt_color, _ = get_intensity_color(wind_for_color)
-                ax.scatter(lo, la, color=pt_color, edgecolor='white', linewidth=1.5, s=70, zorder=11, transform=ccrs.PlateCarree())
-                offset_y = 0.35 if (h // 24) % 2 == 0 else -0.55
-                ax.text(
-                    lo + 0.35, la + offset_y, f"T+{h}h", color='black', fontsize=9, weight='bold',
-                    transform=ccrs.PlateCarree(), zorder=12
-                )
-
-    fig.text(0.08, 0.94, f"{full_storm_title} – Unofficial Forecast Track & Cone of Uncertainty", fontsize=13, weight='bold', color='black', ha='left', va='bottom')
-    fig.text(0.08, 0.90, f"Initialized at {init_time_str} | Compiled Multi-Model & Agency Ensemble Mean", fontsize=10.5, color='#475569', ha='left', va='bottom')
+            size = 82
+            ax.scatter(
+                lo, la, color=pt_color, edgecolor='#ffffff', linewidth=1.8,
+                s=size, zorder=12, transform=ccrs.PlateCarree()
+            )
+            
+            lbl_text = f"T+{h}h\n{int(round(wind_for_color))} km/h"
+            
+            # Compute track tangent vector to push labels perpendicular to track heading
+            if idx < N_pts - 1:
+                t_dx = float(waypoints[idx + 1]['lon']) - lo
+                t_dy = float(waypoints[idx + 1]['lat']) - la
+            else:
+                t_dx = lo - float(waypoints[idx - 1]['lon'])
+                t_dy = la - float(waypoints[idx - 1]['lat'])
+                
+            dist_seg = math.sqrt(t_dx**2 + t_dy**2)
+            if dist_seg > 0.05:
+                # Normal vector pointing to the right/outside of track
+                nx = t_dy / dist_seg
+                ny = -t_dx / dist_seg
+            else:
+                nx, ny = 0.707, 0.707
+                
+            # Alternate side if waypoints are consecutive
+            side = 1.0 if (idx % 2 == 0) else -1.0
+            offset_r = 0.50
+            dx = nx * offset_r * side
+            dy = ny * offset_r * side
+            
+            ha = 'left' if dx > 0.1 else ('right' if dx < -0.1 else 'center')
+            va = 'bottom' if dy > 0.1 else ('top' if dy < -0.1 else 'center')
+            
+            ax.text(
+                lo + dx, la + dy, lbl_text, color='#ffffff', fontsize=7.8, weight='bold',
+                transform=ccrs.PlateCarree(), zorder=14, ha=ha, va=va, clip_on=True,
+                path_effects=[path_effects.withStroke(linewidth=3.0, foreground=BG_DARK)]
+            )
     
-    fig.text(0.96, 0.94, "Philippine Typhoon/Weather", fontsize=11, weight='bold', color='black', ha='right', va='bottom')
-    fig.text(0.96, 0.90, "Unofficial Forecast Track", fontsize=10, weight='bold', color='#475569', ha='right', va='bottom')
-
+    # ── 3. Bottom Forecast Summary & Intensity Dashboard ─────────────
     init_dt = None
     if storm.get('init_time'):
         try:
             init_dt = datetime.strptime(str(storm['init_time']).split('.')[0], "%Y-%m-%d %H:%M:%S")
         except Exception:
-            try:
-                init_dt = pd.to_datetime(storm['init_time'])
-            except Exception:
-                pass
-
-    key_hours = [0, 24, 48, 72, 96, 120]
+            try: init_dt = pd.to_datetime(storm['init_time'])
+            except Exception: pass
+            
     forecast_data = []
+    key_hours = [0, 24, 48, 72, 96, 120]
     if not mean_track.empty:
         for _, r in mean_track.iterrows():
-            h = int(r['lead_time_hours'])
+            h = int(round(r['lead_time_hours']))
             if h in key_hours:
                 w_val = r.get('wind')
                 p_val = r.get('pressure')
                 
-                wind = int(round(w_val)) if (w_val is not None and not math.isnan(w_val) and w_val > 0) else 46
+                wind = int(round(w_val)) if (w_val is not None and not math.isnan(w_val) and w_val > 0) else 45
                 mslp = int(round(p_val)) if (p_val is not None and not math.isnan(p_val) and p_val > 0) else 1004
                 
                 time_lbl = ""
@@ -1579,7 +1842,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
                 else:
                     time_lbl = f"+{h}h"
                     
-                pt_color, _ = get_intensity_color(wind)
+                pt_color, cat_name = get_intensity_color(wind)
                 
                 forecast_data.append({
                     "label": f"T+{h}h",
@@ -1587,156 +1850,101 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
                     "lat": round(float(r['lat']), 1),
                     "lon": round(float(r['lon']), 1),
                     "wind": wind,
+                    "wind_kt": int(round(wind / 1.852)),
                     "mslp": mslp,
-                    "dot_color": pt_color
+                    "dot_color": pt_color,
+                    "cat_name": cat_name
                 })
-
+                
     N = len(forecast_data)
     if N > 0:
-        rect = (0.08, 0.012, 0.88, 0.185)
-        panel_ax = fig.add_axes(rect)
-        panel_ax.set_facecolor(PANEL_BG)
-        for spine in panel_ax.spines.values():
-            spine.set_visible(False)
-        panel_ax.set_xticks([])
-        panel_ax.set_yticks([])
-
-        left_margin  = 0.005
-        right_margin = 0.995
+        panel_ax = fig.add_axes([0.05, 0.015, 0.90, 0.175])
+        panel_ax.set_facecolor(CARD_BG)
+        panel_ax.set_xlim(0, 1)
+        panel_ax.set_ylim(0, 1)
+        panel_ax.axis('off')
+        
+        panel_box = FancyBboxPatch(
+            (0, 0), 1, 1, boxstyle="round,pad=0.015,rounding_size=0.04",
+            facecolor=CARD_BG, edgecolor=CARD_BORDER, linewidth=1.2, transform=panel_ax.transAxes
+        )
+        panel_ax.add_patch(panel_box)
+        
+        panel_ax.text(
+            0.02, 0.91, "FORECAST SUMMARY & INTENSITY DETAILS (6-HOUR CONSENSUS)",
+            transform=panel_ax.transAxes, fontsize=8.0, fontweight="bold", color='#38bdf8',
+            fontfamily="monospace", va="center"
+        )
+        
+        left_margin  = 0.012
+        right_margin = 0.988
         card_width   = (right_margin - left_margin) / N
-        card_pad     = 0.003
-
-        panel_ax.axhline(0.93, color=CARD_BORDER, linewidth=0.8, xmin=0.01, xmax=0.99)
-        panel_ax.text(0.012, 0.965, "FORECAST SUMMARY & INTENSITY DETAILS",
-                      transform=panel_ax.transAxes,
-                      fontsize=6.5, fontweight="bold", color=TEXT_SEC,
-                      fontfamily="monospace", va="center")
-
-        def xfrac(i, offset=0.5):
-            return left_margin + (i + offset) * card_width
-
-        winds_list = [f["wind"] for f in forecast_data]
-        mslps_list = [f["mslp"] for f in forecast_data]
-
-        wind_y_min, wind_y_max = max(10, min(winds_list) - 5), max(40, max(winds_list) + 5)
-        def wind_to_y(w):
-            return 0.08 + (w - wind_y_min) / max(1, (wind_y_max - wind_y_min)) * 0.10
-
-        mslp_y_min, mslp_y_max = min(980, min(mslps_list) - 5), max(1012, max(mslps_list) + 5)
-        def mslp_to_y(p):
-            return 0.08 + (mslp_y_max - p) / max(1, (mslp_y_max - mslp_y_min)) * 0.10
-
-        wx = [xfrac(i) for i in range(N)]
-        wy = [wind_to_y(f["wind"]) for f in forecast_data]
-        py = [mslp_to_y(f["mslp"]) for f in forecast_data]
-
-        panel_ax.plot(wx, wy, color=ACCENT_LINE, linewidth=1.2,
-                      alpha=0.7, zorder=3, transform=panel_ax.transAxes)
-        panel_ax.plot(wx, py, color=MSLP_LINE, linewidth=1.2,
-                      alpha=0.7, zorder=3, linestyle=(0, (4, 2)),
-                      transform=panel_ax.transAxes)
-
+        card_pad     = 0.005
+        
         for i, fc in enumerate(forecast_data):
             x0 = left_margin + i * card_width + card_pad
             x1 = left_margin + (i + 1) * card_width - card_pad
             cw = x1 - x0
-            cx = (x0 + x1) / 2
-
-            card = FancyBboxPatch((x0, 0.06), cw, 0.84,
-                                   boxstyle="round,pad=0.003",
-                                   transform=panel_ax.transAxes,
-                                   facecolor=CARD_BG, edgecolor=CARD_BORDER,
-                                   linewidth=0.6, zorder=1)
+            cx = (x0 + x1) / 2.0
+            
+            card = FancyBboxPatch(
+                (x0, 0.05), cw, 0.81, boxstyle="round,pad=0.005,rounding_size=0.03",
+                transform=panel_ax.transAxes,
+                facecolor='#121e30', edgecolor='#22354c', linewidth=0.8, zorder=1
+            )
             panel_ax.add_patch(card)
-
-            dot_c = fc.get("dot_color", WIND_LOW)
-            panel_ax.text(cx, 0.86, fc["label"],
-                          transform=panel_ax.transAxes,
-                          ha="center", va="center",
-                          fontsize=7.5, fontweight="bold",
-                          color=dot_c, fontfamily="monospace")
-
-            panel_ax.text(cx, 0.79, fc["date"],
-                          transform=panel_ax.transAxes,
-                          ha="center", va="center",
-                          fontsize=5.8, color=TEXT_SEC)
-
-            dot_y = 0.71
-            panel_ax.plot(cx, dot_y,
-                          transform=panel_ax.transAxes,
-                          marker="o", markersize=6,
-                          color=dot_c, zorder=5,
-                          markeredgecolor=PANEL_BG, markeredgewidth=1.0)
-
+            
+            dot_c = fc.get("dot_color", '#38bdf8')
+            
+            # Top: Lead Time Badge
+            panel_ax.text(
+                cx, 0.77, f"{fc['label']} • {fc['date']}",
+                transform=panel_ax.transAxes, ha="center", va="center",
+                fontsize=7.8, fontweight="bold", color=dot_c, zorder=2
+            )
+            
+            # Category Badge
+            panel_ax.text(
+                cx, 0.65, fc['cat_name'],
+                transform=panel_ax.transAxes, ha="center", va="center",
+                fontsize=6.8, fontweight="bold", color=TEXT_PRI, zorder=2
+            )
+            
+            # Coordinates
             pos_str = f"{fc['lat']}°N, {fc['lon']}°E"
-            panel_ax.text(cx, 0.63, pos_str,
-                          transform=panel_ax.transAxes,
-                          ha="center", va="center",
-                          fontsize=5.5, color=TEXT_MUT)
-
-            panel_ax.axhline(0.57, color=CARD_BORDER, linewidth=0.5,
-                             xmin=x0 + 0.005, xmax=x1 - 0.005)
-
-            wc = wind_color(fc["wind"])
-
-            panel_ax.text(cx, 0.51, "WIND",
-                          transform=panel_ax.transAxes,
-                          ha="center", va="center",
-                          fontsize=4.8, color=TEXT_MUT, fontfamily="monospace")
-
-            panel_ax.text(cx, 0.42, f"{fc['wind']} km/h",
-                          transform=panel_ax.transAxes,
-                          ha="center", va="center",
-                          fontsize=8.5, fontweight="bold", color=wc)
-
-            bar_x0 = x0 + cw * 0.12
-            bar_x1 = x1 - cw * 0.12
-            bw = bar_x1 - bar_x0
-            bar_y = 0.34
-            bar_h = 0.028
-
-            track = FancyBboxPatch((bar_x0, bar_y), bw, bar_h,
-                                    boxstyle="round,pad=0.001",
-                                    transform=panel_ax.transAxes,
-                                    facecolor=GRIDLINE, edgecolor="none", zorder=2)
-            panel_ax.add_patch(track)
-
-            min_w_val = min(30, min(winds_list))
-            max_w_val = max(70, max(winds_list) * 1.15)
-            fill_w = bw * (fc["wind"] - min_w_val) / max(1, (max_w_val - min_w_val))
-            fill_w = max(0.01, min(fill_w, bw))
-            fill = FancyBboxPatch((bar_x0, bar_y), fill_w, bar_h,
-                                   boxstyle="round,pad=0.001",
-                                   transform=panel_ax.transAxes,
-                                   facecolor=wc, edgecolor="none",
-                                   alpha=0.85, zorder=3)
-            panel_ax.add_patch(fill)
-
-            panel_ax.text(cx, 0.28, "MSLP",
-                          transform=panel_ax.transAxes,
-                          ha="center", va="center",
-                          fontsize=4.8, color=TEXT_MUT, fontfamily="monospace")
-
-            panel_ax.text(cx, 0.21, f"{fc['mslp']} hPa",
-                          transform=panel_ax.transAxes,
-                          ha="center", va="center",
-                          fontsize=7.5, fontweight="bold", color=TEXT_PRI)
-
-            panel_ax.plot(wx[i], wy[i],
-                          transform=panel_ax.transAxes,
-                          marker="o", markersize=4,
-                          color=ACCENT_LINE, zorder=6,
-                          markeredgecolor=CARD_BG, markeredgewidth=0.8)
-            panel_ax.plot(wx[i], py[i],
-                          transform=panel_ax.transAxes,
-                          marker="s", markersize=3.5,
-                          color=MSLP_LINE, zorder=6,
-                          markeredgecolor=CARD_BG, markeredgewidth=0.8)
-
+            panel_ax.text(
+                cx, 0.53, pos_str,
+                transform=panel_ax.transAxes, ha="center", va="center",
+                fontsize=7.0, color=TEXT_SEC, zorder=2
+            )
+            
+            panel_ax.axhline(0.44, color='#1f334d', linewidth=0.6, xmin=x0 + 0.005, xmax=x1 - 0.005)
+            
+            # Wind Speed in km/h and kt
+            panel_ax.text(
+                cx, 0.33, f"{fc['wind']} km/h",
+                transform=panel_ax.transAxes, ha="center", va="center",
+                fontsize=9.0, fontweight="bold", color=dot_c, zorder=2
+            )
+            panel_ax.text(
+                cx, 0.22, f"({fc['wind_kt']} kt)",
+                transform=panel_ax.transAxes, ha="center", va="center",
+                fontsize=6.8, color=TEXT_SEC, zorder=2
+            )
+            
+            # Central Pressure
+            panel_ax.text(
+                cx, 0.11, f"{fc['mslp']} hPa",
+                transform=panel_ax.transAxes, ha="center", va="center",
+                fontsize=7.5, fontweight="bold", color=TEXT_PRI, zorder=2
+            )
+            
     os.makedirs(os.path.dirname(os.path.abspath(output_filepath)), exist_ok=True)
-    plt.savefig(output_filepath, dpi=200, bbox_inches='tight', facecolor='white')
+    plt.savefig(output_filepath, dpi=200, bbox_inches='tight', facecolor=BG_DARK)
     plt.close(fig)
     print(f"Successfully generated Philippine Typhoon/Weather unofficial forecast track plot: {output_filepath}")
+
+
 
 
 def process_and_generate_tracks(storm_id_filter=None, output_dir='public/assets'):
