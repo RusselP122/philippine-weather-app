@@ -1,20 +1,20 @@
 [
   {
     "track_id": "WP172026",
-    "storm_name": "TC 17W (Invest 92W)",
+    "storm_name": "TC 17W",
     "active": true,
-    "last_updated": "2026-08-19 06:00",
-    "latest_lat": 8.5,
-    "latest_lon": 154.1,
+    "last_updated": "2026-08-19 12:00",
+    "latest_lat": 9.4,
+    "latest_lon": 153.7,
     "category": "Tropical Storm"
   },
   {
     "track_id": "WP952026",
     "storm_name": "Invest 95W",
     "active": true,
-    "last_updated": "2026-08-19 06:00",
-    "latest_lat": 19.5,
-    "latest_lon": 111.8,
+    "last_updated": "2026-08-19 12:00",
+    "latest_lat": 19.7,
+    "latest_lon": 111.4,
     "category": "Low Pressure Area"
   },
   {

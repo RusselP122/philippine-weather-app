@@ -1,15 +1,15 @@
 {
   "active": true,
-  "storm_name": "TC 17W (Invest 92W)",
+  "storm_name": "TC 17W",
   "track_id": "WP172026",
   "latest": {
-    "lat": 8.5,
-    "lon": 154.1,
-    "pressure_hpa": 999.0,
+    "lat": 9.4,
+    "lon": 153.7,
+    "pressure_hpa": 1000.0,
     "wind_kt": 35.0,
     "wind_kmh": 65,
-    "movement": "N at 9.4 km/h (5.1 kt)",
-    "init_time": "2026-08-19 06:00",
+    "movement": "NNW at 18.2 km/h (9.8 kt)",
+    "init_time": "2026-08-19 12:00",
     "category": "Tropical Storm"
   },
   "history": [
@@ -63,6 +63,15 @@
       "lat": 8.5,
       "lon": 154.1,
       "pressure_hpa": 999.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-08-19 12:00",
+      "lat": 9.4,
+      "lon": 153.7,
+      "pressure_hpa": 1000.0,
       "wind_kt": 35.0,
       "wind_kmh": 65,
       "category": "Tropical Storm"
