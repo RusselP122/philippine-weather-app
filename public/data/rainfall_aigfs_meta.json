@@ -1,8 +1,8 @@
 {
   "model": "NOAA AIGFS",
   "source": "NOAA NCEP NOMADS",
-  "generated_at": "2026-08-20 04:13 AM",
-  "run_time": "2026-08-20 00:00 UTC",
+  "generated_at": "2026-08-20 10:05 AM",
+  "run_time": "2026-08-20 06:00 UTC",
   "animation_frames": [
     "aigfs_daily_1",
     "aigfs_daily_2",
