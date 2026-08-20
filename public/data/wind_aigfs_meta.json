@@ -1,8 +1,8 @@
 {
   "model": "NOAA AIGFS (16-Day 0.25\u00b0) Deterministic",
   "source": "NOAA NCEP NOMADS",
-  "generated_at": "2026-08-20 10:04 AM",
-  "run_time": "2026-08-20 06:00 UTC",
+  "generated_at": "2026-08-20 04:04 PM",
+  "run_time": "2026-08-20 12:00 UTC",
   "animation_frames": [
     "aigfs_wind_006",
     "aigfs_wind_012",
@@ -32,19 +32,6 @@
     "aigfs_wind_156",
     "aigfs_wind_162",
     "aigfs_wind_168",
-    "aigfs_wind_174",
-    "aigfs_wind_180",
-    "aigfs_wind_186",
-    "aigfs_wind_192",
-    "aigfs_wind_198",
-    "aigfs_wind_204",
-    "aigfs_wind_210",
-    "aigfs_wind_216",
-    "aigfs_wind_222",
-    "aigfs_wind_228",
-    "aigfs_wind_234",
-    "aigfs_wind_240",
-    "aigfs_wind_246",
-    "aigfs_wind_252"
+    "aigfs_wind_174"
   ]
 }
