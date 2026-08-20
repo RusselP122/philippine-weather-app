@@ -1,98 +1,62 @@
 {
   "active": true,
-  "storm_name": "TC 17W",
-  "track_id": "WP172026",
+  "storm_name": "Invest 95W",
+  "track_id": "WP952026",
   "latest": {
-    "lat": 11.4,
-    "lon": 151.6,
-    "pressure_hpa": 999.0,
-    "wind_kt": 35.0,
-    "wind_kmh": 65,
-    "movement": "NW at 27.5 km/h (14.8 kt)",
-    "init_time": "2026-08-20 00:00",
-    "category": "Tropical Storm"
+    "lat": 19.6,
+    "lon": 109.7,
+    "pressure_hpa": 996.0,
+    "wind_kt": 25.0,
+    "wind_kmh": 46,
+    "movement": "WNW at 12.8 km/h (6.9 kt)",
+    "init_time": "2026-08-20 06:00",
+    "category": "Tropical Depression"
   },
   "history": [
     {
-      "cycle": "2026-08-18 00:00",
-      "lat": 7.9,
-      "lon": 155.3,
-      "pressure_hpa": 1008.0,
-      "wind_kt": 19.0,
-      "wind_kmh": 35,
-      "category": "Low Pressure Area"
-    },
-    {
-      "cycle": "2026-08-18 06:00",
-      "lat": 7.9,
-      "lon": 154.9,
-      "pressure_hpa": 1005.0,
-      "wind_kt": 19.0,
-      "wind_kmh": 35,
-      "category": "Low Pressure Area"
-    },
-    {
-      "cycle": "2026-08-18 12:00",
-      "lat": 7.9,
-      "lon": 154.9,
-      "pressure_hpa": 1006.0,
-      "wind_kt": 25.0,
-      "wind_kmh": 46,
-      "category": "Tropical Depression"
-    },
-    {
-      "cycle": "2026-08-18 18:00",
-      "lat": 8.3,
-      "lon": 154.6,
-      "pressure_hpa": 1005.0,
-      "wind_kt": 25.0,
-      "wind_kmh": 46,
-      "category": "Tropical Depression"
-    },
-    {
-      "cycle": "2026-08-19 00:00",
-      "lat": 8.0,
-      "lon": 154.2,
-      "pressure_hpa": 1003.0,
-      "wind_kt": 29.0,
-      "wind_kmh": 54,
-      "category": "Tropical Depression"
-    },
-    {
       "cycle": "2026-08-19 06:00",
-      "lat": 8.5,
-      "lon": 154.1,
-      "pressure_hpa": 999.0,
-      "wind_kt": 35.0,
-      "wind_kmh": 65,
-      "category": "Tropical Storm"
+      "lat": 19.5,
+      "lon": 111.8,
+      "pressure_hpa": 998.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
     },
     {
       "cycle": "2026-08-19 12:00",
-      "lat": 9.4,
-      "lon": 153.7,
-      "pressure_hpa": 1000.0,
-      "wind_kt": 35.0,
-      "wind_kmh": 65,
-      "category": "Tropical Storm"
+      "lat": 19.7,
+      "lon": 111.4,
+      "pressure_hpa": 998.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
     },
     {
       "cycle": "2026-08-19 18:00",
-      "lat": 10.5,
-      "lon": 152.8,
-      "pressure_hpa": 1000.0,
-      "wind_kt": 35.0,
-      "wind_kmh": 65,
-      "category": "Tropical Storm"
+      "lat": 19.1,
+      "lon": 110.9,
+      "pressure_hpa": 998.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
     },
     {
       "cycle": "2026-08-20 00:00",
-      "lat": 11.4,
-      "lon": 151.6,
+      "lat": 19.4,
+      "lon": 110.4,
       "pressure_hpa": 999.0,
-      "wind_kt": 35.0,
-      "wind_kmh": 65,
-      "category": "Tropical Storm"
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-20 06:00",
+      "lat": 19.6,
+      "lon": 109.7,
+      "pressure_hpa": 996.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
     }
   ]
 }
