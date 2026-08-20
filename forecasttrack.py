@@ -496,8 +496,15 @@ def get_aigefs_aimn_mean_track(storm, data_dir='public/data'):
             if 'pressure' in matched.columns: cols_to_keep.append('pressure')
             res = matched[cols_to_keep].dropna(subset=['lat', 'lon'])
             if not res.empty:
+                init_str = None
+                if 'init_time' in matched.columns and not matched['init_time'].dropna().empty:
+                    try:
+                        init_dt = pd.to_datetime(matched['init_time'].dropna().iloc[0])
+                        init_str = init_dt.strftime('%Y-%m-%d %HZ')
+                    except Exception:
+                        pass
                 print(f"Found official AIGEFS aimn mean track for {short_id} in {os.path.basename(fpath)} (dist: {best_dist:.1f}km)")
-                return res
+                return res, init_str
 
     # Attempt fetching live NOAA aimn track if not available locally
     try:
@@ -542,18 +549,19 @@ def get_aigefs_aimn_mean_track(storm, data_dir='public/data'):
                             first_row = t_df.iloc[0]
                             d_km = haversine_km(first_row['lat'], first_row['lon'], curr_lat, curr_lon)
                             if d_km <= 250.0:
-                                print(f"Successfully fetched live NOAA AIGEFS aimn mean track for {short_id} (dist: {d_km:.1f}km)")
+                                live_init_str = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]} {rt}Z"
+                                print(f"Successfully fetched live NOAA AIGEFS aimn mean track for {short_id} (Run: {live_init_str}, dist: {d_km:.1f}km)")
                                 cols_ret = ['lead_time_hours', 'lat', 'lon']
                                 if 'wind' in t_df.columns: cols_ret.append('wind')
                                 if 'pressure' in t_df.columns: cols_ret.append('pressure')
                                 ret_df = t_df[cols_ret].copy()
-                                return ret_df
+                                return ret_df, live_init_str
                 except Exception:
                     continue
     except Exception:
         pass
         
-    return pd.DataFrame()
+    return pd.DataFrame(), None
 
 
 def get_pagasa_official_track(storm, data_dir='public/data'):
@@ -973,6 +981,23 @@ def get_jma_official_track(storm, data_dir='public/data'):
     return pd.DataFrame(), None
 
 
+def get_fallback_cycle_str(storm):
+    """
+    Computes a clean fallback initialization string (e.g. '2026-08-20 06Z')
+    based on the storm's current analysis timestamp or current UTC cycle.
+    """
+    if storm.get('init_time'):
+        try:
+            dt = pd.to_datetime(str(storm['init_time']).split('.')[0])
+            cycle_hr = (dt.hour // 6) * 6
+            return dt.strftime(f"%Y-%m-%d {cycle_hr:02d}Z")
+        except Exception:
+            pass
+    now_utc = datetime.now(timezone.utc)
+    cycle_hr = (now_utc.hour // 6) * 6
+    return now_utc.strftime(f"%Y-%m-%d {cycle_hr:02d}Z")
+
+
 def load_all_actual_tracks_for_storm(storm):
     """
     Scans data sources to extract actual forecast tracks for:
@@ -989,6 +1014,7 @@ def load_all_actual_tracks_for_storm(storm):
     track_inits = {}
     
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public', 'data')
+    fallback_cycle = get_fallback_cycle_str(storm)
     
     # 1. WeatherNext Cyclone (FNV3p2): Check paired file first, fallback to calculated ensemble mean
     fnv3_paired = get_fnv3_paired_mean_track(storm, data_dir)
@@ -1010,7 +1036,7 @@ def load_all_actual_tracks_for_storm(storm):
                 except Exception:
                     pass
     if 'WeatherNext Cyclone' not in track_inits:
-        track_inits['WeatherNext Cyclone'] = "2026-08-01 18Z"
+        track_inits['WeatherNext Cyclone'] = fallback_cycle
 
     # 2. ECMWF IFS: Check control/paired track first, fallback to calculated ensemble mean
     ifs_files = [os.path.join(data_dir, 'ifs_tc_latest.dat'), os.path.join(data_dir, 'ifs_tc_latest.csv')]
@@ -1039,7 +1065,7 @@ def load_all_actual_tracks_for_storm(storm):
                     ensemble_means['ECMWF IFS'] = ifs_calc
             break
     if 'ECMWF IFS' not in track_inits:
-        track_inits['ECMWF IFS'] = "2026-08-01 12Z"
+        track_inits['ECMWF IFS'] = fallback_cycle
 
     # 3. ECMWF AIFS: Check control/paired track first, fallback to calculated ensemble mean
     aifs_files = [os.path.join(data_dir, 'aifs_tc_latest.dat'), os.path.join(data_dir, 'aifs_tc_latest.csv')]
@@ -1068,17 +1094,21 @@ def load_all_actual_tracks_for_storm(storm):
                     ensemble_means['ECMWF AIFS'] = aifs_calc
             break
     if 'ECMWF AIFS' not in track_inits:
-        track_inits['ECMWF AIFS'] = "2026-08-01 12Z"
+        track_inits['ECMWF AIFS'] = fallback_cycle
 
     # 4. AIGEFS: Check aimn mean track file first, fallback to calculated ensemble mean
-    aigefs_aimn = get_aigefs_aimn_mean_track(storm, data_dir)
+    aigefs_aimn, aigefs_init_str = get_aigefs_aimn_mean_track(storm, data_dir)
     if not aigefs_aimn.empty:
         ensemble_means['AIGEFS'] = aigefs_aimn
+        if aigefs_init_str:
+            track_inits['AIGEFS'] = aigefs_init_str
     else:
         aigefs_calc = get_actual_ensemble_mean_for_storm(storm, os.path.join(data_dir, 'aigefs_tc_latest.dat'))
         if not aigefs_calc.empty:
             ensemble_means['AIGEFS'] = aigefs_calc
-    track_inits['AIGEFS'] = "2026-08-01 18Z"
+            
+    if 'AIGEFS' not in track_inits:
+        track_inits['AIGEFS'] = fallback_cycle
 
     # 5. Official PAGASA track from cyclone.dat (pubfiles.pagasa.dost.gov.ph)
     pagasa_official, pagasa_init_str = get_pagasa_official_track(storm, data_dir)
