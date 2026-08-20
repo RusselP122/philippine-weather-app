@@ -86,22 +86,13 @@ def wind_color(kmh):
 
 def clean_storm_id_no_dot(raw_id):
     """
-    Strips any dot '.' characters and formats storm IDs into standard clean strings.
-    Example: 'WP01.2026' -> '01W STORM', '90.W' -> '90W INVEST', 'WP92' -> '92W INVEST'
+    Cleans raw ATCF ID strings into standardized short IDs.
+    Example: 'WP01.2026' -> '01W', '90.W' -> '90W', 'WP92' -> '92W'
     """
     if not raw_id:
         return "UNKNOWN"
     
     clean_str = str(raw_id).replace('.', '').strip().upper()
-    
-    def is_invest_val(s):
-        m = re.search(r'\d{2}', s)
-        if m:
-            val = int(m.group(0))
-            return 90 <= val <= 99
-        return False
-        
-    is_invest = 'INVEST' in clean_str or is_invest_val(clean_str)
     
     num = None
     letter = "W"
@@ -136,10 +127,7 @@ def clean_storm_id_no_dot(raw_id):
                         num = m.group(1)
                         
     if num:
-        if is_invest:
-            return f"{num}{letter} INVEST"
-        else:
-            return f"{num}{letter} STORM"
+        return f"{num}{letter}"
             
     return clean_str
 
@@ -602,14 +590,9 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
         except Exception:
             pass
 
-    if not content.strip():
-        return pd.DataFrame(), None
-
-    curr_lat, curr_lon = storm['lat'], storm['lon']
+    curr_lat, curr_lon = float(storm['lat']), float(storm['lon'])
     short_id = get_short_atcf_id(storm['atcf_id'])
-
-    rows = []
-    t0 = None
+    parsed_pts = []
     
     for line in content.splitlines():
         line = line.strip()
@@ -623,29 +606,53 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
             try:
                 lat = float(parts[3])
                 lon = float(parts[4])
+                radius = float(parts[5]) if len(parts) >= 6 and parts[5] else 0.0
                 dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
-                if t0 is None:
-                    t0 = dt
-                tau = (dt - t0).total_seconds() / 3600.0
-                rows.append({
-                    'lead_time_hours': tau,
+                parsed_pts.append({
+                    'datetime': dt,
                     'lat': lat,
                     'lon': lon,
-                    'category': cat
+                    'category': cat,
+                    'radius': radius
                 })
             except Exception:
                 continue
 
-    if not rows:
+    if not parsed_pts:
         return pd.DataFrame(), None
 
+    match = re.search(r'^([A-Za-z0-9_-]+)\{', content.strip().splitlines()[0]) if content.strip() else None
+    matched_name = match.group(1).upper() if match else None
+
+    # Determine T+0 index: find the last analysis fix (radius == 0 before forecast points)
+    idx_t0 = 0
+    for i in range(len(parsed_pts) - 1, -1, -1):
+        if parsed_pts[i]['radius'] == 0.0:
+            idx_t0 = i
+            break
+
+    # Build forecast rows starting strictly from T+0 onwards (excluding old historical track)
+    t0 = parsed_pts[idx_t0]['datetime']
+    forecast_pts = parsed_pts[idx_t0:]
+    
+    rows = []
+    for pt in forecast_pts:
+        tau = (pt['datetime'] - t0).total_seconds() / 3600.0
+        rows.append({
+            'lead_time_hours': tau,
+            'lat': pt['lat'],
+            'lon': pt['lon'],
+            'category': pt['category']
+        })
+
     df = pd.DataFrame(rows)
-    first_pt = df.iloc[0]
-    dist_km = haversine_km(first_pt['lat'], first_pt['lon'], curr_lat, curr_lon)
+    min_dist_km = min(haversine_km(r['lat'], r['lon'], curr_lat, curr_lon) for _, r in df.iterrows())
     
     # Accept PAGASA track ONLY if within 350 km of the storm center
-    if dist_km <= 350.0:
-        print(f"Matched official PAGASA track for {short_id} (dist: {dist_km:.1f}km)")
+    if min_dist_km <= 350.0:
+        if matched_name:
+            storm['pagasa_name'] = matched_name
+        print(f"Matched official PAGASA track for {short_id} (Name: {matched_name}, dist: {min_dist_km:.1f}km)")
         return df[['lead_time_hours', 'lat', 'lon']], t0.strftime('%Y-%m-%d %HZ') if t0 else None
         
     return pd.DataFrame(), None
@@ -1399,6 +1406,86 @@ def render_sea_labels(ax, extent):
         )
 
 
+PAGASA_NAMES_2026 = [
+    "ADA", "BASYANG", "CALOY", "DOMENG", "ESTER",
+    "FRANCISCO", "GARDO", "HENRY", "INDAY", "JOSIE",
+    "KIYAPO", "LUIS", "MAYMAY", "NENENG", "OBET",
+    "PILANDOK", "QUEENIE", "ROSAL", "SAMUEL", "TOMAS",
+    "UMBERTO", "VENUS", "WALDO", "YAYANG", "ZENY"
+]
+
+
+def is_point_inside_par(lat, lon):
+    """
+    Checks if a geographic point (lat, lon) is within the Philippine Area of Responsibility (PAR).
+    PAR polygon vertices: (115, 5), (115, 15), (120, 21), (120, 25), (135, 25), (135, 5)
+    """
+    poly = [(115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0), (135.0, 25.0), (135.0, 5.0)]
+    n = len(poly)
+    inside = False
+    p1x, p1y = poly[0]
+    for i in range(n + 1):
+        p2x, p2y = poly[i % n]
+        if min(p1y, p2y) < lat <= max(p1y, p2y):
+            if lon <= max(p1x, p2x):
+                if p1y != p2y:
+                    xinters = (lat - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                if p1x == p2x or lon <= xinters:
+                    inside = not inside
+        p1x, p1y = p2x, p2y
+    return inside
+
+
+def format_storm_title(storm):
+    """
+    Standardizes storm titles across all charts:
+    - Inside PAR with international name: 'Neneng (Saudel)'
+    - Inside PAR without international name: 'Neneng (17W)' or 'Neneng (94W)'
+    - Outside PAR with international name: 'Saudel (17W)'
+    - Outside PAR without international name: '94W', '95W', '17W'
+    """
+    raw_id = storm.get('atcf_id', '')
+    short_id = get_short_atcf_id(raw_id)
+    raw_name = str(storm.get('name', '')).strip()
+    curr_lat = float(storm.get('lat', 0))
+    curr_lon = float(storm.get('lon', 0))
+    inside_par = is_point_inside_par(curr_lat, curr_lon)
+    
+    # Valid named storms (e.g. SAUDEL, NENENG, YAGI, etc.)
+    ignored_names = [
+        "INVEST", "NONAME", "UNKNOWN", "STORM", "NULL", "NONE", "LPA", "LOW PRESSURE AREA", "",
+        "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN",
+        "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN", "FIFTEEN", "SIXTEEN", "SEVENTEEN",
+        "EIGHTEEN", "NINETEEN", "TWENTY", "TWENTY-ONE", "TWENTY-TWO"
+    ]
+    
+    intl_name = None
+    if raw_name and raw_name.upper() not in ignored_names:
+        intl_name = raw_name.title()
+        
+    p_name = storm.get('pagasa_name')
+    if not p_name and inside_par:
+        # Check if mapped to a 2026 PAGASA name
+        nums = ''.join(filter(str.isdigit, short_id))
+        if nums:
+            n_val = int(nums)
+            if 1 <= n_val <= len(PAGASA_NAMES_2026):
+                p_name = PAGASA_NAMES_2026[n_val - 1]
+                
+    if p_name:
+        p_name_fmt = p_name.strip().title()
+        if inside_par:
+            if intl_name:
+                return f"{p_name_fmt} ({intl_name})"
+            else:
+                return f"{p_name_fmt} ({short_id})"
+                
+    if intl_name:
+        return f"{intl_name} ({short_id})"
+        
+    return f"{short_id}"
+
+
 def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepath, init_time_str="Latest", track_inits=None):
     """
     Renders a broadcast-grade multi-agency & ensemble comparison forecast track map
@@ -1407,11 +1494,8 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     if track_inits is None:
         track_inits = {}
 
-    clean_id = clean_storm_id_no_dot(storm['atcf_id'])
     short_id = get_short_atcf_id(storm['atcf_id'])
-    storm_name = storm.get('name', 'INVEST').upper()
-    full_storm_title = f"{clean_id}" if 'INVEST' in clean_id or 'STORM' in clean_id else f"{storm_name} ({clean_id})"
-    
+    full_storm_title = format_storm_title(storm)
     curr_lat, curr_lon = float(storm['lat']), float(storm['lon'])
     
     fig = plt.figure(figsize=(12, 7.6), facecolor=BG_DARK)
@@ -1627,19 +1711,8 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
     if track_inits is None:
         track_inits = {}
 
-    clean_id = clean_storm_id_no_dot(storm['atcf_id'])
     short_id = get_short_atcf_id(storm['atcf_id'])
-    storm_name = storm.get('name', '').upper()
-    
-    if storm_name and storm_name not in ["INVEST", "NONAME", "UNKNOWN", ""]:
-        full_storm_title = f"{storm_name} ({short_id})"
-    else:
-        is_invest = False
-        nums = ''.join(filter(str.isdigit, short_id))
-        if nums and int(nums) >= 90:
-            is_invest = True
-        full_storm_title = f"{short_id} INVEST" if is_invest else f"{short_id} STORM"
-
+    full_storm_title = format_storm_title(storm)
     curr_lat, curr_lon = float(storm['lat']), float(storm['lon'])
     mean_track = compute_compiled_mean_track(agency_tracks, ensemble_means)
     
@@ -1729,6 +1802,8 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
         all_lons.extend(mean_track['lon'].dropna().tolist())
         
     extent = get_adaptive_viewport(all_lats, all_lons, target_aspect=1.75)
+    min_lon, max_lon, min_lat, max_lat = extent
+    span_lon = max_lon - min_lon
     ax.set_extent(extent, crs=ccrs.PlateCarree())
     
     # Sea Text Labels (strictly bounded and zoom-scaled)
@@ -1799,17 +1874,24 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             else:
                 nx, ny = 0.707, 0.707
                 
-            # Alternate side if waypoints are consecutive
-            side = 1.0 if (idx % 2 == 0) else -1.0
-            offset_r = 0.50
-            dx = nx * offset_r * side
-            dy = ny * offset_r * side
+            # If waypoints are in a tight cluster/loop, disperse to distinct cardinal directions
+            if dist_seg < 0.85:
+                cardinal_angles = [0.0, math.pi / 2.0, math.pi, 3.0 * math.pi / 2.0, math.pi / 4.0, 5.0 * math.pi / 4.0]
+                angle_rad = cardinal_angles[idx % len(cardinal_angles)]
+                offset_dist = max(0.70, min(1.3, span_lon * 0.040))
+                dx = math.cos(angle_rad) * offset_dist
+                dy = math.sin(angle_rad) * offset_dist
+            else:
+                side = 1.0 if (idx % 2 == 0) else -1.0
+                offset_r = max(0.55, min(1.1, span_lon * 0.028))
+                dx = nx * offset_r * side
+                dy = ny * offset_r * side
             
-            ha = 'left' if dx > 0.1 else ('right' if dx < -0.1 else 'center')
-            va = 'bottom' if dy > 0.1 else ('top' if dy < -0.1 else 'center')
+            ha = 'left' if dx > 0.15 else ('right' if dx < -0.15 else 'center')
+            va = 'bottom' if dy > 0.15 else ('top' if dy < -0.15 else 'center')
             
             ax.text(
-                lo + dx, la + dy, lbl_text, color='#ffffff', fontsize=7.8, weight='bold',
+                lo + dx, la + dy, lbl_text, color='#ffffff', fontsize=7.6, weight='bold',
                 transform=ccrs.PlateCarree(), zorder=14, ha=ha, va=va, clip_on=True,
                 path_effects=[path_effects.withStroke(linewidth=3.0, foreground=BG_DARK)]
             )
