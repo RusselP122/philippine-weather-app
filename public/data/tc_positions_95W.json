@@ -3,14 +3,14 @@
   "storm_name": "Invest 95W",
   "track_id": "WP952026",
   "latest": {
-    "lat": 19.7,
-    "lon": 111.4,
+    "lat": 19.1,
+    "lon": 110.9,
     "pressure_hpa": 998.0,
-    "wind_kt": 19.0,
-    "wind_kmh": 35,
-    "movement": "WNW at 7.9 km/h (4.3 kt)",
-    "init_time": "2026-08-19 12:00",
-    "category": "Low Pressure Area"
+    "wind_kt": 25.0,
+    "wind_kmh": 46,
+    "movement": "SW at 14.1 km/h (7.6 kt)",
+    "init_time": "2026-08-19 18:00",
+    "category": "Tropical Depression"
   },
   "history": [
     {
@@ -30,6 +30,15 @@
       "wind_kt": 19.0,
       "wind_kmh": 35,
       "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-08-19 18:00",
+      "lat": 19.1,
+      "lon": 110.9,
+      "pressure_hpa": 998.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
     }
   ]
 }
