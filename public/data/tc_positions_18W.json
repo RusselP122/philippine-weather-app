@@ -3,13 +3,13 @@
   "storm_name": "TC 18W (Invest 95W)",
   "track_id": "WP182026",
   "latest": {
-    "lat": 20.2,
+    "lat": 20.6,
     "lon": 108.6,
     "pressure_hpa": 995.0,
-    "wind_kt": 25.0,
-    "wind_kmh": 46,
-    "movement": "ENE at 3.9 km/h (2.1 kt)",
-    "init_time": "2026-08-21 00:00",
+    "wind_kt": 29.0,
+    "wind_kmh": 54,
+    "movement": "N at 7.4 km/h (4.0 kt)",
+    "init_time": "2026-08-21 06:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -65,6 +65,15 @@
       "pressure_hpa": 995.0,
       "wind_kt": 25.0,
       "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-21 06:00",
+      "lat": 20.6,
+      "lon": 108.6,
+      "pressure_hpa": 995.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
       "category": "Tropical Depression"
     }
   ]
