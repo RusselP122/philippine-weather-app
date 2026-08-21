@@ -1,0 +1,62 @@
+{
+  "active": true,
+  "storm_name": "TC 18W (Invest 95W)",
+  "track_id": "WP182026",
+  "latest": {
+    "lat": 20.1,
+    "lon": 108.4,
+    "pressure_hpa": 995.0,
+    "wind_kt": 25.0,
+    "wind_kmh": 46,
+    "movement": "WNW at 15.0 km/h (8.1 kt)",
+    "init_time": "2026-08-20 18:00",
+    "category": "Tropical Depression"
+  },
+  "history": [
+    {
+      "cycle": "2026-08-19 18:00",
+      "lat": 19.1,
+      "lon": 110.9,
+      "pressure_hpa": 998.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-20 00:00",
+      "lat": 19.4,
+      "lon": 110.4,
+      "pressure_hpa": 999.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-20 06:00",
+      "lat": 19.6,
+      "lon": 109.7,
+      "pressure_hpa": 996.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-20 12:00",
+      "lat": 19.8,
+      "lon": 109.2,
+      "pressure_hpa": 996.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-20 18:00",
+      "lat": 20.1,
+      "lon": 108.4,
+      "pressure_hpa": 995.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    }
+  ]
+}
