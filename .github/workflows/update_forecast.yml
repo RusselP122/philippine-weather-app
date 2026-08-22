@@ -7,6 +7,10 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
+concurrency:
+  group: weather-data-sync
+  cancel-in-progress: false
+
 jobs:
   update-forecast:
     runs-on: ubuntu-latest
@@ -82,6 +86,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config merge.renames false
           
           python scripts/obfuscate_csvs.py
           
@@ -89,7 +94,7 @@ jobs:
           git add -u public/data/
           
           # Add forecast PNGs and the proxied CSVs for browser use
-          git add public/assets/*.png
+          git add public/assets/*.png 2>/dev/null || true
           git add -f public/data/fnv3p2_latest.dat || true
           git add -f public/data/fnv3p2_paired_latest.dat || true
           git add -f public/data/fnv3p1_latest.dat || true
@@ -102,15 +107,22 @@ jobs:
           git add -f public/data/tc_positions_latest.json || true
           git add -f public/data/tc_positions_*.json || true
           git add -f public/data/tc_storms_index.json || true
-          git add public/data/trends/* || true
+          git add public/data/trends/* 2>/dev/null || true
           
           # Commit if there are changes
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
             git commit -m "Auto-update forecast images [skip ci]"
-            git reset --hard HEAD
-            git clean -fd
-            git pull --rebase origin main
-            git push
+            
+            # Retry push up to 5 times in case other workflows push concurrently
+            for i in 1 2 3 4 5; do
+              echo "Push attempt $i..."
+              if git pull --rebase -X theirs origin main && git push; then
+                echo "Push successful!"
+                break
+              fi
+              echo "Push failed (attempt $i). Waiting before retry..."
+              sleep $((10 * i))
+            done
           fi
