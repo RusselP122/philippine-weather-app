@@ -3,57 +3,21 @@
   "storm_name": "Invest 97W",
   "track_id": "WP972026",
   "latest": {
-    "lat": 19.8,
-    "lon": 108.8,
-    "pressure_hpa": 1003.0,
+    "lat": 10.2,
+    "lon": 136.6,
+    "pressure_hpa": 1006.0,
     "wind_kt": 19.0,
     "wind_kmh": 35,
-    "movement": "SE at 2.5 km/h (1.4 kt)",
-    "init_time": "2026-08-08 00:00",
+    "movement": "Stationary",
+    "init_time": "2026-08-22 00:00",
     "category": "Low Pressure Area"
   },
   "history": [
     {
-      "cycle": "2026-08-07 00:00",
-      "lat": 19.8,
-      "lon": 108.1,
-      "pressure_hpa": 1009.0,
-      "wind_kt": 16.0,
-      "wind_kmh": 30,
-      "category": "Low Pressure Area"
-    },
-    {
-      "cycle": "2026-08-07 06:00",
-      "lat": 19.9,
-      "lon": 108.3,
-      "pressure_hpa": 1009.0,
-      "wind_kt": 19.0,
-      "wind_kmh": 35,
-      "category": "Low Pressure Area"
-    },
-    {
-      "cycle": "2026-08-07 12:00",
-      "lat": 19.8,
-      "lon": 108.5,
-      "pressure_hpa": 1009.0,
-      "wind_kt": 19.0,
-      "wind_kmh": 35,
-      "category": "Low Pressure Area"
-    },
-    {
-      "cycle": "2026-08-07 18:00",
-      "lat": 19.9,
-      "lon": 108.7,
-      "pressure_hpa": 1003.0,
-      "wind_kt": 19.0,
-      "wind_kmh": 35,
-      "category": "Low Pressure Area"
-    },
-    {
-      "cycle": "2026-08-08 00:00",
-      "lat": 19.8,
-      "lon": 108.8,
-      "pressure_hpa": 1003.0,
+      "cycle": "2026-08-22 00:00",
+      "lat": 10.2,
+      "lon": 136.6,
+      "pressure_hpa": 1006.0,
       "wind_kt": 19.0,
       "wind_kmh": 35,
       "category": "Low Pressure Area"
