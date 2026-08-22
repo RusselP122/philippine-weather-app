@@ -3,27 +3,27 @@
     "track_id": "WP172026",
     "storm_name": "TC 17W",
     "active": true,
-    "last_updated": "2026-08-22 00:00",
-    "latest_lat": 17.9,
-    "latest_lon": 146.5,
+    "last_updated": "2026-08-22 06:00",
+    "latest_lat": 18.6,
+    "latest_lon": 145.8,
     "category": "Typhoon"
   },
   {
     "track_id": "WP182026",
     "storm_name": "TC 18W",
     "active": true,
-    "last_updated": "2026-08-22 00:00",
+    "last_updated": "2026-08-22 06:00",
     "latest_lat": 21.1,
-    "latest_lon": 108.7,
-    "category": "Tropical Storm"
+    "latest_lon": 108.1,
+    "category": "Tropical Depression"
   },
   {
     "track_id": "WP972026",
     "storm_name": "Invest 97W",
     "active": true,
-    "last_updated": "2026-08-22 00:00",
-    "latest_lat": 10.2,
-    "latest_lon": 136.6,
+    "last_updated": "2026-08-22 06:00",
+    "latest_lat": 11.4,
+    "latest_lon": 135.9,
     "category": "Low Pressure Area"
   },
   {
