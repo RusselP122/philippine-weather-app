@@ -3,14 +3,14 @@
   "storm_name": "TC 18W",
   "track_id": "WP182026",
   "latest": {
-    "lat": 21.0,
-    "lon": 108.3,
-    "pressure_hpa": 995.0,
-    "wind_kt": 29.0,
-    "wind_kmh": 54,
-    "movement": "E at 5.2 km/h (2.8 kt)",
-    "init_time": "2026-08-22 18:00",
-    "category": "Tropical Depression"
+    "lat": 20.8,
+    "lon": 107.9,
+    "pressure_hpa": 994.0,
+    "wind_kt": 35.0,
+    "wind_kmh": 65,
+    "movement": "WSW at 7.9 km/h (4.2 kt)",
+    "init_time": "2026-08-23 00:00",
+    "category": "Tropical Storm"
   },
   "history": [
     {
@@ -129,6 +129,15 @@
       "wind_kt": 29.0,
       "wind_kmh": 54,
       "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-23 00:00",
+      "lat": 20.8,
+      "lon": 107.9,
+      "pressure_hpa": 994.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
     }
   ]
 }

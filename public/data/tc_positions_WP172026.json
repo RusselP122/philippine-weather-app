@@ -3,13 +3,13 @@
   "storm_name": "TC 17W",
   "track_id": "WP172026",
   "latest": {
-    "lat": 20.4,
-    "lon": 143.6,
-    "pressure_hpa": 956.0,
-    "wind_kt": 115.0,
-    "wind_kmh": 213,
-    "movement": "NW at 25.6 km/h (13.8 kt)",
-    "init_time": "2026-08-22 18:00",
+    "lat": 21.0,
+    "lon": 142.3,
+    "pressure_hpa": 950.0,
+    "wind_kt": 109.0,
+    "wind_kmh": 202,
+    "movement": "WNW at 25.1 km/h (13.6 kt)",
+    "init_time": "2026-08-23 00:00",
     "category": "Super Typhoon"
   },
   "history": [
@@ -191,6 +191,15 @@
       "pressure_hpa": 956.0,
       "wind_kt": 115.0,
       "wind_kmh": 213,
+      "category": "Super Typhoon"
+    },
+    {
+      "cycle": "2026-08-23 00:00",
+      "lat": 21.0,
+      "lon": 142.3,
+      "pressure_hpa": 950.0,
+      "wind_kt": 109.0,
+      "wind_kmh": 202,
       "category": "Super Typhoon"
     }
   ]
