@@ -1,6 +1,11 @@
 {
   "base": [
     {
+      "cycle": "2026-08-24 06:00",
+      "tracks": "fnv3p2_2026_08_24T06_00.dat",
+      "paired": "fnv3p2_paired_2026_08_24T06_00.dat"
+    },
+    {
       "cycle": "2026-08-24 00:00",
       "tracks": "fnv3p2_2026_08_24T00_00.dat",
       "paired": "fnv3p2_paired_2026_08_24T00_00.dat"
@@ -19,14 +24,14 @@
       "cycle": "2026-08-23 06:00",
       "tracks": "fnv3p2_2026_08_23T06_00.dat",
       "paired": "fnv3p2_paired_2026_08_23T06_00.dat"
-    },
-    {
-      "cycle": "2026-08-23 00:00",
-      "tracks": "fnv3p2_2026_08_23T00_00.dat",
-      "paired": "fnv3p2_paired_2026_08_23T00_00.dat"
     }
   ],
   "large": [
+    {
+      "cycle": "2026-08-24 00:00",
+      "tracks": "fnv3_large_2026_08_24T00_00.dat",
+      "paired": "fnv3_large_paired_2026_08_24T00_00.dat"
+    },
     {
       "cycle": "2026-08-23 18:00",
       "tracks": "fnv3_large_2026_08_23T18_00.dat",
@@ -41,11 +46,6 @@
       "cycle": "2026-08-23 06:00",
       "tracks": "fnv3_large_2026_08_23T06_00.dat",
       "paired": "fnv3_large_paired_2026_08_23T06_00.dat"
-    },
-    {
-      "cycle": "2026-08-23 00:00",
-      "tracks": "fnv3_large_2026_08_23T00_00.dat",
-      "paired": "fnv3_large_paired_2026_08_23T00_00.dat"
     }
   ]
 }
