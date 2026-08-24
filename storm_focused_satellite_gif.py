@@ -23,6 +23,34 @@ _ADAPTER = requests.adapters.HTTPAdapter(pool_connections=30, pool_maxsize=30, m
 _HTTP_SESSION.mount('https://', _ADAPTER)
 _HTTP_SESSION.mount('http://', _ADAPTER)
 
+# ── Dynamically Find Latest Available Satellite Timestamp ────────────────────
+def get_latest_available_satellite_time():
+    """
+    Dynamically checks Zoom Earth tile servers to find the freshest available
+    Himawari satellite scan timestamp (typically 15-25 minutes behind real time).
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    for offset_mins in [15, 20, 25, 30, 40, 50, 60]:
+        t = now - datetime.timedelta(minutes=offset_mins)
+        mins = (t.minute // 10) * 10
+        t_aligned = t.replace(minute=mins, second=0, microsecond=0)
+        d_str = t_aligned.strftime('%Y-%m-%d')
+        tm_str = f'{t_aligned.hour:02d}{t_aligned.minute:02d}'
+        url = f'https://tiles.zoom.earth/geocolor/himawari/{d_str}/{tm_str}/6/28/53.jpg'
+        try:
+            r = _HTTP_SESSION.get(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'Referer': 'https://zoom.earth/',
+                'Origin': 'https://zoom.earth'
+            }, timeout=3)
+            if r.status_code == 200 and len(r.content) > 1000:
+                return t_aligned
+        except Exception:
+            pass
+    t = now - datetime.timedelta(minutes=40)
+    mins = (t.minute // 10) * 10
+    return t.replace(minute=mins, second=0, microsecond=0)
+
 # ── Custom Tile Provider for Zoom Earth Satellite Map Tiles ─────────────────
 class ZoomEarthTiles(cimgt.GoogleTiles):
     """
@@ -31,10 +59,9 @@ class ZoomEarthTiles(cimgt.GoogleTiles):
     def __init__(self, date_str=None, time_str=None, session=None, **kwargs):
         super().__init__(**kwargs)
         if not date_str or not time_str:
-            now = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=40)
-            mins = (now.minute // 10) * 10
-            date_str = now.strftime('%Y-%m-%d')
-            time_str = f'{now.hour:02d}{mins:02d}'
+            latest_dt = get_latest_available_satellite_time()
+            date_str = latest_dt.strftime('%Y-%m-%d')
+            time_str = f'{latest_dt.hour:02d}{latest_dt.minute:02d}'
 
         self.date_str = date_str
         self.time_str = time_str
@@ -201,10 +228,10 @@ def render_storm_frame(
 ):
     """
     Renders a single frame matching the Tropical Tidbits reference style:
-    - Top white header bar with left title (True Color day / Shortwave IR night)
+    - Top white header bar with left title (True Color day / Shortwave IR night in PHT)
       and right title ('PHILIPPINE TYPHOON/ WEATHER')
     - Black border with clean lat/lon tick labels (e.g. 20°N, 15°N, 125°E, 130°E)
-    - Coastlines, country borders, and Philippine Area of Responsibility (PAR) line
+    - Yellow coastlines, country borders, and Philippine Area of Responsibility (PAR) line
     - NO history or forecast lines
     """
     date_str = dt_utc.strftime('%Y-%m-%d')
@@ -215,7 +242,6 @@ def render_storm_frame(
     fig = plt.figure(figsize=figsize, dpi=dpi, facecolor='white')
 
     # Position map area with margins for lat/lon tick labels and top header bar
-    # [left, bottom, width, height]
     ax_map = fig.add_axes([0.065, 0.055, 0.905, 0.885], projection=ccrs.PlateCarree())
     ax_map.set_extent(extent, crs=ccrs.PlateCarree())
 
@@ -250,7 +276,7 @@ def render_storm_frame(
     left_title = get_satellite_header_title(dt_utc)
     right_title = "PHILIPPINE TYPHOON/ WEATHER"
 
-    # Header left: Dynamic satellite product title & timestamp
+    # Header left: Dynamic satellite product title & PHT timestamp
     fig.text(
         0.065, 0.965,
         left_title,
@@ -300,9 +326,8 @@ def generate_single_storm_gif(
     print(f"\n--- Generating GIF for: {storm_label} ---")
     print(f"Timeframe: Past {timeframe_hours:.1f} hours | Interval: {interval_mins} mins | FPS: {fps}")
 
-    now_utc = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=40)
-    mins = (now_utc.minute // 10) * 10
-    end_utc = now_utc.replace(minute=mins, second=0, microsecond=0)
+    now_utc = get_latest_available_satellite_time()
+    end_utc = now_utc
     start_utc = end_utc - datetime.timedelta(hours=timeframe_hours)
 
     current_t = start_utc
@@ -367,9 +392,7 @@ def generate_single_storm_image(
     """
     Renders a single high-resolution image for a given storm extent.
     """
-    now_utc = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=40)
-    mins = (now_utc.minute // 10) * 10
-    dt_utc = now_utc.replace(minute=mins, second=0, microsecond=0)
+    dt_utc = get_latest_available_satellite_time()
 
     img = render_storm_frame(
         dt_utc=dt_utc,
@@ -393,8 +416,8 @@ def process_storms(
     interval_mins=20,
     fps=8,
     dpi=120,
-    generate_gif=False,
-    generate_both=False,
+    generate_gif=True,
+    generate_both=True,
     output_custom=None
 ):
     print("=" * 70)
@@ -479,7 +502,6 @@ def process_storms(
             generate_single_storm_image(png_file, extent, storm_label=label, dpi=dpi)
             generated_pngs.append(png_file)
 
-            # Also create standard storm_focused_satellite.png for the primary / first storm
             if idx == 0 and png_file != "storm_focused_satellite.png":
                 try:
                     import shutil
@@ -505,7 +527,6 @@ def process_storms(
             )
             generated_gifs.append(gif_file)
 
-            # Also create standard storm_focused_satellite_loop.gif for the primary / first storm
             if idx == 0 and gif_file != "storm_focused_satellite_loop.gif":
                 try:
                     import shutil
@@ -543,7 +564,6 @@ def main():
     parser.add_argument("--output", type=str, default=None, help="Custom output filepath (when single storm)")
     args = parser.parse_args()
 
-    # Determine generation modes: Default is to generate BOTH GIF and PNG!
     if args.png_only:
         gen_gif = False
         gen_both = False
@@ -551,7 +571,6 @@ def main():
         gen_gif = True
         gen_both = False
     else:
-        # Default: generate BOTH PNG and GIF!
         gen_gif = True
         gen_both = True
 
