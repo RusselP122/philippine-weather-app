@@ -3,13 +3,13 @@
   "storm_name": "TC 19W",
   "track_id": "WP192026",
   "latest": {
-    "lat": 13.7,
+    "lat": 14.0,
     "lon": 136.5,
-    "pressure_hpa": 1001.0,
+    "pressure_hpa": 1000.0,
     "wind_kt": 29.0,
     "wind_kmh": 54,
-    "movement": "ENE at 12.2 km/h (6.6 kt)",
-    "init_time": "2026-08-23 12:00",
+    "movement": "N at 5.6 km/h (3.0 kt)",
+    "init_time": "2026-08-23 18:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -72,6 +72,15 @@
       "lat": 13.7,
       "lon": 136.5,
       "pressure_hpa": 1001.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-23 18:00",
+      "lat": 14.0,
+      "lon": 136.5,
+      "pressure_hpa": 1000.0,
       "wind_kt": 29.0,
       "wind_kmh": 54,
       "category": "Tropical Depression"
