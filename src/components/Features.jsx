@@ -25,6 +25,7 @@ import {
   X,
   CheckCircle2
 } from "lucide-react";
+import { getStormDisplayName } from "../utils/stormNaming";
 
 const PAR_POLYGON = [
   [5.0, 115.0], [15.0, 115.0], [21.0, 120.0], [25.0, 120.0],
@@ -177,10 +178,10 @@ const WarningVisual = () => (
         <div
           key={sig}
           className={`flex flex-col items-center justify-center py-2 rounded-lg border text-center transition-all ${sig <= 2
-              ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-              : sig <= 4
-                ? "bg-orange-500/15 border-orange-500/40 text-orange-400"
-                : "bg-red-500/20 border-red-500/50 text-red-300 font-bold animate-pulse"
+            ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+            : sig <= 4
+              ? "bg-orange-500/15 border-orange-500/40 text-orange-400"
+              : "bg-red-500/20 border-red-500/50 text-red-300 font-bold animate-pulse"
             }`}
         >
           <span className="text-[9px] text-slate-400 uppercase">Sig</span>
@@ -718,6 +719,7 @@ const Features = () => {
                 {activeStorms.map((storm) => {
                   const inPar = isInsidePar(storm.latitude, storm.longitude);
                   const windKmh = Math.round((storm.winds * 1.852) / 5) * 5;
+                  const { displayName } = getStormDisplayName(storm.storm_name, storm.cyclone_nature, inPar, storm.atcf_id || storm.long_atcf_id);
                   return (
                     <div
                       key={storm.long_atcf_id || storm.atcf_id}
@@ -727,7 +729,7 @@ const Features = () => {
                         <div>
                           <div className="font-bold text-slate-50 text-base flex items-center gap-2">
                             <span>🌀</span>
-                            <span>{storm.storm_name === "INVEST" ? `${storm.storm_name} ${storm.atcf_id}` : storm.storm_name}</span>
+                            <span>{displayName}</span>
                           </div>
                           <div className="text-xs text-slate-400 mt-0.5">
                             {getStormTypeLabel(storm.cyclone_nature)}
@@ -736,8 +738,8 @@ const Features = () => {
 
                         <span
                           className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${inPar
-                              ? "bg-rose-500/15 border-rose-500/40 text-rose-300"
-                              : "bg-amber-500/15 border-amber-500/40 text-amber-300"
+                            ? "bg-rose-500/15 border-rose-500/40 text-rose-300"
+                            : "bg-amber-500/15 border-amber-500/40 text-amber-300"
                             }`}
                         >
                           {inPar ? "Inside PAR" : "Outside PAR"}
@@ -797,8 +799,8 @@ const Features = () => {
                   key={category}
                   onClick={() => setActiveCategory(category)}
                   className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer ${isActive
-                      ? "bg-slate-100 text-slate-950 font-semibold shadow-lg shadow-white/10 scale-105"
-                      : "bg-slate-900/50 text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-slate-800/80"
+                    ? "bg-slate-100 text-slate-950 font-semibold shadow-lg shadow-white/10 scale-105"
+                    : "bg-slate-900/50 text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-slate-800/80"
                     }`}
                 >
                   {category}
