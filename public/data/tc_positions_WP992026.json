@@ -1,0 +1,26 @@
+{
+  "active": true,
+  "storm_name": "Invest 99W",
+  "track_id": "WP992026",
+  "latest": {
+    "lat": 15.3,
+    "lon": 162.3,
+    "pressure_hpa": 1007.0,
+    "wind_kt": 19.0,
+    "wind_kmh": 35,
+    "movement": "Stationary",
+    "init_time": "2026-08-25 12:00",
+    "category": "Low Pressure Area"
+  },
+  "history": [
+    {
+      "cycle": "2026-08-25 12:00",
+      "lat": 15.3,
+      "lon": 162.3,
+      "pressure_hpa": 1007.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    }
+  ]
+}
