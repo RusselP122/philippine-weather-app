@@ -38,36 +38,7 @@ export default defineConfig({
     vercelApiPlugin(),
   ],
   build: {
-    chunkSizeWarningLimit: 1200,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('leaflet') || id.includes('@turf') || id.includes('@tmcw/togeojson')) {
-              return 'vendor-maps';
-            }
-            if (id.includes('recharts') || id.includes('d3-')) {
-              return 'vendor-charts';
-            }
-            if (id.includes('framer-motion')) {
-              return 'vendor-motion';
-            }
-            if (id.includes('lucide-react')) {
-              return 'vendor-icons';
-            }
-            if (id.includes('html2canvas') || id.includes('jszip') || id.includes('gif.js')) {
-              return 'vendor-media';
-            }
-            if (id.includes('@supabase')) {
-              return 'vendor-supabase';
-            }
-            if (id.includes('react') || id.includes('react-dom') || id.includes('@vercel/analytics')) {
-              return 'vendor-react';
-            }
-          }
-        },
-      },
-    },
+    chunkSizeWarningLimit: 1500,
   },
   server: {
     proxy: {
