@@ -1,16 +1,6 @@
 import os
+import sys
 import json
-from shapely.geometry import shape
-"""
-precip_mslp_aifs.py
-===================
-Generates 6-hour average precipitation rate (mm/hr) maps overlaid with
-MSLP isobars and 1000-500 mb thickness contours from ECMWF AIFS data.
-
-Output: public/images/precip_mslp_aifs/  (PNGs)
-        public/data/precip_mslp_aifs_meta.json
-"""
-
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -18,14 +8,42 @@ import matplotlib.lines as mlines
 from matplotlib.colors import ListedColormap, BoundaryNorm
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+from shapely.geometry import shape
 import numpy as np
 import scipy.ndimage
-import os
-import sys
-import json
 import xarray as xr
 from datetime import datetime, timedelta, timezone
 from ecmwf.opendata import Client
+
+# Import standardized visualization system
+try:
+    from weather_viz_styles import (
+        PRECIP_6H_LEVELS, PRECIP_6H_CMAP, PRECIP_6H_NORM,
+        load_ph_provinces, setup_map_ax, draw_par_boundary,
+        add_mslp_contours, add_thickness_contours,
+        add_styled_colorbar, draw_header_banner,
+        DEFAULT_EXTENT, PAR_LONS, PAR_LATS
+    )
+except ImportError:
+    DEFAULT_EXTENT = [112.0, 140.0, 2.0, 28.0]
+    PAR_LONS = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
+    PAR_LATS = [5.0, 15.0, 21.0, 25.0, 25.0, 5.0, 5.0]
+    PRECIP_6H_LEVELS = [0, 0.5, 1, 2, 5, 8, 12, 18, 25, 35, 45, 55, 70, 85, 100, 150]
+    _pr_colors = [
+        '#ffffff00', '#d4e6f6', '#a3c9e8', '#5b9cd6', '#246bb4',
+        '#2db87a', '#1b964f', '#107536', '#f7d028', '#f59e0b',
+        '#ea580c', '#dc2626', '#b91c1c', '#991b1b', '#c026d3'
+    ]
+    PRECIP_6H_CMAP = ListedColormap(_pr_colors)
+    PRECIP_6H_CMAP.set_over('#4c1d95')
+    PRECIP_6H_NORM = BoundaryNorm(PRECIP_6H_LEVELS, ncolors=len(_pr_colors), clip=False)
+    load_ph_provinces = lambda d=None: []
+    setup_map_ax = None
+    draw_par_boundary = None
+    add_mslp_contours = None
+    add_thickness_contours = None
+    add_styled_colorbar = None
+    draw_header_banner = None
 
 # ── Directories ────────────────────────────────────────────────────────────
 OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "precip_mslp_aifs")
@@ -33,186 +51,108 @@ DATA_DIR = os.path.join(os.getcwd(), "public", "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# ── Region ─────────────────────────────────────────────────────────────────
 LAT_MIN, LAT_MAX = 2.0, 28.0
 LON_MIN, LON_MAX = 112.0, 140.0
 
-# ── PAR boundary ───────────────────────────────────────────────────────────
-PAR_LONS = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
-PAR_LATS = [5.0, 15.0, 21.0, 25.0, 25.0, 5.0, 5.0]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Plot one frame
-# ═══════════════════════════════════════════════════════════════════════════
 
 def plot_frame(
     lons, lats, precip_rate, msl_data, thickness,
-    filename_id, init_time, valid_time, forecast_hour
+    filename_id, init_time, valid_time, forecast_hour,
+    province_shapely_geometries=None
 ):
-    fig = plt.figure(figsize=(14, 11))
+    fig = plt.figure(figsize=(14, 11), dpi=120)
     fig.subplots_adjust(top=0.88)
     ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=ccrs.PlateCarree())
 
-    # Base map
-    ax.add_feature(cfeature.LAND, facecolor="#eaeaea", zorder=0)
-    ax.add_feature(cfeature.OCEAN, facecolor="#d4e5ed", zorder=0)
-    ax.add_feature(cfeature.COASTLINE, linewidth=1.0, edgecolor="#222", zorder=5)
-    ax.add_feature(cfeature.BORDERS, linestyle="-", linewidth=0.6, edgecolor="#555", zorder=5)
-    # Add Philippine province boundaries from ph_provinces.json
-    try:
+    if setup_map_ax:
+        setup_map_ax(ax, extent=[LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], provinces=province_shapely_geometries)
+    else:
+        ax.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=ccrs.PlateCarree())
+        ax.add_feature(cfeature.LAND, facecolor="#edf2f7", zorder=0)
+        ax.add_feature(cfeature.OCEAN, facecolor="#d9e8f5", zorder=0)
+        ax.add_feature(cfeature.COASTLINE, linewidth=0.9, edgecolor="#1e293b", zorder=5)
+        ax.add_feature(cfeature.BORDERS, linestyle="-", linewidth=0.55, edgecolor="#64748b", zorder=5)
 
-        script_dir_path = os.path.dirname(os.path.abspath(__file__))
-        geojson_paths_list = [
-            os.path.join(script_dir_path, "public", "data", "ph_provinces.json"),
-            os.path.join(os.getcwd(), "public", "data", "ph_provinces.json"),
-            "public/data/ph_provinces.json"
-        ]
-        found_geojson_path = None
-        for p_path in geojson_paths_list:
-            if os.path.exists(p_path):
-                found_geojson_path = p_path
-                break
-        if found_geojson_path:
-            with open(found_geojson_path, 'r', encoding='utf-8') as geojson_file_handle:
-                geojson_content_dict = json.load(geojson_file_handle)
-            province_shapely_geometries = [shape(prov_feat['geometry']) for prov_feat in geojson_content_dict['features']]
-            ax.add_geometries(province_shapely_geometries, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#555555', linewidth=0.4, alpha=0.6, zorder=3)
-    except Exception as province_load_error:
-        print(f"Warning: Failed to overlay province boundaries: {province_load_error}")
-
-
-    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color="gray", alpha=0.4, linestyle=":", zorder=6)
-    gl.top_labels = False
-    gl.right_labels = False
-    gl.xlabel_style = {"size": 10, "color": "#333"}
-    gl.ylabel_style = {"size": 10, "color": "#333"}
-
-    # Meshgrid
     if lons.ndim == 1:
         X, Y = np.meshgrid(lons, lats)
     else:
         X, Y = lons, lats
 
-    # ── 1. Precipitation fill ────────────────────────────────────────────
-    # Levels scaled for 6-hour accumulation (typical tropical: 0-100mm)
-    pr_levels = [0, 0.5, 1, 2, 5, 8, 12, 18, 25, 35, 45, 55, 70, 85, 100, 150]
-    pr_colors = [
-        '#ffffff00',  # 0-0.5 (Transparent)
-        '#dbe9f6',    # 0.5-1
-        '#a6cbe3',    # 1-2
-        '#5ba3d0',    # 2-5
-        '#227abb',    # 5-8
-        '#4ac15e',    # 8-12
-        '#2ea946',    # 12-18
-        '#1a862f',    # 18-25
-        '#ffdb00',    # 25-35
-        '#f7a800',    # 35-45
-        '#ea7200',    # 45-55
-        '#df4000',    # 55-70
-        '#d41c00',    # 70-85
-        '#b40047',    # 85-100
-        '#c432b4',    # 100-150
-    ]
-    pr_cmap = ListedColormap(pr_colors)
-    pr_cmap.set_over('#4b0082')
-    pr_norm = BoundaryNorm(pr_levels, ncolors=len(pr_colors), clip=False)
-
-    if np.nanmax(precip_rate) > 0:
+    # 1. Precipitation fill
+    if np.nanmax(precip_rate) > 0.05:
         cf = ax.contourf(
-            X, Y, precip_rate, levels=pr_levels, cmap=pr_cmap, norm=pr_norm,
-            extend="max", transform=ccrs.PlateCarree(), zorder=2
+            X, Y, precip_rate,
+            levels=PRECIP_6H_LEVELS,
+            cmap=PRECIP_6H_CMAP,
+            norm=PRECIP_6H_NORM,
+            extend="max",
+            transform=ccrs.PlateCarree(),
+            zorder=2
         )
-        cb = fig.colorbar(cf, ax=ax, orientation="vertical", pad=0.02, shrink=0.85, aspect=25)
-        cb.set_ticks(pr_levels)
-        cb.ax.tick_params(labelsize=9)
-        cb.set_label("6-hr Precipitation (mm)", fontsize=10)
-        cb.outline.set_edgecolor("black")
-        cb.outline.set_linewidth(1)
+        if add_styled_colorbar:
+            add_styled_colorbar(fig, cf, ax, label="6-hr Precipitation (mm)", ticks=PRECIP_6H_LEVELS)
+        else:
+            cb = fig.colorbar(cf, ax=ax, orientation="vertical", pad=0.02, shrink=0.85, aspect=25)
+            cb.set_ticks(PRECIP_6H_LEVELS)
 
-    # ── 2. MSLP isobars ───────────────────────────────────────────────────
+    # 2. MSLP isobars
     if msl_data is not None:
-        msl_smooth = scipy.ndimage.gaussian_filter(msl_data, sigma=1)
-        cs = ax.contour(
-            X, Y, msl_smooth, levels=range(900, 1050, 4),
-            colors="black", linewidths=1.2, transform=ccrs.PlateCarree(), zorder=3
-        )
-        ax.clabel(cs, inline=True, fontsize=9, fmt="%d", colors="black")
+        if add_mslp_contours:
+            add_mslp_contours(ax, X, Y, msl_data, levels=range(900, 1050, 4), sigma=1.0)
+        else:
+            msl_smooth = scipy.ndimage.gaussian_filter(msl_data, sigma=1)
+            cs = ax.contour(X, Y, msl_smooth, levels=range(900, 1050, 4), colors="#0f172a", linewidths=1.1, transform=ccrs.PlateCarree(), zorder=3)
+            ax.clabel(cs, inline=True, fontsize=8.5, fmt="%d", colors="#0f172a")
 
-    # ── 3. 1000-500 mb thickness ──────────────────────────────────────────
+    # 3. 1000-500 mb thickness
     if thickness is not None:
-        thick_smooth = scipy.ndimage.gaussian_filter(thickness, sigma=1.5)
-        thick_levels = list(range(492, 600, 6))
+        if add_thickness_contours:
+            add_thickness_contours(ax, X, Y, thickness, sigma=1.5)
+        else:
+            thick_smooth = scipy.ndimage.gaussian_filter(thickness, sigma=1.5)
+            ct = ax.contour(X, Y, thick_smooth, levels=list(range(492, 600, 6)), colors="#2563eb", linewidths=0.85, linestyles="dashed", transform=ccrs.PlateCarree(), zorder=3)
+            ax.clabel(ct, inline=True, fontsize=8, fmt="%d", colors="#2563eb")
+            ct540 = ax.contour(X, Y, thick_smooth, levels=[540], colors="#dc2626", linewidths=2.2, linestyles="solid", transform=ccrs.PlateCarree(), zorder=4)
+            ax.clabel(ct540, inline=True, fontsize=9, fmt="%d", colors="#dc2626")
 
-        ct = ax.contour(
-            X, Y, thick_smooth, levels=thick_levels,
-            colors="#2563eb", linewidths=0.8, linestyles="dashed",
-            transform=ccrs.PlateCarree(), zorder=3
-        )
-        ax.clabel(ct, inline=True, fontsize=8, fmt="%d", colors="#2563eb")
+    # 4. PAR boundary
+    if draw_par_boundary:
+        draw_par_boundary(ax)
+    else:
+        ax.plot(PAR_LONS, PAR_LATS, transform=ccrs.PlateCarree(), color="#dc2626", linestyle="-", linewidth=2.2, zorder=7)
 
-        # 540 dam line
-        ct540 = ax.contour(
-            X, Y, thick_smooth, levels=[540],
-            colors="#dc2626", linewidths=2.5, linestyles="solid",
-            transform=ccrs.PlateCarree(), zorder=4
-        )
-        ax.clabel(ct540, inline=True, fontsize=10, fmt="%d", colors="#dc2626")
-
-    # ── 4. PAR boundary ──────────────────────────────────────────────────
-    ax.plot(PAR_LONS, PAR_LATS, transform=ccrs.PlateCarree(),
-            color="#d62728", linestyle="-", linewidth=2.5, zorder=7)
-
-    # ── 5. Banner header ─────────────────────────────────────────────────
+    # 5. Header banner
     time_fmt = "%Hz %a, %b %d, %Y"
     init_str = init_time.strftime(time_fmt) if init_time else "Unknown"
     valid_str = valid_time.strftime(time_fmt) if valid_time else "Unknown"
     fh_str = f"f{forecast_hour:03d}" if forecast_hour is not None else "f---"
 
-    fig.canvas.draw()
-    pos = ax.get_position()
-    left, right = pos.x0, pos.x1
-    y_top = pos.y1 + 0.045
-    y_bottom = pos.y1 + 0.015
-    y_line = pos.y1 + 0.005
-
-    fig.text(left, y_top, "Philippine T/W", ha="left", va="bottom",
-             fontsize=14, weight="bold", color="#888")
-    fig.text(right, y_top,
-             "AIFS v2 6-hr Precip (mm), MSLP (hPa) & 1000\u2013500 mb Thickness (dam)",
-             ha="right", va="bottom", fontsize=12, weight="bold", color="black")
-    fig.text(left, y_bottom, f"Model: ECMWF AIFS v2 (0.25\u00b0)   |   Forecast Hour: {fh_str}",
-             ha="left", va="bottom", fontsize=11, color="black")
-    fig.text(right, y_bottom, f"Init: {init_str} / Valid: {valid_str}",
-             ha="right", va="bottom", fontsize=11, color="black")
-
-    sep = mlines.Line2D((left, right), (y_line, y_line), color="black",
-                        linewidth=1, transform=fig.transFigure)
-    fig.add_artist(sep)
+    if draw_header_banner:
+        draw_header_banner(
+            fig, ax,
+            left_title="Philippine T/W",
+            right_title="AIFS v2 6-hr Precip (mm), MSLP (hPa) & 1000-500 mb Thickness (dam)",
+            model_sub=f"Model: ECMWF AIFS v2 (0.25°)   |   Forecast Hour: {fh_str}",
+            time_sub=f"Init: {init_str} / Valid: {valid_str}"
+        )
 
     filepath = os.path.join(OUTPUT_DIR, f"{filename_id}.png")
     plt.savefig(filepath, dpi=120, bbox_inches="tight", facecolor="white")
     print(f"  Saved {filepath}")
-    plt.close()
+    plt.close(fig)
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Main pipeline
-# ═══════════════════════════════════════════════════════════════════════════
 
 def main():
     print("\n=== AIFS v2 6-hr Precip Rate + MSLP + Thickness Generator ===\n")
 
+    province_shapely_geometries = load_ph_provinces(DATA_DIR)
     client = Client(source="azure", model="aifs-single", resol="0p25")
-
-    steps = list(range(0, 361, 6))  # 0 … 360 (15 days)
+    steps = list(range(0, 361, 6))
 
     run_time_dt = None
     run_time_str = "Latest"
     valid_frames = []
 
-    # We accumulate TP per step, then difference consecutive pairs
     prev_tp = None
     prev_step = None
 
@@ -221,7 +161,6 @@ def main():
         target_file = f"aifs_precip_{step:03d}.grib2"
 
         try:
-            # ── 1. Download single-level fields (tp + msl) ────────────────
             client.retrieve(
                 step=step,
                 type="fc",
@@ -231,7 +170,6 @@ def main():
 
             ds_sfc = xr.open_dataset(target_file, engine="cfgrib")
 
-            # Extract run time once
             if "time" in ds_sfc and run_time_dt is None:
                 try:
                     rt = ds_sfc["time"].values
@@ -247,21 +185,17 @@ def main():
 
             valid_time_dt = run_time_dt + timedelta(hours=step) if run_time_dt else None
 
-            # Handle multiple times
             if "time" in ds_sfc.dims and ds_sfc.sizes["time"] > 1:
                 ds_sfc = ds_sfc.isel(time=-1)
 
-            # TP (total precipitation) — accumulated in metres from T=0
-            tp_var = ds_sfc["tp"]  # metres of water equivalent
+            tp_var = ds_sfc["tp"]
             tp_grid = tp_var.values.squeeze()
 
-            # MSLP
             msl_var = ds_sfc["msl"]
             msl_grid = msl_var.values.squeeze()
             if np.nanmean(msl_grid) > 50000:
-                msl_grid = msl_grid / 100.0  # Pa → hPa
+                msl_grid = msl_grid / 100.0
 
-            # Extract coords BEFORE closing dataset
             lat_vals = tp_var.coords["latitude"].values.copy()
             lon_vals = tp_var.coords["longitude"].values.copy()
 
@@ -269,7 +203,7 @@ def main():
             if os.path.exists(target_file):
                 os.remove(target_file)
 
-            # ── 2. Download pressure-level geopotential (500 + 1000 hPa) ──
+            # Thickness
             thick_grid = None
             pl_file = f"aifs_pl_{step:03d}.grib2"
             try:
@@ -292,7 +226,6 @@ def main():
                     z500 = ds_pl["z"].sel(level=500).values.squeeze()
                     z1000 = ds_pl["z"].sel(level=1000).values.squeeze()
                 else:
-                    # Single level file — try opening multiple datasets
                     datasets = xr.open_datasets(pl_file, engine="cfgrib")
                     z500, z1000 = None, None
                     for d in datasets:
@@ -305,12 +238,11 @@ def main():
                         d.close()
 
                 if z500 is not None and z1000 is not None:
-                    # Geopotential (m²/s²) → geopotential height (m) → dam
                     if np.nanmean(z500) > 100000:
-                        z500 = z500 / 9.80665  # m²/s² → m
+                        z500 = z500 / 9.80665
                         z1000 = z1000 / 9.80665
                     if np.nanmean(z500) > 10000:
-                        z500 = z500 / 10.0  # m → dam
+                        z500 = z500 / 10.0
                         z1000 = z1000 / 10.0
 
                     thick_grid = z500 - z1000
@@ -322,9 +254,7 @@ def main():
                 if os.path.exists(pl_file):
                     os.remove(pl_file)
 
-            # ── 3. Compute 6h precip rate ─────────────────────────────────
             if step == 0:
-                # No rate at T=0, just store for differencing
                 prev_tp = tp_grid.copy()
                 prev_step = step
                 continue
@@ -332,26 +262,18 @@ def main():
             if prev_tp is not None:
                 delta_tp = tp_grid - prev_tp
                 delta_tp = np.maximum(delta_tp, 0)
-
-                # Auto-detect units: if max accumulated tp < 1, it's in metres → convert to mm
-                # If > 1, it's already in mm (or kg/m²)
                 if np.nanmax(tp_grid) < 1.0:
-                    delta_tp_mm = delta_tp * 1000.0  # metres → mm
+                    delta_tp_mm = delta_tp * 1000.0
                 else:
-                    delta_tp_mm = delta_tp  # already mm
-
+                    delta_tp_mm = delta_tp
                 precip_rate = delta_tp_mm
                 print(f"  Precip 6h: max={np.nanmax(precip_rate):.1f} mm")
             else:
-                if np.nanmax(tp_grid) < 1.0:
-                    precip_rate = tp_grid * 1000.0
-                else:
-                    precip_rate = tp_grid
+                precip_rate = tp_grid * 1000.0 if np.nanmax(tp_grid) < 1.0 else tp_grid
 
             prev_tp = tp_grid.copy()
             prev_step = step
 
-            # ── 4. Subset to region ───────────────────────────────────────
             lat_mask = (lat_vals >= LAT_MIN) & (lat_vals <= LAT_MAX)
             lon_mask = (lon_vals >= LON_MIN) & (lon_vals <= LON_MAX)
 
@@ -362,11 +284,11 @@ def main():
             msl_sub = msl_grid[np.ix_(lat_mask, lon_mask)] if msl_grid.ndim == 2 else msl_grid
             thick_sub = thick_grid[np.ix_(lat_mask, lon_mask)] if thick_grid is not None and thick_grid.ndim == 2 else thick_grid
 
-            # ── 5. Plot ──────────────────────────────────────────────────
             frame_id = f"aifs_precip_mslp_{step:03d}"
             plot_frame(
                 sub_lons, sub_lats, pr_sub, msl_sub, thick_sub,
-                frame_id, run_time_dt, valid_time_dt, step
+                frame_id, run_time_dt, valid_time_dt, step,
+                province_shapely_geometries=province_shapely_geometries
             )
             valid_frames.append(frame_id)
 
@@ -377,7 +299,6 @@ def main():
             if os.path.exists(target_file):
                 os.remove(target_file)
 
-    # ── Metadata ──────────────────────────────────────────────────────────
     meta = {
         "model": "ECMWF AIFS v2",
         "source": "ECMWF Open Data via Azure",

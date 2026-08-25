@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
+from matplotlib.colors import ListedColormap, BoundaryNorm
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import scipy.ndimage
@@ -14,26 +15,46 @@ from shapely.geometry import shape
 from datetime import datetime, timedelta, timezone
 from eccodes import codes_grib_new_from_file, codes_get, codes_get_double_array, codes_get_values, codes_release
 
-# ── Directories ────────────────────────────────────────────────────────────────
+# Import standardized visualization system
+try:
+    from weather_viz_styles import (
+        WIND_SPEED_LEVELS, WIND_SPEED_CMAP, WIND_SPEED_NORM,
+        load_ph_provinces, setup_map_ax, draw_par_boundary,
+        add_mslp_contours, add_wind_vectors,
+        add_styled_colorbar, draw_header_banner,
+        DEFAULT_EXTENT, PAR_LONS, PAR_LATS
+    )
+except ImportError:
+    DEFAULT_EXTENT = [112.0, 140.0, 2.0, 28.0]
+    PAR_LONS = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
+    PAR_LATS = [5.0, 15.0, 21.0, 25.0, 25.0, 5.0, 5.0]
+    WIND_SPEED_LEVELS = [0, 5, 10, 20, 30, 40, 50, 60, 75, 90, 105, 120, 140, 165, 185, 220]
+    _ws_colors = [
+        '#ffffff00', '#f0f9ff', '#bae6fd', '#60a5fa', '#2563eb',
+        '#10b981', '#84cc16', '#eab308', '#f97316', '#ea580c',
+        '#ef4444', '#dc2626', '#991b1b', '#c026d3', '#7c3aed'
+    ]
+    WIND_SPEED_CMAP = ListedColormap(_ws_colors)
+    WIND_SPEED_CMAP.set_over('#3b0764')
+    WIND_SPEED_NORM = BoundaryNorm(WIND_SPEED_LEVELS, ncolors=len(_ws_colors), clip=False)
+    load_ph_provinces = lambda d=None: []
+    setup_map_ax = None
+    draw_par_boundary = None
+    add_mslp_contours = None
+    add_wind_vectors = None
+    add_styled_colorbar = None
+    draw_header_banner = None
+
 OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "wind_aigfs")
 DATA_DIR   = os.path.join(os.getcwd(), "public", "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(DATA_DIR,   exist_ok=True)
 
-# ── Region ─────────────────────────────────────────────────────────────────────
 LAT_MIN, LAT_MAX = 2.0, 28.0
 LON_MIN, LON_MAX = 112.0, 140.0
 
-# ── PAR boundary ───────────────────────────────────────────────────────────────
-PAR_LONS = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
-PAR_LATS = [5.0, 15.0, 21.0, 25.0, 25.0, 5.0, 5.0]
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Helpers
-# ═══════════════════════════════════════════════════════════════════════════════
 
 def get_latest_aigfs_run(session):
-    """Locate the most recent AIGFS date and cycle (00/06/12/18) on NOAA NOMADS."""
     base_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigfs/prod"
     now = datetime.now(timezone.utc)
 
@@ -46,8 +67,7 @@ def get_latest_aigfs_run(session):
             r = session.get(date_url, timeout=6)
             if r.status_code != 200:
                 continue
-            
-            # Check cycles in reverse order (18, 12, 06, 00)
+
             for cycle in ["18", "12", "06", "00"]:
                 cycle_url = f"{date_url}{cycle}/model/atmos/grib2/"
                 test_idx_url = f"{cycle_url}aigfs.t{cycle}z.sfc.f006.grib2.idx"
@@ -66,7 +86,6 @@ def get_latest_aigfs_run(session):
 
 
 def download_byte_ranges(grib_url, idx_url, session):
-    """Parse .idx file and download only UGRD (10m), VGRD (10m), and PRMSL (MSLP)."""
     r = session.get(idx_url, timeout=10)
     if r.status_code != 200:
         raise ValueError(f"Failed to download index file from {idx_url}")
@@ -104,7 +123,6 @@ def download_byte_ranges(grib_url, idx_url, session):
 
 
 def read_grib_fields(grib_file_path):
-    """Extract U10, V10, PRMSL, and grid coordinates using eccodes."""
     u10, v10, mslp = None, None, None
     lats, lons = None, None
 
@@ -113,7 +131,7 @@ def read_grib_fields(grib_file_path):
             gid = codes_grib_new_from_file(f)
             if gid is None:
                 break
-            
+
             short_name = codes_get(gid, "shortName")
             if lats is None:
                 ni = codes_get(gid, "Ni")
@@ -132,122 +150,81 @@ def read_grib_fields(grib_file_path):
 
             codes_release(gid)
 
-    # Normalize longitudes to [-180, 180] or [0, 360] matching domain
     if lons is not None and np.max(lons) > 180:
         lons = np.where(lons > 180, lons - 360, lons)
 
     return lats, lons, u10, v10, mslp
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Plotting
-# ═══════════════════════════════════════════════════════════════════════════════
-
 def plot_wind_frame(sub_lons, sub_lats, ws_kph, u_ms, v_ms, msl_hpa,
-                    filename_id, init_time=None, valid_time=None, forecast_hour=None):
-    """Render and save one AIGFS wind map frame."""
-    fig = plt.figure(figsize=(14, 11))
+                    filename_id, init_time=None, valid_time=None, forecast_hour=None,
+                    province_shapely_geometries=None):
+    fig = plt.figure(figsize=(14, 11), dpi=120)
     fig.subplots_adjust(top=0.88)
     ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=ccrs.PlateCarree())
 
-    ax.add_feature(cfeature.LAND, facecolor="#eaeaea", zorder=0)
-    ax.add_feature(cfeature.OCEAN, facecolor="#d4e5ed", zorder=0)
-    ax.add_feature(cfeature.COASTLINE, linewidth=1.0, edgecolor="#222222", zorder=5)
-    ax.add_feature(cfeature.BORDERS, linestyle="-", linewidth=0.6, edgecolor="#555555", zorder=5)
+    if setup_map_ax:
+        setup_map_ax(ax, extent=[LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], provinces=province_shapely_geometries)
+    else:
+        ax.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=ccrs.PlateCarree())
+        ax.add_feature(cfeature.LAND, facecolor="#edf2f7", zorder=0)
+        ax.add_feature(cfeature.OCEAN, facecolor="#d9e8f5", zorder=0)
+        ax.add_feature(cfeature.COASTLINE, linewidth=0.9, edgecolor="#1e293b", zorder=5)
+        ax.add_feature(cfeature.BORDERS, linestyle="-", linewidth=0.55, edgecolor="#64748b", zorder=5)
 
-    # Philippine province boundaries
-    try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        geojson_paths = [
-            os.path.join(script_dir, "public", "data", "ph_provinces.json"),
-            os.path.join(os.getcwd(), "public", "data", "ph_provinces.json"),
-        ]
-        found_geo = next((p for p in geojson_paths if os.path.exists(p)), None)
-        if found_geo:
-            with open(found_geo, "r", encoding="utf-8") as f:
-                geo_data = json.load(f)
-            prov_geoms = [shape(feat["geometry"]) for feat in geo_data["features"]]
-            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor="none",
-                              edgecolor="#555555", linewidth=0.4, alpha=0.6, zorder=3)
-    except Exception as e:
-        print(f"Warning: Could not overlay province boundaries: {e}")
+    cf = ax.contourf(
+        sub_lons, sub_lats, ws_kph,
+        levels=WIND_SPEED_LEVELS,
+        cmap=WIND_SPEED_CMAP,
+        norm=WIND_SPEED_NORM,
+        extend="max",
+        transform=ccrs.PlateCarree(),
+        zorder=2
+    )
+    if add_styled_colorbar:
+        add_styled_colorbar(fig, cf, ax, label="10m Wind Speed (kph)", ticks=WIND_SPEED_LEVELS)
+    else:
+        cb = fig.colorbar(cf, ax=ax, orientation="vertical", pad=0.02, shrink=0.85, aspect=25)
+        cb.set_ticks(WIND_SPEED_LEVELS)
 
-    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color="gray", alpha=0.4, linestyle=":", zorder=6)
-    gl.top_labels = False
-    gl.right_labels = False
-    gl.xlabel_style = {"size": 10, "color": "#333"}
-    gl.ylabel_style = {"size": 10, "color": "#333"}
-
-    # Wind speed colormap
-    levels = [0, 0.5, 1.5, 2.5, 5, 10, 20, 30, 40, 50, 60, 80, 100, 120, 150, 185, 220]
-    colors = [
-        "#ffffff00", "#ffffff", "#f8fafc", "#f1f5f9", "#f0f9ff", "#e0f2fe", 
-        "#dbeafe", "#93c5fd", "#3b82f6", "#22c55e", "#eab308",   
-        "#f97316", "#ef4444", "#dc2626", "#a855f7", "#7e22ce",
-    ]
-    cmap = matplotlib.colors.ListedColormap(colors)
-    cmap.set_over("#4b0082")
-    norm = matplotlib.colors.BoundaryNorm(levels, ncolors=len(colors), clip=False)
-
-    cf = ax.contourf(sub_lons, sub_lats, ws_kph, levels=levels, cmap=cmap, norm=norm,
-                     extend="max", transform=ccrs.PlateCarree(), zorder=2)
-    cb = fig.colorbar(cf, ax=ax, orientation="vertical", pad=0.02, shrink=0.85, aspect=25)
-    cb.set_ticks(levels)
-    cb.ax.tick_params(labelsize=10)
-    cb.set_label("Wind Speed (kph)", fontsize=10)
-    cb.outline.set_edgecolor("black")
-    cb.outline.set_linewidth(1)
-
-    # MSLP Isobars
     if msl_hpa is not None:
-        msl_smooth = scipy.ndimage.gaussian_filter(msl_hpa, sigma=1)
-        cs = ax.contour(sub_lons, sub_lats, msl_smooth, levels=range(900, 1040, 4),
-                        colors="black", linewidths=1.2, transform=ccrs.PlateCarree(), zorder=3)
-        ax.clabel(cs, inline=True, fontsize=10, fmt="%d", colors="black")
+        if add_mslp_contours:
+            add_mslp_contours(ax, sub_lons, sub_lats, msl_hpa, levels=range(900, 1040, 4), sigma=1.0)
+        else:
+            msl_smooth = scipy.ndimage.gaussian_filter(msl_hpa, sigma=1)
+            cs = ax.contour(sub_lons, sub_lats, msl_smooth, levels=range(900, 1040, 4), colors="#0f172a", linewidths=1.1, transform=ccrs.PlateCarree(), zorder=3)
+            ax.clabel(cs, inline=True, fontsize=8.5, fmt="%d", colors="#0f172a")
 
-    # Wind vectors
-    skip = max(1, int(sub_lons.shape[0] / 35))
-    ax.quiver(sub_lons[::skip, ::skip], sub_lats[::skip, ::skip],
-              u_ms[::skip, ::skip], v_ms[::skip, ::skip],
-              transform=ccrs.PlateCarree(),
-              color="black", alpha=0.35,
-              width=0.0015, scale=400, headwidth=3, zorder=4)
+    if add_wind_vectors:
+        add_wind_vectors(ax, sub_lons, sub_lats, u_ms, v_ms, skip=None, scale=400, alpha=0.38)
+    else:
+        skip = max(1, int(sub_lons.shape[0] / 32))
+        ax.quiver(sub_lons[::skip, ::skip], sub_lats[::skip, ::skip], u_ms[::skip, ::skip], v_ms[::skip, ::skip], transform=ccrs.PlateCarree(), color="#0f172a", alpha=0.35, width=0.0016, scale=400, headwidth=3.5, zorder=4)
 
-    # PAR Boundary
-    ax.plot(PAR_LONS, PAR_LATS, transform=ccrs.PlateCarree(),
-            color="#d62728", linestyle="-", linewidth=2.5, zorder=7)
+    if draw_par_boundary:
+        draw_par_boundary(ax)
+    else:
+        ax.plot(PAR_LONS, PAR_LATS, transform=ccrs.PlateCarree(), color="#dc2626", linestyle="-", linewidth=2.2, zorder=7)
 
-    # Header Banner
     time_fmt  = "%Hz %a, %b %d, %Y"
     init_str  = init_time.strftime(time_fmt)  if init_time  else "Unknown"
     valid_str = valid_time.strftime(time_fmt) if valid_time else "Unknown"
     fh_str    = f"f{forecast_hour:03d}"       if forecast_hour is not None else "f---"
 
-    fig.canvas.draw()
-    pos = ax.get_position()
-    left, right = pos.x0, pos.x1
-    y_top = pos.y1 + 0.045
-    y_bottom = pos.y1 + 0.015
-    y_line = pos.y1 + 0.005
-
-    fig.text(left, y_top, "Philippine T/W", ha="left", va="bottom", fontsize=14, weight="bold", color="#888888")
-    fig.text(right, y_top, "AIGFS 10m Wind Speed (kph) & MSLP (hPa)", ha="right", va="bottom", fontsize=14, weight="bold", color="black")
-    fig.text(left, y_bottom, f"Model: NOAA AIGFS  |   Forecast Hour: {fh_str}", ha="left", va="bottom", fontsize=11, color="black")
-    fig.text(right, y_bottom, f"Init: {init_str} / Valid: {valid_str}", ha="right", va="bottom", fontsize=11, color="black")
-
-    sep = mlines.Line2D((left, right), (y_line, y_line), color="black", linewidth=1, transform=fig.transFigure)
-    fig.add_artist(sep)
+    if draw_header_banner:
+        draw_header_banner(
+            fig, ax,
+            left_title="Philippine T/W",
+            right_title="AIGFS 10m Wind Speed (kph) & MSLP (hPa)",
+            model_sub=f"Model: NOAA AIGFS (0.25°)   |   Forecast Hour: {fh_str}",
+            time_sub=f"Init: {init_str} / Valid: {valid_str}"
+        )
 
     out_path = os.path.join(OUTPUT_DIR, f"{filename_id}.png")
     plt.savefig(out_path, dpi=120, bbox_inches="tight", facecolor="white")
     print(f"  Saved {out_path}")
-    plt.close()
+    plt.close(fig)
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Main Pipeline
-# ═══════════════════════════════════════════════════════════════════════════════
 
 def main():
     print("\n=== NOAA AIGFS 16-Day 10m Wind + MSLP Generator ===\n")
@@ -256,7 +233,9 @@ def main():
     session.headers.update({"User-Agent": "Mozilla/5.0 (WeatherApp)"})
 
     cycle_url, init_time, date_str, cycle = get_latest_aigfs_run(session)
-    steps = list(range(6, 385, 6)) # Full 16 Days: T+6h to T+384h
+    province_shapely_geometries = load_ph_provinces(DATA_DIR)
+
+    steps = list(range(6, 385, 6))
     valid_frames = []
 
     for step in steps:
@@ -276,7 +255,6 @@ def main():
                 print(f"  Warning: Wind fields missing for step f{step:03d}")
                 continue
 
-            # Crop to Philippine sub-region
             if lats.ndim == 2:
                 lat_vec = lats[:, 0]
                 lon_vec = lons[0, :]
@@ -307,7 +285,8 @@ def main():
                 filename_id,
                 init_time=init_time,
                 valid_time=target_valid,
-                forecast_hour=step
+                forecast_hour=step,
+                province_shapely_geometries=province_shapely_geometries
             )
             valid_frames.append(filename_id)
 
@@ -320,7 +299,6 @@ def main():
                 except Exception:
                     pass
 
-    # Save metadata
     meta = {
         "model": "NOAA AIGFS (16-Day 0.25°) Deterministic",
         "source": "NOAA NCEP NOMADS",
