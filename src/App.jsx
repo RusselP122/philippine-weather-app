@@ -1,32 +1,43 @@
 // src/App.js
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import Navbar from "./components/Navbar";
-import Features from "./components/Features";
-import About from "./components/About";
-import Forecast from "./components/Forecast";
-import TCPositions from "./components/TCPositions";
-import Cyclone from "./components/Cyclone";
-import TropicalOutlook from "./components/TropicalOutlook";
-import TropicalCycloneInformation from "./components/TropicalCycloneInformation";
-import Weather from "./components/Weather";
-import Alert from "./components/alert";
-import Warning from "./components/Warning";
-import Earthquake from "./components/Earthquake";
-import DailySynoptic from "./components/DailySynoptic";
-import Volcanoes from "./components/Volcanoes";
-import ForecastModels from "./components/ForecastModels";
-import SpaghettiPlot from "./components/SpaghettiPlot";
 import Footer from "./components/Footer";
-import EnsoMonitor from "./components/EnsoMonitor";
 
-import TropicalCyclonePrediction from "./components/TropicalCyclonePrediction";
-import WeatherAdvisory from "./components/WeatherAdvisory";
-import Lightning from "./components/Lightning";
-import LiveRadar from "./components/LiveRadar";
-import RiskArea from "./components/RiskArea";
-import SupportUs from "./components/SupportUs";
+// Lazy-load route components to optimize chunk sizes and initial load time
+const Features = lazy(() => import("./components/Features"));
+const About = lazy(() => import("./components/About"));
+const Forecast = lazy(() => import("./components/Forecast"));
+const TCPositions = lazy(() => import("./components/TCPositions"));
+const Cyclone = lazy(() => import("./components/Cyclone"));
+const TropicalOutlook = lazy(() => import("./components/TropicalOutlook"));
+const TropicalCycloneInformation = lazy(() => import("./components/TropicalCycloneInformation"));
+const Weather = lazy(() => import("./components/Weather"));
+const Alert = lazy(() => import("./components/alert"));
+const Warning = lazy(() => import("./components/Warning"));
+const Earthquake = lazy(() => import("./components/Earthquake"));
+const DailySynoptic = lazy(() => import("./components/DailySynoptic"));
+const Volcanoes = lazy(() => import("./components/Volcanoes"));
+const ForecastModels = lazy(() => import("./components/ForecastModels"));
+const SpaghettiPlot = lazy(() => import("./components/SpaghettiPlot"));
+const EnsoMonitor = lazy(() => import("./components/EnsoMonitor"));
+const TropicalCyclonePrediction = lazy(() => import("./components/TropicalCyclonePrediction"));
+const WeatherAdvisory = lazy(() => import("./components/WeatherAdvisory"));
+const Lightning = lazy(() => import("./components/Lightning"));
+const LiveRadar = lazy(() => import("./components/LiveRadar"));
+const RiskArea = lazy(() => import("./components/RiskArea"));
+const SupportUs = lazy(() => import("./components/SupportUs"));
 
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-[60vh] w-full">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-9 h-9 border-3 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin"></div>
+        <p className="text-slate-400 text-xs font-medium tracking-wide">Loading module...</p>
+      </div>
+    </div>
+  );
+}
 
 function AppContent() {
   const path = window.location.pathname;
@@ -122,7 +133,6 @@ function AppContent() {
       </div>
     );
   }
-
 
   if (path === "/tc-positions") {
     return (
@@ -278,10 +288,6 @@ function AppContent() {
     );
   }
 
-
-
-
-
   return (
     <div className="min-h-screen flex flex-col bg-slate-950">
       <Navbar />
@@ -295,10 +301,10 @@ function AppContent() {
 
 function App() {
   return (
-    <>
+    <Suspense fallback={<PageLoader />}>
       <AppContent />
       <Analytics />
-    </>
+    </Suspense>
   );
 }
 

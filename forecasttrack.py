@@ -20,11 +20,13 @@ import cartopy.feature as cfeature
 from shapely.geometry import shape, Polygon
 from shapely.ops import unary_union
 import urllib.request
+import concurrent.futures
 from datetime import datetime, timezone, timedelta
 
-# NHC standard cone radii (nautical miles) by lead time (hours)
-LEAD_STANDARD = [0,  12,  24,  36,  48,   60,   72,   96,  120,  144]
-RADII_NM      = [0,  26,  38,  50,  59,   71,   83,  113,  146,  180]
+# JTWC / PAGASA Western North Pacific climatological error cone radii (nautical miles) by lead time (hours)
+# Incorporates realistic satellite / analysis fix uncertainty (~12 NM) at T+0
+LEAD_STANDARD = [0,   12,  24,  36,  48,   60,   72,   96,  120,  144]
+RADII_NM      = [12,  28,  42,  56,  72,   88,  105,  155,  210,  260]
 
 # ── Deep Slate Dark Theme Palette Constants ───────────────────────
 BG_DARK       = "#070d18"   # Deep canvas background
@@ -632,28 +634,41 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
     match = re.search(r'^([A-Za-z0-9_-]+)\{', content.strip().splitlines()[0]) if content.strip() else None
     matched_name = match.group(1).upper() if match else None
 
-    # Determine T+0 index: find the last analysis fix (radius == 0 before forecast points)
+    # Find candidate points from the last analysis fix onwards
     idx_t0 = 0
     for i in range(len(parsed_pts) - 1, -1, -1):
         if parsed_pts[i]['radius'] == 0.0:
             idx_t0 = i
             break
 
-    # Build forecast rows starting strictly from T+0 onwards (excluding old historical track)
-    t0 = parsed_pts[idx_t0]['datetime']
-    forecast_pts = parsed_pts[idx_t0:]
+    candidate_pts = parsed_pts[idx_t0:]
     
+    # Find the point in candidate_pts closest to the current active storm position
+    # to eliminate older historical fixes that precede the current active fix
+    best_idx = 0
+    best_dist = haversine_km(candidate_pts[0]['lat'], candidate_pts[0]['lon'], curr_lat, curr_lon)
+    for i, pt in enumerate(candidate_pts):
+        d = haversine_km(pt['lat'], pt['lon'], curr_lat, curr_lon)
+        if d < best_dist:
+            best_dist = d
+            best_idx = i
+            
+    valid_pts = candidate_pts[best_idx:]
+    if not valid_pts:
+        valid_pts = candidate_pts
+
+    t0 = valid_pts[0]['datetime']
     rows = []
-    for pt in forecast_pts:
-        tau = (pt['datetime'] - t0).total_seconds() / 3600.0
+    for pt in valid_pts:
+        tau = max(0.0, (pt['datetime'] - t0).total_seconds() / 3600.0)
         rows.append({
             'lead_time_hours': tau,
             'lat': pt['lat'],
             'lon': pt['lon'],
-            'category': pt['category']
+            'category': pt.get('category', '')
         })
 
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows).drop_duplicates(subset=['lead_time_hours']).sort_values('lead_time_hours')
     min_dist_km = min(haversine_km(r['lat'], r['lon'], curr_lat, curr_lon) for _, r in df.iterrows())
     
     # Accept PAGASA track ONLY if within 350 km of the storm center
@@ -1096,8 +1111,19 @@ def load_all_actual_tracks_for_storm(storm):
     if 'ECMWF AIFS' not in track_inits:
         track_inits['ECMWF AIFS'] = fallback_cycle
 
+    # 4-7. Concurrent Fetching for Official Agencies & AIGEFS
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        f_aigefs = executor.submit(get_aigefs_aimn_mean_track, storm, data_dir)
+        f_pagasa = executor.submit(get_pagasa_official_track, storm, data_dir)
+        f_jtwc = executor.submit(get_jtwc_official_track, storm, data_dir)
+        f_jma = executor.submit(get_jma_official_track, storm, data_dir)
+        
+        aigefs_aimn, aigefs_init_str = f_aigefs.result()
+        pagasa_official, pagasa_init_str = f_pagasa.result()
+        jtwc_official = f_jtwc.result()
+        jma_official, jma_init_str = f_jma.result()
+
     # 4. AIGEFS: Check aimn mean track file first, fallback to calculated ensemble mean
-    aigefs_aimn, aigefs_init_str = get_aigefs_aimn_mean_track(storm, data_dir)
     if not aigefs_aimn.empty:
         ensemble_means['AIGEFS'] = aigefs_aimn
         if aigefs_init_str:
@@ -1111,7 +1137,6 @@ def load_all_actual_tracks_for_storm(storm):
         track_inits['AIGEFS'] = fallback_cycle
 
     # 5. Official PAGASA track from cyclone.dat (pubfiles.pagasa.dost.gov.ph)
-    pagasa_official, pagasa_init_str = get_pagasa_official_track(storm, data_dir)
     if not pagasa_official.empty:
         agency_tracks['PAGASA'] = pagasa_official
         track_inits['PAGASA'] = pagasa_init_str or "Latest"
@@ -1119,7 +1144,6 @@ def load_all_actual_tracks_for_storm(storm):
         print(f"No official PAGASA track available for {storm['atcf_id']}; skipping PAGASA display.")
 
     # 6. Official JTWC track from NOAA ATCF / Navy JTWC
-    jtwc_official = get_jtwc_official_track(storm, data_dir)
     if not jtwc_official.empty:
         agency_tracks['JTWC'] = jtwc_official
         track_inits['JTWC'] = "Latest Warning"
@@ -1127,7 +1151,6 @@ def load_all_actual_tracks_for_storm(storm):
         print(f"No official JTWC track available for {storm['atcf_id']}; skipping JTWC display.")
 
     # 7. Official JMA track from Japan Meteorological Agency portal (data.jma.go.jp)
-    jma_official, jma_init_str = get_jma_official_track(storm, data_dir)
     if not jma_official.empty:
         agency_tracks['JMA'] = jma_official
         track_inits['JMA'] = jma_init_str or "Latest"
@@ -1140,7 +1163,8 @@ def load_all_actual_tracks_for_storm(storm):
 def get_adaptive_viewport(lats, lons, target_aspect=1.75):
     """
     Calculates an adaptive bounding box around all storm and track points,
-    enforcing padding, minimum geographic span, and aspect ratio matching.
+    enforcing padding, minimum geographic span, aspect ratio matching,
+    and clamping within the full Western North Pacific basin (95°E - 180°E, 0°N - 50°N).
     """
     valid_lats = [float(la) for la in lats if not pd.isna(la) and not math.isnan(la)]
     valid_lons = [float(lo) for lo in lons if not pd.isna(lo) and not math.isnan(lo)]
@@ -1152,17 +1176,17 @@ def get_adaptive_viewport(lats, lons, target_aspect=1.75):
     raw_min_lon, raw_max_lon = min(valid_lons), max(valid_lons)
     
     # Adaptive padding
-    pad_lat = max(2.5, (raw_max_lat - raw_min_lat) * 0.18)
-    pad_lon = max(3.5, (raw_max_lon - raw_min_lon) * 0.18)
+    pad_lat = max(2.5, (raw_max_lat - raw_min_lat) * 0.20)
+    pad_lon = max(3.5, (raw_max_lon - raw_min_lon) * 0.20)
     
     min_lat = raw_min_lat - pad_lat
     max_lat = raw_max_lat + pad_lat
     min_lon = raw_min_lon - pad_lon
     max_lon = raw_max_lon + pad_lon
     
-    # Ensure minimum span so localized storms have good Philippine context
+    # Ensure minimum span so localized storms have good geographic context
     min_span_lat = 10.0
-    min_span_lon = 16.0
+    min_span_lon = 17.5
     
     if (max_lat - min_lat) < min_span_lat:
         center_lat = (max_lat + min_lat) / 2.0
@@ -1190,11 +1214,29 @@ def get_adaptive_viewport(lats, lons, target_aspect=1.75):
         min_lat -= diff_h / 2.0
         max_lat += diff_h / 2.0
         
-    # Regional boundary clamping (Western Pacific / PAR)
-    min_lon = max(102.0, min_lon)
-    max_lon = min(160.0, max_lon)
-    min_lat = max(0.0, min_lat)
-    max_lat = min(42.0, max_lat)
+    # Full Western North Pacific basin limits (95°E - 180°E, 0°N - 50°N)
+    DOMAIN_MIN_LON = 95.0
+    DOMAIN_MAX_LON = 180.0
+    DOMAIN_MIN_LAT = 0.0
+    DOMAIN_MAX_LAT = 50.0
+
+    w = max_lon - min_lon
+    h = max_lat - min_lat
+
+    # Shift bounding box if hitting domain boundaries while strictly maintaining aspect ratio
+    if max_lon > DOMAIN_MAX_LON:
+        max_lon = DOMAIN_MAX_LON
+        min_lon = max(DOMAIN_MIN_LON, max_lon - w)
+    if min_lon < DOMAIN_MIN_LON:
+        min_lon = DOMAIN_MIN_LON
+        max_lon = min(DOMAIN_MAX_LON, min_lon + w)
+
+    if max_lat > DOMAIN_MAX_LAT:
+        max_lat = DOMAIN_MAX_LAT
+        min_lat = max(DOMAIN_MIN_LAT, max_lat - h)
+    if min_lat < DOMAIN_MIN_LAT:
+        min_lat = DOMAIN_MIN_LAT
+        max_lat = min(DOMAIN_MAX_LAT, min_lat + h)
     
     return [min_lon, max_lon, min_lat, max_lat]
 
@@ -1318,11 +1360,11 @@ def get_intensity_color(wind_kmh, pressure=None):
         return INTENSITY_PALETTE['STY']
 
 
-def compute_compiled_mean_track(agency_tracks, ensemble_means):
+def compute_compiled_mean_track(agency_tracks, ensemble_means, storm=None):
     """
     Harmonizes wind metrics (1-min kt -> 10-min kt), resamples all valid tracks
-    to standard 6-hour intervals, and averages coordinates/intensities into a
-    smooth consensus forecast track.
+    to standard 6-hour intervals, enforces 5-day horizon (120h) and member quorum constraints
+    to prevent end-of-track outlier jumps, and smoothly anchors the consensus at T+0 to the active storm fix.
     """
     resampled_tracks = []
     
@@ -1352,32 +1394,74 @@ def compute_compiled_mean_track(agency_tracks, ensemble_means):
     if combined.empty:
         return pd.DataFrame()
         
+    # Calculate baseline member count at early lead times (0 - 24h)
+    early_counts = [len(combined[combined['lead_time_hours'] == t].dropna(subset=['lat', 'lon'])) for t in [0.0, 6.0, 12.0, 24.0]]
+    valid_early = [c for c in early_counts if c > 0]
+    initial_members = max(valid_early) if valid_early else len(resampled_tracks)
+    
+    # Enforce minimum quorum (at least 40% of initial members, min 2 if >= 3 initial)
+    if initial_members >= 3:
+        min_quorum = max(2, int(np.ceil(initial_members * 0.40)))
+    else:
+        min_quorum = max(1, initial_members)
+        
+    # Enforce 5-day / 120-hour maximum forecast horizon constraint
+    sorted_taus = [t for t in sorted(combined['lead_time_hours'].unique()) if 0.0 <= t <= 120.0]
     mean_rows = []
-    for tau, group in combined.groupby('lead_time_hours'):
+    
+    for tau in sorted_taus:
+        group = combined[combined['lead_time_hours'] == tau]
         valid_pts = group.dropna(subset=['lat', 'lon'])
-        if not valid_pts.empty:
-            row = {
-                'lead_time_hours': float(tau),
-                'lat': float(valid_pts['lat'].mean()),
-                'lon': float(valid_pts['lon'].mean())
-            }
-            if 'wind' in valid_pts.columns:
-                v_winds = pd.to_numeric(valid_pts['wind'], errors='coerce').dropna()
-                if not v_winds.empty:
-                    # Convert 10-min sustained knots to km/h
-                    row['wind'] = float(v_winds.mean()) * 1.852
-            if 'pressure' in valid_pts.columns:
-                v_press = pd.to_numeric(valid_pts['pressure'], errors='coerce').dropna()
-                if not v_press.empty:
-                    row['pressure'] = float(v_press.mean())
-            mean_rows.append(row)
+        
+        # Stop extending consensus once surviving model support drops below quorum
+        if len(valid_pts) < min_quorum:
+            break
             
-    mean_df = pd.DataFrame(mean_rows).sort_values('lead_time_hours')
+        row = {
+            'lead_time_hours': float(tau),
+            'lat': float(valid_pts['lat'].mean()),
+            'lon': float(valid_pts['lon'].mean())
+        }
+        if 'wind' in valid_pts.columns:
+            v_winds = pd.to_numeric(valid_pts['wind'], errors='coerce').dropna()
+            if not v_winds.empty:
+                row['wind'] = float(v_winds.mean()) * 1.852  # convert knots to km/h
+        if 'pressure' in valid_pts.columns:
+            v_press = pd.to_numeric(valid_pts['pressure'], errors='coerce').dropna()
+            if not v_press.empty:
+                row['pressure'] = float(v_press.mean())
+        mean_rows.append(row)
+        
+    if not mean_rows:
+        return pd.DataFrame()
+        
+    mean_df = pd.DataFrame(mean_rows).sort_values('lead_time_hours').reset_index(drop=True)
+    
     if 'wind' in mean_df.columns:
         mean_df['wind'] = mean_df['wind'].interpolate(method='linear', limit_direction='both')
     if 'pressure' in mean_df.columns:
         mean_df['pressure'] = mean_df['pressure'].ffill().bfill()
         
+    # Smooth T+0 anchoring to verified storm center fix
+    if storm is not None and not mean_df.empty:
+        try:
+            storm_lat = float(storm['lat'])
+            storm_lon = float(storm['lon'])
+            t0_lat = float(mean_df.iloc[0]['lat'])
+            t0_lon = float(mean_df.iloc[0]['lon'])
+            
+            init_offset_dist = haversine_km(t0_lat, t0_lon, storm_lat, storm_lon)
+            if init_offset_dist <= 350.0:
+                d_lat = storm_lat - t0_lat
+                d_lon = storm_lon - t0_lon
+                # Smooth decay factor: 1.0 at T+0, decaying to 0.0 by T+72h
+                taus = mean_df['lead_time_hours'].values.astype(float)
+                decay = np.clip(1.0 - (taus / 72.0), 0.0, 1.0)
+                mean_df['lat'] = mean_df['lat'] + d_lat * decay
+                mean_df['lon'] = mean_df['lon'] + d_lon * decay
+        except Exception as e:
+            print(f"Warning: Failed to anchor consensus track to storm center: {e}")
+            
     return mean_df
 
 
@@ -1674,6 +1758,9 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
                     lo, la, color=color, marker='s', edgecolor='#ffffff', linewidth=1.0, s=34,
                     zorder=9, transform=ccrs.PlateCarree()
                 )
+                
+    # Draw initial storm center fix icon
+    draw_current_storm_glyph(ax, curr_lon, curr_lat, color='#ffffff', size=130)
     
     # ── 3. Bottom Legend & Model Run Panel ────────────────────────────
     panel_ax = fig.add_axes([0.05, 0.015, 0.90, 0.175])
@@ -1744,7 +1831,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
     short_id = get_short_atcf_id(storm['atcf_id'])
     full_storm_title = format_storm_title(storm)
     curr_lat, curr_lon = float(storm['lat']), float(storm['lon'])
-    mean_track = compute_compiled_mean_track(agency_tracks, ensemble_means)
+    mean_track = compute_compiled_mean_track(agency_tracks, ensemble_means, storm=storm)
     
     fig = plt.figure(figsize=(12, 7.6), facecolor=BG_DARK)
     
@@ -1925,6 +2012,9 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
                 transform=ccrs.PlateCarree(), zorder=14, ha=ha, va=va, clip_on=True,
                 path_effects=[path_effects.withStroke(linewidth=3.0, foreground=BG_DARK)]
             )
+            
+    # Draw initial storm center fix icon
+    draw_current_storm_glyph(ax, curr_lon, curr_lat, color='#38bdf8', size=130)
     
     # ── 3. Bottom Forecast Summary & Intensity Dashboard ─────────────
     init_dt = None
