@@ -30,10 +30,64 @@ const SupportUs = lazy(() => import("./components/SupportUs"));
 
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center min-h-[60vh] w-full">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-9 h-9 border-3 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin"></div>
-        <p className="text-slate-400 text-xs font-medium tracking-wide">Loading module...</p>
+    <div className="relative flex items-center justify-center min-h-[70vh] w-full px-4 select-none">
+      {/* Background Atmospheric Glow */}
+      <div className="absolute w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none animate-pulse"></div>
+      <div className="absolute w-48 h-48 bg-blue-600/10 rounded-full blur-2xl pointer-events-none"></div>
+
+      {/* Glassmorphic Loader Container */}
+      <div className="relative flex flex-col items-center max-w-sm w-full p-8 rounded-2xl bg-slate-900/80 border border-slate-800/80 backdrop-blur-xl shadow-2xl shadow-cyan-950/30 text-center animate-border-glow">
+        
+        {/* Radar / Cyclone Animation Core */}
+        <div className="relative flex items-center justify-center w-20 h-20 mb-6">
+          {/* Radar ping pulse wave */}
+          <div className="absolute inset-0 rounded-full bg-cyan-500/20 animate-ping [animation-duration:2.5s]"></div>
+          
+          {/* Outer Dashed Radar Reticle */}
+          <div className="absolute inset-0 rounded-full border border-dashed border-cyan-500/40 animate-spin [animation-duration:12s]"></div>
+          
+          {/* Inner Rotating Doppler Arc */}
+          <div className="absolute inset-1.5 rounded-full border-2 border-transparent border-t-cyan-400 border-r-cyan-400/50 animate-spin [animation-duration:1.2s]"></div>
+
+          {/* Central Cyclone/Weather Icon */}
+          <div className="relative z-10 flex items-center justify-center w-10 h-10 rounded-full bg-slate-950 border border-cyan-500/30 shadow-inner shadow-cyan-500/20 text-cyan-400">
+            <svg
+              className="w-5 h-5 animate-pulse"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 2a10 10 0 0 0-9.5 7A10 10 0 0 1 12 12a10 10 0 0 1 9.5-3A10 10 0 0 0 12 2z" />
+              <path d="M12 22a10 10 0 0 0 9.5-7A10 10 0 0 1 12 12a10 10 0 0 1-9.5 3A10 10 0 0 0 12 22z" />
+              <circle cx="12" cy="12" r="2" fill="currentColor" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Live Badge */}
+        <div className="inline-flex items-center gap-2 px-2.5 py-1 mb-3 rounded-full bg-cyan-950/60 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-medium tracking-wider uppercase">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+          </span>
+          Philippine WX System
+        </div>
+
+        {/* Title & Subtitle */}
+        <h3 className="text-base font-semibold text-slate-100 tracking-tight mb-1">
+          Loading Module
+        </h3>
+        <p className="text-xs text-slate-400 leading-relaxed mb-5">
+          Initializing meteorological data & forecast models...
+        </p>
+
+        {/* Shimmering Progress Bar */}
+        <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800/80 relative">
+          <div className="h-full w-2/5 bg-gradient-to-r from-transparent via-cyan-400 to-sky-400 rounded-full animate-loader-shimmer"></div>
+        </div>
       </div>
     </div>
   );

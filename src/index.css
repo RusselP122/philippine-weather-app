@@ -338,3 +338,12 @@ body {
 .animate-border-glow {
   animation: border-glow 3s ease-in-out infinite;
 }
+
+@keyframes loader-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+.animate-loader-shimmer {
+  animation: loader-shimmer 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
