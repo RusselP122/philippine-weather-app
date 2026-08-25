@@ -101,37 +101,45 @@
       "wide": "/data/trends/base_15day_dist_20260824_00_9_wide.png"
     }
   ],
-  "large_5day_cycle": "2026-08-24 18:00",
+  "large_5day_cycle": "2026-08-25 00:00",
   "large_5day": [
     {
-      "id": "18W",
+      "id": "17W",
       "local_id": 1,
+      "name": "TC 17W",
+      "trackCount": 999,
+      "standard": "/data/trends/large_5day_17W_standard.png",
+      "wide": "/data/trends/large_5day_17W_wide.png"
+    },
+    {
+      "id": "18W",
+      "local_id": 2,
       "name": "TC 18W",
-      "trackCount": 1000,
+      "trackCount": 999,
       "standard": "/data/trends/large_5day_18W_standard.png",
       "wide": "/data/trends/large_5day_18W_wide.png"
     },
     {
       "id": "19W",
-      "local_id": 2,
+      "local_id": 3,
       "name": "TC 19W",
-      "trackCount": 977,
+      "trackCount": 923,
       "standard": "/data/trends/large_5day_19W_standard.png",
       "wide": "/data/trends/large_5day_19W_wide.png"
-    },
-    {
-      "id": "17W",
-      "local_id": 3,
-      "name": "TC 17W",
-      "trackCount": 920,
-      "standard": "/data/trends/large_5day_17W_standard.png",
-      "wide": "/data/trends/large_5day_17W_wide.png"
     },
     {
       "id": "dist_20260824_00_5",
       "local_id": 5,
       "name": "Disturbance 5",
-      "trackCount": 952,
+      "trackCount": 607,
+      "standard": "/data/trends/large_5day_dist_20260824_00_5_standard.png",
+      "wide": "/data/trends/large_5day_dist_20260824_00_5_wide.png"
+    },
+    {
+      "id": "dist_20260824_00_5",
+      "local_id": 6,
+      "name": "Disturbance 6",
+      "trackCount": 403,
       "standard": "/data/trends/large_5day_dist_20260824_00_5_standard.png",
       "wide": "/data/trends/large_5day_dist_20260824_00_5_wide.png"
     },
@@ -139,44 +147,60 @@
       "id": "dist_20260824_00_6",
       "local_id": 7,
       "name": "Disturbance 7",
-      "trackCount": 398,
+      "trackCount": 572,
       "standard": "/data/trends/large_5day_dist_20260824_00_6_standard.png",
       "wide": "/data/trends/large_5day_dist_20260824_00_6_wide.png"
     }
   ],
-  "large_15day_cycle": "2026-08-24 18:00",
+  "large_15day_cycle": "2026-08-25 00:00",
   "large_15day": [
     {
       "id": "18W",
       "local_id": 1,
       "name": "TC 18W",
-      "trackCount": 1000,
+      "trackCount": 999,
       "standard": "/data/trends/large_15day_18W_standard.png",
       "wide": "/data/trends/large_15day_18W_wide.png"
     },
     {
-      "id": "19W",
-      "local_id": 2,
-      "name": "TC 19W",
-      "trackCount": 998,
-      "standard": "/data/trends/large_15day_19W_standard.png",
-      "wide": "/data/trends/large_15day_19W_wide.png"
-    },
-    {
       "id": "17W",
-      "local_id": 3,
+      "local_id": 2,
       "name": "TC 17W",
-      "trackCount": 995,
+      "trackCount": 988,
       "standard": "/data/trends/large_15day_17W_standard.png",
       "wide": "/data/trends/large_15day_17W_wide.png"
     },
     {
-      "id": "dist_20260824_00_6",
+      "id": "19W",
+      "local_id": 3,
+      "name": "TC 19W",
+      "trackCount": 923,
+      "standard": "/data/trends/large_15day_19W_standard.png",
+      "wide": "/data/trends/large_15day_19W_wide.png"
+    },
+    {
+      "id": "dist_20260825_00_4",
       "local_id": 4,
       "name": "Disturbance 4",
-      "trackCount": 944,
+      "trackCount": 227,
+      "standard": "/data/trends/large_15day_dist_20260825_00_4_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260825_00_4_wide.png"
+    },
+    {
+      "id": "dist_20260824_00_6",
+      "local_id": 5,
+      "name": "Disturbance 5",
+      "trackCount": 935,
       "standard": "/data/trends/large_15day_dist_20260824_00_6_standard.png",
       "wide": "/data/trends/large_15day_dist_20260824_00_6_wide.png"
+    },
+    {
+      "id": "dist_20260825_00_7",
+      "local_id": 7,
+      "name": "Disturbance 7",
+      "trackCount": 196,
+      "standard": "/data/trends/large_15day_dist_20260825_00_7_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260825_00_7_wide.png"
     }
   ]
 }
