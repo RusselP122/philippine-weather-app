@@ -1,11 +1,28 @@
-// src/components/SupportUs.jsx
-import React, { useState } from "react";
-import { Heart, Coffee, QrCode, Copy, Check, Server, Globe, Zap, ExternalLink, ShieldCheck, Sparkles, Download } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Heart, Coffee, QrCode, Copy, Check, Server, Globe, Zap, ExternalLink, ShieldCheck, Sparkles, Download, X } from "lucide-react";
+
+// Helper to resolve asset URLs correctly across different base paths
+const getAssetUrl = (path) => {
+  const base = import.meta.env.BASE_URL || "/";
+  const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+  return `${base}${cleanPath}`;
+};
 
 const SupportUs = () => {
   const [copiedBank, setCopiedBank] = useState(false);
   const [copiedAccount, setCopiedAccount] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
+
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") setShowQrModal(false);
+    };
+    if (showQrModal) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showQrModal]);
 
   const accountInfo = {
     bank: "MariBank (InstaPay)",
@@ -104,16 +121,20 @@ const SupportUs = () => {
 
               {/* QR Image Container */}
               <div className="flex flex-col items-center justify-center p-4 bg-slate-950/80 border border-slate-800 rounded-2xl relative group/qr shadow-inner">
-                <img
-                  src="/assets/support_qr.jpg"
-                  alt="MariBank InstaPay QR Code - RUSSEL"
-                  className="w-56 h-auto rounded-xl object-contain shadow-lg cursor-pointer hover:scale-105 transition-transform duration-300"
+                <div 
+                  className="bg-white p-2 rounded-2xl shadow-lg cursor-pointer hover:scale-105 transition-transform duration-300"
                   onClick={() => setShowQrModal(true)}
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = "/images/support_qr.jpg";
-                  }}
-                />
+                >
+                  <img
+                    src={getAssetUrl("/assets/support_qr.jpg")}
+                    alt="MariBank InstaPay QR Code - RUSSEL"
+                    className="w-56 h-auto rounded-xl object-contain"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = getAssetUrl("/images/support_qr.jpg");
+                    }}
+                  />
+                </div>
                 <button
                   onClick={() => setShowQrModal(true)}
                   className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300 transition-colors"
@@ -161,7 +182,7 @@ const SupportUs = () => {
             </div>
 
             <a
-              href="/assets/support_qr.jpg"
+              href={getAssetUrl("/assets/support_qr.jpg")}
               download="MariBank_QR_Russel.jpg"
               className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl flex items-center justify-center gap-2 border border-slate-700 transition-all shadow-md"
             >
@@ -234,30 +255,51 @@ const SupportUs = () => {
       {/* QR Modal Overlay */}
       {showQrModal && (
         <div
-          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4"
           onClick={() => setShowQrModal(false)}
         >
           <div
             className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl relative"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">MariBank InstaPay QR</h3>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <QrCode className="w-4 h-4 text-orange-400" />
+                <h3 className="text-sm font-bold text-white">MariBank InstaPay QR</h3>
+              </div>
               <button
                 onClick={() => setShowQrModal(false)}
-                className="text-slate-400 hover:text-white text-xs font-semibold px-2 py-1 bg-slate-800 rounded-lg"
+                className="text-slate-400 hover:text-white p-1 hover:bg-slate-800 rounded-lg transition-colors"
+                title="Close"
               >
-                Close
+                <X className="w-4 h-4" />
               </button>
             </div>
-            <img
-              src="/assets/support_qr.jpg"
-              alt="MariBank QR Code Full"
-              className="w-full h-auto rounded-2xl border border-slate-800"
-            />
+
+            <div className="bg-white p-3 rounded-2xl flex items-center justify-center shadow-inner">
+              <img
+                src={getAssetUrl("/assets/support_qr.jpg")}
+                alt="MariBank QR Code Full"
+                className="w-full h-auto max-h-[60vh] object-contain rounded-xl"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = getAssetUrl("/images/support_qr.jpg");
+                }}
+              />
+            </div>
+
             <p className="text-center text-xs text-slate-400">
               Scan with MariBank, GCash, Maya, ShopeePay, or any bank app via InstaPay.
             </p>
+
+            <a
+              href={getAssetUrl("/assets/support_qr.jpg")}
+              download="MariBank_QR_Russel.jpg"
+              className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl flex items-center justify-center gap-2 border border-slate-700 transition-all shadow-md"
+            >
+              <Download className="w-4 h-4 text-sky-400" />
+              Download QR Image
+            </a>
           </div>
         </div>
       )}
