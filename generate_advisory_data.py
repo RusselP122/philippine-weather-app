@@ -251,13 +251,13 @@ def fetch_weathernext2_daily():
         import gcsfs
         import xarray as xr
 
+        # gs://weathernext is a public bucket, token='anon' enables zero-auth access anywhere
         try:
-            fs = gcsfs.GCSFileSystem()
-            # Test listing
+            fs = gcsfs.GCSFileSystem(token='anon')
             parent_path = 'gs://weathernext/weathernext_2_0_0/zarr/2025_to_present'
             all_items = fs.ls(parent_path)
         except Exception:
-            fs = gcsfs.GCSFileSystem(token='anon')
+            fs = gcsfs.GCSFileSystem()
             parent_path = 'gs://weathernext/weathernext_2_0_0/zarr/2025_to_present'
             all_items = fs.ls(parent_path)
         run_folders = [f'gs://{item}' for item in all_items if item.endswith('_preds')]
