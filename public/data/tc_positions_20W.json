@@ -4,12 +4,12 @@
   "track_id": "WP202026",
   "latest": {
     "lat": 17.2,
-    "lon": 161.3,
-    "pressure_hpa": 1006.0,
-    "wind_kt": 25.0,
-    "wind_kmh": 46,
-    "movement": "NNW at 11.7 km/h (6.3 kt)",
-    "init_time": "2026-08-26 06:00",
+    "lon": 161.0,
+    "pressure_hpa": 1005.0,
+    "wind_kt": 29.0,
+    "wind_kmh": 54,
+    "movement": "W at 5.3 km/h (2.9 kt)",
+    "init_time": "2026-08-26 12:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -47,6 +47,15 @@
       "pressure_hpa": 1006.0,
       "wind_kt": 25.0,
       "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-26 12:00",
+      "lat": 17.2,
+      "lon": 161.0,
+      "pressure_hpa": 1005.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
       "category": "Tropical Depression"
     }
   ]
