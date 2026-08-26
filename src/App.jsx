@@ -4,29 +4,114 @@ import { Analytics } from "@vercel/analytics/react";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 
-// Lazy-load route components to optimize chunk sizes and initial load time
-const Features = lazy(() => import("./components/Features"));
-const About = lazy(() => import("./components/About"));
-const Forecast = lazy(() => import("./components/Forecast"));
-const TCPositions = lazy(() => import("./components/TCPositions"));
-const Cyclone = lazy(() => import("./components/Cyclone"));
-const TropicalOutlook = lazy(() => import("./components/TropicalOutlook"));
-const TropicalCycloneInformation = lazy(() => import("./components/TropicalCycloneInformation"));
-const Weather = lazy(() => import("./components/Weather"));
-const Alert = lazy(() => import("./components/alert"));
-const Warning = lazy(() => import("./components/Warning"));
-const Earthquake = lazy(() => import("./components/Earthquake"));
-const DailySynoptic = lazy(() => import("./components/DailySynoptic"));
-const Volcanoes = lazy(() => import("./components/Volcanoes"));
-const ForecastModels = lazy(() => import("./components/ForecastModels"));
-const SpaghettiPlot = lazy(() => import("./components/SpaghettiPlot"));
-const EnsoMonitor = lazy(() => import("./components/EnsoMonitor"));
-const TropicalCyclonePrediction = lazy(() => import("./components/TropicalCyclonePrediction"));
-const WeatherAdvisory = lazy(() => import("./components/WeatherAdvisory"));
-const Lightning = lazy(() => import("./components/Lightning"));
-const LiveRadar = lazy(() => import("./components/LiveRadar"));
-const RiskArea = lazy(() => import("./components/RiskArea"));
-const SupportUs = lazy(() => import("./components/SupportUs"));
+/**
+ * Resilient lazy loader with network retry and deployment update recovery.
+ */
+function lazyWithRetry(componentImport) {
+  return lazy(async () => {
+    const pageHasBeenForceRefreshed = JSON.parse(
+      window.sessionStorage.getItem("page-has-been-force-refreshed") || "false"
+    );
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await componentImport();
+      } catch (error) {
+        if (attempt < 2) {
+          // Wait briefly before retrying (handles mobile network hiccups)
+          await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+          continue;
+        }
+
+        // If chunk failed 3 times and tab hasn't refreshed yet, force reload to get latest deployment
+        if (!pageHasBeenForceRefreshed) {
+          window.sessionStorage.setItem("page-has-been-force-refreshed", "true");
+          window.location.reload();
+          return new Promise(() => {}); // Halt resolution while reloading
+        }
+
+        // Reset refresh flag and propagate error to ErrorBoundary
+        window.sessionStorage.removeItem("page-has-been-force-refreshed");
+        throw error;
+      }
+    }
+  });
+}
+
+// Lazy-load route components with automatic retry & reload resilience
+const Features = lazyWithRetry(() => import("./components/Features"));
+const About = lazyWithRetry(() => import("./components/About"));
+const Forecast = lazyWithRetry(() => import("./components/Forecast"));
+const TCPositions = lazyWithRetry(() => import("./components/TCPositions"));
+const Cyclone = lazyWithRetry(() => import("./components/Cyclone"));
+const TropicalOutlook = lazyWithRetry(() => import("./components/TropicalOutlook"));
+const TropicalCycloneInformation = lazyWithRetry(() => import("./components/TropicalCycloneInformation"));
+const Weather = lazyWithRetry(() => import("./components/Weather"));
+const Alert = lazyWithRetry(() => import("./components/alert"));
+const Warning = lazyWithRetry(() => import("./components/Warning"));
+const Earthquake = lazyWithRetry(() => import("./components/Earthquake"));
+const DailySynoptic = lazyWithRetry(() => import("./components/DailySynoptic"));
+const Volcanoes = lazyWithRetry(() => import("./components/Volcanoes"));
+const ForecastModels = lazyWithRetry(() => import("./components/ForecastModels"));
+const SpaghettiPlot = lazyWithRetry(() => import("./components/SpaghettiPlot"));
+const EnsoMonitor = lazyWithRetry(() => import("./components/EnsoMonitor"));
+const TropicalCyclonePrediction = lazyWithRetry(() => import("./components/TropicalCyclonePrediction"));
+const WeatherAdvisory = lazyWithRetry(() => import("./components/WeatherAdvisory"));
+const Lightning = lazyWithRetry(() => import("./components/Lightning"));
+const LiveRadar = lazyWithRetry(() => import("./components/LiveRadar"));
+const RiskArea = lazyWithRetry(() => import("./components/RiskArea"));
+const SupportUs = lazyWithRetry(() => import("./components/SupportUs"));
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Module load error caught by ErrorBoundary:", error, errorInfo);
+  }
+
+  handleReload = () => {
+    window.sessionStorage.removeItem("page-has-been-force-refreshed");
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="relative flex items-center justify-center min-h-[70vh] w-full px-4 select-none">
+          <div className="relative flex flex-col items-center max-w-sm w-full p-8 rounded-2xl bg-slate-900/90 border border-slate-800 backdrop-blur-xl shadow-2xl text-center animate-border-glow">
+            <div className="w-14 h-14 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mb-4">
+              <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
+              Unable to Load Module
+            </h3>
+            <p className="text-xs text-slate-400 leading-relaxed mb-6">
+              A new update might be available or your connection was interrupted.
+            </p>
+            <button
+              onClick={this.handleReload}
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium text-xs tracking-wide shadow-lg shadow-cyan-950/50 transition-all active:scale-95 cursor-pointer"
+            >
+              Tap to Reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function PageLoader() {
   return (
@@ -355,10 +440,12 @@ function AppContent() {
 
 function App() {
   return (
-    <Suspense fallback={<PageLoader />}>
-      <AppContent />
-      <Analytics />
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoader />}>
+        <AppContent />
+        <Analytics />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 

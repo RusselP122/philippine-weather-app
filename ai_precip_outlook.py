@@ -9,7 +9,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 from matplotlib.colors import ListedColormap, BoundaryNorm
-from matplotlib.patches import PathPatch
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import shapely
@@ -32,8 +31,6 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # Zoomed specifically to the Philippines domain
 LAT_MIN, LAT_MAX = 4.5, 21.5
 LON_MIN, LON_MAX = 116.0, 127.0
-PAR_LONS = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
-PAR_LATS = [5.0, 15.0, 21.0, 25.0, 25.0, 5.0, 5.0]
 
 # High-resolution master grid (0.02° ≈ 2.2 km resolution for smooth, crisp contours)
 GRID_RES = 0.02
@@ -42,7 +39,7 @@ MASTER_LONS = np.arange(LON_MIN, LON_MAX + GRID_RES, GRID_RES)
 M_LONS, M_LATS = np.meshgrid(MASTER_LONS, MASTER_LATS)
 
 # ── Colormaps ─────────────────────────────────────────────────────────────
-# Precip Colormap (5-day totals)
+# Precip Colormap (Accumulated totals)
 MEAN_LEVELS = [0.1, 5, 10, 25, 50, 100, 150, 200, 300, 400, 500, 750]
 MEAN_COLORS = [
     "#F0F8FF", "#C8E6FF", "#78BAFF", "#1E7EFF", "#00B366", "#8CDB00",
@@ -196,12 +193,12 @@ def load_weathernext_dataset():
         return None
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Plotting 1 Unified True Land-Masked Map with Contours & Labels
+# Plotting 1 Unified True Land-Masked Map with Contours
 # ═══════════════════════════════════════════════════════════════════════════
 
-def plot_single_consensus_map(consensus_grid, models_used, filename_id, init_dt, cmap, norm, levels, unit_label):
+def plot_single_consensus_map(consensus_grid, models_used, filename_id, init_dt, cmap, norm, levels, unit_label, days=5):
     """
-    Renders 1 single high-resolution map of the combined 5-day AI precipitation forecast,
+    Renders 1 single high-resolution map of the combined AI precipitation forecast,
     strictly masked to Philippine landmasses with clean, elegant layout formatting.
     """
     # ── Load Philippine Province Geometries & Create Exact Land Mask ────────
@@ -264,18 +261,14 @@ def plot_single_consensus_map(consensus_grid, models_used, filename_id, init_dt,
         )
     ax.add_feature(cfeature.COASTLINE, linewidth=1.0, edgecolor="#1e293b", zorder=5)
 
-    # 4. PAR Boundary
-    ax.plot(PAR_LONS, PAR_LATS, transform=ccrs.PlateCarree(), color="#dc2626", linestyle="-", linewidth=2.0, zorder=6)
-    ax.text(116.3, 14.5, "PAR", color="#dc2626", fontsize=10, fontweight="bold", transform=ccrs.PlateCarree(), zorder=6)
-
-    # 5. Lat/Lon Gridlines
-    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color="#94a3b8", alpha=0.4, linestyle=":", zorder=7)
+    # 4. Lat/Lon Gridlines
+    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color="#94a3b8", alpha=0.4, linestyle=":", zorder=6)
     gl.top_labels = False
     gl.right_labels = False
     gl.xlabel_style = {'size': 9.5, 'color': '#334155'}
     gl.ylabel_style = {'size': 9.5, 'color': '#334155'}
 
-    # 6. Colorbar
+    # 5. Colorbar
     cbar_ax = fig.add_axes([0.15, 0.04, 0.70, 0.018])
     cb = fig.colorbar(cf, cax=cbar_ax, orientation="horizontal")
     cb.set_ticks(levels)
@@ -283,14 +276,14 @@ def plot_single_consensus_map(consensus_grid, models_used, filename_id, init_dt,
     cb.set_label(unit_label, fontsize=10.5, fontweight="bold", labelpad=6)
     cb.outline.set_edgecolor("#1e293b")
 
-    # 7. Dates & Titles
+    # 6. Dates & Titles
     ph_tz = timezone(timedelta(hours=8))
     init_dt_ph = init_dt.astimezone(ph_tz) if init_dt else None
-    start_str = init_dt_ph.strftime("%a, %b %d, %Y %I:%M %p") if init_dt_ph else "Start"
-    end_str = (init_dt_ph + timedelta(days=5)).strftime("%a, %b %d, %Y %I:%M %p") if init_dt_ph else "End"
+    start_str = init_dt_ph.strftime("%a, %b %d, %Y") if init_dt_ph else "Start"
+    end_str = (init_dt_ph + timedelta(days=days)).strftime("%a, %b %d, %Y") if init_dt_ph else "End"
 
-    fig.text(0.5, 0.958, "AI MULTI-MODEL PRECIPITATION OUTLOOK (5-DAY ACCUMULATION)", fontsize=15, weight="bold", ha="center", color="#0f172a")
-    fig.text(0.5, 0.932, f"Land-Masked Consensus Forecast ({' + '.join(models_used)})\nValid: {start_str}  to  {end_str} (PHT)", fontsize=10.5, ha="center", color="#475569")
+    fig.text(0.5, 0.958, f"AI MULTI-MODEL PRECIPITATION OUTLOOK ({days}-DAY ACCUMULATION)", fontsize=15, weight="bold", ha="center", color="#0f172a")
+    fig.text(0.5, 0.932, f"Valid: {start_str} to {end_str} (PHT)", fontsize=11, ha="center", color="#475569")
 
     # Watermark
     fig.text(0.95, 0.012, 'Philippine Typhoon/Weather', fontsize=11, color='#64748b', ha='right', weight='bold')
@@ -306,7 +299,7 @@ def plot_single_consensus_map(consensus_grid, models_used, filename_id, init_dt,
 # ═══════════════════════════════════════════════════════════════════════════
 
 def main():
-    print("=== AI Multi-Model Precip Outlook (Combined 5-Day Land-Masked Map) ===")
+    print("=== AI Multi-Model Precip Outlook (Combined 3-Day & 5-Day Land-Masked Maps) ===")
     
     session = requests.Session()
     session.headers.update({"User-Agent": "Mozilla/5.0"})
@@ -323,31 +316,114 @@ def main():
         WN_LONS, WN_LATS = np.meshgrid(wn_lons, wn_lats)
     
     valid_frames = []
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 1. Process 3-Day (72-hr) Accumulation
+    # ═══════════════════════════════════════════════════════════════════════
+    print(f"\nProcessing 3-Day (72-hr) Accumulation...")
     
+    # AIGFS 3-Day
+    aigfs_3day_master = np.zeros_like(M_LATS)
+    if aigfs_url:
+        grib_file_72 = f"aigfs.t{aigfs_cycle}z.sfc.f072.grib2"
+        grib_url_72 = f"{aigfs_url}{grib_file_72}"
+        idx_url_72 = f"{grib_url_72}.idx"
+        print("Downloading NOAA AIGFS 0-3 day...")
+        tmp_path = download_aigfs_apcp(grib_url_72, idx_url_72, session, 3)
+        if tmp_path:
+            lats, lons, current_total = read_aigfs_apcp(tmp_path)
+            if current_total is not None:
+                aigfs_3day_master = regrid_to_master(lats, lons, current_total)
+            if os.path.exists(tmp_path): os.remove(tmp_path)
+
+    # AIFS 3-Day
+    aifs_3day_master = np.zeros_like(M_LATS)
+    print("Downloading ECMWF AIFS 72h...")
+    lats, lons, current_total = get_aifs_tp(aifs_client, 72)
+    if current_total is not None:
+        aifs_3day_master = regrid_to_master(lats, lons, current_total)
+
+    # WeatherNext 2 3-Day
+    wn2_3day_master = np.zeros_like(M_LATS)
+    if wn2_ds is not None:
+        print("Extracting Google WeatherNext 2 0-72h...")
+        try:
+            precip_slice = wn2_ds['total_precipitation_6hr'].isel(time=slice(0, 12))
+            total_72h = (precip_slice.sum(dim='time') * 1000.0).values
+            total_72h = np.maximum(total_72h, 0)
+            if total_72h.ndim == 3:
+                total_72h = total_72h[0]
+            wn2_3day_master = regrid_to_master(WN_LATS, WN_LONS, total_72h)
+        except Exception as e:
+            print(f"WeatherNext2 3-day extraction error: {e}")
+
+    # Combine 3-Day
+    valid_models_3day = []
+    models_used_3day = []
+    if np.nanmax(wn2_3day_master) > 0:
+        valid_models_3day.append(wn2_3day_master)
+        models_used_3day.append("WeatherNext 2")
+    if np.nanmax(aifs_3day_master) > 0:
+        valid_models_3day.append(aifs_3day_master)
+        models_used_3day.append("ECMWF AIFS")
+    if np.nanmax(aigfs_3day_master) > 0:
+        valid_models_3day.append(aigfs_3day_master)
+        models_used_3day.append("NOAA AIGFS")
+
+    consensus_3day = np.mean(valid_models_3day, axis=0) if valid_models_3day else np.zeros_like(M_LATS)
+
+    print("Plotting 3-Day AI Consensus Map...")
+    plot_single_consensus_map(
+        consensus_3day,
+        models_used_3day if models_used_3day else ["AI Model Consensus"],
+        "ai_precip_3day_all_models",
+        init_dt,
+        mean_cmap,
+        mean_norm,
+        MEAN_LEVELS,
+        "3-Day Total Accumulated Precipitation (mm)",
+        days=3
+    )
+    plot_single_consensus_map(
+        consensus_3day,
+        models_used_3day if models_used_3day else ["AI Model Consensus"],
+        "ai_precip_3day_consensus",
+        init_dt,
+        mean_cmap,
+        mean_norm,
+        MEAN_LEVELS,
+        "3-Day Total Accumulated Precipitation (mm)",
+        days=3
+    )
+    valid_frames.append("ai_precip_3day_all_models")
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 2. Process 5-Day (120-hr) Accumulation
+    # ═══════════════════════════════════════════════════════════════════════
     print(f"\nProcessing 5-Day (120-hr) Accumulation...")
     
-    # --- 1. AIGFS 5-Day ---
+    # AIGFS 5-Day
     aigfs_5day_master = np.zeros_like(M_LATS)
     if aigfs_url:
-        grib_file = f"aigfs.t{aigfs_cycle}z.sfc.f120.grib2"
-        grib_url = f"{aigfs_url}{grib_file}"
-        idx_url = f"{grib_url}.idx"
+        grib_file_120 = f"aigfs.t{aigfs_cycle}z.sfc.f120.grib2"
+        grib_url_120 = f"{aigfs_url}{grib_file_120}"
+        idx_url_120 = f"{grib_url_120}.idx"
         print("Downloading NOAA AIGFS 0-5 day...")
-        tmp_path = download_aigfs_apcp(grib_url, idx_url, session, 5)
+        tmp_path = download_aigfs_apcp(grib_url_120, idx_url_120, session, 5)
         if tmp_path:
             lats, lons, current_total = read_aigfs_apcp(tmp_path)
             if current_total is not None:
                 aigfs_5day_master = regrid_to_master(lats, lons, current_total)
             if os.path.exists(tmp_path): os.remove(tmp_path)
 
-    # --- 2. AIFS 5-Day ---
+    # AIFS 5-Day
     aifs_5day_master = np.zeros_like(M_LATS)
     print("Downloading ECMWF AIFS 120h...")
     lats, lons, current_total = get_aifs_tp(aifs_client, 120)
     if current_total is not None:
         aifs_5day_master = regrid_to_master(lats, lons, current_total)
         
-    # --- 3. WeatherNext2 5-Day ---
+    # WeatherNext2 5-Day
     wn2_5day_master = np.zeros_like(M_LATS)
     if wn2_ds is not None:
         print("Extracting Google WeatherNext 2 0-120h...")
@@ -355,79 +431,69 @@ def main():
             precip_slice = wn2_ds['total_precipitation_6hr'].isel(time=slice(0, 20))
             total_120h = (precip_slice.sum(dim='time') * 1000.0).values
             total_120h = np.maximum(total_120h, 0)
-            
-            # Select 0th member (deterministic) if ensemble dimension is present
             if total_120h.ndim == 3:
                 total_120h = total_120h[0]
-                
             wn2_5day_master = regrid_to_master(WN_LATS, WN_LONS, total_120h)
         except Exception as e:
-            print(f"WeatherNext2 extraction error: {e}")
+            print(f"WeatherNext2 5-day extraction error: {e}")
 
-    # --- Combine Models into 1 Consensus Grid ---
-    valid_models = []
-    models_used = []
-    
+    # Combine 5-Day
+    valid_models_5day = []
+    models_used_5day = []
     if np.nanmax(wn2_5day_master) > 0:
-        valid_models.append(wn2_5day_master)
-        models_used.append("WeatherNext 2")
+        valid_models_5day.append(wn2_5day_master)
+        models_used_5day.append("WeatherNext 2")
     if np.nanmax(aifs_5day_master) > 0:
-        valid_models.append(aifs_5day_master)
-        models_used.append("ECMWF AIFS")
+        valid_models_5day.append(aifs_5day_master)
+        models_used_5day.append("ECMWF AIFS")
     if np.nanmax(aigfs_5day_master) > 0:
-        valid_models.append(aigfs_5day_master)
-        models_used.append("NOAA AIGFS")
+        valid_models_5day.append(aigfs_5day_master)
+        models_used_5day.append("NOAA AIGFS")
         
-    if valid_models:
-        print(f"\nCombining {len(valid_models)} models ({', '.join(models_used)}) into 1 Consensus Grid...")
-        consensus_grid = np.mean(valid_models, axis=0)
-    else:
-        print("Warning: No model precipitation grids available!")
-        consensus_grid = np.zeros_like(M_LATS)
+    consensus_5day = np.mean(valid_models_5day, axis=0) if valid_models_5day else np.zeros_like(M_LATS)
 
-    # Plot 1 Unified Land-Masked High-Resolution Map with Contours
-    print("Plotting 1 Unified Land-Masked AI Consensus Map with Isohyet Contours...")
-    frame_name = "ai_precip_5day_all_models"
+    print("Plotting 5-Day AI Consensus Map...")
     plot_single_consensus_map(
-        consensus_grid,
-        models_used if models_used else ["AI Model Consensus"],
-        frame_name,
+        consensus_5day,
+        models_used_5day if models_used_5day else ["AI Model Consensus"],
+        "ai_precip_5day_all_models",
         init_dt,
         mean_cmap,
         mean_norm,
         MEAN_LEVELS,
-        "5-Day Total Accumulated Precipitation (mm)"
+        "5-Day Total Accumulated Precipitation (mm)",
+        days=5
     )
-    valid_frames.append(frame_name)
-
-    # Save also as 'ai_precip_5day_consensus' for dedicated reference
     plot_single_consensus_map(
-        consensus_grid,
-        models_used if models_used else ["AI Model Consensus"],
+        consensus_5day,
+        models_used_5day if models_used_5day else ["AI Model Consensus"],
         "ai_precip_5day_consensus",
         init_dt,
         mean_cmap,
         mean_norm,
         MEAN_LEVELS,
-        "5-Day Total Accumulated Precipitation (mm)"
+        "5-Day Total Accumulated Precipitation (mm)",
+        days=5
     )
+    valid_frames.append("ai_precip_5day_all_models")
 
     # Metadata
     ph_tz = timezone(timedelta(hours=8))
     init_dt_ph = init_dt.astimezone(ph_tz) if init_dt else None
     
     meta = {
-        "title": "AI Multi-Model 5-Day Precipitation Outlook (Land Masked)",
-        "models_used": models_used if models_used else ["AI Models"],
+        "title": "AI Multi-Model Precipitation Outlook (3-Day & 5-Day)",
+        "models_used": list(set(models_used_3day + models_used_5day)) if (models_used_3day or models_used_5day) else ["AI Models"],
         "generated_at": datetime.now(ph_tz).strftime("%Y-%m-%d %I:%M %p PHT"),
         "run_time": init_dt_ph.strftime("%Y-%m-%d %I:%M %p PHT") if init_dt_ph else "Unknown",
-        "max_predicted_rain_mm": float(np.nanmax(consensus_grid)),
+        "max_predicted_rain_3day_mm": float(np.nanmax(consensus_3day)),
+        "max_predicted_rain_5day_mm": float(np.nanmax(consensus_5day)),
         "animation_frames": valid_frames
     }
     with open(os.path.join(DATA_DIR, "ai_precip_outlook_meta.json"), "w") as f:
         json.dump(meta, f, indent=2)
         
-    print("\nGeneration complete! 1 Unified Land-Masked High-Res Map created.")
+    print("\nGeneration complete! Both 3-Day & 5-Day Land-Masked Maps created successfully.")
 
 if __name__ == "__main__":
     main()
