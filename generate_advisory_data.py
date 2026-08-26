@@ -251,9 +251,15 @@ def fetch_weathernext2_daily():
         import gcsfs
         import xarray as xr
 
-        fs = gcsfs.GCSFileSystem()
-        parent_path = 'gs://weathernext/weathernext_2_0_0/zarr/2025_to_present'
-        all_items = fs.ls(parent_path)
+        try:
+            fs = gcsfs.GCSFileSystem()
+            # Test listing
+            parent_path = 'gs://weathernext/weathernext_2_0_0/zarr/2025_to_present'
+            all_items = fs.ls(parent_path)
+        except Exception:
+            fs = gcsfs.GCSFileSystem(token='anon')
+            parent_path = 'gs://weathernext/weathernext_2_0_0/zarr/2025_to_present'
+            all_items = fs.ls(parent_path)
         run_folders = [f'gs://{item}' for item in all_items if item.endswith('_preds')]
         if not run_folders:
             return None, None, None
