@@ -1,0 +1,53 @@
+{
+  "active": true,
+  "storm_name": "TC 20W (Invest 99W)",
+  "track_id": "WP202026",
+  "latest": {
+    "lat": 17.2,
+    "lon": 161.3,
+    "pressure_hpa": 1006.0,
+    "wind_kt": 25.0,
+    "wind_kmh": 46,
+    "movement": "NNW at 11.7 km/h (6.3 kt)",
+    "init_time": "2026-08-26 06:00",
+    "category": "Tropical Depression"
+  },
+  "history": [
+    {
+      "cycle": "2026-08-25 12:00",
+      "lat": 15.3,
+      "lon": 162.3,
+      "pressure_hpa": 1007.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-08-25 18:00",
+      "lat": 16.0,
+      "lon": 162.0,
+      "pressure_hpa": 1007.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-08-26 00:00",
+      "lat": 16.6,
+      "lon": 161.5,
+      "pressure_hpa": 1007.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-08-26 06:00",
+      "lat": 17.2,
+      "lon": 161.3,
+      "pressure_hpa": 1006.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    }
+  ]
+}
