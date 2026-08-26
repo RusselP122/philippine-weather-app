@@ -8,7 +8,7 @@
     "pressure_hpa": 1001.0,
     "wind_kt": 19.0,
     "wind_kmh": 35,
-    "movement": "NE at 21.6 km/h (11.7 kt)",
+    "movement": "NE at 27.9 km/h (15.1 kt)",
     "init_time": "2026-08-26 00:00",
     "category": "Low Pressure Area"
   },
@@ -227,6 +227,15 @@
       "pressure_hpa": 994.0,
       "wind_kt": 29.0,
       "wind_kmh": 54,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-25 18:00",
+      "lat": 20.0,
+      "lon": 109.6,
+      "pressure_hpa": 999.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
       "category": "Tropical Depression"
     },
     {

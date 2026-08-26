@@ -8,7 +8,7 @@
     "pressure_hpa": 970.0,
     "wind_kt": 74.0,
     "wind_kmh": 137,
-    "movement": "WNW at 15.0 km/h (8.1 kt)",
+    "movement": "WNW at 14.3 km/h (7.7 kt)",
     "init_time": "2026-08-26 00:00",
     "category": "Typhoon"
   },
@@ -290,6 +290,15 @@
       "pressure_hpa": 963.0,
       "wind_kt": 84.0,
       "wind_kmh": 156,
+      "category": "Typhoon"
+    },
+    {
+      "cycle": "2026-08-25 18:00",
+      "lat": 27.5,
+      "lon": 128.1,
+      "pressure_hpa": 966.0,
+      "wind_kt": 80.0,
+      "wind_kmh": 148,
       "category": "Typhoon"
     },
     {

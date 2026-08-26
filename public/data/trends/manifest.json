@@ -77,12 +77,12 @@
       "wide": "/data/trends/base_15day_dist_20260825_12_5_wide.png"
     },
     {
-      "id": "dist_20260825_00_9",
+      "id": "dist_20260825_12_9",
       "local_id": 8,
       "name": "Disturbance 8",
       "trackCount": 42,
-      "standard": "/data/trends/base_15day_dist_20260825_00_9_standard.png",
-      "wide": "/data/trends/base_15day_dist_20260825_00_9_wide.png"
+      "standard": "/data/trends/base_15day_dist_20260825_12_9_standard.png",
+      "wide": "/data/trends/base_15day_dist_20260825_12_9_wide.png"
     }
   ],
   "large_5day_cycle": "2026-08-25 12:00",
