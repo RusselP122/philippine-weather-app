@@ -3,32 +3,23 @@
   "storm_name": "Invest 91W",
   "track_id": "WP912026",
   "latest": {
-    "lat": 21.9,
-    "lon": 143.3,
-    "pressure_hpa": 996.0,
-    "wind_kt": 29.0,
-    "wind_kmh": 54,
-    "movement": "E at 24.2 km/h (13.0 kt)",
-    "init_time": "2026-08-12 06:00",
+    "lat": 20.2,
+    "lon": 167.4,
+    "pressure_hpa": 1005.0,
+    "wind_kt": 25.0,
+    "wind_kmh": 46,
+    "movement": "Stationary",
+    "init_time": "2026-08-26 18:00",
     "category": "Tropical Depression"
   },
   "history": [
     {
-      "cycle": "2026-08-12 00:00",
-      "lat": 21.8,
-      "lon": 141.9,
-      "pressure_hpa": 996.0,
-      "wind_kt": 29.0,
-      "wind_kmh": 54,
-      "category": "Tropical Depression"
-    },
-    {
-      "cycle": "2026-08-12 06:00",
-      "lat": 21.9,
-      "lon": 143.3,
-      "pressure_hpa": 996.0,
-      "wind_kt": 29.0,
-      "wind_kmh": 54,
+      "cycle": "2026-08-26 18:00",
+      "lat": 20.2,
+      "lon": 167.4,
+      "pressure_hpa": 1005.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
       "category": "Tropical Depression"
     }
   ]
