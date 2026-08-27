@@ -1,9 +1,9 @@
 {
   "title": "AI Multi-Model Consensus Rainfall Advisory",
-  "validity": "02:00 AM, 27 August 2026 to 02:00 AM, 28 August 2026",
+  "validity": "08:00 AM, 27 August 2026 to 08:00 AM, 28 August 2026",
   "system": "AI Multi-Model Ensemble (AIGFS)",
-  "init_time": "2026-08-27 02:00 AM (PHT)",
-  "generated_at": "2026-08-27 07:35 AM (PHT)",
+  "init_time": "2026-08-27 08:00 AM (PHT)",
+  "generated_at": "2026-08-27 08:18 AM (PHT)",
   "provinces": {
     "Abra": {
       "rainfall_mm": 10.6,
@@ -1402,8 +1402,8 @@
   },
   "metadata": {
     "title": "AI Multi-Model Consensus Rainfall Advisory",
-    "generated": "2026-08-27 07:35 AM (PHT)",
-    "run": "2026-08-27 02:00 AM (PHT)",
+    "generated": "2026-08-27 08:18 AM (PHT)",
+    "run": "2026-08-27 08:00 AM (PHT)",
     "storm": "None",
     "models": [
       "AIGFS"
@@ -1411,7 +1411,7 @@
   },
   "days": {
     "1": {
-      "validity": "02:00 AM, 27 August 2026 to 02:00 AM, 28 August 2026",
+      "validity": "08:00 AM, 27 August 2026 to 08:00 AM, 28 August 2026",
       "provinces": {
         "Abra": {
           "rainfall_mm": 10.6,
@@ -2810,7 +2810,7 @@
       }
     },
     "2": {
-      "validity": "02:00 AM, 28 August 2026 to 02:00 AM, 29 August 2026",
+      "validity": "08:00 AM, 28 August 2026 to 08:00 AM, 29 August 2026",
       "provinces": {
         "Abra": {
           "rainfall_mm": 60.6,
@@ -4209,7 +4209,7 @@
       }
     },
     "3": {
-      "validity": "02:00 AM, 29 August 2026 to 02:00 AM, 30 August 2026",
+      "validity": "08:00 AM, 29 August 2026 to 08:00 AM, 30 August 2026",
       "provinces": {
         "Abra": {
           "rainfall_mm": 268.8,
@@ -5608,7 +5608,7 @@
       }
     },
     "4": {
-      "validity": "02:00 AM, 30 August 2026 to 02:00 AM, 31 August 2026",
+      "validity": "08:00 AM, 30 August 2026 to 08:00 AM, 31 August 2026",
       "provinces": {
         "Abra": {
           "rainfall_mm": 287.0,
@@ -7007,7 +7007,7 @@
       }
     },
     "5": {
-      "validity": "02:00 AM, 31 August 2026 to 02:00 AM, 01 September 2026",
+      "validity": "08:00 AM, 31 August 2026 to 08:00 AM, 01 September 2026",
       "provinces": {
         "Abra": {
           "rainfall_mm": 156.5,
