@@ -30,9 +30,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install numpy scipy shapely requests xarray zarr gcsfs ecmwf-opendata eccodes
 
+      - name: Authenticate to Google Cloud
+        env:
+          GCP_KEY_JSON: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          # Write the secret Google Cloud Service Account JSON key to a temporary file
+          echo "$GCP_KEY_JSON" > gcp-key.json
+          # Export GOOGLE_APPLICATION_CREDENTIALS environment variable for gcsfs to detect automatically
+          echo "GOOGLE_APPLICATION_CREDENTIALS=gcp-key.json" >> $GITHUB_ENV
+
       - name: Fetch and Generate AI Multi-Model Advisory Data
         run: |
           python generate_advisory_data.py
+
+      - name: Clean up GCP key
+        if: always()
+        run: rm -f gcp-key.json
           
       - name: Commit and push changes
         run: |

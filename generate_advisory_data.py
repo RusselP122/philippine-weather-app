@@ -322,7 +322,8 @@ def fetch_aifs_daily():
     print("Fetching ECMWF AIFS v2 dataset...")
     try:
         from ecmwf.opendata import Client
-        import xarray as xr
+        from eccodes import codes_grib_new_from_file, codes_get, codes_get_double_array, codes_get_values, codes_release
+        import gc
 
         client = Client(source="azure", model="aifs-single", resol="0p25")
         cum_precip = {}
@@ -333,32 +334,46 @@ def fetch_aifs_daily():
             target_file = f"temp_aifs_{step:03d}_{os.getpid()}.grib2"
             try:
                 client.retrieve(step=step, type="fc", param=["tp", "10u", "10v"], target=target_file)
-                ds = xr.open_dataset(target_file, engine="cfgrib")
 
-                if run_dt is None and "time" in ds:
-                    run_dt = ds.time.values
+                lats, lons, tp_grid, u10_grid, v10_grid = None, None, None, None, None
+                with open(target_file, "rb") as f:
+                    while True:
+                        gid = codes_grib_new_from_file(f)
+                        if gid is None:
+                            break
+                        sn = codes_get(gid, "shortName")
+                        if lats is None:
+                            ni = codes_get(gid, "Ni")
+                            nj = codes_get(gid, "Nj")
+                            lats = codes_get_double_array(gid, "latitudes").reshape(nj, ni)
+                            lons = codes_get_double_array(gid, "longitudes").reshape(nj, ni)
+                        vals = codes_get_values(gid).reshape(lats.shape[0], lats.shape[1])
+                        if sn in ["tp", "apcp"]:
+                            tp_grid = vals
+                        elif sn in ["10u", "u10", "u"]:
+                            u10_grid = vals
+                        elif sn in ["10v", "v10", "v"]:
+                            v10_grid = vals
+                        codes_release(gid)
 
-                lats = ds.latitude.values
-                lons = ds.longitude.values
+                if tp_grid is not None and lats is not None:
+                    if np.nanmax(tp_grid) < 2.0:
+                        tp_grid = tp_grid * 1000.0
+                    cum_precip[step] = (lats, lons, tp_grid)
 
-                tp_grid = ds['tp'].values.squeeze()
-                if np.nanmax(tp_grid) < 2.0:
-                    tp_grid = tp_grid * 1000.0
-
-                cum_precip[step] = (lats, lons, tp_grid)
-
-                if 'u10' in ds and 'v10' in ds:
-                    u = ds['u10'].values.squeeze()
-                    v = ds['v10'].values.squeeze()
-                    ws = np.sqrt(u**2 + v**2) * 3.6 * 1.25  # Gust factor
+                if u10_grid is not None and v10_grid is not None and lats is not None:
+                    ws = np.sqrt(u10_grid**2 + v10_grid**2) * 3.6 * 1.25  # Gust factor
                     cum_wind[step] = (lats, lons, ws)
 
-                ds.close()
             except Exception as e:
                 print(f"  AIFS step {step} notice: {e}")
             finally:
+                gc.collect()
                 if os.path.exists(target_file):
-                    os.remove(target_file)
+                    try:
+                        os.remove(target_file)
+                    except Exception:
+                        pass
 
         if len(cum_precip) < 5:
             return None, None, None
