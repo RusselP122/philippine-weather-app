@@ -3,13 +3,13 @@
   "storm_name": "TC 21W (Invest 91W)",
   "track_id": "WP212026",
   "latest": {
-    "lat": 21.2,
+    "lat": 22.0,
     "lon": 168.0,
     "pressure_hpa": 998.0,
     "wind_kt": 39.0,
     "wind_kmh": 72,
-    "movement": "NNE at 15.7 km/h (8.5 kt)",
-    "init_time": "2026-08-27 06:00",
+    "movement": "N at 14.8 km/h (8.0 kt)",
+    "init_time": "2026-08-27 12:00",
     "category": "Tropical Storm"
   },
   "history": [
@@ -34,6 +34,15 @@
     {
       "cycle": "2026-08-27 06:00",
       "lat": 21.2,
+      "lon": 168.0,
+      "pressure_hpa": 998.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
+      "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-08-27 12:00",
+      "lat": 22.0,
       "lon": 168.0,
       "pressure_hpa": 998.0,
       "wind_kt": 39.0,
