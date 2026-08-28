@@ -4,13 +4,13 @@
   "track_id": "WP172026",
   "latest": {
     "lat": 28.1,
-    "lon": 122.6,
-    "pressure_hpa": 968.0,
-    "wind_kt": 70.0,
-    "wind_kmh": 130,
-    "movement": "W at 14.8 km/h (8.0 kt)",
-    "init_time": "2026-08-27 18:00",
-    "category": "Typhoon"
+    "lon": 121.0,
+    "pressure_hpa": 982.0,
+    "wind_kt": 51.0,
+    "wind_kmh": 94,
+    "movement": "W at 26.2 km/h (14.1 kt)",
+    "init_time": "2026-08-28 00:00",
+    "category": "Severe Tropical Storm"
   },
   "history": [
     {
@@ -372,6 +372,15 @@
       "wind_kt": 70.0,
       "wind_kmh": 130,
       "category": "Typhoon"
+    },
+    {
+      "cycle": "2026-08-28 00:00",
+      "lat": 28.1,
+      "lon": 121.0,
+      "pressure_hpa": 982.0,
+      "wind_kt": 51.0,
+      "wind_kmh": 94,
+      "category": "Severe Tropical Storm"
     }
   ]
 }
