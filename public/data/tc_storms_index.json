@@ -1,30 +1,30 @@
 [
   {
-    "track_id": "WP172026",
-    "storm_name": "TC 17W",
-    "active": true,
-    "last_updated": "2026-08-28 00:00",
-    "latest_lat": 28.1,
-    "latest_lon": 121.0,
-    "category": "Severe Tropical Storm"
-  },
-  {
     "track_id": "WP202026",
     "storm_name": "TC 20W",
     "active": true,
-    "last_updated": "2026-08-28 00:00",
-    "latest_lat": 18.2,
-    "latest_lon": 164.9,
+    "last_updated": "2026-08-28 06:00",
+    "latest_lat": 18.8,
+    "latest_lon": 165.3,
     "category": "Severe Tropical Storm"
   },
   {
     "track_id": "WP212026",
     "storm_name": "TC 21W",
     "active": true,
-    "last_updated": "2026-08-28 00:00",
-    "latest_lat": 24.1,
-    "latest_lon": 167.4,
+    "last_updated": "2026-08-28 06:00",
+    "latest_lat": 24.6,
+    "latest_lon": 166.8,
     "category": "Tropical Storm"
+  },
+  {
+    "track_id": "WP172026",
+    "storm_name": "TC 17W",
+    "active": false,
+    "last_updated": "2026-08-28 00:00",
+    "latest_lat": 28.1,
+    "latest_lon": 121.0,
+    "category": "Severe Tropical Storm"
   },
   {
     "track_id": "WP912026",
