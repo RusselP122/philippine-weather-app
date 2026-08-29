@@ -689,7 +689,7 @@ def compute_clean_mean_track_df(deduped_tracks, min_member_ratio=0.25, min_membe
         
     return df_mean
 
-def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, storm_name_override=None, color_by='wind'):
+def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, storm_name_override=None, color_by='wind', min_mean_members=25):
     """
     Generates a publication-quality spaghetti plot for a validated Under-Monitoring candidate disturbance.
     """
@@ -738,8 +738,11 @@ def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, st
         
     df_storm_deduped = pd.concat(deduped_track_dfs, ignore_index=True) if deduped_track_dfs else df_storm
     
-    # Compute clean mean track
-    df_mean = compute_clean_mean_track_df(deduped_track_dicts, min_member_ratio=0.25, min_members=4)
+    # Compute clean mean track only if cluster has sufficient member support (>= min_mean_members, default 25)
+    if len(deduped_track_dfs) >= min_mean_members:
+        df_mean = compute_clean_mean_track_df(deduped_track_dicts, min_member_ratio=0.25, min_members=4)
+    else:
+        df_mean = pd.DataFrame()
     has_ensemble_tracks = len(deduped_track_dfs) >= 2
 
     # Viewport determination focused on core track spread
@@ -952,6 +955,7 @@ def main():
     parser.add_argument('--output-dir', type=str, default='public/assets', help="Directory to save generated plots")
     parser.add_argument('--color-by', type=str, default='wind', choices=['wind', 'pressure'], help="Parameter to color lines by and display in colorbar")
     parser.add_argument('--min-members', type=int, default=8, help="Minimum ensemble members for a monitoring disturbance")
+    parser.add_argument('--min-mean-members', type=int, default=25, help="Minimum ensemble members required to compute and render the ensemble mean track")
     parser.add_argument('--min-wind', type=float, default=25.0, help="Minimum maximum wind in knots for monitoring disturbance")
     parser.add_argument('--min-duration', type=float, default=36.0, help="Minimum duration in hours for monitoring disturbance")
     args = parser.parse_args()
@@ -1046,7 +1050,7 @@ def main():
                 if current_init_dt < latest_plotted_init[out_file]:
                     continue
 
-            plot_monitoring_tracks(monitoring_df, model, sg_id, out_file, color_by=args.color_by)
+            plot_monitoring_tracks(monitoring_df, model, sg_id, out_file, color_by=args.color_by, min_mean_members=args.min_mean_members)
             latest_plotted_init[out_file] = current_init_dt
 
             alt_filename = f"{num_w_id}_{ymd}_{cycle_str}_{model_clean}.png"
