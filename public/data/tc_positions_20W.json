@@ -3,13 +3,13 @@
   "storm_name": "TC 20W",
   "track_id": "WP202026",
   "latest": {
-    "lat": 20.5,
-    "lon": 167.0,
-    "pressure_hpa": 980.0,
+    "lat": 22.2,
+    "lon": 167.8,
+    "pressure_hpa": 981.0,
     "wind_kt": 64.0,
     "wind_kmh": 119,
-    "movement": "NNE at 20.5 km/h (11.1 kt)",
-    "init_time": "2026-08-28 18:00",
+    "movement": "NNE at 34.4 km/h (18.6 kt)",
+    "init_time": "2026-08-29 00:00",
     "category": "Typhoon"
   },
   "history": [
@@ -135,6 +135,15 @@
       "lat": 20.5,
       "lon": 167.0,
       "pressure_hpa": 980.0,
+      "wind_kt": 64.0,
+      "wind_kmh": 119,
+      "category": "Typhoon"
+    },
+    {
+      "cycle": "2026-08-29 00:00",
+      "lat": 22.2,
+      "lon": 167.8,
+      "pressure_hpa": 981.0,
       "wind_kt": 64.0,
       "wind_kmh": 119,
       "category": "Typhoon"
