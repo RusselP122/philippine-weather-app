@@ -1345,10 +1345,12 @@ def build_cone_polygon(lats, lons, lead_times):
 
 
 def get_intensity_color(wind_kmh, pressure=None):
-    if pd.isna(wind_kmh) or wind_kmh is None or wind_kmh <= 0:
+    if pd.isna(wind_kmh) or wind_kmh is None:
         return INTENSITY_PALETTE['LPA']
     w = float(wind_kmh)
-    if w <= 61:
+    if w < 45:
+        return INTENSITY_PALETTE['LPA']
+    elif w <= 61:
         return INTENSITY_PALETTE['TD']
     elif w <= 88:
         return INTENSITY_PALETTE['TS']

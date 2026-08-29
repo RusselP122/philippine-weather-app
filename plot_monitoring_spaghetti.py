@@ -20,6 +20,8 @@ import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from shapely.geometry import shape
+from scipy.cluster.hierarchy import linkage, fcluster
+from scipy.spatial.distance import squareform
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
@@ -99,6 +101,9 @@ def fetch_knack_active_storms():
         return []
 
 def haversine_km(lat1, lon1, lat2, lon2):
+    """
+    Calculates great-circle distance between two points in kilometers.
+    """
     R = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
@@ -129,184 +134,6 @@ def mean_geo_center(points):
     lat = math.degrees(math.atan2(avg_z, hyp))
     lon = math.degrees(math.atan2(avg_y, avg_x))
     return {'lat': lat, 'lon': lon}
-
-def run_hdbscan(distance_matrix, min_cluster_size):
-    n = len(distance_matrix)
-    if n == 0:
-        return []
-        
-    k = min(n - 1, max(1, min_cluster_size - 1))
-    core_dist = [0.0] * n
-    for i in range(n):
-        sorted_dists = sorted(distance_matrix[i])
-        core_dist[i] = sorted_dists[k]
-        
-    in_mst = [False] * n
-    min_dist = [float('inf')] * n
-    parent = [-1] * n
-    min_dist[0] = 0.0
-    edges = []
-    
-    for step in range(n):
-        u = -1
-        best = float('inf')
-        for i in range(n):
-            if not in_mst[i] and min_dist[i] < best:
-                best = min_dist[i]
-                u = i
-        if u == -1:
-            break
-        in_mst[u] = True
-        if parent[u] != -1:
-            edges.append({'u': parent[u], 'v': u, 'weight': best})
-        for v in range(n):
-            if not in_mst[v]:
-                weight = max(core_dist[u], core_dist[v], distance_matrix[u][v])
-                if weight < min_dist[v]:
-                    min_dist[v] = weight
-                    parent[v] = u
-                    
-    edges.sort(key=lambda x: x['weight'])
-    
-    next_node_id = n
-    uf_parent = list(range(n * 2))
-    
-    nodes = []
-    for i in range(n * 2):
-        nodes.append({
-            'id': i,
-            'left': None,
-            'right': None,
-            'weight': 0.0,
-            'birth': 0.0,
-            'death': float('inf'),
-            'points': [i] if i < n else []
-        })
-        
-    def find_uf(i):
-        root = i
-        while uf_parent[root] != root:
-            root = uf_parent[root]
-        curr = i
-        while curr != root:
-            nxt = uf_parent[curr]
-            uf_parent[curr] = root
-            curr = nxt
-        return root
-        
-    for edge in edges:
-        root_u = find_uf(edge['u'])
-        root_v = find_uf(edge['v'])
-        if root_u != root_v:
-            new_id = next_node_id
-            next_node_id += 1
-            uf_parent[root_u] = new_id
-            uf_parent[root_v] = new_id
-            nodes[new_id]['left'] = nodes[root_u]
-            nodes[new_id]['right'] = nodes[root_v]
-            nodes[new_id]['weight'] = edge['weight']
-            nodes[new_id]['points'] = nodes[root_u]['points'] + nodes[root_v]['points']
-            nodes[root_u]['death'] = edge['weight']
-            nodes[root_v]['death'] = edge['weight']
-            
-    root_node_id = next_node_id - 1
-    if root_node_id < n:
-        return [0] * n
-        
-    next_cluster_id = 1
-    condensed_nodes = {}
-    
-    root_cluster_id = 0
-    condensed_nodes[root_cluster_id] = {
-        'id': root_cluster_id,
-        'parent': None,
-        'birth': 0.0,
-        'death': nodes[root_node_id]['weight'],
-        'points': nodes[root_node_id]['points'],
-        'stability': 0.0,
-        'selected': False
-    }
-    condense_stack = [(root_node_id, root_cluster_id)]
-    while condense_stack:
-        node_id, parent_cluster_id = condense_stack.pop()
-        node = nodes[node_id]
-        if node['left'] is None and node['right'] is None:
-            continue
-        left = node['left']
-        right = node['right']
-        left_count = len(left['points'])
-        right_count = len(right['points'])
-        
-        if left_count >= min_cluster_size and right_count >= min_cluster_size:
-            left_cluster_id = next_cluster_id
-            next_cluster_id += 1
-            right_cluster_id = next_cluster_id
-            next_cluster_id += 1
-            
-            condensed_nodes[left_cluster_id] = {
-                'id': left_cluster_id,
-                'parent': parent_cluster_id,
-                'birth': node['weight'],
-                'death': left['death'],
-                'points': left['points'],
-                'stability': 0.0,
-                'selected': False
-            }
-            condensed_nodes[right_cluster_id] = {
-                'id': right_cluster_id,
-                'parent': parent_cluster_id,
-                'birth': node['weight'],
-                'death': right['death'],
-                'points': right['points'],
-                'stability': 0.0,
-                'selected': False
-            }
-            condense_stack.append((left['id'], left_cluster_id))
-            condense_stack.append((right['id'], right_cluster_id))
-        elif left_count >= min_cluster_size:
-            condense_stack.append((left['id'], parent_cluster_id))
-        elif right_count >= min_cluster_size:
-            condense_stack.append((right['id'], parent_cluster_id))
-    
-    for cid, cnode in condensed_nodes.items():
-        lambda_birth = 1.0 / (cnode['birth'] if cnode['birth'] > 0.0001 else 0.0001)
-        sum_stability = 0.0
-        for pt in cnode['points']:
-            death_weight = cnode['death']
-            curr = nodes[pt]
-            while curr and curr['death'] < cnode['death']:
-                death_weight = curr['death']
-                curr = nodes[uf_parent[curr['id']]]
-            lambda_death = 1.0 / (death_weight if death_weight > 0.0001 else 0.0001)
-            sum_stability += max(0.0, lambda_death - lambda_birth)
-        cnode['stability'] = sum_stability
-        
-    cluster_ids = sorted(condensed_nodes.keys(), reverse=True)
-    subtree_stability = {}
-    for cid in cluster_ids:
-        cnode = condensed_nodes[cid]
-        children = [n for n in condensed_nodes.values() if n['parent'] == cid]
-        child_stability_sum = sum(subtree_stability.get(child['id'], 0.0) for child in children)
-        if child_stability_sum > cnode['stability']:
-            subtree_stability[cid] = child_stability_sum
-            cnode['selected'] = False
-        else:
-            subtree_stability[cid] = cnode['stability']
-            cnode['selected'] = True
-            bfs_queue = deque(children)
-            while bfs_queue:
-                qnode = bfs_queue.popleft()
-                qnode['selected'] = False
-                bfs_queue.extend([n for n in condensed_nodes.values() if n['parent'] == qnode['id']])
-                
-    labels = [-1] * n
-    for cid, cnode in condensed_nodes.items():
-        if cnode['selected']:
-            lbl = cid if cid != 0 else 1
-            for pt in cnode['points']:
-                labels[pt] = lbl
-                
-    return labels
 
 def load_track_file(file_path):
     """
@@ -536,322 +363,337 @@ def format_init_time(init_time_val):
             
     return init_str
 
-def cluster_genesis_locations(df, dist_threshold=6.0):
+def cluster_and_validate_lpas(df_wp, knack_storms, total_members=50, min_members=8, min_wind_kt=25.0, max_mslp_hpa=1004.0, min_duration=36.0, max_dist=450.0):
     """
-    Groups tracks within the same init_time using HDBSCAN.
+    Identifies, clusters, and validates tropical disturbances under monitoring using Average-Linkage
+    spatio-temporal clustering. Prevents chaining and survivor bias.
     """
-    if df.empty:
-        return df
+    if df_wp.empty:
+        return df_wp, []
         
-    df = df.copy()
-    df['storm_group'] = 'UNKNOWN'
-    df['storm_group_name'] = 'UNKNOWN'
-    df['rep_track_id'] = 'UNKNOWN'
+    df_wp = df_wp.copy()
+    df_wp['storm_group'] = 'UNKNOWN'
+    df_wp['storm_group_name'] = 'UNKNOWN'
+    df_wp['rep_track_id'] = 'UNKNOWN'
+    df_wp['is_monitoring'] = False
     
-    for init_val in df['init_time'].unique():
-        init_df = df[df['init_time'] == init_val]
-        
-        tracks = []
-        for (t_id, s_val), track_points in init_df.groupby(['track_id', 'sample']):
-            track_points = track_points.sort_values('lead_time_hours')
-            if track_points.empty:
-                continue
-            
-            points_dict = {}
-            for _, row in track_points.iterrows():
-                h = row['lead_time_hours']
-                lat, lon = row['lat'], row['lon']
-                if not np.isnan(lat) and not np.isnan(lon):
-                    points_dict[h] = (lat, lon)
-                    
-            if not points_dict:
-                continue
-                
-            tracks.append({
-                'track_id': t_id,
-                'sample': s_val,
-                'points_dict': points_dict,
-                'points_index': track_points.index.tolist()
-            })
-            
-        n_tracks = len(tracks)
-        if n_tracks == 0:
+    # 1. Extract valid track sequences
+    tracks = []
+    for (t_id, s_val), track_points in df_wp.groupby(['track_id', 'sample']):
+        track_points = track_points.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
+        if len(track_points) < 3:
             continue
-            
-        distance_matrix = [[0.0] * n_tracks for _ in range(n_tracks)]
-        for i in range(n_tracks):
-            for j in range(i, n_tracks):
-                if i == j:
-                    distance_matrix[i][j] = 0.0
-                else:
-                    t1, t2 = tracks[i], tracks[j]
-                    h1 = min(t1['points_dict'].keys())
-                    h2 = min(t2['points_dict'].keys())
-                    lat1_start, lon1_start = t1['points_dict'][h1]
-                    lat2_start, lon2_start = t2['points_dict'][h2]
-                    start_dist_km = haversine_km(lat1_start, lon1_start, lat2_start, lon2_start)
-                    
-                    if start_dist_km > 600.0:
-                        dist = 5000.0
-                    else:
-                        overlap = set(t1['points_dict'].keys()).intersection(set(t2['points_dict'].keys()))
-                        if not overlap:
-                            dist = 5000.0
-                        else:
-                            sum_d = 0.0
-                            count_d = 0
-                            for h in overlap:
-                                lat1, lon1 = t1['points_dict'][h]
-                                lat2, lon2 = t2['points_dict'][h]
-                                sum_d += haversine_km(lat1, lon1, lat2, lon2)
-                                count_d += 1
-                            dist = 5000.0 if count_d == 0 else sum_d / count_d
-                    
-                    distance_matrix[i][j] = dist
-                    distance_matrix[j][i] = dist
-                    
-        num_members = len(init_df['sample'].unique())
-        min_cluster_size = max(4, int(round(num_members * (0.03 if num_members > 100 else 0.08))))
-        min_cluster_size = min(n_tracks, max(2, min_cluster_size))
-        
-        labels = run_hdbscan(distance_matrix, min_cluster_size)
-        
-        next_label = max(labels) + 1 if labels else 1
-        for idx in range(n_tracks):
-            if labels[idx] == -1:
-                labels[idx] = next_label
-                next_label += 1
-                
-        cluster_tracks = {}
-        for idx, lbl in enumerate(labels):
-            if lbl not in cluster_tracks:
-                cluster_tracks[lbl] = []
-            cluster_tracks[lbl].append(tracks[idx])
-            
-        for lbl, cl_tracks in cluster_tracks.items():
-            group_id = f"group_{str(init_val).replace(':', '').replace(' ', '_')}_{lbl}"
-            best_tid = cl_tracks[0]['track_id']
-            for t in cl_tracks:
-                df.loc[t['points_index'], 'storm_group'] = group_id
-                df.loc[t['points_index'], 'storm_group_name'] = str(best_tid)
-                df.loc[t['points_index'], 'rep_track_id'] = str(best_tid)
-                
-    return df
-
-def map_hdbscan_clusters_to_knack_storms(df, knack_storms, dist_threshold=4.0):
-    """
-    Identifies which clusters match active Knack storms so they can be separated from unparsed monitoring candidates.
-    """
-    if df.empty or not knack_storms:
-        return df, False
-        
-    df = df.copy()
-    candidates_by_storm = {}
-    
-    for (init_val, group_id), group_df in df.groupby(['init_time', 'storm_group']):
-        if group_id == 'UNKNOWN':
-            continue
-            
-        try:
-            f_init_dt = datetime.strptime(str(init_val).strip(), "%Y-%m-%d %H:%M:%S")
-        except (ValueError, TypeError):
-            f_init_dt = None
-            
-        for k_storm in knack_storms:
-            k_lat = k_storm['lat']
-            k_lon = k_storm['lon']
-            k_atcf_id = k_storm['atcf_id']
-            k_name = k_storm['name']
-            k_time_str = k_storm['init_time']
-            
-            if np.isnan(k_lat) or np.isnan(k_lon):
-                continue
-                
-            k_dt = None
-            if k_time_str:
-                for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"]:
-                    try:
-                        k_dt = datetime.strptime(k_time_str.strip(), fmt)
-                        break
-                    except ValueError:
-                        continue
-                        
-            target_lead_time = 0.0
-            if f_init_dt and k_dt:
-                time_diff = k_dt - f_init_dt
-                target_lead_time = time_diff.total_seconds() / 3600.0
-                
-            if target_lead_time < 0:
-                target_lead_time = 0.0
-                
-            diffs = (group_df['lead_time_hours'] - target_lead_time).abs()
-            if not diffs.empty and diffs.min() <= 12.0:
-                target_pts = group_df[diffs <= 6.0]
-                if target_pts.empty:
-                    target_pts = group_df[diffs == diffs.min()]
-            else:
-                closest_lead = group_df['lead_time_hours'].min()
-                target_pts = group_df[group_df['lead_time_hours'] == closest_lead]
-                
-            avg_lat = target_pts['lat'].mean()
-            avg_lon = target_pts['lon'].mean()
-            if np.isnan(avg_lat) or np.isnan(avg_lon):
-                continue
-                
-            d_lat = avg_lat - k_lat
-            d_lon = (avg_lon - k_lon) * math.cos(math.radians((avg_lat + k_lat)/2))
-            dist = math.sqrt(d_lat**2 + d_lon**2)
-            
-            if dist <= dist_threshold:
-                if k_atcf_id not in candidates_by_storm:
-                    candidates_by_storm[k_atcf_id] = []
-                candidates_by_storm[k_atcf_id].append({
-                    'group_id': group_id,
-                    'dist': dist,
-                    'lead_time': target_lead_time,
-                    'name': k_name,
-                    'atcf_id': k_atcf_id
-                })
-
-    mapped_groups = {}
-    has_mapped = False
-    for k_atcf_id, candidates in candidates_by_storm.items():
-        if not candidates:
-            continue
-            
-        closest_cand = min(candidates, key=lambda c: c['dist'])
-        min_dist = closest_cand['dist']
-        allowed_max_dist = max(3.0, min_dist + 1.5) if min_dist <= 3.0 else min_dist + 1.5
-        allowed_max_dist = min(dist_threshold, allowed_max_dist)
-        
-        for cand in candidates:
-            if cand['dist'] <= allowed_max_dist:
-                group_id = cand['group_id']
-                mapped_groups[group_id] = {
-                    'storm_group': f"knack_{k_atcf_id}",
-                    'storm_group_name': f"{cand['name']} ({k_atcf_id})",
-                    'rep_track_id': k_atcf_id
-                }
-                has_mapped = True
-
-    for orig_group_id, mapping in mapped_groups.items():
-        mask = df['storm_group'] == orig_group_id
-        df.loc[mask, 'storm_group'] = mapping['storm_group']
-        df.loc[mask, 'storm_group_name'] = mapping['storm_group_name']
-        df.loc[mask, 'rep_track_id'] = mapping['rep_track_id']
-        
-    return df, has_mapped
-
-def validate_and_label_monitoring_clusters(df, knack_storms, total_members=50, min_members_pct=0.20, min_members_abs=8, min_wind_kt=25.0, max_mslp_hpa=1004.0, min_duration_hours=36.0):
-    """
-    Identifies and validates unmapped HDBSCAN clusters as legitimate candidate disturbances under monitoring.
-    Applies multi-member consensus, intensity, duration, and spatial isolation filters.
-    """
-    if df.empty:
-        return df
-        
-    df = df.copy()
-    candidate_groups = []
-    
-    for group_id, group_df in df.groupby('storm_group'):
-        if group_id == 'UNKNOWN' or group_id.startswith('knack_'):
-            continue
-            
-        group_df = group_df.dropna(subset=['lat', 'lon']).sort_values('lead_time_hours')
-        if group_df.empty:
-            continue
-            
-        # 1. Ensemble Member Support
-        num_members = group_df['sample'].nunique()
-        min_req_members = max(min_members_abs, int(round(total_members * min_members_pct)))
-        if num_members < min_req_members:
-            continue
-            
-        # 2. Intensity / Deepening Check
-        max_wind = group_df['wind'].max()
-        min_mslp = group_df['pressure'].min()
-        is_intense = False
-        if not np.isnan(max_wind) and max_wind >= min_wind_kt:
-            is_intense = True
-        if not np.isnan(min_mslp) and min_mslp <= max_mslp_hpa:
-            is_intense = True
-        if not is_intense:
-            continue
-            
-        # 3. Track Duration Check
-        lead_min = group_df['lead_time_hours'].min()
-        lead_max = group_df['lead_time_hours'].max()
-        duration = lead_max - lead_min
-        if duration < min_duration_hours:
-            continue
-            
-        # 4. Spatial Separation from Active Knack Storms
-        first_pt = group_df.iloc[0]
-        f_lat = first_pt['lat']
-        f_lon = first_pt['lon']
-        
-        # Check domain Lat [0, 38], Lon [100, 180]
-        if not (0.0 <= f_lat <= 38.0 and 100.0 <= f_lon <= 180.0):
-            continue
-            
-        too_close_to_active = False
-        if knack_storms:
-            for k in knack_storms:
-                k_lat = k['lat']
-                k_lon = k['lon']
-                if np.isnan(k_lat) or np.isnan(k_lon):
-                    continue
-                d_km = haversine_km(f_lat, f_lon, k_lat, k_lon)
-                if d_km < 500.0:
-                    too_close_to_active = True
-                    break
-        if too_close_to_active:
-            continue
-            
-        candidate_groups.append({
-            'orig_group_id': group_id,
-            'members': num_members,
-            'max_wind': max_wind,
-            'min_mslp': min_mslp,
-            'duration': duration,
-            'start_lat': f_lat,
-            'start_lon': f_lon
+        h_min = track_points['lead_time_hours'].min()
+        h_max = track_points['lead_time_hours'].max()
+        f_lat = track_points.iloc[0]['lat']
+        f_lon = track_points.iloc[0]['lon']
+        max_w = track_points['wind'].max()
+        min_p = track_points['pressure'].min()
+        points_dict = {row['lead_time_hours']: (row['lat'], row['lon']) for _, row in track_points.iterrows()}
+        wind_dict = {row['lead_time_hours']: row['wind'] for _, row in track_points.iterrows()}
+        press_dict = {row['lead_time_hours']: row['pressure'] for _, row in track_points.iterrows()}
+        tracks.append({
+            'track_id': t_id,
+            'sample': s_val,
+            'h_min': h_min,
+            'h_max': h_max,
+            'f_lat': f_lat,
+            'f_lon': f_lon,
+            'max_w': max_w,
+            'min_p': min_p,
+            'points_dict': points_dict,
+            'wind_dict': wind_dict,
+            'press_dict': press_dict,
+            'index': track_points.index.tolist()
         })
         
-    candidate_groups.sort(key=lambda x: (x['members'], x['max_wind'] if not np.isnan(x['max_wind']) else 0), reverse=True)
+    n = len(tracks)
+    if n == 0:
+        return df_wp, []
+        
+    # 2. Spatio-temporal distance matrix
+    dist_matrix = np.full((n, n), 100000.0)
+    np.fill_diagonal(dist_matrix, 0.0)
     
-    monitoring_map = {}
-    for idx, cand in enumerate(candidate_groups):
+    for i in range(n):
+        t1 = tracks[i]
+        for j in range(i+1, n):
+            t2 = tracks[j]
+            overlap = set(t1['points_dict'].keys()).intersection(set(t2['points_dict'].keys()))
+            if not overlap:
+                continue
+            
+            # Genesis lead hour difference
+            dh = abs(t1['h_min'] - t2['h_min'])
+            if dh > 48:
+                continue
+                
+            sorted_overlap = sorted(overlap)
+            early_overlap = sorted_overlap[:min(8, len(sorted_overlap))]
+            
+            d_early_sum = 0.0
+            for h in early_overlap:
+                p1 = t1['points_dict'][h]
+                p2 = t2['points_dict'][h]
+                d = haversine_km(p1[0], p1[1], p2[0], p2[1])
+                d_early_sum += d
+            d_early_mean = d_early_sum / len(early_overlap)
+            
+            d_gen = haversine_km(t1['f_lat'], t1['f_lon'], t2['f_lat'], t2['f_lon'])
+            
+            if d_gen > 600.0 or d_early_mean > 500.0:
+                continue
+                
+            d_all_sum = sum(haversine_km(t1['points_dict'][h][0], t1['points_dict'][h][1],
+                                         t2['points_dict'][h][0], t2['points_dict'][h][1]) for h in sorted_overlap)
+            d_all_mean = d_all_sum / len(sorted_overlap)
+            
+            combined_dist = 0.40 * d_gen + 0.40 * d_early_mean + 0.20 * min(600.0, d_all_mean) + (dh * 2.0)
+            dist_matrix[i, j] = combined_dist
+            dist_matrix[j, i] = combined_dist
+            
+    condensed = squareform(dist_matrix, checks=False)
+    # Average linkage prevents chaining across disconnected geographic basins
+    Z = linkage(condensed, method='average')
+    labels = fcluster(Z, t=max_dist, criterion='distance')
+    
+    clusters = {}
+    for idx, lbl in enumerate(labels):
+        if lbl not in clusters:
+            clusters[lbl] = []
+        clusters[lbl].append(tracks[idx])
+        
+    validated_lpas = []
+    for lbl, cl_tracks in clusters.items():
+        # Member deduplication: Keep at most 1 representative trajectory per ensemble member
+        by_member = {}
+        for t in cl_tracks:
+            sid = t['sample']
+            if sid not in by_member:
+                by_member[sid] = []
+            by_member[sid].append(t)
+            
+        deduped_tracks = []
+        for sid, m_tracks in by_member.items():
+            if len(m_tracks) == 1:
+                deduped_tracks.append(m_tracks[0])
+            else:
+                best_t = max(m_tracks, key=lambda tr: (len(tr['points_dict']), tr['max_w']))
+                deduped_tracks.append(best_t)
+                
+        num_members = len(deduped_tracks)
+        if num_members < min_members:
+            continue
+            
+        avg_lat = float(np.mean([t['f_lat'] for t in deduped_tracks]))
+        avg_lon = float(np.mean([t['f_lon'] for t in deduped_tracks]))
+        avg_h = float(np.mean([t['h_min'] for t in deduped_tracks]))
+        max_w = float(max(t['max_w'] for t in deduped_tracks))
+        min_p = float(min(t['min_p'] for t in deduped_tracks))
+        
+        # Duration check
+        earliest_h = min(t['h_min'] for t in deduped_tracks)
+        latest_h = max(t['h_max'] for t in deduped_tracks)
+        duration = latest_h - earliest_h
+        if duration < min_duration:
+            continue
+            
+        # Intensity check
+        if (np.isnan(max_w) or max_w < min_wind_kt) and (np.isnan(min_p) or min_p > max_mslp_hpa):
+            continue
+            
+        # Spatial domain check (Lat 0-38N, Lon 100-180E)
+        if not (0.0 <= avg_lat <= 38.0 and 100.0 <= avg_lon <= 180.0):
+            continue
+            
+        # Check active Knack storms
+        matched_active = False
+        if knack_storms:
+            for k in knack_storms:
+                k_lat, k_lon = k['lat'], k['lon']
+                if not (np.isnan(k_lat) or np.isnan(k_lon)):
+                    d_k = haversine_km(avg_lat, avg_lon, k_lat, k_lon)
+                    if d_k < 450.0 and avg_h <= 18:
+                        matched_active = True
+                        break
+        if matched_active:
+            continue
+            
+        validated_lpas.append({
+            'cluster_label': lbl,
+            'tracks': deduped_tracks,
+            'members': num_members,
+            'max_w': max_w,
+            'min_p': min_p,
+            'duration': duration,
+            'avg_lat': avg_lat,
+            'avg_lon': avg_lon,
+            'avg_h': avg_h
+        })
+        
+    # Sort validated LPAs by member support, then intensity
+    validated_lpas.sort(key=lambda x: (x['members'], x['max_w'] if not np.isnan(x['max_w']) else 0), reverse=True)
+    
+    lpa_clusters_info = []
+    for idx, lpa in enumerate(validated_lpas):
         lpa_num = idx + 1
-        new_sg_id = f"monitoring_lpa{lpa_num:02d}"
-        display_name = f"LPA {lpa_num:02d} (UNDER MONITORING - {cand['members']} MEMBERS)"
+        sg_id = f"monitoring_lpa{lpa_num:02d}"
+        display_name = f"LPA {lpa_num:02d} (UNDER MONITORING - {lpa['members']} MEMBERS)"
         rep_id = f"LPA{lpa_num:02d}"
-        monitoring_map[cand['orig_group_id']] = {
-            'storm_group': new_sg_id,
+        
+        # Mark dataframe
+        for t in lpa['tracks']:
+            df_wp.loc[t['index'], 'storm_group'] = sg_id
+            df_wp.loc[t['index'], 'storm_group_name'] = display_name
+            df_wp.loc[t['index'], 'rep_track_id'] = rep_id
+            df_wp.loc[t['index'], 'is_monitoring'] = True
+            
+        lpa_clusters_info.append({
+            'storm_group': sg_id,
             'storm_group_name': display_name,
             'rep_track_id': rep_id,
-            'is_monitoring': True,
-            'member_count': cand['members']
-        }
-        print(f"Validated Under-Monitoring Candidate: {new_sg_id} ({display_name}) with {cand['members']} members, max wind {cand['max_wind']:.1f}kt, min MSLP {cand['min_mslp']:.1f}hPa, duration {cand['duration']:.0f}h")
+            'members': lpa['members'],
+            'tracks': lpa['tracks'],
+            'max_w': lpa['max_w'],
+            'min_p': lpa['min_p'],
+            'duration': lpa['duration']
+        })
+        print(f"Validated Under-Monitoring Candidate: {sg_id} ({display_name}) with {lpa['members']} members, max wind {lpa['max_w']:.1f}kt, min MSLP {lpa['min_p']:.1f}hPa, duration {lpa['duration']:.0f}h")
         
-    df['is_monitoring'] = False
-    for orig_id, m_info in monitoring_map.items():
-        mask = df['storm_group'] == orig_id
-        df.loc[mask, 'storm_group'] = m_info['storm_group']
-        df.loc[mask, 'storm_group_name'] = m_info['storm_group_name']
-        df.loc[mask, 'rep_track_id'] = m_info['rep_track_id']
-        df.loc[mask, 'is_monitoring'] = True
+    return df_wp, lpa_clusters_info
+
+def compute_clean_mean_track_df(deduped_tracks, min_member_ratio=0.25, min_members=4):
+    """
+    Computes a clean, smooth, physical ensemble mean track.
+    Includes forward trajectory continuity, survivor bias prevention, and outlier rejection.
+    """
+    total_members = len(deduped_tracks)
+    required_quorum = max(min_members, int(math.ceil(total_members * min_member_ratio)))
+    
+    hours_set = set()
+    for t in deduped_tracks:
+        hours_set.update(t['points_dict'].keys())
+    all_hours = sorted(hours_set)
+    
+    mean_points = []
+    prev_pos = None
+    prev_h = None
+    
+    for h in all_hours:
+        pts_at_h = []
+        winds_at_h = []
+        press_at_h = []
+        for t in deduped_tracks:
+            if h in t['points_dict']:
+                pt = t['points_dict'][h]
+                pts_at_h.append(pt)
+                if 'wind_dict' in t and h in t['wind_dict']:
+                    winds_at_h.append(t['wind_dict'][h])
+                if 'press_dict' in t and h in t['press_dict']:
+                    press_at_h.append(t['press_dict'][h])
+                    
+        # Check quorum
+        if len(pts_at_h) < required_quorum:
+            if mean_points:
+                # Quorum lost after genesis: consensus track ends cleanly
+                break
+            else:
+                continue
+                
+        # If we already have a previous position, filter members within consistent forward window
+        if prev_pos is not None:
+            dh = h - prev_h
+            max_step_dist = max(350.0, 75.0 * dh)
+            pts_near_prev = []
+            winds_near_prev = []
+            press_near_prev = []
+            for idx, p in enumerate(pts_at_h):
+                d_p = haversine_km(prev_pos[0], prev_pos[1], p[0], p[1])
+                if d_p <= max_step_dist:
+                    pts_near_prev.append(p)
+                    if idx < len(winds_at_h):
+                        winds_near_prev.append(winds_at_h[idx])
+                    if idx < len(press_at_h):
+                        press_near_prev.append(press_at_h[idx])
+                        
+            if len(pts_near_prev) < max(3, required_quorum // 2):
+                break
+            pts_at_h = pts_near_prev
+            winds_at_h = winds_near_prev
+            press_at_h = press_near_prev
+            
+        med_lat = np.median([p[0] for p in pts_at_h])
+        med_lon = np.median([p[1] for p in pts_at_h])
         
-    return df
+        # Filter spatial outliers (> 450km from step median)
+        valid_pts = []
+        valid_w = []
+        valid_p = []
+        for idx, p in enumerate(pts_at_h):
+            d_med = haversine_km(p[0], p[1], med_lat, med_lon)
+            if d_med <= 450.0:
+                valid_pts.append({'lat': p[0], 'lon': p[1]})
+                if idx < len(winds_at_h):
+                    valid_w.append(winds_at_h[idx])
+                if idx < len(press_at_h):
+                    valid_p.append(press_at_h[idx])
+                    
+        if len(valid_pts) < max(3, required_quorum // 2):
+            if mean_points:
+                break
+            continue
+            
+        geo_mean = mean_geo_center(valid_pts)
+        m_lat = geo_mean['lat']
+        m_lon = geo_mean['lon']
+        valid_w_clean = [w for w in valid_w if not np.isnan(w)]
+        valid_p_clean = [p for p in valid_p if not np.isnan(p)]
+        m_wind = float(np.median(valid_w_clean)) if valid_w_clean else float('nan')
+        m_press = float(np.median(valid_p_clean)) if valid_p_clean else float('nan')
+        
+        # Velocity and direction continuity check
+        if prev_pos is not None and prev_h is not None:
+            dh = h - prev_h
+            if dh > 0:
+                dist_km = haversine_km(prev_pos[0], prev_pos[1], m_lat, m_lon)
+                speed_kmh = dist_km / dh
+                if speed_kmh > 75.0:
+                    break
+                # Check for unnatural reverse jumps
+                if prev_pos[0] >= 24.0 and (m_lat - prev_pos[0]) < -1.2:
+                    break
+                    
+        prev_pos = (m_lat, m_lon)
+        prev_h = h
+        
+        mean_points.append({
+            'lead_time_hours': h,
+            'lat': m_lat,
+            'lon': m_lon,
+            'pressure': m_press,
+            'wind': m_wind,
+            'members': len(valid_pts)
+        })
+        
+    df_mean = pd.DataFrame(mean_points)
+    if len(df_mean) >= 4:
+        # Smooth slight jitter while preserving endpoints
+        lats = df_mean['lat'].values
+        lons = df_mean['lon'].values
+        smooth_lats = np.convolve(lats, [0.2, 0.6, 0.2], mode='same')
+        smooth_lons = np.convolve(lons, [0.2, 0.6, 0.2], mode='same')
+        smooth_lats[0], smooth_lats[-1] = lats[0], lats[-1]
+        smooth_lons[0], smooth_lons[-1] = lons[0], lons[-1]
+        df_mean['lat'] = smooth_lats
+        df_mean['lon'] = smooth_lons
+        
+    return df_mean
 
 def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, storm_name_override=None, color_by='wind'):
     """
     Generates a publication-quality spaghetti plot for a validated Under-Monitoring candidate disturbance.
     """
     df_storm = df_model[df_model['storm_group'] == storm_group_id].copy()
-    if color_by == 'wind':
-        df_storm['wind'] = df_storm['wind'] * 1.852
     if df_storm.empty:
         print(f"No tracks found for under-monitoring group {storm_group_id}")
         return
@@ -861,109 +703,74 @@ def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, st
         print(f"No valid coordinate positions for under-monitoring group {storm_group_id}")
         return
 
+    if color_by == 'wind':
+        df_storm['wind'] = df_storm['wind'] * 1.852
+
     init_time_raw = df_storm['init_time'].dropna().iloc[0] if not df_storm['init_time'].isna().all() else 'Unknown'
     init_time_str = format_init_time(init_time_raw)
 
     group_name = df_storm['storm_group_name'].dropna().iloc[0] if not df_storm['storm_group_name'].isna().all() else 'Unknown'
     storm_name = storm_name_override if storm_name_override else group_name
 
-    deterministic_data = df_storm[df_storm['sample'] == 0]
-    ensemble_data = df_storm[df_storm['sample'] > 0]
-    has_ensemble_tracks = ensemble_data['sample'].nunique() >= 2 if not ensemble_data.empty else False
+    # Member deduplication: Keep at most 1 representative trajectory per ensemble member
+    by_member = {}
+    for (t_id, s_val), g in df_storm.groupby(['track_id', 'sample']):
+        if s_val not in by_member:
+            by_member[s_val] = []
+        by_member[s_val].append((t_id, g))
+        
+    deduped_track_dfs = []
+    deduped_track_dicts = []
+    for s_val, t_list in by_member.items():
+        if len(t_list) == 1:
+            best_tid, best_df = t_list[0]
+        else:
+            best_tid, best_df = max(t_list, key=lambda x: (len(x[1]), x[1]['wind'].max()))
+        deduped_track_dfs.append(best_df)
+        
+        best_df_sorted = best_df.sort_values('lead_time_hours')
+        deduped_track_dicts.append({
+            'sample': s_val,
+            'points_dict': {r['lead_time_hours']: (r['lat'], r['lon']) for _, r in best_df_sorted.iterrows()},
+            'wind_dict': {r['lead_time_hours']: r['wind'] for _, r in best_df_sorted.iterrows()},
+            'press_dict': {r['lead_time_hours']: r['pressure'] for _, r in best_df_sorted.iterrows()}
+        })
+        
+    df_storm_deduped = pd.concat(deduped_track_dfs, ignore_index=True) if deduped_track_dfs else df_storm
     
-    if ensemble_data.empty:
-        unique_samples = df_storm['sample'].unique()
-        if len(unique_samples) > 1:
-            ensemble_data = df_storm[df_storm['sample'] != 0]
-            has_ensemble_tracks = ensemble_data['sample'].nunique() >= 2
-        else:
-            ensemble_data = df_storm
+    # Compute clean mean track
+    df_mean = compute_clean_mean_track_df(deduped_track_dicts, min_member_ratio=0.25, min_members=4)
+    has_ensemble_tracks = len(deduped_track_dfs) >= 2
 
-    ensemble_samples = ensemble_data['sample'].unique()
-    if len(ensemble_samples) > 100:
-        indices = np.linspace(0, len(ensemble_samples) - 1, 100, dtype=int)
-        selected_samples = [ensemble_samples[idx] for idx in indices]
-        ensemble_data = ensemble_data[ensemble_data['sample'].isin(selected_samples)]
-
-    # Compute Ensemble Mean Track
-    if has_ensemble_tracks:
-        calc_mean_df = ensemble_data[ensemble_data['sample'] != -1]
-        if calc_mean_df.empty:
-            calc_mean_df = ensemble_data
-
-        model_total_members = df_model[df_model['sample'] > 0]['sample'].nunique()
-        if model_total_members > 0:
-            effective_total = min(100, model_total_members)
-            required_support = max(1, effective_total // 2)
-        else:
-            required_support = 1
-
-        by_hour = {}
-        for _, row in calc_mean_df.iterrows():
-            h = row['lead_time_hours']
-            if np.isnan(row['lat']) or np.isnan(row['lon']):
-                continue
-            if h not in by_hour:
-                by_hour[h] = {'lats': [], 'lons': [], 'ps': [], 'winds': []}
-            by_hour[h]['lats'].append(row['lat'])
-            by_hour[h]['lons'].append(row['lon'])
-            by_hour[h]['ps'].append(row['pressure'])
-            by_hour[h]['winds'].append(row['wind'])
-
-        hours = sorted(by_hour.keys())
-        mean_points = []
-        for h in hours:
-            d = by_hour[h]
-            n = len(d['lats'])
-            if n < required_support:
-                continue
-
-            pts_at_hour = [{'lat': lat, 'lon': lon} for lat, lon in zip(d['lats'], d['lons'])]
-            geo_mean = mean_geo_center(pts_at_hour)
-            m_lat = geo_mean['lat']
-            m_lon = geo_mean['lon']
-            valid_winds = [w for w in d['winds'] if not np.isnan(w)]
-            m_wind = np.median(valid_winds) if valid_winds else np.nan
-            valid_ps = [p for p in d['ps'] if not np.isnan(p)]
-            m_press = np.median(valid_ps) if valid_ps else np.nan
-
-            mean_points.append({
-                'lead_time_hours': h,
-                'lat': m_lat,
-                'lon': m_lon,
-                'pressure': m_press,
-                'wind': m_wind
-            })
-
-        df_mean = pd.DataFrame(mean_points)
-        if not df_mean.empty:
-            df_mean = df_mean.sort_values('lead_time_hours')
-        else:
-            df_mean = pd.DataFrame(columns=['lead_time_hours', 'lat', 'lon', 'pressure', 'wind'])
-    else:
-        df_mean = pd.DataFrame(columns=['lead_time_hours', 'lat', 'lon', 'pressure', 'wind'])
-
-    # Determine boundaries
+    # Viewport determination focused on core track spread
+    lons_to_fit = []
+    lats_to_fit = []
+    for t_dict in deduped_track_dicts:
+        for h, (lat, lon) in t_dict['points_dict'].items():
+            if h <= 240:
+                lats_to_fit.append(lat)
+                lons_to_fit.append(lon)
+                
+    if not lons_to_fit:
+        lons_to_fit = list(df_storm_deduped['lon'].dropna().values)
+        lats_to_fit = list(df_storm_deduped['lat'].dropna().values)
+        
     if not df_mean.empty:
-        lons_to_fit = list(df_mean['lon'].dropna().values)
-        lats_to_fit = list(df_mean['lat'].dropna().values)
-    else:
-        lons_to_fit = list(df_storm['lon'].dropna().values)
-        lats_to_fit = list(df_storm['lat'].dropna().values)
+        lons_to_fit.extend(list(df_mean['lon'].dropna().values))
+        lats_to_fit.extend(list(df_mean['lat'].dropna().values))
         
-    if lons_to_fit and lats_to_fit:
-        min_lon, max_lon = min(lons_to_fit), max(lons_to_fit)
-        min_lat, max_lat = min(lats_to_fit), max(lats_to_fit)
-        
-        lon_pad = max(8.0, (max_lon - min_lon) * 0.3)
-        lat_pad = max(6.0, (max_lat - min_lat) * 0.3)
-        
-        lon_min = max(100.0, min_lon - lon_pad)
-        lon_max = min(180.0, max_lon + lon_pad)
-        lat_min = max(0.0, min_lat - lat_pad)
-        lat_max = min(50.0, max_lat + lat_pad)
-    else:
-        lon_min, lon_max, lat_min, lat_max = 105.0, 155.0, 0.0, 40.0
+    min_lon = float(np.percentile(lons_to_fit, 1))
+    max_lon = float(np.percentile(lons_to_fit, 99))
+    min_lat = float(np.percentile(lats_to_fit, 1))
+    max_lat = float(np.percentile(lats_to_fit, 99))
+    
+    lon_pad = max(5.0, (max_lon - min_lon) * 0.15)
+    lat_pad = max(4.0, (max_lat - min_lat) * 0.15)
+    
+    lon_min = max(108.0, min_lon - lon_pad)
+    lon_max = min(160.0, max_lon + lon_pad)
+    lat_min = max(5.0, min_lat - lat_pad)
+    lat_max = min(45.0, max_lat + lat_pad)
 
     lon_span = lon_max - lon_min
     lat_span = lat_max - lat_min
@@ -971,7 +778,7 @@ def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, st
 
     fig_width = 12
     fig_height = (fig_width - 2.5) / aspect + 1.8
-    fig_height = max(5.0, min(10.0, fig_height))
+    fig_height = max(6.0, min(10.0, fig_height))
     
     print(f"Generating under-monitoring spaghetti plot for {model_name} – {storm_name} (Color by: {color_by}) ...")
 
@@ -1003,14 +810,17 @@ def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, st
     except Exception as e:
         print(f"Warning: Province boundary overlay skipped: {e}")
 
-    ax.text(118, 13, 'West Philippine\nSea', fontsize=5, color='navy', weight='bold', transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3)
-    ax.text(130, 20, 'Philippine\nSea', fontsize=7, color='navy', weight='bold', transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3)
+    # Sea labels - bounds-checked
+    if lon_min + 1 <= 118 <= lon_max - 1 and lat_min + 1 <= 13 <= lat_max - 1:
+        ax.text(118, 13, 'West Philippine\nSea', fontsize=6, color='navy', weight='bold', transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3)
+    if lon_min + 1 <= 130 <= lon_max - 1 and lat_min + 1 <= 20 <= lat_max - 1:
+        ax.text(130, 20, 'Philippine\nSea', fontsize=7, color='navy', weight='bold', transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3)
 
     par_vertices = [
         (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
         (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
     ]
-    ax.add_patch(mpatches.Polygon(par_vertices, facecolor='none', edgecolor='#FF6B35', linestyle='-', linewidth=3.0, alpha=0.8, transform=ccrs.PlateCarree(), zorder=3, label='PAR'))
+    ax.add_patch(mpatches.Polygon(par_vertices, facecolor='none', edgecolor='#FF6B35', linestyle='-', linewidth=2.5, alpha=0.85, transform=ccrs.PlateCarree(), zorder=3, label='PAR'))
 
     gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
     gl.xlocator = plt.FixedLocator(np.arange(90, 181, 5))
@@ -1031,13 +841,10 @@ def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, st
         cmap = mcolors.ListedColormap(colors)
         norm = mcolors.BoundaryNorm(bounds, cmap.N, extend='both')
 
-    # Plot Ensemble Members
-    plotted_members = 0
-    ignored_members = 0
-    for (t_id, m_id), member_df in ensemble_data.groupby(['track_id', 'sample']):
+    # Plot Ensemble Member Lines
+    for member_df in deduped_track_dfs:
         member_df = member_df.sort_values('lead_time_hours')
-        if len(member_df) < 3:
-            ignored_members += 1
+        if len(member_df) < 2:
             continue
             
         lons = member_df['lon'].values
@@ -1066,52 +873,23 @@ def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, st
         if not segments:
             continue
             
-        lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=1.5, alpha=0.95, 
+        lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=1.5, alpha=0.85, 
                             capstyle='round', joinstyle='round', transform=ccrs.PlateCarree(), zorder=4)
         lc.set_array(np.array(seg_vals))
         ax.add_collection(lc)
-        plotted_members += 1
 
-    # Plot Deterministic Runs
-    if not deterministic_data.empty:
-        for t_id, det_df in deterministic_data.groupby('track_id'):
-            det_df = det_df.sort_values('lead_time_hours')
-            if len(det_df) >= 3:
-                lons = det_df['lon'].values
-                lats = det_df['lat'].values
-                winds = det_df['wind'].values
-                pressures = det_df['pressure'].values
-                
-                segments = []
-                seg_vals = []
-                for i in range(len(lons) - 1):
-                    if np.isnan(lons[i]) or np.isnan(lons[i+1]) or np.isnan(lats[i]) or np.isnan(lats[i+1]):
-                        continue
-                    if abs(lons[i+1] - lons[i]) > 180:
-                        continue
-                    segments.append([[lons[i], lats[i]], [lons[i+1], lats[i+1]]])
-                    if color_by == 'pressure':
-                        p1 = pressures[i] if not np.isnan(pressures[i]) else 1010.0
-                        p2 = pressures[i+1] if not np.isnan(pressures[i+1]) else 1010.0
-                        seg_vals.append((p1 + p2) / 2.0)
-                    else:
-                        w1 = winds[i] if not np.isnan(winds[i]) else 20.0
-                        w2 = winds[i+1] if not np.isnan(winds[i+1]) else 20.0
-                        seg_vals.append((w1 + w2) / 2.0)
-                    
-                if segments:
-                    lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=2.5, alpha=0.9, 
-                                        capstyle='round', joinstyle='round', transform=ccrs.PlateCarree(), zorder=5)
-                    lc.set_array(np.array(seg_vals))
-                    ax.add_collection(lc)
-
-    # Plot Ensemble Mean Track
-    if has_ensemble_tracks and len(df_mean) >= 2 and plotted_members >= 10:
+    # Plot Clean Ensemble Mean Track
+    if not df_mean.empty and len(df_mean) >= 2:
         m_lons = list(df_mean['lon'].values)
         m_lats = list(df_mean['lat'].values)
 
         ax.plot(m_lons, m_lats, color='white', linewidth=6.5, zorder=6, transform=ccrs.PlateCarree())
         ax.plot(m_lons, m_lats, color='black', linewidth=4.0, zorder=7, transform=ccrs.PlateCarree())
+
+        # Genesis Origin Marker (Centroid of earliest consensus points)
+        gen_lon = df_mean.iloc[0]['lon']
+        gen_lat = df_mean.iloc[0]['lat']
+        ax.plot(gen_lon, gen_lat, 'o', color='black', markersize=9, markeredgecolor='white', markeredgewidth=1.5, zorder=9, transform=ccrs.PlateCarree())
 
         last_labeled_pos = None
         for idx, row in df_mean.iterrows():
@@ -1120,35 +898,22 @@ def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, st
                 mx, my = row['lon'], row['lat']
                 if last_labeled_pos is not None:
                     dist = np.sqrt((mx - last_labeled_pos[0])**2 + (my - last_labeled_pos[1])**2)
-                    if dist < 3.0:
+                    if dist < 2.5:
                         continue
                         
                 last_labeled_pos = (mx, my)
                 if color_by == 'pressure':
                     mp = row['pressure']
-                    pressure_label = f"{int(round(mp))}mb" if not np.isnan(mp) else "N/A"
-                    label_text = f"{pressure_label}\n{hour}"
+                    label_text = f"{int(round(mp))}mb\n{hour}" if not np.isnan(mp) else f"{hour}h"
                 else:
                     mw = row['wind']
-                    wind_label = f"{int(round(mw))} km/h" if not np.isnan(mw) else "N/A"
-                    label_text = f"{wind_label}\n{hour}"
+                    label_text = f"{int(round(mw))} km/h\n{hour}" if not np.isnan(mw) else f"{hour}h"
                 
                 ax.plot(mx, my, marker='o', markerfacecolor='white', markeredgecolor='black', 
                         markersize=5, markeredgewidth=1.5, zorder=8, transform=ccrs.PlateCarree())
                 text = ax.text(mx + 0.3, my + 0.3, label_text, color='black', weight='bold',
                                fontsize=9, ha='left', va='bottom', transform=ccrs.PlateCarree(), zorder=10)
                 text.set_path_effects([path_effects.withStroke(linewidth=3, foreground='white')])
-
-    # Genesis Origin Marker (Centroid of earliest ensemble points)
-    if len(df_mean) >= 1:
-        gen_lon = df_mean.iloc[0]['lon']
-        gen_lat = df_mean.iloc[0]['lat']
-        ax.plot(gen_lon, gen_lat, 'o', color='black', markersize=10, markeredgecolor='white', markeredgewidth=1.5, zorder=9, transform=ccrs.PlateCarree())
-    elif not deterministic_data.empty:
-        det_first = deterministic_data.sort_values('lead_time_hours').dropna(subset=['lat', 'lon']).iloc[0]
-        gen_lon = det_first['lon']
-        gen_lat = det_first['lat']
-        ax.plot(gen_lon, gen_lat, 'o', color='black', markersize=10, markeredgecolor='white', markeredgewidth=1.5, zorder=9, transform=ccrs.PlateCarree())
 
     ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
 
@@ -1172,7 +937,7 @@ def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, st
     fig.text(0.08, 0.90, sub_text, fontsize=10.0, color='#475569', ha='left', va='bottom')
     
     fig.text(0.86, 0.94, f"Philippine Typhoon/Weather", fontsize=11, weight='bold', color='black', ha='right', va='bottom')
-    fig.text(0.86, 0.90, f"Data: {model_name} {'Ensemble' if has_ensemble_tracks else 'Deterministic'}", fontsize=10, color='#475569', ha='right', va='bottom')
+    fig.text(0.86, 0.90, f"Data: {model_name} Ensemble", fontsize=10, color='#475569', ha='right', va='bottom')
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, dpi=300, facecolor='white', edgecolor='none')
@@ -1232,20 +997,14 @@ def main():
         model = detect_model_name(f_path)
         total_members = wp_df['sample'].nunique()
 
-        # 1. Cluster all trajectories
-        wp_df = cluster_genesis_locations(wp_df)
-
-        # 2. Map existing active storms to exclude them
-        wp_df, _ = map_hdbscan_clusters_to_knack_storms(wp_df, knack_storms)
-
-        # 3. Validate and label legitimate under-monitoring candidate disturbances
-        wp_df = validate_and_label_monitoring_clusters(
+        # Cluster, validate, and identify LPA disturbance candidates
+        wp_df, lpa_clusters = cluster_and_validate_lpas(
             wp_df, 
             knack_storms, 
             total_members=total_members,
-            min_members_abs=args.min_members,
+            min_members=args.min_members,
             min_wind_kt=args.min_wind,
-            min_duration_hours=args.min_duration
+            min_duration=args.min_duration
         )
 
         monitoring_df = wp_df[wp_df['storm_group'].str.startswith('monitoring_')].copy()
