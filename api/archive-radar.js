@@ -117,10 +117,10 @@ export default async function handler(req, res) {
 
       console.log(`New Frame Detected: ${observed_at} (${observed_at_unix}). Archiving...`);
 
-      // 4. Download high-res PNG radar image from PAGASA
+      // 4. Download 2K Ultra-High-Definition PNG radar image from PAGASA
       const imagePath = "api/v1/radar-data-image";
       const imgRes = await fetch(
-        `https://panahon.gov.ph/api/v1/radar-data-image?token=${csrfToken}&t=${observed_at_unix}&mode=dbz&size=896&v=${tileVersion}`,
+        `https://panahon.gov.ph/api/v1/radar-data-image?token=${csrfToken}&t=${observed_at_unix}&mode=dbz&size=2048&v=${tileVersion}`,
         { headers: getSignedHeaders(imagePath) }
       );
 

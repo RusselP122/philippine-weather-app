@@ -34,25 +34,16 @@ import {
 } from "../data/radarConfig";
 
 // High-fidelity dynamic pixel color swapping helper via Web Worker
-const recolorRadarImageAsync = (imgElement, theme) => {
+const recolorRadarImageAsync = (imgElement, theme = "default") => {
   return new Promise((resolve) => {
     const canvas = document.createElement("canvas");
     canvas.width = imgElement.naturalWidth || imgElement.width || canvasWidth;
     canvas.height = imgElement.naturalHeight || imgElement.height || canvasHeight;
 
     const ctx = canvas.getContext("2d");
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     ctx.drawImage(imgElement, 0, 0);
-
-    if (theme === "default") {
-      try {
-        resolve(canvas.toDataURL("image/png"));
-      } catch (e) {
-        console.error("Canvas export error:", e);
-        resolve(imgElement.src);
-      }
-      return;
-    }
 
     try {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -1622,7 +1613,7 @@ const LiveRadar = () => {
               draggable="false"
               className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-10"
               style={{
-                imageRendering: "pixelated",
+                imageRendering: "auto",
                 transform: "translate(-2px, -4.5px)",
               }}
             />

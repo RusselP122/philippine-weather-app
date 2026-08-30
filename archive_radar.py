@@ -89,9 +89,9 @@ def archive_radar():
 
         print(f"New Frame Detected: {observed_at_str} (Unix: {observed_at_unix}). Archiving...")
 
-        # 4. Download high-res PNG radar image
+        # 4. Download 2K Ultra-High-Definition PNG radar image
         img_path = "api/v1/radar-data-image"
-        img_url = f"https://panahon.gov.ph/api/v1/radar-data-image?token={csrf_token}&t={observed_at_unix}&mode=dbz&size=896&v={tile_version}"
+        img_url = f"https://panahon.gov.ph/api/v1/radar-data-image?token={csrf_token}&t={observed_at_unix}&mode=dbz&size=2048&v={tile_version}"
         try:
             img_res = session.get(img_url, headers=get_signed_headers(session, api_sig_secret, csrf_token, img_path), timeout=20)
             img_res.raise_for_status()
