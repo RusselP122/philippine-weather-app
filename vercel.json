@@ -6,10 +6,6 @@
             "destination": "https://data.garbinwx.org/api/earthquakes.json"
         },
         {
-            "source": "/api/cap-alerts",
-            "destination": "https://www.panahon.gov.ph/api/v1/cap-alerts?token=sH2S6zIL6jKA7lgffdgyI3kGTZgPjGdiHCsIocAW"
-        },
-        {
             "source": "/api/ogimet/:path*",
             "destination": "http://www.ogimet.com/cgi-bin/:path*"
         },

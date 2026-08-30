@@ -7,8 +7,11 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from dateutil import parser
 import re
+import hmac
+import hashlib
+import time
+import secrets
 
-API_URL = "https://www.panahon.gov.ph/api/v1/cap-alerts?token=sH2S6zIL6jKA7lgffdgyI3kGTZgPjGdiHCsIocAW"
 GEOJSON_PATH = "public/data/ph_provinces.json"
 OUTPUT_PATH = "public/facebook_alert_post.png"
 
@@ -40,9 +43,53 @@ def normalize_provinces(provinces_data):
     return []
 
 def get_alerts():
-    response = requests.get(API_URL)
-    response.raise_for_status()
-    data = response.json()
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://panahon.gov.ph/",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "X-Requested-With": "XMLHttpRequest",
+    })
+
+    try:
+        home = session.get("https://panahon.gov.ph/", timeout=10)
+        csrf_match = re.search(r'<meta name="csrf-token" content="([^"]+)"', home.text)
+        api_sig_match = re.search(r'<meta name="api-sig" content="([^"]+)"', home.text)
+        
+        csrf_token = csrf_match.group(1) if csrf_match else None
+        api_sig_secret = api_sig_match.group(1) if api_sig_match else None
+
+        if not csrf_token or not api_sig_secret:
+            raise ValueError("Could not extract tokens from PANaHON portal")
+
+        method = "GET"
+        pathname = "api/v1/cap-alerts"
+        ts = str(int(time.time()))
+        nonce = secrets.token_hex(16)
+
+        string_to_sign = f"{method}\n{pathname}\n{ts}\n{nonce}".encode("utf-8")
+        signature = hmac.new(api_sig_secret.encode("utf-8"), string_to_sign, hashlib.sha256).hexdigest()
+
+        headers = {
+            "X-Ts": ts,
+            "X-Nonce": nonce,
+            "X-Sig": signature,
+            "X-CSRF-TOKEN": csrf_token,
+            "Referer": "https://panahon.gov.ph/",
+            "Origin": "https://panahon.gov.ph"
+        }
+
+        url = f"https://panahon.gov.ph/api/v1/cap-alerts?token={csrf_token}"
+        response = session.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as e:
+        print(f"Warning: Failed to fetch live alerts ({e}). Falling back to cached cap_alerts.json if available.")
+        if os.path.exists("public/data/cap_alerts.json"):
+            with open("public/data/cap_alerts.json", "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = {"data": {"alert_data": []}}
     
     alerts = data.get('data', {}).get('alert_data', [])
     filtered_alerts = []

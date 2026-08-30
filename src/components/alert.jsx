@@ -938,10 +938,14 @@ const Alert = () => {
           : `${ALERTS_URL}?${cacheBust}`;
 
         const resp = await fetch(url);
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}`);
+        let json = null;
+        if (resp.ok) {
+          try {
+            json = await resp.json();
+          } catch (e) {
+            console.warn("Failed to parse alerts response as JSON:", e);
+          }
         }
-        const json = await resp.json();
         if (cancelled) return;
 
         const data =
@@ -1619,7 +1623,7 @@ const Alert = () => {
             </g>
 
             {/* Uncolored Lake overlays to cover warning colors on Laguna de Bay and Taal Volcano */}
-            <g pointer-events="none">
+            <g pointerEvents="none">
               {mapData.lagunaDeBayPath && (
                 <path d={mapData.lagunaDeBayPath} fill="#020617" stroke="rgba(15, 23, 42, 0.4)" strokeWidth={0.8} />
               )}

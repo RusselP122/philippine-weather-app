@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
 export default async function handler(req, res) {
   // Simple token authorization check to prevent malicious spamming of the endpoint
@@ -24,34 +25,86 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Fetch current timeline from PAGASA
-    const timelineRes = await fetch(
-      "https://www.panahon.gov.ph/api/v1/radar/timeline?token=vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k&sublayer=hybrid-reflectivity",
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Referer": "https://www.panahon.gov.ph/"
-        }
+    // 1. Fetch gateway page to extract session cookies, csrf-token, and api-sig secret
+    const homeRes = await fetch("https://panahon.gov.ph/", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       }
+    });
+
+    if (!homeRes.ok) {
+      throw new Error(`Failed to contact PANaHON gateway: ${homeRes.status}`);
+    }
+
+    const html = await homeRes.text();
+
+    const cookies = [];
+    const rawCookies = homeRes.headers.getSetCookie 
+      ? homeRes.headers.getSetCookie() 
+      : (homeRes.headers.get("set-cookie") ? [homeRes.headers.get("set-cookie")] : []);
+    
+    for (const c of rawCookies) {
+      const part = c.split(";")[0];
+      if (part) cookies.push(part);
+    }
+    const cookieHeader = cookies.join("; ");
+
+    const csrfMatch = html.match(/<meta name="csrf-token" content="([^"]+)"/);
+    const apiSigMatch = html.match(/<meta name="api-sig" content="([^"]+)"/);
+
+    const csrfToken = csrfMatch ? csrfMatch[1] : "";
+    const apiSigSecret = apiSigMatch ? apiSigMatch[1] : "";
+
+    if (!csrfToken || !apiSigSecret) {
+      throw new Error("Could not extract security tokens from PANaHON portal");
+    }
+
+    // Helper to generate dynamic HMAC-SHA256 headers for any PANaHON endpoint
+    function getSignedHeaders(pathname) {
+      const ts = String(Math.floor(Date.now() / 1000));
+      const nonce = crypto.randomBytes(16).toString("hex");
+      const stringToSign = `GET\n${pathname}\n${ts}\n${nonce}`;
+      const sig = crypto.createHmac("sha256", apiSigSecret).update(stringToSign).digest("hex");
+
+      return {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": "https://panahon.gov.ph/",
+        "Origin": "https://panahon.gov.ph",
+        "Cookie": cookieHeader,
+        "X-CSRF-TOKEN": csrfToken,
+        "X-Ts": ts,
+        "X-Nonce": nonce,
+        "X-Sig": sig,
+      };
+    }
+
+    // 2. Fetch current timeline from PAGASA
+    const timelinePath = "api/v1/radar/timeline";
+    const timelineRes = await fetch(
+      `https://panahon.gov.ph/api/v1/radar/timeline?token=${csrfToken}&sublayer=mosaic-reflectivity`,
+      { headers: getSignedHeaders(timelinePath) }
     );
+
+    if (!timelineRes.ok) {
+      throw new Error(`PAGASA Timeline API returned HTTP ${timelineRes.status}`);
+    }
+
     const data = await timelineRes.json();
     if (!data.success || !data.data || !data.data.timeline) {
       return res.status(500).json({ error: "Failed to retrieve active timeline from PAGASA." });
     }
 
     const timeline = data.data.timeline;
+    const tileVersion = data.data.tile_version || 4;
     const archived = [];
 
-    // 2. Loop through frames and archive new ones
+    // 3. Loop through frames and archive new ones
     for (const frame of timeline) {
       const observed_at = frame.observed_at;
       const observed_at_unix = parseInt(frame.observed_at_unix, 10);
-      const image_url = frame.image_url;
-
-      // Extract PAGASA index parameter
-      const idMatch = image_url.match(/[&?]id=(\d+)/);
-      if (!idMatch) continue;
-      const pagasaIndex = idMatch[1];
 
       // Check if already exists in Supabase
       const { data: existing, error: dbError } = await supabase
@@ -62,24 +115,23 @@ export default async function handler(req, res) {
       if (dbError) throw dbError;
       if (existing && existing.length > 0) continue; // Already archived
 
-      console.log(`New Frame Detected: ${observed_at}. Archiving...`);
+      console.log(`New Frame Detected: ${observed_at} (${observed_at_unix}). Archiving...`);
 
-      // 3. Download the raw PNG image from PAGASA as an ArrayBuffer
+      // 4. Download high-res PNG radar image from PAGASA
+      const imagePath = "api/v1/radar-data-image";
       const imgRes = await fetch(
-        `https://www.panahon.gov.ph/api/v1/radar-image?token=vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k&sublayer=hybrid-reflectivity&index=${pagasaIndex}`,
-        {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "https://www.panahon.gov.ph/"
-          }
-        }
+        `https://panahon.gov.ph/api/v1/radar-data-image?token=${csrfToken}&t=${observed_at_unix}&mode=dbz&size=896&v=${tileVersion}`,
+        { headers: getSignedHeaders(imagePath) }
       );
-      if (!imgRes.ok) continue;
+
+      if (!imgRes.ok) {
+        console.warn(`Failed to download radar image for ${observed_at} (HTTP ${imgRes.status})`);
+        continue;
+      }
       
-      // Convert to ArrayBuffer which has maximum node serverless runtime compatibility
       const imgBuffer = await imgRes.arrayBuffer();
 
-      // 4. Upload image to Supabase Storage (public/radar-archives)
+      // 5. Upload image to Supabase Storage (public/radar-archives)
       const dateFolder = observed_at.split(" ")[0];
       const storagePath = `${dateFolder}/${observed_at_unix}.png`;
 
@@ -87,11 +139,10 @@ export default async function handler(req, res) {
         .from("radar-archives")
         .upload(storagePath, imgBuffer, {
           contentType: "image/png",
-          upsert: true // Handles duplicate uploads cleanly
+          upsert: true
         });
 
       if (uploadError) {
-        // If it's a duplicate error, the file is already uploaded, so we can ignore and write to database
         const errStr = JSON.stringify(uploadError);
         if (!errStr.includes("Duplicate") && !errStr.includes("already exists")) {
           console.error("Upload error:", uploadError);
@@ -99,14 +150,14 @@ export default async function handler(req, res) {
         }
       }
 
-      // 5. Retrieve the public URL of the uploaded image
+      // 6. Retrieve public URL of the uploaded image
       const { data: publicUrlData } = supabase.storage
         .from("radar-archives")
         .getPublicUrl(storagePath);
 
       const publicUrl = publicUrlData.publicUrl;
 
-      // 6. Insert metadata record into Database
+      // 7. Insert metadata record into Database
       const { error: insertError } = await supabase
         .from("radar_frames")
         .insert({

@@ -317,10 +317,14 @@ const Warning = () => {
           : `${ALERT_API}?${cacheBust}`;
 
         const resp = await fetch(url);
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}`);
+        let json = null;
+        if (resp.ok) {
+          try {
+            json = await resp.json();
+          } catch (e) {
+            console.warn("Failed to parse warnings response as JSON:", e);
+          }
         }
-        const json = await resp.json();
         if (cancelled) return;
 
         const data =
@@ -938,7 +942,7 @@ const Warning = () => {
               })}
 
               {/* Uncolored Overlays to cover warning colors in Laguna de Bay and Taal Volcano */}
-              <g pointer-events="none">
+              <g pointerEvents="none">
                 {mapData.lagunaDeBayPath && (
                   <path d={mapData.lagunaDeBayPath} fill="#020617" stroke="rgba(255, 255, 255, 0.1)" strokeWidth={0.6} />
                 )}

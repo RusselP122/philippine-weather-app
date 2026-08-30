@@ -6,6 +6,7 @@ import path from 'path';
 import { exec } from 'child_process';
 
 import handler from './api/fetch-gsmap.js';
+import capAlertsHandler from './api/cap-alerts.js';
 
 function vercelApiPlugin() {
   return {
@@ -27,6 +28,22 @@ function vercelApiPlugin() {
              res.end(JSON.stringify({error: e.message}));
          }
       });
+      server.middlewares.use('/api/cap-alerts', async (req, res, next) => {
+        const mockRes = {
+            setHeader: (name, value) => { res.setHeader(name, value); return mockRes; },
+            status: (code) => { res.statusCode = code; return mockRes; },
+            json: (data) => { 
+               res.setHeader('Content-Type', 'application/json'); 
+               res.end(JSON.stringify(data)); 
+            }
+        };
+        try {
+            await capAlertsHandler(req, mockRes);
+        } catch(e) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({error: e.message}));
+        }
+      });
     }
   }
 }
@@ -47,12 +64,6 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/earthquake-data/, '/api/earthquakes.json'),
-      },
-      '/api/cap-alerts': {
-        target: 'https://www.panahon.gov.ph',
-        changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/api\/cap-alerts/, '/api/v1/cap-alerts?token=sH2S6zIL6jKA7lgffdgyI3kGTZgPjGdiHCsIocAW'),
       },
       '/api/ogimet': {
         target: 'http://www.ogimet.com',
