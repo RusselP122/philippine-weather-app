@@ -3,13 +3,13 @@
   "storm_name": "TC 20W",
   "track_id": "WP202026",
   "latest": {
-    "lat": 33.3,
-    "lon": 167.3,
-    "pressure_hpa": 986.0,
-    "wind_kt": 45.0,
-    "wind_kmh": 83,
-    "movement": "NNW at 38.2 km/h (20.6 kt)",
-    "init_time": "2026-08-30 06:00",
+    "lat": 34.1,
+    "lon": 165.9,
+    "pressure_hpa": 993.0,
+    "wind_kt": 35.0,
+    "wind_kmh": 65,
+    "movement": "NW at 26.2 km/h (14.1 kt)",
+    "init_time": "2026-08-30 12:00",
     "category": "Tropical Storm"
   },
   "history": [
@@ -191,6 +191,15 @@
       "pressure_hpa": 986.0,
       "wind_kt": 45.0,
       "wind_kmh": 83,
+      "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-08-30 12:00",
+      "lat": 34.1,
+      "lon": 165.9,
+      "pressure_hpa": 993.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
       "category": "Tropical Storm"
     }
   ]
