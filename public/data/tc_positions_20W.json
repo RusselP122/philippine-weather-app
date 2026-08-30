@@ -3,14 +3,14 @@
   "storm_name": "TC 20W",
   "track_id": "WP202026",
   "latest": {
-    "lat": 27.7,
-    "lon": 169.2,
-    "pressure_hpa": 973.0,
-    "wind_kt": 64.0,
-    "wind_kmh": 119,
-    "movement": "NNE at 45.6 km/h (24.6 kt)",
-    "init_time": "2026-08-29 18:00",
-    "category": "Typhoon"
+    "lat": 31.3,
+    "lon": 167.9,
+    "pressure_hpa": 979.0,
+    "wind_kt": 60.0,
+    "wind_kmh": 111,
+    "movement": "ENE at 48.9 km/h (26.4 kt)",
+    "init_time": "2026-08-30 00:00",
+    "category": "Severe Tropical Storm"
   },
   "history": [
     {
@@ -141,39 +141,48 @@
     },
     {
       "cycle": "2026-08-29 00:00",
-      "lat": 22.2,
-      "lon": 167.8,
-      "pressure_hpa": 981.0,
-      "wind_kt": 64.0,
-      "wind_kmh": 119,
-      "category": "Typhoon"
+      "lat": 26.4,
+      "lon": 165.8,
+      "pressure_hpa": 990.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-29 06:00",
-      "lat": 23.9,
-      "lon": 168.2,
-      "pressure_hpa": 971.0,
-      "wind_kt": 74.0,
-      "wind_kmh": 137,
-      "category": "Typhoon"
+      "lat": 28.2,
+      "lon": 165.7,
+      "pressure_hpa": 991.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-29 12:00",
-      "lat": 25.3,
-      "lon": 168.6,
-      "pressure_hpa": 970.0,
-      "wind_kt": 74.0,
-      "wind_kmh": 137,
-      "category": "Typhoon"
+      "lat": 30.0,
+      "lon": 165.4,
+      "pressure_hpa": 990.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
+      "category": "Tropical Storm"
     },
     {
       "cycle": "2026-08-29 18:00",
-      "lat": 27.7,
-      "lon": 169.2,
-      "pressure_hpa": 973.0,
-      "wind_kt": 64.0,
-      "wind_kmh": 119,
-      "category": "Typhoon"
+      "lat": 30.7,
+      "lon": 164.9,
+      "pressure_hpa": 992.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-08-30 00:00",
+      "lat": 31.3,
+      "lon": 167.9,
+      "pressure_hpa": 979.0,
+      "wind_kt": 60.0,
+      "wind_kmh": 111,
+      "category": "Severe Tropical Storm"
     }
   ]
 }
