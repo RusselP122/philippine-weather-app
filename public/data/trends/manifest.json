@@ -1,17 +1,9 @@
 {
-  "base_5day_cycle": "2026-08-31 06:00",
+  "base_5day_cycle": "2026-08-31 12:00",
   "base_5day": [
     {
-      "id": "96W",
-      "local_id": 1,
-      "name": "Invest 96W",
-      "trackCount": 50,
-      "standard": "/data/trends/base_5day_96W_standard.png",
-      "wide": "/data/trends/base_5day_96W_wide.png"
-    },
-    {
       "id": "94W",
-      "local_id": 2,
+      "local_id": 1,
       "name": "Invest 94W",
       "trackCount": 50,
       "standard": "/data/trends/base_5day_94W_standard.png",
@@ -19,38 +11,46 @@
     },
     {
       "id": "17W",
-      "local_id": 3,
+      "local_id": 2,
       "name": "TC 17W",
-      "trackCount": 49,
+      "trackCount": 47,
       "standard": "/data/trends/base_5day_17W_standard.png",
       "wide": "/data/trends/base_5day_17W_wide.png"
-    }
-  ],
-  "base_15day_cycle": "2026-08-31 06:00",
-  "base_15day": [
+    },
     {
       "id": "96W",
-      "local_id": 1,
+      "local_id": 3,
       "name": "Invest 96W",
+      "trackCount": 35,
+      "standard": "/data/trends/base_5day_96W_standard.png",
+      "wide": "/data/trends/base_5day_96W_wide.png"
+    }
+  ],
+  "base_15day_cycle": "2026-08-31 12:00",
+  "base_15day": [
+    {
+      "id": "94W",
+      "local_id": 1,
+      "name": "Invest 94W",
       "trackCount": 50,
-      "standard": "/data/trends/base_15day_96W_standard.png",
-      "wide": "/data/trends/base_15day_96W_wide.png"
+      "standard": "/data/trends/base_15day_94W_standard.png",
+      "wide": "/data/trends/base_15day_94W_wide.png"
     },
     {
       "id": "17W",
       "local_id": 2,
       "name": "TC 17W",
-      "trackCount": 49,
+      "trackCount": 47,
       "standard": "/data/trends/base_15day_17W_standard.png",
       "wide": "/data/trends/base_15day_17W_wide.png"
     },
     {
-      "id": "94W",
+      "id": "96W",
       "local_id": 3,
-      "name": "Invest 94W",
-      "trackCount": 43,
-      "standard": "/data/trends/base_15day_94W_standard.png",
-      "wide": "/data/trends/base_15day_94W_wide.png"
+      "name": "Invest 96W",
+      "trackCount": 35,
+      "standard": "/data/trends/base_15day_96W_standard.png",
+      "wide": "/data/trends/base_15day_96W_wide.png"
     }
   ],
   "large_5day_cycle": "2026-08-31 00:00",
