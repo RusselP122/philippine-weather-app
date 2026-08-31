@@ -3,13 +3,13 @@
   "storm_name": "TC 21W",
   "track_id": "WP212026",
   "latest": {
-    "lat": 31.7,
-    "lon": 166.8,
+    "lat": 32.6,
+    "lon": 167.8,
     "pressure_hpa": 991.0,
     "wind_kt": 29.0,
     "wind_kmh": 54,
-    "movement": "NE at 16.8 km/h (9.1 kt)",
-    "init_time": "2026-08-30 18:00",
+    "movement": "NE at 22.9 km/h (12.4 kt)",
+    "init_time": "2026-08-31 00:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -161,6 +161,15 @@
       "cycle": "2026-08-30 18:00",
       "lat": 31.7,
       "lon": 166.8,
+      "pressure_hpa": 991.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-08-31 00:00",
+      "lat": 32.6,
+      "lon": 167.8,
       "pressure_hpa": 991.0,
       "wind_kt": 29.0,
       "wind_kmh": 54,
