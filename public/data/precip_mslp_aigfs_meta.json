@@ -1,8 +1,8 @@
 {
   "model": "NOAA AIGFS",
   "source": "NOAA NCEP NOMADS",
-  "generated_at": "2026-08-31 09:03 PM",
-  "run_time": "2026-08-31 12:00 UTC",
+  "generated_at": "2026-09-01 10:26 AM",
+  "run_time": "2026-09-01 06:00 UTC",
   "animation_frames": [
     "aigfs_precip_006",
     "aigfs_precip_012",
@@ -18,19 +18,6 @@
     "aigfs_precip_072",
     "aigfs_precip_078",
     "aigfs_precip_084",
-    "aigfs_precip_090",
-    "aigfs_precip_096",
-    "aigfs_precip_102",
-    "aigfs_precip_108",
-    "aigfs_precip_114",
-    "aigfs_precip_120",
-    "aigfs_precip_126",
-    "aigfs_precip_132",
-    "aigfs_precip_138",
-    "aigfs_precip_144",
-    "aigfs_precip_150",
-    "aigfs_precip_156",
-    "aigfs_precip_162",
-    "aigfs_precip_168"
+    "aigfs_precip_090"
   ]
 }
