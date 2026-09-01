@@ -1602,6 +1602,42 @@ def format_storm_title(storm):
     return f"{short_id}"
 
 
+def prepare_anchored_track(df, curr_lat, curr_lon, max_lead_time=120.0):
+    """
+    Filters track to standard 5-day horizon (<= 120h) and smoothly anchors
+    the initial point to the active storm center fix (curr_lat, curr_lon).
+    """
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return pd.DataFrame()
+        
+    sub_df = df[df['lead_time_hours'] <= max_lead_time].copy().sort_values('lead_time_hours').reset_index(drop=True)
+    if sub_df.empty:
+        return pd.DataFrame()
+        
+    t0_lat = float(sub_df.iloc[0]['lat'])
+    t0_lon = float(sub_df.iloc[0]['lon'])
+    first_dist = haversine_km(curr_lat, curr_lon, t0_lat, t0_lon)
+    
+    if first_dist <= 350.0:
+        d_lat = curr_lat - t0_lat
+        d_lon = curr_lon - t0_lon
+        taus = sub_df['lead_time_hours'].values.astype(float)
+        # Decay factor: 1.0 at T+0, decaying smoothly to 0.0 by T+48h
+        decay = np.clip(1.0 - (taus / 48.0), 0.0, 1.0)
+        sub_df['lat'] = sub_df['lat'] + d_lat * decay
+        sub_df['lon'] = sub_df['lon'] + d_lon * decay
+        
+        # If first lead time is > 0h (e.g. 6h), insert T+0 point at curr_lat, curr_lon
+        if sub_df.iloc[0]['lead_time_hours'] > 0:
+            row0 = sub_df.iloc[0].copy()
+            row0['lead_time_hours'] = 0.0
+            row0['lat'] = curr_lat
+            row0['lon'] = curr_lon
+            sub_df = pd.concat([pd.DataFrame([row0]), sub_df], ignore_index=True)
+            
+    return sub_df
+
+
 def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepath, init_time_str="Latest", track_inits=None):
     """
     Renders a broadcast-grade multi-agency & ensemble comparison forecast track map
@@ -1696,10 +1732,23 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     gl.top_labels = False
     gl.right_labels = False
     
-    # Determine adaptive bounding box extent
+    # 1. Prepare anchored 5-day tracks for all agencies and models
+    processed_agencies = {}
+    for name, df in agency_tracks.items():
+        anchored = prepare_anchored_track(df, curr_lat, curr_lon, max_lead_time=120.0)
+        if not anchored.empty:
+            processed_agencies[name] = anchored
+
+    processed_ensembles = {}
+    for name, df in ensemble_means.items():
+        anchored = prepare_anchored_track(df, curr_lat, curr_lon, max_lead_time=120.0)
+        if not anchored.empty:
+            processed_ensembles[name] = anchored
+
+    # Determine adaptive bounding box extent (bounded by 5-day forecast horizon)
     all_lats = [curr_lat]
     all_lons = [curr_lon]
-    for df in list(agency_tracks.values()) + list(ensemble_means.values()):
+    for df in list(processed_agencies.values()) + list(processed_ensembles.values()):
         if isinstance(df, pd.DataFrame) and not df.empty:
             all_lats.extend(df['lat'].dropna().tolist())
             all_lons.extend(df['lon'].dropna().tolist())
@@ -1712,13 +1761,15 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     
     # Plot Official Agency Tracks
     for name, color in AGENCY_COLORS.items():
-        df = agency_tracks.get(name)
+        df = processed_agencies.get(name)
         if df is None or df.empty:
             continue
-        lats = df['lat'].values
-        lons = df['lon'].values
-        hours = df['lead_time_hours'].values
-        
+        lats = df['lat'].dropna().values
+        lons = df['lon'].dropna().values
+        hours = df['lead_time_hours'].dropna().values
+        if len(lats) == 0 or len(lons) == 0:
+            continue
+            
         # Smooth line with dark halo
         ax.plot(
             lons, lats, color=color, linestyle='-', linewidth=2.4, label=name,
@@ -1741,13 +1792,15 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
                 
     # Plot Ensemble Mean Tracks
     for name, color in ENSEMBLE_COLORS.items():
-        df = ensemble_means.get(name)
+        df = processed_ensembles.get(name)
         if df is None or df.empty:
             continue
-        lats = df['lat'].values
-        lons = df['lon'].values
-        hours = df['lead_time_hours'].values
-        
+        lats = df['lat'].dropna().values
+        lons = df['lon'].dropna().values
+        hours = df['lead_time_hours'].dropna().values
+        if len(lats) == 0 or len(lons) == 0:
+            continue
+            
         ax.plot(
             lons, lats, color=color, linestyle='-', linewidth=2.0, label=name,
             transform=ccrs.PlateCarree(), zorder=8,
