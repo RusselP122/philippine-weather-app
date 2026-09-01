@@ -1,0 +1,25 @@
+{
+  "title": "AI Multi-Model Regional Rainfall Broadcast Maps",
+  "models_used": [
+    "NOAA AIGFS",
+    "ECMWF AIFS",
+    "WeatherNext 2"
+  ],
+  "generated_at": "2026-09-01 03:28 PM PHT",
+  "run_time": "2026-09-01 08:00 AM PHT",
+  "regions": [
+    "luzon",
+    "visayas",
+    "mindanao"
+  ],
+  "max_predicted_rain_3day_mm": 183.92902552561713,
+  "max_predicted_rain_5day_mm": 282.3133565447936,
+  "animation_frames": [
+    "ai_precip_broadcast_3day_luzon",
+    "ai_precip_broadcast_3day_visayas",
+    "ai_precip_broadcast_3day_mindanao",
+    "ai_precip_broadcast_5day_luzon",
+    "ai_precip_broadcast_5day_visayas",
+    "ai_precip_broadcast_5day_mindanao"
+  ]
+}
