@@ -1,16 +1,16 @@
 {
   "active": true,
-  "storm_name": "TC 22W (Invest 94W)",
+  "storm_name": "TC 22W",
   "track_id": "WP222026",
   "latest": {
-    "lat": 22.6,
-    "lon": 132.9,
+    "lat": 23.1,
+    "lon": 132.4,
     "pressure_hpa": 994.0,
-    "wind_kt": 29.0,
-    "wind_kmh": 54,
-    "movement": "NW at 14.0 km/h (7.6 kt)",
-    "init_time": "2026-09-02 00:00",
-    "category": "Tropical Depression"
+    "wind_kt": 35.0,
+    "wind_kmh": 65,
+    "movement": "NW at 12.6 km/h (6.8 kt)",
+    "init_time": "2026-09-02 06:00",
+    "category": "Tropical Storm"
   },
   "history": [
     {
@@ -147,6 +147,15 @@
       "wind_kt": 29.0,
       "wind_kmh": 54,
       "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-09-02 06:00",
+      "lat": 23.1,
+      "lon": 132.4,
+      "pressure_hpa": 994.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
     }
   ]
 }
