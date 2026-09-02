@@ -1766,7 +1766,6 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             continue
         lats = df['lat'].dropna().values
         lons = df['lon'].dropna().values
-        hours = df['lead_time_hours'].dropna().values
         if len(lats) == 0 or len(lons) == 0:
             continue
             
@@ -1776,19 +1775,6 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             transform=ccrs.PlateCarree(), zorder=10,
             path_effects=[path_effects.Stroke(linewidth=4.2, foreground=BG_DARK), path_effects.Normal()]
         )
-        
-        # Key waypoint markers
-        for h, la, lo in zip(hours, lats, lons):
-            if int(round(h)) in [24, 48, 72, 96, 120]:
-                ax.scatter(
-                    lo, la, color=color, edgecolor='#ffffff', linewidth=1.2, s=46,
-                    zorder=12, transform=ccrs.PlateCarree()
-                )
-                ax.text(
-                    lo + 0.25, la + 0.25, f"+{int(round(h))}h", color=TEXT_PRI, fontsize=7.2, weight='bold',
-                    transform=ccrs.PlateCarree(), zorder=13, clip_on=True,
-                    path_effects=[path_effects.withStroke(linewidth=2.5, foreground=BG_DARK)]
-                )
                 
     # Plot Ensemble Mean Tracks
     for name, color in ENSEMBLE_COLORS.items():
@@ -1797,7 +1783,6 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             continue
         lats = df['lat'].dropna().values
         lons = df['lon'].dropna().values
-        hours = df['lead_time_hours'].dropna().values
         if len(lats) == 0 or len(lons) == 0:
             continue
             
@@ -1806,13 +1791,6 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             transform=ccrs.PlateCarree(), zorder=8,
             path_effects=[path_effects.Stroke(linewidth=3.6, foreground=BG_DARK), path_effects.Normal()]
         )
-        
-        for h, la, lo in zip(hours, lats, lons):
-            if int(round(h)) in [24, 48, 72, 96, 120]:
-                ax.scatter(
-                    lo, la, color=color, marker='s', edgecolor='#ffffff', linewidth=1.0, s=34,
-                    zorder=9, transform=ccrs.PlateCarree()
-                )
                 
     # Draw initial storm center fix icon
     draw_current_storm_glyph(ax, curr_lon, curr_lat, color='#ffffff', size=130)
@@ -1840,7 +1818,6 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
         text_color = TEXT_PRI if is_active else TEXT_MUT
         
         panel_ax.plot([0.025, 0.065], [agency_y, agency_y], color=line_color, linestyle='-', linewidth=2.8, transform=panel_ax.transAxes)
-        panel_ax.scatter(0.045, agency_y, color=line_color, edgecolor='#ffffff' if is_active else 'none', s=24, zorder=3, transform=panel_ax.transAxes)
         panel_ax.text(0.08, agency_y + 0.03, ag_name, color=text_color, fontsize=8.8, weight='bold', transform=panel_ax.transAxes)
         run_str = track_inits.get(ag_name, 'Latest' if is_active else 'Not Available')
         panel_ax.text(0.08, agency_y - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=7.2, transform=panel_ax.transAxes)
@@ -1864,7 +1841,6 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             y_val = 0.68 - ((idx - 2) * 0.28)
             
         panel_ax.plot([x_start, x_start + 0.04], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
-        panel_ax.scatter(x_start + 0.02, y_val, color=line_color, marker='s', edgecolor='#ffffff' if is_active else 'none', s=20, zorder=3, transform=panel_ax.transAxes)
         panel_ax.text(x_text, y_val + 0.03, ens_name, color=text_color, fontsize=8.8, weight='bold', transform=panel_ax.transAxes)
         run_str = track_inits.get(ens_name, 'Latest' if is_active else 'Not Available')
         panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=7.2, transform=panel_ax.transAxes)
