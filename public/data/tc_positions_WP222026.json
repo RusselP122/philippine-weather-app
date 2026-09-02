@@ -4,12 +4,12 @@
   "track_id": "WP222026",
   "latest": {
     "lat": 22.0,
-    "lon": 132.7,
-    "pressure_hpa": 993.0,
+    "lon": 133.4,
+    "pressure_hpa": 994.0,
     "wind_kt": 35.0,
     "wind_kmh": 65,
-    "movement": "ESE at 22.6 km/h (12.2 kt)",
-    "init_time": "2026-09-01 12:00",
+    "movement": "E at 12.0 km/h (6.5 kt)",
+    "init_time": "2026-09-01 18:00",
     "category": "Tropical Storm"
   },
   "history": [
@@ -126,6 +126,15 @@
       "lat": 22.0,
       "lon": 132.7,
       "pressure_hpa": 993.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-09-01 18:00",
+      "lat": 22.0,
+      "lon": 133.4,
+      "pressure_hpa": 994.0,
       "wind_kt": 35.0,
       "wind_kmh": 65,
       "category": "Tropical Storm"
