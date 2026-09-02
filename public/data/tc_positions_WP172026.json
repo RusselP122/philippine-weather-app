@@ -3,13 +3,13 @@
   "storm_name": "TC 17W",
   "track_id": "WP172026",
   "latest": {
-    "lat": 21.4,
-    "lon": 116.3,
+    "lat": 22.1,
+    "lon": 116.7,
     "pressure_hpa": 994.0,
     "wind_kt": 29.0,
     "wind_kmh": 54,
-    "movement": "NE at 15.2 km/h (8.2 kt)",
-    "init_time": "2026-09-01 18:00",
+    "movement": "NNE at 14.7 km/h (7.9 kt)",
+    "init_time": "2026-09-02 00:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -440,6 +440,15 @@
       "cycle": "2026-09-01 18:00",
       "lat": 21.4,
       "lon": 116.3,
+      "pressure_hpa": 994.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-09-02 00:00",
+      "lat": 22.1,
+      "lon": 116.7,
       "pressure_hpa": 994.0,
       "wind_kt": 29.0,
       "wind_kmh": 54,
