@@ -45,7 +45,7 @@
       "wide": "/data/trends/base_15day_dist_20260902_06_5_wide.png"
     }
   ],
-  "large_5day_cycle": "2026-09-02 00:00",
+  "large_5day_cycle": "2026-09-02 06:00",
   "large_5day": [
     {
       "id": "22W",
@@ -59,20 +59,20 @@
       "id": "17W",
       "local_id": 2,
       "name": "TC 17W",
-      "trackCount": 1000,
+      "trackCount": 999,
       "standard": "/data/trends/large_5day_17W_standard.png",
       "wide": "/data/trends/large_5day_17W_wide.png"
     },
     {
-      "id": "dist_20260901_00_5",
-      "local_id": 4,
-      "name": "Disturbance 4",
-      "trackCount": 181,
-      "standard": "/data/trends/large_5day_dist_20260901_00_5_standard.png",
-      "wide": "/data/trends/large_5day_dist_20260901_00_5_wide.png"
+      "id": "dist_20260901_06_3",
+      "local_id": 3,
+      "name": "Disturbance 3",
+      "trackCount": 101,
+      "standard": "/data/trends/large_5day_dist_20260901_06_3_standard.png",
+      "wide": "/data/trends/large_5day_dist_20260901_06_3_wide.png"
     }
   ],
-  "large_15day_cycle": "2026-09-02 00:00",
+  "large_15day_cycle": "2026-09-02 06:00",
   "large_15day": [
     {
       "id": "22W",
@@ -86,33 +86,25 @@
       "id": "17W",
       "local_id": 2,
       "name": "TC 17W",
-      "trackCount": 1000,
+      "trackCount": 999,
       "standard": "/data/trends/large_15day_17W_standard.png",
       "wide": "/data/trends/large_15day_17W_wide.png"
     },
     {
-      "id": "dist_20260902_00_4",
-      "local_id": 4,
-      "name": "Disturbance 4",
-      "trackCount": 106,
-      "standard": "/data/trends/large_15day_dist_20260902_00_4_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260902_00_4_wide.png"
-    },
-    {
       "id": "dist_20260902_00_5",
-      "local_id": 5,
+      "local_id": 4,
       "name": "Disturbance 5",
-      "trackCount": 611,
+      "trackCount": 442,
       "standard": "/data/trends/large_15day_dist_20260902_00_5_standard.png",
       "wide": "/data/trends/large_15day_dist_20260902_00_5_wide.png"
     },
     {
-      "id": "dist_20260901_00_5",
+      "id": "dist_20260901_06_4",
       "local_id": 6,
       "name": "Disturbance 6",
-      "trackCount": 579,
-      "standard": "/data/trends/large_15day_dist_20260901_00_5_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260901_00_5_wide.png"
+      "trackCount": 734,
+      "standard": "/data/trends/large_15day_dist_20260901_06_4_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260901_06_4_wide.png"
     }
   ]
 }
