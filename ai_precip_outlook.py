@@ -94,7 +94,7 @@ BROADCAST_REGIONS = {
         "title": "MINDANAO",
         "extent": [120.02, 128.98, 5.2, 10.2],
         "cities": [
-            ("SURIGAO", 125.49, 9.79, (0.35, -0.15)),
+            ("SURIGAO", 125.49, 9.79, (-0.45, -0.45)),
             ("BUTUAN", 125.54, 8.95, (0.45, 0.05)),
             ("CAGAYAN DE ORO", 124.63, 8.48, (-0.55, 0.1)),
             ("ILIGAN", 124.24, 8.23, (-0.55, -0.1)),
@@ -532,8 +532,16 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
     start_str = init_dt_ph.strftime("%b %d") if init_dt_ph else "Start"
     end_str = (init_dt_ph + timedelta(days=days)).strftime("%b %d") if init_dt_ph else "End"
     
-    sub_title = f'NEXT {days} DAYS · {region_info["title"]} ({start_str} - {end_str})'
-    sub_pill = FancyBboxPatch((0.27, 0.892), 0.30, 0.034, boxstyle='round,pad=0.01,rounding_size=0.01',
+    if days == 1:
+        sub_title = f'TODAY · {region_info["title"]} ({start_str})'
+        pill_w = 0.28
+        pill_x = 0.28
+    else:
+        sub_title = f'NEXT {days} DAYS · {region_info["title"]} ({start_str} - {end_str})'
+        pill_w = 0.30
+        pill_x = 0.27
+
+    sub_pill = FancyBboxPatch((pill_x, 0.892), pill_w, 0.034, boxstyle='round,pad=0.01,rounding_size=0.01',
                              transform=fig.transFigure, facecolor='#0369a1', edgecolor='none', zorder=41)
     fig.patches.append(sub_pill)
     fig.text(0.42, 0.908, sub_title, fontsize=11, fontweight='bold', color='#ffffff', ha='center', va='center', zorder=42)
@@ -593,7 +601,77 @@ def main():
     valid_frames = []
 
     # ═══════════════════════════════════════════════════════════════════════
-    # 1. Process 3-Day (72-hr) Accumulation
+    # 1. Process Today (24-hr) Accumulation
+    # ═══════════════════════════════════════════════════════════════════════
+    print(f"\nProcessing Today (24-hr) Accumulation...")
+    
+    # AIGFS Today
+    aigfs_today_master = np.zeros_like(M_LATS)
+    if aigfs_url:
+        grib_file_24 = f"aigfs.t{aigfs_cycle}z.sfc.f024.grib2"
+        grib_url_24 = f"{aigfs_url}{grib_file_24}"
+        idx_url_24 = f"{grib_url_24}.idx"
+        print("Downloading NOAA AIGFS 0-1 day...")
+        tmp_path = download_aigfs_apcp(grib_url_24, idx_url_24, session, 1)
+        if tmp_path:
+            lats, lons, current_total = read_aigfs_apcp(tmp_path)
+            if current_total is not None:
+                aigfs_today_master = regrid_to_master(lats, lons, current_total)
+            if os.path.exists(tmp_path): os.remove(tmp_path)
+
+    # AIFS Today
+    aifs_today_master = np.zeros_like(M_LATS)
+    print("Downloading ECMWF AIFS 24h...")
+    lats, lons, current_total = get_aifs_tp(aifs_client, 24)
+    if current_total is not None:
+        aifs_today_master = regrid_to_master(lats, lons, current_total)
+
+    # WeatherNext 2 Today
+    wn2_today_master = np.zeros_like(M_LATS)
+    if wn2_ds is not None:
+        print("Extracting Google WeatherNext 2 0-24h...")
+        try:
+            precip_slice = wn2_ds['total_precipitation_6hr'].isel(time=slice(0, 4))
+            total_24h = (precip_slice.sum(dim='time') * 1000.0).values
+            total_24h = np.maximum(total_24h, 0)
+            if total_24h.ndim == 3:
+                total_24h = total_24h[0]
+            wn2_today_master = regrid_to_master(WN_LATS, WN_LONS, total_24h)
+        except Exception as e:
+            print(f"WeatherNext2 Today extraction error: {e}")
+
+    # Combine Today
+    valid_models_today = []
+    models_used_today = []
+    if np.nanmax(wn2_today_master) > 0:
+        valid_models_today.append(wn2_today_master)
+        models_used_today.append("WeatherNext 2")
+    if np.nanmax(aifs_today_master) > 0:
+        valid_models_today.append(aifs_today_master)
+        models_used_today.append("ECMWF AIFS")
+    if np.nanmax(aigfs_today_master) > 0:
+        valid_models_today.append(aigfs_today_master)
+        models_used_today.append("NOAA AIGFS")
+
+    consensus_today = np.mean(valid_models_today, axis=0) if valid_models_today else np.zeros_like(M_LATS)
+
+    # Generate Regional Zoom Maps (Today)
+    print("Plotting TV Broadcast Regional Zoom Maps (Today)...")
+    for reg_key in ["luzon", "visayas", "mindanao"]:
+        frame_id = f"ai_precip_broadcast_today_{reg_key}"
+        plot_broadcast_regional_map(
+            consensus_today,
+            frame_id,
+            init_dt,
+            region_key=reg_key,
+            days=1,
+            geoms_dict=geoms_dict,
+            masks=masks
+        )
+        valid_frames.append(frame_id)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 2. Process 3-Day (72-hr) Accumulation
     # ═══════════════════════════════════════════════════════════════════════
     print(f"\nProcessing 3-Day (72-hr) Accumulation...")
     
@@ -738,10 +816,12 @@ def main():
     
     meta = {
         "title": "AI Multi-Model Regional Rainfall Broadcast Maps",
-        "models_used": list(set(models_used_3day + models_used_5day)) if (models_used_3day or models_used_5day) else ["AI Models"],
+        "models_used": list(set(models_used_today + models_used_3day + models_used_5day)) if (models_used_today or models_used_3day or models_used_5day) else ["AI Models"],
         "generated_at": datetime.now(ph_tz).strftime("%Y-%m-%d %I:%M %p PHT"),
         "run_time": init_dt_ph.strftime("%Y-%m-%d %I:%M %p PHT") if init_dt_ph else "Unknown",
         "regions": ["luzon", "visayas", "mindanao"],
+        "periods": ["today", "3day", "5day"],
+        "max_predicted_rain_today_mm": float(np.nanmax(consensus_today)),
         "max_predicted_rain_3day_mm": float(np.nanmax(consensus_3day)),
         "max_predicted_rain_5day_mm": float(np.nanmax(consensus_5day)),
         "animation_frames": valid_frames

@@ -640,26 +640,86 @@ const CycloneMapLogic = ({
 
         marker.addTo(stormLayer);
 
+        // Helper to parse cycle strings ("YYYY-MM-DD HH:MM" or ISO) into UTC timestamp
+        const parseCycleTimestamp = (cycleStr) => {
+          if (!cycleStr) return null;
+          if (typeof cycleStr === "number") return cycleStr;
+          const cleanStr = String(cycleStr).trim();
+          const isoStr = cleanStr.includes("T")
+            ? (cleanStr.endsWith("Z") ? cleanStr : cleanStr + "Z")
+            : cleanStr.replace(" ", "T") + "Z";
+          const t = new Date(isoStr).getTime();
+          return isNaN(t) ? null : t;
+        };
+
         // Fetch and draw historical track line and coordinates from JSON files
         const longId = (storm.long_atcf_id || "").toUpperCase();
         const shortId = (storm.atcf_id || "").toUpperCase();
         const trackId = (longId || shortId).toUpperCase();
+        const upperStormName = (rawName || stormName || "").toUpperCase();
+        const currentStormTime = baseTime || Date.now();
+
+        // Check if this storm is an Invest or unnumbered LPA (which use recycled IDs and have temporary lifespans)
+        // versus a numbered/named tropical cyclone (e.g. 17W, 22W) which has a persistent multi-week history.
+        const isNumberedStorm =
+          /^(?:WP|AL|EP|CP|SH|IO)?(?:0[1-9]|[1-4]\d)[A-Z]?$/i.test(shortId) ||
+          /^[A-Z]{2}(?:0[1-9]|[1-4]\d)\d{4}$/i.test(longId);
+
+        const isInvest =
+          upperStormName.includes("INVEST") ||
+          /^9\d[A-Z]?$/i.test(shortId) ||
+          /^[A-Z]{2}9\d/i.test(longId);
+
+        const isLpaOrInvest = isInvest || (!isNumberedStorm && categoryInfo.abbrev === "LPA");
 
         const isStormMatch = (tData) => {
           if (!tData) return false;
           const tcTrackId = (tData.track_id || "").toUpperCase();
-          if (tcTrackId === longId || tcTrackId === shortId) return true;
-
-          const num1 = tcTrackId.match(/\d+/)?.[0];
-          const num2 = longId.match(/\d+/)?.[0] || shortId.match(/\d+/)?.[0];
-          if (num1 && num2 && num1 === num2) return true;
-
           const lastPt = tData.latest || (tData.history && tData.history[tData.history.length - 1]);
-          if (lastPt && typeof lastPt.lat === "number" && typeof lastPt.lon === "number") {
+          if (!lastPt) return false;
+
+          // For LPAs / Invests: Invest IDs (90W-99W) are recycled.
+          // Reject any Invest file whose latest fix is older than 48 hours or too far away (> 5 degrees)
+          if (isLpaOrInvest) {
+            const fileCycleStr = lastPt.init_time || lastPt.cycle;
+            const fileTime = parseCycleTimestamp(fileCycleStr);
+            if (fileTime && currentStormTime) {
+              const timeDiffHours = (currentStormTime - fileTime) / (1000 * 3600);
+              if (timeDiffHours > 48 || timeDiffHours < -24) {
+                return false; // Stale recycled Invest from weeks ago
+              }
+            }
+            if (typeof lastPt.lat === "number" && typeof lastPt.lon === "number") {
+              const dLat = Math.abs(lastPt.lat - latitude);
+              const dLon = Math.abs(lastPt.lon - longitude);
+              if (Math.hypot(dLat, dLon) > 5.0) {
+                return false; // Far away old Invest
+              }
+            }
+          }
+
+          // Exact ID Match (e.g. WP172026 or 17W)
+          const exactIdMatch = (longId && tcTrackId === longId) || (shortId && tcTrackId === shortId);
+          if (exactIdMatch) {
+            return true;
+          }
+
+          // Number Match (e.g. 17 in WP172026 vs 17W) - only for numbered storms, never for Invests
+          if (isNumberedStorm) {
+            const num1 = tcTrackId.match(/\d{1,2}/)?.[0];
+            const num2 = longId.match(/\d{1,2}/)?.[0] || shortId.match(/\d{1,2}/)?.[0];
+            if (num1 && num2 && num1 === num2) {
+              return true;
+            }
+          }
+
+          // Proximity Match for generic fallback (e.g. tc_positions_latest.json) - only for numbered storms
+          if (isNumberedStorm && typeof lastPt.lat === "number" && typeof lastPt.lon === "number") {
             const dLat = Math.abs(lastPt.lat - latitude);
             const dLon = Math.abs(lastPt.lon - longitude);
             if (dLat < 3.5 && dLon < 3.5) return true;
           }
+
           return false;
         };
 
@@ -667,7 +727,10 @@ const CycloneMapLogic = ({
           const endpoints = [];
           if (longId) endpoints.push(`/data/tc_positions_${longId}.json`);
           if (shortId && shortId !== longId) endpoints.push(`/data/tc_positions_${shortId}.json`);
-          endpoints.push(`/data/tc_positions_latest.json`);
+          // Only allow fallback to tc_positions_latest.json for numbered tropical cyclones, NEVER for LPAs/Invests!
+          if (isNumberedStorm) {
+            endpoints.push(`/data/tc_positions_latest.json`);
+          }
 
           for (const ep of endpoints) {
             try {
@@ -692,24 +755,101 @@ const CycloneMapLogic = ({
             const historyPoints = trackData.history || [];
             if (historyPoints.length === 0) return;
 
-            // Filter out history point if it overlaps/is too close to current ATCF position to prevent duplicate marker
-            const filteredHistory = historyPoints.filter(p => {
+            // Parse timestamps and sort points chronologically
+            const parsedPoints = historyPoints
+              .map(p => ({
+                ...p,
+                time: parseCycleTimestamp(p.cycle)
+              }))
+              .filter(p => typeof p.lat === "number" && typeof p.lon === "number" && !isNaN(p.lat) && !isNaN(p.lon))
+              .sort((a, b) => (a.time || 0) - (b.time || 0));
+
+            if (parsedPoints.length === 0) return;
+
+            // Only consider past points relative to active storm observation time
+            const validPastPoints = parsedPoints.filter(p => !p.time || p.time <= currentStormTime + 6 * 3600 * 1000);
+            if (validPastPoints.length === 0) return;
+
+            // For LPAs / Invests: verify continuity so a newly formed LPA doesn't connect to disconnected points
+            let trackPointsToUse = validPastPoints;
+            if (isLpaOrInvest) {
+              const continuousInvestHistory = [];
+              let prevLat = latitude;
+              let prevLon = longitude;
+              let prevTime = currentStormTime;
+
+              for (let i = validPastPoints.length - 1; i >= 0; i--) {
+                const pt = validPastPoints[i];
+                const dLat = Math.abs(pt.lat - prevLat);
+                const dLon = Math.abs(pt.lon - prevLon);
+                const dist = Math.hypot(dLat, dLon);
+                const timeGapHours = (pt.time && prevTime) ? Math.abs(prevTime - pt.time) / (1000 * 3600) : 6;
+
+                if (dist > 4.5 || timeGapHours > 24) {
+                  break;
+                }
+                continuousInvestHistory.unshift(pt);
+                prevLat = pt.lat;
+                prevLon = pt.lon;
+                if (pt.time) prevTime = pt.time;
+              }
+              trackPointsToUse = continuousInvestHistory;
+            }
+
+            // Filter out history points if they overlap/are too close to current ATCF position
+            const filteredHistory = trackPointsToUse.filter(p => {
               return Math.abs(p.lat - latitude) > 0.05 || Math.abs(p.lon - longitude) > 0.05;
             });
 
-            const latlngs = filteredHistory.map((p) => [p.lat, p.lon]);
-            // Append current real-time ATCF coordinate to connect the line seamlessly to current storm marker
-            latlngs.push([latitude, longitude]);
+            if (filteredHistory.length === 0) return;
 
-            // Draw polyline track
+            // Build continuous polyline segments ensuring no disjoint lines connect across large jumps (> 4.5°)
+            const trackSegments = [];
+            let currentSegment = [];
+
+            for (let i = 0; i < filteredHistory.length; i++) {
+              const pt = filteredHistory[i];
+              if (currentSegment.length === 0) {
+                currentSegment.push([pt.lat, pt.lon]);
+              } else {
+                const prev = currentSegment[currentSegment.length - 1];
+                const dLat = Math.abs(pt.lat - prev[0]);
+                const dLon = Math.abs(pt.lon - prev[1]);
+                if (Math.hypot(dLat, dLon) <= 4.5) {
+                  currentSegment.push([pt.lat, pt.lon]);
+                } else {
+                  if (currentSegment.length > 1) {
+                    trackSegments.push(currentSegment);
+                  }
+                  currentSegment = [[pt.lat, pt.lon]];
+                }
+              }
+            }
+
+            // Connect seamlessly to current real-time storm position if distance is reasonable (<= 4.0°)
+            if (currentSegment.length > 0) {
+              const last = currentSegment[currentSegment.length - 1];
+              const dLat = Math.abs(latitude - last[0]);
+              const dLon = Math.abs(longitude - last[1]);
+              if (Math.hypot(dLat, dLon) <= 4.0) {
+                currentSegment.push([latitude, longitude]);
+              }
+              if (currentSegment.length > 1) {
+                trackSegments.push(currentSegment);
+              }
+            }
+
+            // Draw polyline track for each continuous segment
             if (historyTrackGroupRef.current) {
-              L.polyline(latlngs, {
-                color: "#ffffff", // High-contrast white line for overlay
-                weight: 2,
-                opacity: 0.65,
-                dashArray: "6, 8",
-                pane: TRACKS_PANE,
-              }).addTo(historyTrackGroupRef.current);
+              trackSegments.forEach(seg => {
+                L.polyline(seg, {
+                  color: "#ffffff", // High-contrast white line for overlay
+                  weight: 2,
+                  opacity: 0.65,
+                  dashArray: "6, 8",
+                  pane: TRACKS_PANE,
+                }).addTo(historyTrackGroupRef.current);
+              });
             }
 
             // Draw category color-coded circles for historical coordinates
