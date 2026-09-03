@@ -15,13 +15,165 @@ import matplotlib.ticker as mticker
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import cartopy.io.img_tiles as cimgt
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
+import shapely
+from shapely.geometry import shape
+from shapely.validation import make_valid
+
+# ── Philippine Province Geometries Cache ─────────────────────────────────────
+_PROVINCE_GEOMS_CACHE = None
+
+def load_philippine_province_geometries():
+    """
+    Loads high-resolution Philippine province boundaries from public/data/ph_provinces.json
+    cached in memory for instantaneous rendering across frames.
+    """
+    global _PROVINCE_GEOMS_CACHE
+    if _PROVINCE_GEOMS_CACHE is not None:
+        return _PROVINCE_GEOMS_CACHE
+
+    geojson_paths = [
+        os.path.join(os.getcwd(), "public", "data", "ph_provinces.json"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "public", "data", "ph_provinces.json"),
+        "public/data/ph_provinces.json"
+    ]
+    found_path = next((p for p in geojson_paths if os.path.exists(p)), None)
+    if found_path:
+        try:
+            with open(found_path, "r", encoding="utf-8") as f:
+                geo_data = json.load(f)
+            _PROVINCE_GEOMS_CACHE = [make_valid(shape(feat["geometry"])) for feat in geo_data.get("features", [])]
+            return _PROVINCE_GEOMS_CACHE
+        except Exception as e:
+            print(f"Notice: Failed to load province boundaries: {e}")
+    _PROVINCE_GEOMS_CACHE = []
+    return _PROVINCE_GEOMS_CACHE
 
 # ── Shared Requests Session with Connection Pooling ─────────────────────────
 _HTTP_SESSION = requests.Session()
 _ADAPTER = requests.adapters.HTTPAdapter(pool_connections=30, pool_maxsize=30, max_retries=2)
 _HTTP_SESSION.mount('https://', _ADAPTER)
 _HTTP_SESSION.mount('http://', _ADAPTER)
+
+# ── 2026 Official PAGASA Name Roster (PAR Sequence) ──────────────────────────
+PAGASA_NAMES_2026 = [
+    "ADA", "BASYANG", "CALOY", "DOMENG", "ESTER",
+    "FRANCISCO", "GARDO", "HENRY", "INDAY", "JOSIE",
+    "KIYAPO", "LUIS", "MAYMAY", "NENENG", "OBET",
+    "PILANDOK", "QUEENIE", "ROSAL", "SAMUEL", "TOMAS",
+    "UMBERTO", "VENUS", "WALDO", "YAYANG", "ZENY"
+]
+
+def is_point_inside_par(lat, lon):
+    """
+    Checks if a geographic point (lat, lon) is within the Philippine Area of Responsibility (PAR).
+    PAR polygon vertices: (115, 5), (115, 15), (120, 21), (120, 25), (135, 25), (135, 5)
+    """
+    poly = [(115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0), (135.0, 25.0), (135.0, 5.0)]
+    n = len(poly)
+    inside = False
+    p1x, p1y = poly[0]
+    for i in range(n + 1):
+        p2x, p2y = poly[i % n]
+        if min(p1y, p2y) < lat <= max(p1y, p2y):
+            if lon <= max(p1x, p2x):
+                if p1y != p2y:
+                    xinters = (lat - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                if p1x == p2x or lon <= xinters:
+                    inside = not inside
+        p1x, p1y = p2x, p2y
+    return inside
+
+def get_storm_classification_label(wind_kt, is_invest=False):
+    """
+    Classifies tropical cyclone intensity (PAGASA / WMO Standard).
+    """
+    if is_invest or wind_kt <= 0:
+        return "INVEST"
+    if wind_kt < 34:
+        return "TROPICAL DEPRESSION"
+    elif wind_kt < 48:
+        return "TROPICAL STORM"
+    elif wind_kt < 64:
+        return "SEVERE TROPICAL STORM"
+    elif wind_kt < 130:
+        return "TYPHOON"
+    else:
+        return "SUPER TYPHOON"
+
+def format_system_display_name(storm_data):
+    """
+    Standardizes storm/system naming matching forecasttrack.py:
+    - Inside PAR with intl name: 'TROPICAL STORM OBET (KROVANH)'
+    - Inside PAR without intl name: 'TROPICAL DEPRESSION OBET (17W)'
+    - Outside PAR with intl name: 'TROPICAL STORM KROVANH (22W)'
+    - Invest: '97W INVEST'
+    Appends wind speed & central pressure: ' • 40 KT (74 KM/H) • 998 HPA'
+    """
+    if not storm_data:
+        return "WESTERN PACIFIC SYSTEM"
+
+    atcf_id = str(storm_data.get("atcf_id", "")).strip().upper()
+    raw_name = str(storm_data.get("storm_name", "")).strip().upper()
+    lat = float(storm_data.get("lat", 0.0))
+    lon = float(storm_data.get("lon", 0.0))
+    wind_kt = float(storm_data.get("wind_kt", 0.0))
+    pressure = float(storm_data.get("pressure_hpa", 1008.0))
+
+    inside_par = is_point_inside_par(lat, lon)
+
+    # Clean short ATCF ID (e.g. 17W, 22W, 97W)
+    m = re.search(r'(\d{2}[A-Z]?)', atcf_id)
+    short_id = m.group(1) if m else atcf_id
+    if short_id and not short_id.endswith('W') and not short_id.endswith('E') and not short_id.endswith('C'):
+        short_id += 'W'
+
+    nums = ''.join(filter(str.isdigit, short_id))
+    num_val = int(nums) if nums else 0
+    is_invest = (90 <= num_val <= 99) or "INVEST" in raw_name
+
+    # Generic or numerical placeholder names
+    ignored_names = [
+        "INVEST", "NONAME", "UNKNOWN", "STORM", "NULL", "NONE", "LPA", "LOW PRESSURE AREA", "",
+        "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN",
+        "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN", "FIFTEEN", "SIXTEEN", "SEVENTEEN",
+        "EIGHTEEN", "NINETEEN", "TWENTY", "TWENTY-ONE", "TWENTY-TWO"
+    ]
+    intl_name = raw_name.title() if (raw_name and raw_name not in ignored_names) else None
+
+    # Check for assigned PAGASA name when inside PAR
+    pagasa_name = storm_data.get("pagasa_name")
+    if not pagasa_name and inside_par and not is_invest:
+        if 1 <= num_val <= len(PAGASA_NAMES_2026):
+            pagasa_name = PAGASA_NAMES_2026[num_val - 1]
+
+    classification = get_storm_classification_label(wind_kt, is_invest=is_invest)
+
+    # Build primary system title
+    if is_invest:
+        system_title = f"{short_id} INVEST"
+    elif pagasa_name:
+        p_name = pagasa_name.upper()
+        if intl_name:
+            system_title = f"{classification} {p_name} ({intl_name.upper()})"
+        else:
+            system_title = f"{classification} {p_name} ({short_id})"
+    elif intl_name:
+        system_title = f"{classification} {intl_name.upper()} ({short_id})"
+    else:
+        system_title = f"{classification} {short_id}"
+
+    # Append wind speed and central pressure metrics
+    details = []
+    if wind_kt > 0:
+        kmh = int(wind_kt * 1.852)
+        details.append(f"{int(wind_kt)} KT ({kmh} KM/H)")
+    if 800 < pressure < 1040:
+        details.append(f"{int(pressure)} HPA")
+
+    if details:
+        return f"{system_title} • " + " • ".join(details)
+    return system_title
 
 # ── Dynamically Find Latest Available Satellite Timestamp ────────────────────
 def get_latest_available_satellite_time():
@@ -90,25 +242,137 @@ class ZoomEarthTiles(cimgt.GoogleTiles):
         seamless_ocean = Image.new('RGB', (256, 256), (11, 15, 20))
         return seamless_ocean, self.tileextent(tile), 'lower'
 
-# ── Dynamic Satellite Header Title Generator ─────────────────────────────────
-def get_satellite_header_title(dt_utc):
+# ── Fox Weather Broadcast Header Drawing Function ───────────────────────────
+def draw_fox_weather_header(img, dt_utc, storm_data=None, custom_title=None):
     """
-    Determines whether it is daytime (True Color) or nighttime (Shortwave IR)
-    in the Western Pacific based on solar time, and formats header in Philippine Standard Time (PHT, UTC+8).
+    Draws a TV broadcast-style top header matching the Fox Weather layout:
+    - Top navy container with 2-tier layout and rounded corners
+    - Top Tier: 'VISIBLE SATELLITE' (or 'INFRARED SATELLITE') + 'PHILIPPINE WEATHER' badge
+    - Bottom Tier: 'WED 9:50AM PHT' + System Name / Details (e.g. 'TROPICAL STORM KROVANH (22W) • 40 KT • 998 HPA')
     """
     pht_tz = datetime.timezone(datetime.timedelta(hours=8))
     dt_pht = dt_utc.astimezone(pht_tz)
 
+    w, h = img.size
+    draw = ImageDraw.Draw(img)
+
+    # Detect day vs night based on solar time in PHT
     hour_pht = dt_pht.hour + dt_pht.minute / 60.0
     is_daytime = (5.75 <= hour_pht < 18.25)
-    
-    if is_daytime:
-        mode_text = "Himawari-9 True Color (day)"
+
+    if custom_title:
+        title_text = custom_title.upper()
     else:
-        mode_text = "Himawari-9 Shortwave IR (night)"
-        
-    time_text = dt_pht.strftime("%I:%M %p PHT %b %d, %Y")
-    return f"{mode_text} at {time_text}"
+        title_text = "VISIBLE SATELLITE" if is_daytime else "INFRARED SATELLITE"
+
+    # Dynamic scaling based on image width
+    scale = w / 1200.0
+    pad_x = int(20 * scale)
+    pad_y = int(16 * scale)
+    bw = w - (pad_x * 2)
+    bh = int(74 * scale)
+    bx1, by1 = pad_x, pad_y
+    bx2, by2 = pad_x + bw, pad_y + bh
+    radius = max(4, int(6 * scale))
+
+    # 1. Main Navy Rounded Container Box
+    draw.rounded_rectangle(
+        [bx1, by1, bx2, by2],
+        radius=radius,
+        fill=(7, 24, 56),
+        outline=(255, 255, 255),
+        width=max(1, int(2 * scale))
+    )
+
+    # 2. Horizontal Divider Line between tiers
+    mid_y = by1 + int(43 * scale)
+    draw.line([(bx1 + 1, mid_y), (bx2 - 1, mid_y)], fill=(70, 105, 155), width=max(1, int(1 * scale)))
+
+    # Fonts
+    f_title_sz = max(14, int(24 * scale))
+    f_badge_sz = max(9, int(13 * scale))
+    f_sub_sz = max(9, int(13 * scale))
+
+    try:
+        font_title = ImageFont.truetype("arialbd.ttf", f_title_sz)
+        font_badge_main = ImageFont.truetype("arialbd.ttf", f_badge_sz)
+        font_badge_sub = ImageFont.truetype("arialbd.ttf", f_badge_sz)
+        font_sub = ImageFont.truetype("arialbd.ttf", f_sub_sz)
+    except Exception:
+        font_title = ImageFont.load_default()
+        font_badge_main = font_title
+        font_badge_sub = font_title
+        font_sub = font_title
+
+    # 3. Top Tier Left: Product Title ('VISIBLE SATELLITE' / 'INFRARED SATELLITE')
+    draw.text((bx1 + int(16 * scale), by1 + int(8 * scale)), title_text, fill=(255, 255, 255), font=font_title)
+
+    # 4. Top Tier Right: PHILIPPINE TYPHOON WEATHER Broadcast Logo Badge (Fox Weather style)
+    badge_h = int(28 * scale)
+    badge_y1 = by1 + int(7 * scale)
+    badge_y2 = badge_y1 + badge_h
+    badge_w = int(278 * scale)
+    badge_x2 = bx2 - int(12 * scale)
+    badge_x1 = badge_x2 - badge_w
+
+    # Outer white pill container
+    draw.rounded_rectangle(
+        [badge_x1, badge_y1, badge_x2, badge_y2],
+        radius=max(3, int(5 * scale)),
+        fill=(255, 255, 255),
+        outline=(255, 255, 255),
+        width=1
+    )
+
+    # Red inner box for 'WEATHER'
+    red_w = int(82 * scale)
+    red_x1 = badge_x2 - red_w
+    draw.rounded_rectangle(
+        [red_x1, badge_y1 + int(2 * scale), badge_x2 - int(2 * scale), badge_y2 - int(2 * scale)],
+        radius=max(2, int(4 * scale)),
+        fill=(220, 38, 38)
+    )
+
+    # Text inside broadcast badge
+    draw.text((badge_x1 + int(10 * scale), badge_y1 + int(6 * scale)), "PHILIPPINE TYPHOON", fill=(10, 25, 56), font=font_badge_main)
+    draw.text((red_x1 + int(8 * scale), badge_y1 + int(6 * scale)), "WEATHER", fill=(255, 255, 255), font=font_badge_sub)
+
+    # 5. Bottom Tier Left: Timestamp (e.g. WED 9:50AM PHT)
+    hr_str = dt_pht.strftime('%I').lstrip('0')
+    min_am_pm = dt_pht.strftime('%M%p')
+    day_str = dt_pht.strftime('%a').upper()
+    time_display = f"{day_str} {hr_str}:{min_am_pm} PHT"
+
+    time_x = bx1 + int(16 * scale)
+    time_y = mid_y + int(6 * scale)
+    draw.text((time_x, time_y), time_display, fill=(255, 255, 255), font=font_sub)
+
+    # Calculate width of timestamp
+    bbox = draw.textbbox((time_x, time_y), time_display, font=font_sub)
+    time_w = bbox[2] - bbox[0]
+
+    # Vertical Divider Line 1 (After Timestamp)
+    sep1_x = time_x + time_w + int(14 * scale)
+    draw.line([(sep1_x, mid_y + 1), (sep1_x, by2 - 1)], fill=(70, 105, 155), width=max(1, int(1 * scale)))
+
+    # 6. Bottom Tier Far Right: Data Source (underneath Philippine Weather badge)
+    source_name = storm_data.get("source", "JTWC") if storm_data else "JTWC"
+    source_text = f"DATA: {source_name}"
+    src_bbox = draw.textbbox((0, 0), source_text, font=font_sub)
+    src_w = src_bbox[2] - src_bbox[0]
+    src_x = bx2 - int(16 * scale) - src_w
+    draw.text((src_x, time_y), source_text, fill=(147, 197, 253), font=font_sub)
+
+    # Vertical Divider Line 2 (Before Data Source)
+    sep2_x = src_x - int(14 * scale)
+    draw.line([(sep2_x, mid_y + 1), (sep2_x, by2 - 1)], fill=(70, 105, 155), width=max(1, int(1 * scale)))
+
+    # 7. Bottom Tier Middle: System Name & Intensity Metrics (from forecasttrack.py)
+    system_text = format_system_display_name(storm_data)
+    sys_x = sep1_x + int(14 * scale)
+    draw.text((sys_x, time_y), system_text, fill=(255, 255, 255), font=font_sub)
+
+    return img
 
 # ── Helper to Clean Filename Strings ─────────────────────────────────────────
 def clean_filename_str(s):
@@ -222,27 +486,29 @@ def calculate_storm_focus_extent(c_lat, c_lon, lon_span=26.0, target_aspect=0.72
 def render_storm_frame(
     dt_utc,
     extent,
+    storm_data=None,
     figsize=(10.0, 7.5),
     dpi=120,
-    zoom_level=6
+    zoom_level=6,
+    custom_title=None
 ):
     """
-    Renders a single frame matching the Tropical Tidbits reference style:
-    - Top white header bar with left title (True Color day / Shortwave IR night in PHT)
-      and right title ('PHILIPPINE TYPHOON/ WEATHER')
-    - Black border with clean lat/lon tick labels (e.g. 20°N, 15°N, 125°E, 130°E)
-    - Yellow coastlines, country borders, and Philippine Area of Responsibility (PAR) line
-    - NO history or forecast lines
+    Renders a full-bleed satellite frame overlaid with the Fox Weather broadcast header:
+    - Full edge-to-edge satellite image (no white borders)
+    - Yellow coastlines and country borders
+    - Orange Philippine Area of Responsibility (PAR) line
+    - Subtle coordinate gridlines
+    - Floating Fox Weather broadcast header with System Name from forecasttrack.py
     """
     date_str = dt_utc.strftime('%Y-%m-%d')
     time_str = f"{dt_utc.hour:02d}{(dt_utc.minute // 10) * 10:02d}"
 
     tiler = ZoomEarthTiles(date_str=date_str, time_str=time_str)
 
-    fig = plt.figure(figsize=figsize, dpi=dpi, facecolor='white')
+    fig = plt.figure(figsize=figsize, dpi=dpi, facecolor='black')
 
-    # Position map area with margins for lat/lon tick labels and top header bar
-    ax_map = fig.add_axes([0.065, 0.055, 0.905, 0.885], projection=ccrs.PlateCarree())
+    # Full bleed map canvas (edge-to-edge)
+    ax_map = fig.add_axes([0.0, 0.0, 1.0, 1.0], projection=ccrs.PlateCarree())
     ax_map.set_extent(extent, crs=ccrs.PlateCarree())
 
     # 1. Overlay Zoom Earth satellite tiles
@@ -251,11 +517,24 @@ def render_storm_frame(
     except Exception:
         ax_map.set_facecolor('#0b192c')
 
-    # 2. Add Coastlines and Country Borders (Yellow)
-    ax_map.add_feature(cfeature.COASTLINE, linewidth=1.0, edgecolor='#FFE600', alpha=0.95)
+    # 2. Add Coastlines and Country Borders (High-visibility Yellow)
+    ax_map.add_feature(cfeature.COASTLINE, linewidth=1.1, edgecolor='#FFE600', alpha=0.95)
     ax_map.add_feature(cfeature.BORDERS, linewidth=0.8, edgecolor='#FFE600', linestyle='--', alpha=0.90)
 
-    # 3. Philippine Area of Responsibility (PAR) Boundary
+    # 3. Add Detailed Philippine Province Boundaries (from ph_provinces.json)
+    prov_geoms = load_philippine_province_geometries()
+    if prov_geoms:
+        ax_map.add_geometries(
+            prov_geoms,
+            crs=ccrs.PlateCarree(),
+            facecolor='none',
+            edgecolor='#FFE600',
+            linewidth=0.7,
+            linestyle='--',
+            alpha=0.85
+        )
+
+    # 4. Philippine Area of Responsibility (PAR) Boundary
     par_lons = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
     par_lats = [ 5.0,  15.0,  21.0,  25.0,  25.0,   5.0,   5.0]
     ax_map.plot(
@@ -263,42 +542,10 @@ def render_storm_frame(
         alpha=0.95, transform=ccrs.PlateCarree(), label='PAR Boundary'
     )
 
-    # 4. Lat/Lon Coordinate Gridlines and Ticks
-    gl = ax_map.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.55, linestyle='-')
-    gl.top_labels = False
-    gl.right_labels = False
+    # 5. Lat/Lon Coordinate Gridlines (Subtle over satellite)
+    gl = ax_map.gridlines(draw_labels=False, linewidth=0.5, color='white', alpha=0.25, linestyle='--')
     gl.xlocator = mticker.MultipleLocator(5.0)
     gl.ylocator = mticker.MultipleLocator(5.0)
-    gl.xlabel_style = {'size': 9.0, 'color': '#000000', 'weight': 'normal'}
-    gl.ylabel_style = {'size': 9.0, 'color': '#000000', 'weight': 'normal'}
-
-    # 5. Top Header Text
-    left_title = get_satellite_header_title(dt_utc)
-    right_title = "PHILIPPINE TYPHOON/ WEATHER"
-
-    # Header left: Dynamic satellite product title & PHT timestamp
-    fig.text(
-        0.065, 0.965,
-        left_title,
-        fontsize=10.5,
-        fontweight='bold',
-        color='#000000',
-        ha='left',
-        va='center',
-        fontfamily='sans-serif'
-    )
-
-    # Header right: Branding
-    fig.text(
-        0.970, 0.965,
-        right_title,
-        fontsize=10.5,
-        fontweight='bold',
-        color='#64748b',
-        ha='right',
-        va='center',
-        fontfamily='sans-serif'
-    )
 
     # Convert plot directly to PIL Image
     fig.canvas.draw()
@@ -306,12 +553,16 @@ def render_storm_frame(
     img = Image.frombuffer('RGBA', fig.canvas.get_width_height(), rgba_buffer, 'raw', 'RGBA', 0, 1).convert('RGB')
     plt.close(fig)
 
+    # 5. Composite Fox Weather broadcast header onto the satellite image with storm name
+    img = draw_fox_weather_header(img, dt_utc=dt_utc, storm_data=storm_data, custom_title=custom_title)
+
     return img
 
 # ── Generate Animated Storm GIF for a Specific Extent ───────────────────────
 def generate_single_storm_gif(
     output_path,
     extent,
+    storm_data=None,
     storm_label="Storm",
     timeframe_hours=6.0,
     interval_mins=20,
@@ -321,7 +572,7 @@ def generate_single_storm_gif(
     last_frame_pause_sec=1.5
 ):
     """
-    Renders an animated GIF loop for a given storm extent.
+    Renders an animated GIF loop for a given storm extent with the Fox Weather broadcast header.
     """
     print(f"\n--- Generating GIF for: {storm_label} ---")
     print(f"Timeframe: Past {timeframe_hours:.1f} hours | Interval: {interval_mins} mins | FPS: {fps}")
@@ -348,6 +599,7 @@ def generate_single_storm_gif(
         frame_img = render_storm_frame(
             dt_utc=t_utc,
             extent=extent,
+            storm_data=storm_data,
             figsize=(10.0, 7.5),
             dpi=dpi,
             zoom_level=zoom_level
@@ -385,18 +637,20 @@ def generate_single_storm_gif(
 def generate_single_storm_image(
     output_path,
     extent,
+    storm_data=None,
     storm_label="Storm",
     dpi=150,
     zoom_level=6
 ):
     """
-    Renders a single high-resolution image for a given storm extent.
+    Renders a single high-resolution image for a given storm extent with the Fox Weather broadcast header.
     """
     dt_utc = get_latest_available_satellite_time()
 
     img = render_storm_frame(
         dt_utc=dt_utc,
         extent=extent,
+        storm_data=storm_data,
         figsize=(10.0, 7.5),
         dpi=dpi,
         zoom_level=zoom_level
@@ -422,7 +676,7 @@ def process_storms(
 ):
     print("=" * 70)
     mode_str = "GIF Loop + Static PNG" if generate_both else ("GIF Loop" if generate_gif else "Static PNG")
-    print(f"Storm-Focused Satellite Generator ({mode_str})")
+    print(f"Storm-Focused Satellite Generator ({mode_str}) [Fox Weather Broadcast Theme]")
     print("=" * 70)
 
     # 1. Check if user specified custom coordinates
@@ -431,14 +685,15 @@ def process_storms(
         c_lon = float(center_lon)
         extent = calculate_storm_focus_extent(c_lat, c_lon, lon_span=lon_span)
         label = f"Custom_Center_{c_lat:.1f}N_{c_lon:.1f}E"
+        custom_storm = {"atcf_id": "CUSTOM", "storm_name": "CUSTOM TARGET", "lat": c_lat, "lon": c_lon, "wind_kt": 0}
         
         if generate_both or not generate_gif:
             out_png = output_custom.replace(".gif", ".png") if output_custom else f"storm_focused_{label}.png"
-            generate_single_storm_image(out_png, extent, storm_label=label, dpi=dpi)
+            generate_single_storm_image(out_png, extent, storm_data=custom_storm, storm_label=label, dpi=dpi)
         if generate_both or generate_gif:
             out_gif = output_custom.replace(".png", ".gif") if output_custom else f"storm_focused_{label}.gif"
             generate_single_storm_gif(
-                out_gif, extent, storm_label=label,
+                out_gif, extent, storm_data=custom_storm, storm_label=label,
                 timeframe_hours=timeframe_hours, interval_mins=interval_mins, fps=fps, dpi=dpi
             )
         return
@@ -452,7 +707,8 @@ def process_storms(
             "storm_name": "WESTERN PACIFIC",
             "lat": 14.0,
             "lon": 135.0,
-            "wind_kt": 30.0
+            "wind_kt": 30.0,
+            "pressure_hpa": 1004.0
         }]
 
     # 3. Filter target storm if user passed --storm
@@ -499,7 +755,7 @@ def process_storms(
             else:
                 png_file = f"storm_focused_{clean_id}.png"
 
-            generate_single_storm_image(png_file, extent, storm_label=label, dpi=dpi)
+            generate_single_storm_image(png_file, extent, storm_data=st, storm_label=label, dpi=dpi)
             generated_pngs.append(png_file)
 
             if idx == 0 and png_file != "storm_focused_satellite.png":
@@ -519,6 +775,7 @@ def process_storms(
             generate_single_storm_gif(
                 gif_file,
                 extent,
+                storm_data=st,
                 storm_label=label,
                 timeframe_hours=timeframe_hours,
                 interval_mins=interval_mins,
@@ -548,7 +805,7 @@ def process_storms(
 
 # ── CLI Entry Point ──────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="Generate Storm-Focused Satellite Maps & Animated GIF Loops for All Active Storms")
+    parser = argparse.ArgumentParser(description="Generate Storm-Focused Satellite Maps & Animated GIF Loops (Fox Weather Theme)")
     parser.add_argument("--png-only", action="store_true", help="Generate only static PNG images without GIF loops")
     parser.add_argument("--gif-only", action="store_true", help="Generate only animated GIF loops without PNG images")
     parser.add_argument("--gif", action="store_true", help="Generate animated satellite GIF loops")

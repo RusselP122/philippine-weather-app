@@ -3,6 +3,7 @@ import sys
 import math
 import json
 import io
+import re
 import argparse
 import datetime
 import requests
@@ -14,7 +15,39 @@ import matplotlib.ticker as mticker
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import cartopy.io.img_tiles as cimgt
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
+import shapely
+from shapely.geometry import shape
+from shapely.validation import make_valid
+
+# ── Philippine Province Geometries Cache ─────────────────────────────────────
+_PROVINCE_GEOMS_CACHE = None
+
+def load_philippine_province_geometries():
+    """
+    Loads high-resolution Philippine province boundaries from public/data/ph_provinces.json
+    cached in memory for instantaneous rendering across frames.
+    """
+    global _PROVINCE_GEOMS_CACHE
+    if _PROVINCE_GEOMS_CACHE is not None:
+        return _PROVINCE_GEOMS_CACHE
+
+    geojson_paths = [
+        os.path.join(os.getcwd(), "public", "data", "ph_provinces.json"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "public", "data", "ph_provinces.json"),
+        "public/data/ph_provinces.json"
+    ]
+    found_path = next((p for p in geojson_paths if os.path.exists(p)), None)
+    if found_path:
+        try:
+            with open(found_path, "r", encoding="utf-8") as f:
+                geo_data = json.load(f)
+            _PROVINCE_GEOMS_CACHE = [make_valid(shape(feat["geometry"])) for feat in geo_data.get("features", [])]
+            return _PROVINCE_GEOMS_CACHE
+        except Exception as e:
+            print(f"Notice: Failed to load province boundaries: {e}")
+    _PROVINCE_GEOMS_CACHE = []
+    return _PROVINCE_GEOMS_CACHE
 
 # ── Shared Requests Session with Connection Pooling ─────────────────────────
 _HTTP_SESSION = requests.Session()
@@ -24,10 +57,6 @@ _HTTP_SESSION.mount('http://', _ADAPTER)
 
 # ── Dynamically Find Latest Available Satellite Timestamp ────────────────────
 def get_latest_available_satellite_time():
-    """
-    Dynamically checks Zoom Earth tile servers to find the freshest available
-    Himawari satellite scan timestamp (typically 15-25 minutes behind real time).
-    """
     now = datetime.datetime.now(datetime.timezone.utc)
     for offset_mins in [15, 20, 25, 30, 40, 50, 60]:
         t = now - datetime.timedelta(minutes=offset_mins)
@@ -52,9 +81,6 @@ def get_latest_available_satellite_time():
 
 # ── Custom Tile Provider for Zoom Earth Satellite Map Tiles ─────────────────
 class ZoomEarthTiles(cimgt.GoogleTiles):
-    """
-    Cartopy tile provider fetching satellite tiles from Zoom Earth Himawari-9 basemap.
-    """
     def __init__(self, date_str=None, time_str=None, session=None, **kwargs):
         super().__init__(**kwargs)
         if not date_str or not time_str:
@@ -89,25 +115,121 @@ class ZoomEarthTiles(cimgt.GoogleTiles):
         seamless_ocean = Image.new('RGB', (256, 256), (11, 15, 20))
         return seamless_ocean, self.tileextent(tile), 'lower'
 
-# ── Dynamic Satellite Header Title Generator ─────────────────────────────────
-def get_satellite_header_title(dt_utc):
+# ── Fox Weather Broadcast Header Drawing Function (National / PAR Satellite) ───
+def draw_fox_weather_header(img, dt_utc, custom_title=None):
     """
-    Determines whether it is daytime (True Color) or nighttime (Shortwave IR)
-    in the Philippines based on solar time, and formats header in Philippine Standard Time (PHT, UTC+8).
+    Draws a TV broadcast-style top header matching the Fox Weather layout for general satellite:
+    - Top navy container with 2-tier layout and rounded corners
+    - Top Tier: 'VISIBLE SATELLITE' (or 'INFRARED SATELLITE') + 'PHILIPPINE TYPHOON WEATHER' badge
+    - Bottom Tier: 'WED 9:50AM PHT' + 'PHILIPPINES & PAR REGION' + 'CLEAR [ === ] CLOUDS' scale
     """
     pht_tz = datetime.timezone(datetime.timedelta(hours=8))
     dt_pht = dt_utc.astimezone(pht_tz)
 
+    w, h = img.size
+    draw = ImageDraw.Draw(img)
+
     hour_pht = dt_pht.hour + dt_pht.minute / 60.0
     is_daytime = (5.75 <= hour_pht < 18.25)
-    
-    if is_daytime:
-        mode_text = "Himawari-9 True Color (day)"
+
+    if custom_title:
+        title_text = custom_title.upper()
     else:
-        mode_text = "Himawari-9 Shortwave IR (night)"
-        
-    time_text = dt_pht.strftime("%I:%M %p PHT %b %d, %Y")
-    return f"{mode_text} at {time_text}"
+        title_text = "VISIBLE SATELLITE" if is_daytime else "INFRARED SATELLITE"
+
+    scale = w / 1200.0
+    pad_x = int(20 * scale)
+    pad_y = int(16 * scale)
+    bw = w - (pad_x * 2)
+    bh = int(74 * scale)
+    bx1, by1 = pad_x, pad_y
+    bx2, by2 = pad_x + bw, pad_y + bh
+    radius = max(4, int(6 * scale))
+
+    # Main container
+    draw.rounded_rectangle([bx1, by1, bx2, by2], radius=radius, fill=(7, 24, 56), outline=(255, 255, 255), width=max(1, int(2 * scale)))
+    mid_y = by1 + int(43 * scale)
+    draw.line([(bx1 + 1, mid_y), (bx2 - 1, mid_y)], fill=(70, 105, 155), width=max(1, int(1 * scale)))
+
+    f_title_sz = max(14, int(24 * scale))
+    f_badge_sz = max(9, int(13 * scale))
+    f_sub_sz = max(9, int(13 * scale))
+
+    try:
+        font_title = ImageFont.truetype("arialbd.ttf", f_title_sz)
+        font_badge_main = ImageFont.truetype("arialbd.ttf", f_badge_sz)
+        font_badge_sub = ImageFont.truetype("arialbd.ttf", f_badge_sz)
+        font_sub = ImageFont.truetype("arialbd.ttf", f_sub_sz)
+    except Exception:
+        font_title = ImageFont.load_default()
+        font_badge_main = font_title
+        font_badge_sub = font_title
+        font_sub = font_title
+
+    # 1. Top tier left: Satellite Mode
+    draw.text((bx1 + int(16 * scale), by1 + int(8 * scale)), title_text, fill=(255, 255, 255), font=font_title)
+
+    # 2. Top tier right: Philippine Typhoon Weather badge
+    badge_h = int(28 * scale)
+    badge_y1 = by1 + int(7 * scale)
+    badge_y2 = badge_y1 + badge_h
+    badge_w = int(278 * scale)
+    badge_x2 = bx2 - int(12 * scale)
+    badge_x1 = badge_x2 - badge_w
+
+    draw.rounded_rectangle([badge_x1, badge_y1, badge_x2, badge_y2], radius=max(3, int(5 * scale)), fill=(255, 255, 255), outline=(255, 255, 255), width=1)
+    red_w = int(82 * scale)
+    red_x1 = badge_x2 - red_w
+    draw.rounded_rectangle([red_x1, badge_y1 + int(2 * scale), badge_x2 - int(2 * scale), badge_y2 - int(2 * scale)], radius=max(2, int(4 * scale)), fill=(220, 38, 38))
+    draw.text((badge_x1 + int(10 * scale), badge_y1 + int(6 * scale)), "PHILIPPINE TYPHOON", fill=(10, 25, 56), font=font_badge_main)
+    draw.text((red_x1 + int(8 * scale), badge_y1 + int(6 * scale)), "WEATHER", fill=(255, 255, 255), font=font_badge_sub)
+
+    # 3. Bottom tier left: Time in PHT
+    hr_str = dt_pht.strftime('%I').lstrip('0')
+    min_am_pm = dt_pht.strftime('%M%p')
+    day_str = dt_pht.strftime('%a').upper()
+    time_display = f"{day_str} {hr_str}:{min_am_pm} PHT"
+
+    time_x = bx1 + int(16 * scale)
+    time_y = mid_y + int(6 * scale)
+    draw.text((time_x, time_y), time_display, fill=(255, 255, 255), font=font_sub)
+    bbox = draw.textbbox((time_x, time_y), time_display, font=font_sub)
+    time_w = bbox[2] - bbox[0]
+
+    # Separator
+    sep_x = time_x + time_w + int(14 * scale)
+    draw.line([(sep_x, mid_y + 1), (sep_x, by2 - 1)], fill=(70, 105, 155), width=max(1, int(1 * scale)))
+
+    # 4. Bottom tier right: Fox Weather CLEAR [ gradient bar ] CLOUDS scale
+    legend_right = bx2 - int(16 * scale)
+    clouds_text = "CLOUDS"
+    c_bbox = draw.textbbox((0, 0), clouds_text, font=font_sub)
+    c_w = c_bbox[2] - c_bbox[0]
+    draw.text((legend_right - c_w, time_y), clouds_text, fill=(255, 255, 255), font=font_sub)
+
+    bar_w = int(110 * scale)
+    bar_h = max(4, int(7 * scale))
+    bar_right = legend_right - c_w - int(10 * scale)
+    bar_left = bar_right - bar_w
+    bar_top = time_y + int(5 * scale)
+
+    for step in range(bar_w):
+        ratio = step / float(bar_w)
+        c_val = int(25 + ratio * 230)
+        draw.line([(bar_left + step, bar_top), (bar_left + step, bar_top + bar_h)], fill=(c_val, c_val, c_val))
+
+    draw.rectangle([bar_left, bar_top, bar_right, bar_top + bar_h], outline=(100, 130, 175), width=1)
+
+    clear_text = "CLEAR"
+    cl_bbox = draw.textbbox((0, 0), clear_text, font=font_sub)
+    cl_w = cl_bbox[2] - cl_bbox[0]
+    draw.text((bar_left - cl_w - int(10 * scale), time_y), clear_text, fill=(255, 255, 255), font=font_sub)
+
+    # 5. Bottom tier middle: Domain coverage label
+    domain_text = "PHILIPPINES & PAR REGION"
+    draw.text((sep_x + int(14 * scale), time_y), domain_text, fill=(200, 220, 255), font=font_sub)
+
+    return img
 
 # ── Philippines / PAR Extent ────────────────────────────────────────────────
 def get_philippines_extent():
@@ -123,15 +245,16 @@ def render_philippines_frame(
     extent=None,
     figsize=(10.0, 7.5),
     dpi=120,
-    zoom_level=6
+    zoom_level=6,
+    custom_title=None
 ):
     """
-    Renders a single frame matching the Tropical Tidbits reference style:
-    - Top white header bar with left title (True Color day / Shortwave IR night in PHT)
-      and right title ('PHILIPPINE TYPHOON/ WEATHER')
-    - Black border with clean lat/lon tick labels (e.g. 5°N, 10°N, 15°N, 20°N, 115°E, 120°E, 125°E, 130°E, 135°E)
-    - Yellow coastlines, country borders, and Philippine Area of Responsibility (PAR) line
-    - NO history or forecast lines
+    Renders a full-bleed satellite frame overlaid with:
+    - Live Himawari satellite clouds
+    - Detailed Philippine Province Boundaries from ph_provinces.json
+    - High-visibility yellow coastlines
+    - Orange PAR line
+    - Fox Weather broadcast header with CLEAR/CLOUDS scale
     """
     if extent is None:
         extent = get_philippines_extent()
@@ -141,10 +264,10 @@ def render_philippines_frame(
 
     tiler = ZoomEarthTiles(date_str=date_str, time_str=time_str)
 
-    fig = plt.figure(figsize=figsize, dpi=dpi, facecolor='white')
+    fig = plt.figure(figsize=figsize, dpi=dpi, facecolor='black')
 
-    # Position map area with margins for lat/lon tick labels and top header bar
-    ax_map = fig.add_axes([0.065, 0.055, 0.905, 0.885], projection=ccrs.PlateCarree())
+    # Edge-to-edge full bleed map canvas
+    ax_map = fig.add_axes([0.0, 0.0, 1.0, 1.0], projection=ccrs.PlateCarree())
     ax_map.set_extent(extent, crs=ccrs.PlateCarree())
 
     # 1. Overlay Zoom Earth satellite tiles
@@ -154,10 +277,23 @@ def render_philippines_frame(
         ax_map.set_facecolor('#0b192c')
 
     # 2. Add Coastlines and Country Borders (Yellow)
-    ax_map.add_feature(cfeature.COASTLINE, linewidth=1.0, edgecolor='#FFE600', alpha=0.95)
+    ax_map.add_feature(cfeature.COASTLINE, linewidth=1.1, edgecolor='#FFE600', alpha=0.95)
     ax_map.add_feature(cfeature.BORDERS, linewidth=0.8, edgecolor='#FFE600', linestyle='--', alpha=0.90)
 
-    # 3. Philippine Area of Responsibility (PAR) Boundary
+    # 3. Add Detailed Philippine Province Boundaries (from ph_provinces.json)
+    prov_geoms = load_philippine_province_geometries()
+    if prov_geoms:
+        ax_map.add_geometries(
+            prov_geoms,
+            crs=ccrs.PlateCarree(),
+            facecolor='none',
+            edgecolor='#FFE600',
+            linewidth=0.7,
+            linestyle='--',
+            alpha=0.85
+        )
+
+    # 4. Philippine Area of Responsibility (PAR) Boundary
     par_lons = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
     par_lats = [ 5.0,  15.0,  21.0,  25.0,  25.0,   5.0,   5.0]
     ax_map.plot(
@@ -165,48 +301,19 @@ def render_philippines_frame(
         alpha=0.95, transform=ccrs.PlateCarree(), label='PAR Boundary'
     )
 
-    # 4. Lat/Lon Coordinate Gridlines and Ticks
-    gl = ax_map.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.55, linestyle='-')
-    gl.top_labels = False
-    gl.right_labels = False
+    # 5. Lat/Lon Coordinate Gridlines (Subtle)
+    gl = ax_map.gridlines(draw_labels=False, linewidth=0.5, color='white', alpha=0.25, linestyle='--')
     gl.xlocator = mticker.MultipleLocator(5.0)
     gl.ylocator = mticker.MultipleLocator(5.0)
-    gl.xlabel_style = {'size': 9.0, 'color': '#000000', 'weight': 'normal'}
-    gl.ylabel_style = {'size': 9.0, 'color': '#000000', 'weight': 'normal'}
-
-    # 5. Top Header Text
-    left_title = get_satellite_header_title(dt_utc)
-    right_title = "PHILIPPINE TYPHOON/ WEATHER"
-
-    # Header left: Dynamic satellite product title & PHT timestamp
-    fig.text(
-        0.065, 0.965,
-        left_title,
-        fontsize=10.5,
-        fontweight='bold',
-        color='#000000',
-        ha='left',
-        va='center',
-        fontfamily='sans-serif'
-    )
-
-    # Header right: Branding
-    fig.text(
-        0.970, 0.965,
-        right_title,
-        fontsize=10.5,
-        fontweight='bold',
-        color='#64748b',
-        ha='right',
-        va='center',
-        fontfamily='sans-serif'
-    )
 
     # Convert plot directly to PIL Image
     fig.canvas.draw()
     rgba_buffer = fig.canvas.buffer_rgba()
     img = Image.frombuffer('RGBA', fig.canvas.get_width_height(), rgba_buffer, 'raw', 'RGBA', 0, 1).convert('RGB')
     plt.close(fig)
+
+    # 6. Composite Fox Weather broadcast header
+    img = draw_fox_weather_header(img, dt_utc=dt_utc, custom_title=custom_title)
 
     return img
 
@@ -220,9 +327,6 @@ def generate_philippines_gif(
     zoom_level=6,
     last_frame_pause_sec=1.5
 ):
-    """
-    Renders an animated GIF loop of the Philippines & PAR region over a timeframe.
-    """
     print("=" * 70)
     print("Generating Philippines Satellite Loop GIF...")
     print(f"Timeframe: Past {timeframe_hours:.1f} hours | Interval: {interval_mins} mins | FPS: {fps}")
@@ -292,9 +396,6 @@ def generate_philippines_image(
     dpi=150,
     zoom_level=6
 ):
-    """
-    Renders a single high-resolution static image of the Philippines & PAR region.
-    """
     print("=" * 70)
     print("Generating Philippines Satellite Static Map...")
     print("=" * 70)
@@ -317,7 +418,7 @@ def generate_philippines_image(
 
 # ── CLI Entry Point ──────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="Generate Philippines-Focused Satellite Maps & Animated GIF Loops")
+    parser = argparse.ArgumentParser(description="Generate Philippines Satellite Maps & Animated GIF Loops with Province Boundaries")
     parser.add_argument("--png-only", action="store_true", help="Generate only static PNG image without GIF loop")
     parser.add_argument("--gif-only", action="store_true", help="Generate only animated GIF loop without PNG image")
     parser.add_argument("--gif", action="store_true", help="Generate animated satellite GIF loop")

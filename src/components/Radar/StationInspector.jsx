@@ -88,8 +88,8 @@ const StationInspector = ({
           
           <div className="flex flex-col gap-2">
             {[
-              { id: "custom", label: "Custom Smooth", colors: ["#075163", "#31ab12", "#dcbae6"] },
-              { id: "default", label: "Default PAGASA", colors: ["#1d4ed8", "#facc15", "#dc2626"] },
+              { id: "custom", label: "Custom Doppler", colors: ["#40de01", "#eeed01", "#ba0001", "#ff00ff"] },
+              { id: "default", label: "Standard Scale", colors: ["#40de01", "#fe8501", "#8b0189"] },
               { id: "storm", label: "Storm Core", colors: ["#1e3a8a", "#d97706", "#dc2626"] },
               { id: "vaporwave", label: "Vaporwave Neon", colors: ["#1c1533", "#00f0ff", "#ff007f"] },
               { id: "retro", label: "Retro Phosphor", colors: ["#041f0f", "#15803d", "#86efac"] }

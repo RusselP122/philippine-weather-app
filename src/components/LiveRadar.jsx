@@ -538,10 +538,10 @@ const LiveRadar = () => {
     if (theme === "retro") {
       return "linear-gradient(to top, #041f0f 0%, #14532d 20%, #15803d 40%, #22c55e 60%, #4ade80 80%, #86efac 100%)";
     }
-    if (theme === "custom") {
-      return "linear-gradient(to top, #075163 0%, #0a6f87 20%, #31ab12 40%, #f0ec00 60%, #ff0000 80%, #dcbae6 100%)";
+    if (theme === "custom" || theme === "default") {
+      return "linear-gradient(to top, #0e4200 0%, #40de01 15%, #eeed01 30%, #fe8501 45%, #ba0001 65%, #ff00ff 85%, #8b0189 100%)";
     }
-    return "linear-gradient(to top, #1d4ed8 0%, #059669 20%, #facc15 40%, #f97316 60%, #dc2626 80%, #d01cc3 100%)";
+    return "linear-gradient(to top, #0e4200 0%, #40de01 15%, #eeed01 30%, #fe8501 45%, #ba0001 65%, #ff00ff 85%, #8b0189 100%)";
   };
 
   useEffect(() => {
@@ -935,9 +935,9 @@ const LiveRadar = () => {
     ctx.stroke();
 
     // 3. Define color stops based on theme
-    let colors = ["#1d4ed8", "#059669", "#facc15", "#f97316", "#dc2626", "#d01cc3"]; // default
+    let colors = ["#0e4200", "#40de01", "#eeed01", "#fe8501", "#ba0001", "#ff00ff", "#8b0189"]; // default & custom
     if (theme === "custom") {
-      colors = ["#075163", "#0a6f87", "#31ab12", "#f0ec00", "#ff0000", "#dcbae6"];
+      colors = ["#0e4200", "#40de01", "#eeed01", "#fe8501", "#ba0001", "#ff00ff", "#8b0189"];
     } else if (theme === "vaporwave") {
       colors = ["#1c1533", "#00f0ff", "#05d9e8", "#ff2a74", "#ff007f", "#ab00cd"];
     } else if (theme === "storm") {
@@ -971,11 +971,13 @@ const LiveRadar = () => {
 
     // 5. Draw Labels & color indicators
     const labels = [
-      { text: "65 Severe", color: legendColors[4] },
-      { text: "50 Heavy", color: legendColors[3] },
-      { text: "35 Mod", color: legendColors[2] },
-      { text: "20 Light", color: legendColors[1] },
-      { text: "3 Dry", color: legendColors[0] }
+      { text: "65+", color: "#8b0189" },
+      { text: "45-65", color: "#ff00ff" },
+      { text: "30-45", color: "#ba0001" },
+      { text: "20-30", color: "#fe8501" },
+      { text: "10-20", color: "#eeed01" },
+      { text: "3-10", color: "#40de01" },
+      { text: "0-3", color: "#0e4200" }
     ];
 
     ctx.textAlign = "left";
@@ -1862,11 +1864,13 @@ const LiveRadar = () => {
             style={{ background: getLegendGradientStyle(colorTheme) }}
           ></div>
           <div className="flex flex-col justify-between h-28 leading-none font-mono text-[8px]">
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#dcbae6]"></span>65 Severe</span>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#ff0000]"></span>50 Heavy</span>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#f0ec00]"></span>35 Mod</span>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#31ab12]"></span>20 Light</span>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#0a6f87]"></span>3 Dry</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#8b0189]"></span>65+</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#ff00ff]"></span>45-65</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#ba0001]"></span>30-45</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#fe8501]"></span>20-30</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#eeed01]"></span>10-20</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#40de01]"></span>3-10</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#0e4200]"></span>0-3</span>
           </div>
         </div>
       </div>

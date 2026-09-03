@@ -54,21 +54,24 @@ function buildSmoothLUT(theme = "default") {
       [75,  [255, 255, 255, 255]]
     ];
   } else {
-    // Official High-Definition Doppler Color Scale (Ultra-smooth gradient)
+    // Official High-Definition Doppler Color Scale with User-Requested Ranges
+    // #0e4200 0-3, #40de01 3-10, #eeed01 10-20, #fe8501 20-30, #ba0001 30-45, #ff00ff 45-65, #8b0189 65+
     stops = [
-      [0,   [0, 0, 0, 0]],
-      [5,   [0, 0, 0, 0]],
-      [8,   [64, 164, 223, 90]],       // Light sky blue / drizzle
-      [15,  [0, 210, 220, 160]],       // Cyan
-      [23,  [0, 245, 120, 220]],       // Light green
-      [30,  [0, 215, 0, 255]],         // Pure green (Light-Mod Rain)
-      [37,  [140, 235, 0, 255]],       // Lime green
-      [43,  [255, 240, 0, 255]],       // Yellow (Mod-Heavy Rain)
-      [49,  [255, 150, 0, 255]],       // Amber-Orange (Heavy Rain)
-      [55,  [255, 50, 20, 255]],       // Bright Red (Intense Rain)
-      [63,  [200, 0, 0, 255]],         // Dark Crimson Red (Torrential)
-      [70,  [255, 0, 255, 255]],       // Magenta / Severe Hail
-      [78,  [255, 220, 255, 255]]      // Extreme white-purple core
+      [0,   [0, 0, 0, 0]],              // Background transparent below 0.5 dBZ
+      [0.5, [14, 66, 0, 100]],          // #0e4200 (0-3 dBZ)
+      [3,   [14, 66, 0, 180]],
+      [3.01,[64, 222, 1, 210]],         // #40de01 (3-10 dBZ)
+      [10,  [64, 222, 1, 230]],
+      [10.01,[238, 237, 1, 255]],       // #eeed01 (10-20 dBZ)
+      [20,  [238, 237, 1, 255]],
+      [20.01,[254, 133, 1, 255]],       // #fe8501 (20-30 dBZ)
+      [30,  [254, 133, 1, 255]],
+      [30.01,[186, 0, 1, 255]],         // #ba0001 (30-45 dBZ)
+      [45,  [186, 0, 1, 255]],
+      [45.01,[255, 0, 255, 255]],       // #ff00ff (45-65 dBZ)
+      [65,  [255, 0, 255, 255]],
+      [65.01,[139, 1, 137, 255]],       // #8b0189 (65+ dBZ)
+      [80,  [139, 1, 137, 255]]
     ];
   }
 
