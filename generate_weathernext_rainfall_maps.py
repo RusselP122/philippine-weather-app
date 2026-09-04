@@ -128,7 +128,7 @@ def plot_rainfall(lons, lats, precip_grid, filename_id, init_dt, valid_dt_start,
             fig, ax,
             left_title="Philippine T/W",
             right_title=right_title,
-            model_sub=f"Model: Google WeatherNext 3 (0.1° / 10 km)   |   Forecast Hour: {fh_str}",
+            model_sub=f"Model: Google WeatherNext 3 (10 km)   |   Forecast Hour: {fh_str}",
             time_sub=f"Init: {init_str} / Valid: {valid_str}"
         )
 
