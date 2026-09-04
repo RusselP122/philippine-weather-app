@@ -126,7 +126,7 @@ def plot_precip_mslp_frame(X, Y, precip_6h, mslp_hpa, lead_hours, init_dt, valid
             fig, ax,
             left_title="Philippine T/W",
             right_title="WeatherNext 3 6h Precip + MSLP (mm)",
-            model_sub=f"Model: Google WeatherNext 3 (0.25°)   |   Forecast Hour: {fh_str}",
+            model_sub=f"Model: Google WeatherNext 3 (10 km)   |   Forecast Hour: {fh_str}",
             time_sub=f"Init: {init_str} / Valid: {valid_str}"
         )
 
