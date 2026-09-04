@@ -1,8 +1,12 @@
 {
-  "model": "WeatherNext 2",
+  "model": "Google WeatherNext 3",
+  "resolution": "0.25\u00b0 (~28 km)",
   "source": "Google DeepMind / GCS",
-  "generated_at": "2026-09-03 07:01 PM",
+  "generated_at": "2026-09-04 01:58 PM PHT",
   "run_time": "2026-09-03 12:00 UTC",
+  "total_timesteps": 60,
+  "step_hours": 6,
+  "max_hour": 360,
   "animation_frames": [
     "precip_mslp_006",
     "precip_mslp_012",
