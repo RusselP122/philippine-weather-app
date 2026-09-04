@@ -3,13 +3,13 @@
   "storm_name": "Invest 97W",
   "track_id": "WP972026",
   "latest": {
-    "lat": 19.2,
-    "lon": 138.2,
+    "lat": 19.3,
+    "lon": 137.8,
     "pressure_hpa": 1003.0,
     "wind_kt": 19.0,
     "wind_kmh": 35,
-    "movement": "NNW at 58.2 km/h (31.5 kt)",
-    "init_time": "2026-09-03 18:00",
+    "movement": "WNW at 7.2 km/h (3.9 kt)",
+    "init_time": "2026-09-04 00:00",
     "category": "Low Pressure Area"
   },
   "history": [
@@ -26,6 +26,15 @@
       "cycle": "2026-09-03 18:00",
       "lat": 19.2,
       "lon": 138.2,
+      "pressure_hpa": 1003.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-09-04 00:00",
+      "lat": 19.3,
+      "lon": 137.8,
       "pressure_hpa": 1003.0,
       "wind_kt": 19.0,
       "wind_kmh": 35,
