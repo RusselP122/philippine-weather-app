@@ -19,13 +19,26 @@ from datetime import datetime, timezone, timedelta
 import numpy as np
 import scipy.ndimage
 from scipy.interpolate import RegularGridInterpolator
-import matplotlib
-import matplotlib.pyplot as plt
-import matplotlib.lines as mlines
-import matplotlib.patheffects as patheffects
-from matplotlib.colors import ListedColormap, BoundaryNorm
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
+try:
+    import matplotlib
+    import matplotlib.pyplot as plt
+    import matplotlib.lines as mlines
+    import matplotlib.patheffects as patheffects
+    from matplotlib.colors import ListedColormap, BoundaryNorm
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    HAS_MATPLOTLIB = True
+except ImportError:
+    matplotlib = None
+    plt = None
+    mlines = None
+    patheffects = None
+    ListedColormap = None
+    BoundaryNorm = None
+    ccrs = None
+    cfeature = None
+    HAS_MATPLOTLIB = False
+
 from shapely.geometry import shape
 
 # ── Geographic Domain ────────────────────────────────────────────────────────
@@ -34,8 +47,12 @@ PAR_LONS = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
 PAR_LATS = [5.0, 15.0, 21.0, 25.0, 25.0, 5.0, 5.0]
 
 # ── Text Halo Effects for Ultra-Clear Contours ──────────────────────────────
-STROKE_WHITE_HALO = [patheffects.withStroke(linewidth=2.5, foreground='white', alpha=0.9)]
-STROKE_DARK_HALO = [patheffects.withStroke(linewidth=2.5, foreground='#0f172a', alpha=0.9)]
+if HAS_MATPLOTLIB:
+    STROKE_WHITE_HALO = [patheffects.withStroke(linewidth=2.5, foreground='white', alpha=0.9)]
+    STROKE_DARK_HALO = [patheffects.withStroke(linewidth=2.5, foreground='#0f172a', alpha=0.9)]
+else:
+    STROKE_WHITE_HALO = []
+    STROKE_DARK_HALO = []
 
 # ════════════════════════════════════════════════════════════════════════════
 # 1. Colormaps & Norms
@@ -60,9 +77,13 @@ PRECIP_6H_COLORS = [
     '#991b1b',    # 85 - 100 mm: Dark blood ruby
     '#c026d3',    # 100 - 150 mm: Vivid magenta
 ]
-PRECIP_6H_CMAP = ListedColormap(PRECIP_6H_COLORS, name="ph_precip_6h")
-PRECIP_6H_CMAP.set_over('#4c1d95')  # > 150 mm: Deep royal purple
-PRECIP_6H_NORM = BoundaryNorm(PRECIP_6H_LEVELS, ncolors=len(PRECIP_6H_COLORS), clip=False)
+if HAS_MATPLOTLIB:
+    PRECIP_6H_CMAP = ListedColormap(PRECIP_6H_COLORS, name="ph_precip_6h")
+    PRECIP_6H_CMAP.set_over('#4c1d95')  # > 150 mm: Deep royal purple
+    PRECIP_6H_NORM = BoundaryNorm(PRECIP_6H_LEVELS, ncolors=len(PRECIP_6H_COLORS), clip=False)
+else:
+    PRECIP_6H_CMAP = None
+    PRECIP_6H_NORM = None
 
 
 # ── Daily / Cumulative Rainfall Colormap (High Dynamic Range) ──────────────
@@ -92,9 +113,13 @@ RAINFALL_DAILY_COLORS = [
     '#9333ea',  # 250 - 300 mm: Electric purple
     '#6b21a8',  # 300 - 400 mm: Dark amethyst
 ]
-RAINFALL_DAILY_CMAP = ListedColormap(RAINFALL_DAILY_COLORS, name="ph_rainfall_daily")
-RAINFALL_DAILY_CMAP.set_over('#2e1065')  # > 400 mm: Midnight violet
-RAINFALL_DAILY_NORM = BoundaryNorm(RAINFALL_DAILY_LEVELS, ncolors=len(RAINFALL_DAILY_COLORS), clip=False)
+if HAS_MATPLOTLIB:
+    RAINFALL_DAILY_CMAP = ListedColormap(RAINFALL_DAILY_COLORS, name="ph_rainfall_daily")
+    RAINFALL_DAILY_CMAP.set_over('#2e1065')  # > 400 mm: Midnight violet
+    RAINFALL_DAILY_NORM = BoundaryNorm(RAINFALL_DAILY_LEVELS, ncolors=len(RAINFALL_DAILY_COLORS), clip=False)
+else:
+    RAINFALL_DAILY_CMAP = None
+    RAINFALL_DAILY_NORM = None
 
 
 # ── 10m Wind Speed Colormap (kph) ──────────────────────────────────────────
@@ -116,9 +141,13 @@ WIND_SPEED_COLORS = [
     '#c026d3',    # 165 - 185 kph: Typhoon Cat 4
     '#7c3aed',    # 185 - 220 kph: Super Typhoon / Cat 5
 ]
-WIND_SPEED_CMAP = ListedColormap(WIND_SPEED_COLORS, name="ph_wind_kph")
-WIND_SPEED_CMAP.set_over('#3b0764')  # > 220 kph: Extreme Super Typhoon
-WIND_SPEED_NORM = BoundaryNorm(WIND_SPEED_LEVELS, ncolors=len(WIND_SPEED_COLORS), clip=False)
+if HAS_MATPLOTLIB:
+    WIND_SPEED_CMAP = ListedColormap(WIND_SPEED_COLORS, name="ph_wind_kph")
+    WIND_SPEED_CMAP.set_over('#3b0764')  # > 220 kph: Extreme Super Typhoon
+    WIND_SPEED_NORM = BoundaryNorm(WIND_SPEED_LEVELS, ncolors=len(WIND_SPEED_COLORS), clip=False)
+else:
+    WIND_SPEED_CMAP = None
+    WIND_SPEED_NORM = None
 
 
 # ════════════════════════════════════════════════════════════════════════════

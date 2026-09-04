@@ -3,6 +3,7 @@ import base64
 import gzip
 import xarray as xr
 import os
+import glob
 import math
 import sys
 sys.setrecursionlimit(10000)
@@ -13,12 +14,19 @@ import logging
 import numpy as np
 from datetime import datetime, timedelta, timezone
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+import matplotlib.patches as patches
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch
+import matplotlib.patheffects as patheffects
+from matplotlib.colors import LinearSegmentedColormap, ListedColormap, BoundaryNorm
+import scipy.ndimage
+from scipy.interpolate import RegularGridInterpolator, splprep, splev
 import urllib.request
 import geojsoncontour
 import pandas as pd
 from shapely.geometry import shape, Point
 from shapely.prepared import prep
-import matplotlib.patches as mpatches   
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
@@ -31,6 +39,13 @@ OUT_DIR = "public/data/strike_prob"
 MAPS_OUT_DIR = "public/assets/risk_maps"
 os.makedirs(OUT_DIR, exist_ok=True)
 os.makedirs(MAPS_OUT_DIR, exist_ok=True)
+
+LOGO_PATHS = [
+    "public/images/logo.png",
+    "../public/images/logo.png",
+    os.path.join(os.path.dirname(__file__), "public", "images", "logo.png"),
+    "public/logo512.png"
+]
 
 # Correct URL structure (discovered from WeatherLab):
 BASE = (
@@ -67,66 +82,113 @@ def curl_status(url):
             return 0
 
 def load_fnv3_base_spaghetti_tracks():
-    """Load and decrypt FNV3 Base spaghetti tracks (individual ensemble member tracks) in the Western Pacific."""
-    base_dat_paths = [
+    """
+    Load Google WeatherNext 3 (WNV3 / WNCv3) spaghetti tracks (individual ensemble member tracks)
+    in the Western Pacific, with fallback to FNV3 tracks.
+    """
+    candidate_paths = [
+        "public/data/wnv3_latest.dat",
+        "public/data/wnv3_latest.csv",
+        "../public/data/wnv3_latest.dat",
+        "../public/data/wnv3_latest.csv",
+        os.path.join(os.path.dirname(__file__), "public", "data", "wnv3_latest.dat"),
+        os.path.join(os.path.dirname(__file__), "public", "data", "wnv3_latest.csv"),
+    ]
+    
+    # Also check any local WNV3 cyclogenesis CSV files
+    data_dir = os.path.join(os.path.dirname(__file__), "public", "data")
+    local_wnv3_csvs = sorted(glob.glob(os.path.join(data_dir, "WNV3_*_cyclogenesis.csv")), reverse=True)
+    candidate_paths.extend(local_wnv3_csvs)
+    
+    # Fallback to FNV3 paths if WNV3 not present
+    candidate_paths.extend([
         "public/data/fnv3p2_latest.dat",
         "../public/data/fnv3p2_latest.dat",
-        os.path.join(os.path.dirname(__file__), "public", "data", "fnv3p2_latest.dat")
-    ]
-    found_path = None
-    for p in base_dat_paths:
-        if os.path.exists(p):
-            found_path = p
-            break
-            
+        os.path.join(data_dir, "fnv3p2_latest.dat"),
+    ])
+
+    found_path = next((p for p in candidate_paths if os.path.exists(p) and os.path.getsize(p) > 1000), None)
+
     if not found_path:
-        logger.warning("fnv3p2_latest.dat not found. No spaghetti tracks plotted.")
+        # Attempt online download of latest WNV3 cyclogenesis CSV if remote is reachable
+        try:
+            today = datetime.now(timezone.utc).date()
+            dates = [today - timedelta(days=i) for i in range(4)]
+            hours = ["18", "12", "06", "00"]
+            base_url = "https://deepmind.google.com/science/weatherlab/download/cyclones/WNV3/ensemble/cyclogenesis/csv"
+            for d in dates:
+                d_str = d.strftime("%Y_%m_%d")
+                for h in hours:
+                    fn = f"WNV3_{d_str}T{h}_00_cyclogenesis.csv"
+                    test_url = f"{base_url}/{fn}"
+                    if curl_status(test_url) == 200:
+                        dl_path = os.path.join(data_dir, fn)
+                        logger.info(f"Downloading latest WNv3 cyclogenesis from {test_url}...")
+                        subprocess.run(["curl", "-s", "-L", "-o", dl_path, test_url], timeout=30)
+                        if os.path.exists(dl_path) and os.path.getsize(dl_path) > 100000:
+                            found_path = dl_path
+                            break
+                if found_path:
+                    break
+        except Exception as e_dl:
+            logger.warning(f"Online WNv3 fetch check notice: {e_dl}")
+
+    if not found_path:
+        logger.warning("No WeatherNext 3 (WNV3) or FNV3 spaghetti tracks found. No tracks plotted.")
         return []
-        
+
     try:
-        # Decode obfuscated DAT to CSV text
-        with open(found_path, 'r', encoding='utf-8') as f:
-            content = f.read().strip()
-        encrypted_bytes = base64.b64decode(content)
-        decrypted_bytes = bytes([b ^ 0xAA for b in encrypted_bytes])
-        csv_text = decrypted_bytes.decode('utf-8')
-        
-        # Read with pandas
-        df = pd.read_csv(io.StringIO(csv_text), comment='#')
+        if str(found_path).endswith('.dat'):
+            with open(found_path, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            encrypted_bytes = base64.b64decode(content)
+            decrypted_bytes = bytes([b ^ 0xAA for b in encrypted_bytes])
+            csv_text = decrypted_bytes.decode('utf-8', errors='ignore')
+            df = pd.read_csv(io.StringIO(csv_text), comment='#')
+        else:
+            df = pd.read_csv(found_path, comment='#')
+
+        # Ensure lead_time_hours exists
+        if 'lead_time_hours' not in df.columns and 'lead_time' in df.columns:
+            df['lead_time_hours'] = pd.to_timedelta(df['lead_time']).dt.total_seconds() / 3600.0
+
         # Filter for ensemble members (sample >= 0)
         df = df[df['sample'] >= 0]
-        
+
         tracks = []
         # Group by (track_id, sample) to get individual member tracks
         for (track_id, sample), group in df.groupby(['track_id', 'sample']):
             group = group.sort_values(by='lead_time_hours')
             group = group.dropna(subset=['lat', 'lon'])
-            
+
             lons = group['lon'].values
             lats = group['lat'].values
             # Normalize longitude to -180..180 range
             lons = np.where(lons > 180, lons - 360, lons)
-            
+
             if len(lons) == 0:
                 continue
-                
+
             # Filter to Western Pacific region (either starts with WP or has points in WP region: 100..180E, -5..45N)
             is_wp = str(track_id).upper().startswith('WP') or (100 <= lons[0] <= 180 and -5 <= lats[0] <= 45)
             if not is_wp:
                 continue
-                
+
             tracks.append({
                 'track_id': track_id,
                 'sample': sample,
                 'lons': lons,
                 'lats': lats
             })
-            
-        logger.info(f"Loaded {len(tracks)} Western Pacific base spaghetti tracks from {found_path}")
+
+        logger.info(f"Loaded {len(tracks)} Western Pacific WNv3 spaghetti tracks from {found_path}")
         return tracks
     except Exception as e:
-        logger.warning(f"Error loading base spaghetti tracks: {e}")
+        logger.warning(f"Error loading WNv3 spaghetti tracks from {found_path}: {e}")
         return []
+
+# Alias for backwards compatibility
+load_wnv3_base_spaghetti_tracks = load_fnv3_base_spaghetti_tracks
 
 def get_latest_run_url():
     today = datetime.now(timezone.utc).date()
@@ -278,447 +340,390 @@ def process_strike_probabilities():
                 logger.warning(f"Could not remove {local_nc} (PermissionError)")
 
 def pre_render_maps(ds, date_str, hour_str, time_dim, n_steps, variables):
-    logger.info("Loading province boundaries for map rendering...")
+    """
+    Renders 16:9 TV Broadcast Weather Graphics for Strike / Track Probabilities
+    matching the Fox Weather 'TROPICAL THREAT' reference styling.
+    Uses continuous 2D filled probability contours, dark base cartography (ai_precip_outlook),
+    spaghetti tracks, active cyclone badges, and a broadcast top banner with rainbow gradient threat bar.
+    """
+    logger.info("Loading province boundaries for broadcast map rendering...")
     geojson_paths = [
         "public/data/ph_provinces.json",
         "../public/data/ph_provinces.json",
         os.path.join(os.path.dirname(__file__), "public", "data", "ph_provinces.json")
     ]
-    found_geojson = None
-    for p in geojson_paths:
-        if os.path.exists(p):
-            found_geojson = p
-            break
-            
-    laguna_de_bay_coords = None
-    taal_lake_coords = None
-    volcano_island_coords = None
-    
-    if not found_geojson:
-        logger.warning("ph_provinces.json not found. Map rendering skipped.")
-        return
-        
-    with open(found_geojson, 'r', encoding='utf-8') as f:
-        prov_geojson = json.load(f)
-        
-    try:
-        laguna_feat = next(f for f in prov_geojson['features'] if f['properties'].get('PROVINCE') == 'Laguna' or f['properties'].get('NAME_1') == 'Laguna')
-        if len(laguna_feat['geometry']['coordinates']) > 2:
-            laguna_de_bay_coords = laguna_feat['geometry']['coordinates'][2]
-    except Exception as e:
-        logger.warning(f"Failed to extract Laguna de Bay coords: {e}")
-
-    try:
-        batangas_feat = next(f for f in prov_geojson['features'] if f['properties'].get('PROVINCE') == 'Batangas' or f['properties'].get('NAME_1') == 'Batangas')
-        b_coords = batangas_feat['geometry']['coordinates']
-        if len(b_coords) > 2 and len(b_coords[2]) > 1:
-            taal_lake_coords = b_coords[2][1]
-        if len(b_coords) > 3:
-            volcano_island_coords = b_coords[3]
-    except Exception as e:
-        logger.warning(f"Failed to extract Taal coords: {e}")
-        
-    provinces_data = []
-    for feat in prov_geojson['features']:
-        if feat.get('geometry') is None:
-            continue
-        name = feat['properties'].get('PROVINCE', feat['properties'].get('NAME_1', 'Unknown'))
-        geom = shape(feat['geometry'])
-        provinces_data.append({
-            'name': name,
-            'geometry': geom,
-            'prep_geometry': prep(geom)
-        })
-
-    muni_geojson_paths = [
-        "public/data/ph_municipalities.json",
-        "../public/data/ph_municipalities.json",
-        os.path.join(os.path.dirname(__file__), "public", "data", "ph_municipalities.json")
-    ]
-    found_muni_geojson = None
-    for p in muni_geojson_paths:
-        if os.path.exists(p):
-            found_muni_geojson = p
-            break
-
-    municipalities_data = []
-    if found_muni_geojson:
-        logger.info(f"Loading municipality boundaries from {found_muni_geojson}...")
-        with open(found_muni_geojson, 'r', encoding='utf-8') as f:
-            muni_geojson = json.load(f)
-        for feat in muni_geojson['features']:
-            if feat.get('geometry') is None:
-                continue
-            prov = feat['properties'].get('PROVINCE', feat['properties'].get('NAME_1', 'Unknown'))
-            name = feat['properties'].get('NAME_2', 'Unknown')
-            key = f"{prov}_{name}"
-            geom = shape(feat['geometry'])
-            municipalities_data.append({
-                'key': key,
-                'name': name,
-                'province': prov,
-                'geometry': geom,
-                'prep_geometry': prep(geom)
-            })
-    else:
-        logger.warning("ph_municipalities.json not found.")
-        return
-
-    # Cache grid mapping parameters
-    cache_path = "public/data/strike_prob/muni_grid_mapping.json"
-    grid_params = {
-        "lat_min": 4.0,
-        "lat_max": 22.0,
-        "lat_step": 0.05,
-        "lon_min": 115.0,
-        "lon_max": 128.0,
-        "lon_step": 0.05
-    }
-    
-    municipality_grid_indices = None
-    if os.path.exists(cache_path):
-        logger.info("Checking precomputed municipality grid mapping cache...")
+    found_geojson = next((p for p in geojson_paths if os.path.exists(p)), None)
+    province_geoms = []
+    if found_geojson:
         try:
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                cache_data = json.load(f)
-            if cache_data.get("grid_params") == grid_params:
-                municipality_grid_indices = cache_data.get("mapping")
-                logger.info("Loaded grid mapping from cache successfully.")
-            else:
-                logger.info("Cache parameters mismatch. Recomputing...")
+            with open(found_geojson, 'r', encoding='utf-8') as f:
+                prov_geojson = json.load(f)
+            for feat in prov_geojson.get('features', []):
+                if feat.get('geometry'):
+                    province_geoms.append(shape(feat['geometry']))
+            logger.info(f"Loaded {len(province_geoms)} province geometries from {found_geojson}")
         except Exception as e:
-            logger.warning(f"Failed to load cache: {e}. Recomputing...")
+            logger.warning(f"Error loading {found_geojson}: {e}")
 
-    if municipality_grid_indices is None:
-        logger.info("Precomputing grid mapping for municipalities (this may take a few seconds)...")
-        t_start = time.time()
-        grid_lats = np.arange(grid_params["lat_min"], grid_params["lat_max"], grid_params["lat_step"])
-        grid_lons = np.arange(grid_params["lon_min"], grid_params["lon_max"], grid_params["lon_step"])
-        grid_lon_mesh, grid_lat_mesh = np.meshgrid(grid_lons, grid_lats)
-        grid_points = np.column_stack((grid_lon_mesh.ravel(), grid_lat_mesh.ravel()))
-        
-        municipality_grid_indices = {}
-        for muni in municipalities_data:
-            geom = muni['geometry']
-            prep_geom = muni['prep_geometry']
-            minx, miny, maxx, maxy = geom.bounds
-            
-            bbox_mask = (grid_points[:, 0] >= minx) & (grid_points[:, 0] <= maxx) & \
-                        (grid_points[:, 1] >= miny) & (grid_points[:, 1] <= maxy)
-            indices_in_bbox = np.where(bbox_mask)[0]
-            
-            inside_indices = []
-            for idx in indices_in_bbox:
-                pt = Point(grid_points[idx])
-                if prep_geom.contains(pt):
-                    lat_idx = idx // len(grid_lons)
-                    lon_idx = idx % len(grid_lons)
-                    inside_indices.append((int(lat_idx), int(lon_idx)))
-                    
-            if not inside_indices:
-                centroid = geom.centroid
-                cx, cy = centroid.x, centroid.y
-                dists = (grid_points[:, 0] - cx)**2 + (grid_points[:, 1] - cy)**2
-                nearest_idx = np.argmin(dists)
-                lat_idx = nearest_idx // len(grid_lons)
-                lon_idx = nearest_idx % len(grid_lons)
-                inside_indices.append((int(lat_idx), int(lon_idx)))
-                
-            municipality_grid_indices[muni['key']] = inside_indices
-        logger.info(f"Precompute finished in {time.time() - t_start:.3f}s")
-        
-        try:
-            with open(cache_path, 'w', encoding='utf-8') as f:
-                json.dump({"grid_params": grid_params, "mapping": municipality_grid_indices}, f)
-            logger.info(f"Saved municipality grid mapping cache to {cache_path}")
-        except Exception as e:
-            logger.warning(f"Failed to save cache: {e}")
-
-    # Load base spaghetti tracks (strictly WP basin only)
+    # Load base spaghetti tracks (Western Pacific basin)
     tracks_to_plot = load_fnv3_base_spaghetti_tracks()
 
-    # Color mapping for probability values
-    def get_probability_color(val):
-        if val < 0.05: return '#DEB887' # blends with land background
-        if val < 0.10: return "#1d4ed8" # Royal Blue
-        if val < 0.20: return "#38bdf8" # Light Blue
-        if val < 0.30: return "#34d399" # Emerald Green
-        if val < 0.50: return "#facc15" # Yellow
-        if val < 0.70: return "#f97316" # Orange
-        return "#dc2626"                # Red
+    # Active storm identification (JTWC / WP track IDs)
+    active_storm_badges = []
+    seen_storms = set()
+    for t in tracks_to_plot:
+        tid = str(t['track_id']).strip().upper()
+        if tid.startswith("WP") and tid not in seen_storms:
+            seen_storms.add(tid)
+            matching = [tr for tr in tracks_to_plot if str(tr['track_id']).strip().upper() == tid]
+            f_lons = [m['lons'][0] for m in matching if len(m['lons']) > 0]
+            f_lats = [m['lats'][0] for m in matching if len(m['lats']) > 0]
+            if f_lons and f_lats:
+                c_lon = float(np.mean(f_lons))
+                c_lat = float(np.mean(f_lats))
+                short_name = tid.split("(")[0]
+                if short_name.startswith("WP") and len(short_name) >= 4 and short_name[2:4].isdigit():
+                    short_name = f"WP{short_name[2:4]}"
+                active_storm_badges.append((short_name, c_lon, c_lat))
 
-    var_labels = {
-        'track_probability': 'Track Probability',
-        '34_knot_strike_probability': '34-knot (TS) Strike Probability',
-        '50_knot_strike_probability': '50-knot (STS) Strike Probability',
-        '64_knot_strike_probability': '64-knot (TY) Strike Probability'
+    # Calculate valid time window
+    try:
+        init_dt = datetime.strptime(f"{date_str}_{hour_str}", "%Y_%m_%d_%H").replace(tzinfo=timezone.utc)
+        ph_tz = timezone(timedelta(hours=8))
+        init_dt_ph = init_dt.astimezone(ph_tz)
+        valid_dt_ph = init_dt_ph + timedelta(days=15)
+        valid_str = valid_dt_ph.strftime("%a %b %d").upper()
+        date_display = init_dt_ph.strftime("%B %d, %Y")
+    except Exception:
+        valid_str = "15-DAY WINDOW"
+        date_display = date_str
+
+    # Threat Colormap matching Fox Weather reference
+    THREAT_LEVELS = [0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.70, 0.85, 1.01]
+    THREAT_COLORS = [
+        '#93c5fd',  # 5% - 10%: Light Periwinkle Blue
+        '#2563eb',  # 10% - 20%: Royal Blue
+        '#06b6d4',  # 20% - 30%: Vibrant Cyan
+        '#22c55e',  # 30% - 40%: Bright Lime Green
+        '#facc15',  # 40% - 50%: Warm Yellow
+        '#f97316',  # 50% - 70%: Bright Orange
+        '#ef4444',  # 70% - 85%: Crimson Red
+        '#7f1d1d'   # >= 85%: Deep Dark Maroon
+    ]
+    threat_cmap = ListedColormap(THREAT_COLORS)
+    threat_norm = BoundaryNorm(THREAT_LEVELS, ncolors=len(THREAT_COLORS), clip=False)
+
+    var_meta = {
+        'track_probability': {
+            'headline': 'TROPICAL THREAT',
+            'subtitle': '15-DAY TRACK PROBABILITY'
+        },
+        '34_knot_strike_probability': {
+            'headline': 'TROPICAL THREAT',
+            'subtitle': '34-KT (TROPICAL STORM) STRIKE PROB'
+        },
+        '50_knot_strike_probability': {
+            'headline': 'TROPICAL THREAT',
+            'subtitle': '50-KT (STS FORCE) STRIKE PROB'
+        },
+        '64_knot_strike_probability': {
+            'headline': 'TROPICAL THREAT',
+            'subtitle': '64-KT (TYPHOON FORCE) STRIKE PROB'
+        }
     }
 
-    grid_lats = np.arange(grid_params["lat_min"], grid_params["lat_max"], grid_params["lat_step"])
-    grid_lons = np.arange(grid_params["lon_min"], grid_params["lon_max"], grid_params["lon_step"])
+    stroke_dark = [patheffects.withStroke(linewidth=3.2, foreground='#09182b', alpha=0.95)]
 
-    # Generate map for each variable (15-day cumulative)
+    # 16:9 Western Pacific Extent with generous top headroom for the header bar
+    # lon_span = 60.0 deg -> lat_span = 33.75 deg
+    DEFAULT_EXTENT = [106.0, 166.0, 2.0, 35.75]
+
     for var_name in variables:
         if var_name not in ds.data_vars:
             continue
-            
-        logger.info(f"Generating 15-day cumulative map for {var_name}...")
-        
+
+        logger.info(f"Generating 16:9 Broadcast Map for {var_name}...")
         ds_day15 = ds.isel({time_dim: n_steps - 1})
-        grid_ds = ds_day15[var_name].interp(lat=grid_lats, lon=grid_lons, method='linear')
-        grid_values = grid_ds.values
-        grid_values = np.nan_to_num(grid_values, nan=0.0)
-        
-        # Calculate maximum probability for each municipality
-        muni_colors = {}
-        for key, indices in municipality_grid_indices.items():
-            vals = [grid_values[lat_idx, lon_idx] for lat_idx, lon_idx in indices]
-            max_val = np.max(vals) if vals else 0.0
-            muni_colors[key] = get_probability_color(max_val)
-            
-        # Determine zoom extent
-        lat_min, lat_max = 4.0, 22.0
-        lon_min, lon_max = 114.0, 131.0
-        
-        high_risk_indices = np.where(grid_values >= 0.05)
-        has_risk_area = False
-        if len(high_risk_indices[0]) > 0:
-            matching_lats = grid_lats[high_risk_indices[0]]
-            matching_lons = grid_lons[high_risk_indices[1]]
-            lat_min = np.min(matching_lats) - 2.5
-            lat_max = np.max(matching_lats) + 2.5
-            lon_min = np.min(matching_lons) - 2.5
-            lon_max = np.max(matching_lons) + 2.5
-            has_risk_area = True
-            
-        track_lats_all = []
-        track_lons_all = []
-        for t in tracks_to_plot:
-            track_lons_all.extend(t['lons'])
-            track_lats_all.extend(t['lats'])
-            
-        if track_lons_all and track_lats_all:
-            if not has_risk_area:
-                lat_min = np.min(track_lats_all) - 2.5
-                lat_max = np.max(track_lats_all) + 2.5
-                lon_min = np.min(track_lons_all) - 2.5
-                lon_max = np.max(track_lons_all) + 2.5
+
+        raw_data = ds_day15[var_name].values
+        ds_lons = ds.lon.values
+        ds_lats = ds.lat.values
+
+        # Normalize lons if 0..360
+        if np.any(ds_lons > 180):
+            ds_lons = np.where(ds_lons > 180, ds_lons - 360, ds_lons)
+            sort_idx = np.argsort(ds_lons)
+            ds_lons = ds_lons[sort_idx]
+            raw_data = raw_data[:, sort_idx]
+
+        # Ensure lats are ascending
+        if len(ds_lats) > 1 and ds_lats[0] > ds_lats[-1]:
+            ds_lats = ds_lats[::-1]
+            raw_data = raw_data[::-1, :]
+
+        raw_data = np.nan_to_num(raw_data, nan=0.0)
+
+        # Dynamic extent calculation preserving exact 16:9
+        extent = list(DEFAULT_EXTENT)
+        high_risk = np.where(raw_data >= 0.05)
+        if len(high_risk[0]) > 0:
+            active_lats = ds_lats[high_risk[0]]
+            active_lons = ds_lons[high_risk[1]]
+            min_lon = min(108.0, float(np.min(active_lons)) - 3.5)
+            max_lon = max(142.0, float(np.max(active_lons)) + 4.0)
+            min_lat = min(3.0, float(np.min(active_lats)) - 2.5)
+            max_lat = max(24.0, float(np.max(active_lats)) + 5.0)
+
+            lon_span = max_lon - min_lon
+            lat_span = max_lat - min_lat
+
+            target_lat_span = lon_span * 9.0 / 16.0
+            if target_lat_span < lat_span:
+                target_lon_span = lat_span * 16.0 / 9.0
+                center_lon = (max_lon + min_lon) / 2.0
+                extent = [
+                    center_lon - target_lon_span / 2.0,
+                    center_lon + target_lon_span / 2.0,
+                    min_lat,
+                    max_lat
+                ]
             else:
-                lat_min = min(lat_min, np.min(track_lats_all) - 2.5)
-                lat_max = max(lat_max, np.max(track_lats_all) + 2.5)
-                lon_min = min(lon_min, np.min(track_lons_all) - 2.5)
-                lon_max = max(lon_max, np.max(track_lons_all) + 2.5)
-                
+                center_lat = (max_lat + min_lat) / 2.0
+                extent = [
+                    min_lon,
+                    max_lon,
+                    center_lat - target_lat_span / 2.0,
+                    center_lat + target_lat_span / 2.0
+                ]
+
         # Clamp bounds
-        lat_min = max(lat_min, 4.0)
-        lat_max = min(lat_max, 25.0)
-        lon_min = max(lon_min, 112.0)
-        lon_max = min(lon_max, 138.0)
-        
-        min_span = 8.0
-        if (lat_max - lat_min) < min_span:
-            center_lat = (lat_max + lat_min) / 2.0
-            lat_min = max(center_lat - (min_span / 2.0), 4.0)
-            lat_max = min(center_lat + (min_span / 2.0), 25.0)
-        if (lon_max - lon_min) < min_span:
-            center_lon = (lon_max + lon_min) / 2.0
-            lon_min = max(center_lon - (min_span / 2.0), 112.0)
-            lon_max = min(center_lon + (min_span / 2.0), 138.0)
+        extent[0] = max(extent[0], 104.0)
+        extent[1] = min(extent[1], 175.0)
+        extent[2] = max(extent[2], -3.0)
+        extent[3] = min(extent[3], 42.0)
+        cur_lon_span = extent[1] - extent[0]
+        cur_lat_span = cur_lon_span * 9.0 / 16.0
+        extent[3] = extent[2] + cur_lat_span
 
-        # Create plot
-        fig = plt.figure(figsize=(10, 10), facecolor='white')
-        ax = fig.add_axes([0.08, 0.05, 0.88, 0.85], projection=ccrs.PlateCarree())
-        ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
-        
-        # Ocean background
-        ax.set_facecolor('#87CEEB')
-        
-        # Land features
-        ax.add_feature(cfeature.LAND, facecolor='#DEB887', edgecolor='#8B4513', linewidth=0.8, zorder=1)
-        ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.8, alpha=0.7, color='#654321', zorder=2)
-        
-        # Group municipalities by color to batch add_geometries
-        color_groups = {}
-        for muni in municipalities_data:
-            key = muni['key']
-            color = muni_colors.get(key, '#DEB887')
-            if color != '#DEB887':
-                color_groups.setdefault(color, []).append(muni['geometry'])
-                
-        # Draw batch-grouped municipalities
-        for color, geoms in color_groups.items():
-            ax.add_geometries(geoms, crs=ccrs.PlateCarree(),
-                              facecolor=color, edgecolor='#451a03',
-                              linewidth=0.25, alpha=0.85, zorder=3)
+        # Build fine interpolation grid for smooth contours
+        fine_lons = np.arange(extent[0] - 2.0, extent[1] + 2.0, 0.15)
+        fine_lats = np.arange(extent[2] - 2.0, extent[3] + 2.0, 0.15)
 
-        # Add province outlines on top
-        province_geoms = [prov['geometry'] for prov in provinces_data]
-        ax.add_geometries(province_geoms, crs=ccrs.PlateCarree(),
-                          facecolor='none', edgecolor='#654321',
-                          linewidth=0.6, zorder=3.2)
+        try:
+            interp_func = RegularGridInterpolator((ds_lats, ds_lons), raw_data, bounds_error=False, fill_value=0.0)
+            mesh_lats, mesh_lons = np.meshgrid(fine_lats, fine_lons, indexing='ij')
+            interp_pts = np.column_stack([mesh_lats.ravel(), mesh_lons.ravel()])
+            fine_grid = interp_func(interp_pts).reshape(mesh_lats.shape)
+            fine_grid = scipy.ndimage.gaussian_filter(fine_grid, sigma=1.1)
+        except Exception as e:
+            logger.warning(f"Interpolation notice: {e}. Falling back to raw grid.")
+            fine_lons = ds_lons
+            fine_lats = ds_lats
+            fine_grid = scipy.ndimage.gaussian_filter(raw_data, sigma=0.8)
 
-        # Draw Laguna de Bay
-        if laguna_de_bay_coords is not None:
-            try:
-                laguna_de_bay = shape({
-                    "type": "Polygon",
-                    "coordinates": [laguna_de_bay_coords]
-                })
-                ax.add_geometries([laguna_de_bay], crs=ccrs.PlateCarree(),
-                                  facecolor='#87CEEB', edgecolor='#654321',
-                                  linewidth=0.4, zorder=3.5)
-            except Exception as e:
-                logger.warning(f"Failed to render Laguna de Bay: {e}")
+        # ── Setup 16:9 Figure & Cartopy Map ───────────────────────────────────
+        fig = plt.figure(figsize=(16, 9), dpi=140)
+        fig.patch.set_facecolor('#08172b')
+        ax = fig.add_axes([0, 0, 1, 1], projection=ccrs.PlateCarree())
+        ax.set_extent(extent, crs=ccrs.PlateCarree())
 
-        # Draw Taal Lake
-        if taal_lake_coords is not None:
-            try:
-                taal_lake = shape({
-                    "type": "Polygon",
-                    "coordinates": [taal_lake_coords]
-                })
-                ax.add_geometries([taal_lake], crs=ccrs.PlateCarree(),
-                                  facecolor='#87CEEB', edgecolor='#654321',
-                                  linewidth=0.4, zorder=3.6)
-            except Exception as e:
-                logger.warning(f"Failed to render Taal Lake: {e}")
+        # Base Cartography (ai_precip_outlook styling)
+        ax.add_feature(cfeature.OCEAN, facecolor='#122030', zorder=0)
+        ax.add_feature(cfeature.LAND, facecolor='#243328', zorder=1)
 
-        # Draw Volcano Island
-        if volcano_island_coords is not None:
-            try:
-                volcano_island = shape({
-                    "type": "Polygon",
-                    "coordinates": volcano_island_coords
-                })
-                ax.add_geometries([volcano_island], crs=ccrs.PlateCarree(),
-                                  facecolor='#DEB887', edgecolor='#654321',
-                                  linewidth=0.4, zorder=3.7)
-            except Exception as e:
-                logger.warning(f"Failed to render Volcano Island: {e}")
-                              
-        # PAR Boundary
-        par_vertices = [
-            (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
-            (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
-        ]
-        ax.add_patch(mpatches.Polygon(par_vertices, facecolor='none', edgecolor='#FF6B35', 
-                                     linestyle='-', linewidth=3, alpha=0.8, 
-                                     transform=ccrs.PlateCarree(), zorder=4))
-                                     
-        # Plot tracks (Solid light gray spaghetti lines)
+        # Subtle Gridlines
+        ax.gridlines(draw_labels=False, linewidth=0.5, color='#475569', alpha=0.22, linestyle=':', zorder=2)
+
+        # ── Continuous Threat Heatmap Contours ────────────────────────────────
+        if np.nanmax(fine_grid) >= THREAT_LEVELS[0]:
+            ax.contourf(
+                fine_lons, fine_lats, fine_grid,
+                levels=THREAT_LEVELS, cmap=threat_cmap, norm=threat_norm,
+                extend='neither', transform=ccrs.PlateCarree(),
+                alpha=0.76, zorder=3
+            )
+            ax.contour(
+                fine_lons, fine_lats, fine_grid,
+                levels=THREAT_LEVELS, colors='#ffffff',
+                linewidths=0.45, alpha=0.22,
+                transform=ccrs.PlateCarree(), zorder=4
+            )
+
+        # Subtle Land Mask overlay so land silhouette is clearly visible through threat shading
+        ax.add_feature(cfeature.LAND, facecolor='#1c2a21', alpha=0.18, zorder=5)
+
+        # Draw Philippine Provinces on top of shading
+        if province_geoms:
+            ax.add_geometries(province_geoms, crs=ccrs.PlateCarree(),
+                              facecolor='none', edgecolor='#94a3b8',
+                              linewidth=0.60, alpha=0.80, zorder=6)
+
+        # Crisp White Coastlines & Borders on top of threat shading (Fox Weather style)
+        ax.add_feature(cfeature.COASTLINE, linewidth=1.3, edgecolor='#ffffff', zorder=7)
+        ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.80, edgecolor='#cbd5e1', alpha=0.85, zorder=7)
+
+        # Solid PAR Boundary in strict #7c2d12 on top of shading (no text label)
+        par_lons = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
+        par_lats = [5.0, 15.0, 21.0, 25.0, 25.0, 5.0, 5.0]
+        ax.plot(par_lons, par_lats, color="#7c2d12", linewidth=2.4, linestyle="-",
+                transform=ccrs.PlateCarree(), zorder=8)
+
+        # ── Spaghetti Ensemble Tracks ─────────────────────────────────────────
         for t in tracks_to_plot:
-            line_style = '-'
-            line_color = '#475569'  # slate-600 (darker blue-gray for visibility on blue ocean)
-            line_width = 1.1        # slightly thicker to show spread clearly
-            line_alpha = 0.55       # more opaque to stand out
-            
-            # Smooth coordinates using B-spline interpolation (requires smooth_track helper to be imported/defined)
-            from scipy.interpolate import splprep, splev
-            # Re-define smooth_track inline here to ensure it's available since we removed it from top
-            def smooth_track_local(lons, lats):
-                if len(lons) < 4:
-                    return lons, lats
-                try:
-                    clean_lons = [lons[0]]
-                    clean_lats = [lats[0]]
-                    for i in range(1, len(lons)):
-                        if lons[i] != lons[i-1] or lats[i] != lats[i-1]:
-                            clean_lons.append(lons[i])
-                            clean_lats.append(lats[i])
-                    if len(clean_lons) < 4:
-                        return lons, lats
-                    tck, u = splprep([clean_lons, clean_lats], s=0)
-                    u_new = np.linspace(0, 1, 100)
-                    return splev(u_new, tck)
-                except Exception:
-                    return lons, lats
-            
-            smooth_lons, smooth_lats = smooth_track_local(t['lons'], t['lats'])
-            
-            ax.plot(smooth_lons, smooth_lats, color=line_color, linewidth=line_width, alpha=line_alpha,
-                    linestyle=line_style, zorder=5, transform=ccrs.PlateCarree())
-                    
-        # Gridlines
-        gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
-        
-        lon_span = lon_max - lon_min
-        lat_span = lat_max - lat_min
-        if max(lon_span, lat_span) <= 12.0:
-            step = 2
-        elif max(lon_span, lat_span) <= 25.0:
-            step = 5
+            lons_t = t['lons']
+            lats_t = t['lats']
+            if len(lons_t) < 4:
+                ax.plot(lons_t, lats_t, color='#94a3b8', linewidth=0.85, alpha=0.28,
+                        linestyle='-', zorder=12, transform=ccrs.PlateCarree())
+                continue
+            try:
+                clons = [lons_t[0]]
+                clats = [lats_t[0]]
+                for idx_pt in range(1, len(lons_t)):
+                    if lons_t[idx_pt] != lons_t[idx_pt-1] or lats_t[idx_pt] != lats_t[idx_pt-1]:
+                        clons.append(lons_t[idx_pt])
+                        clats.append(lats_t[idx_pt])
+                if len(clons) >= 4:
+                    tck, u = splprep([clons, clats], s=0)
+                    u_new = np.linspace(0, 1, 80)
+                    s_lons, s_lats = splev(u_new, tck)
+                    ax.plot(s_lons, s_lats, color='#94a3b8', linewidth=0.85, alpha=0.28,
+                            linestyle='-', zorder=12, transform=ccrs.PlateCarree())
+                else:
+                    ax.plot(clons, clats, color='#94a3b8', linewidth=0.85, alpha=0.28,
+                            linestyle='-', zorder=12, transform=ccrs.PlateCarree())
+            except Exception:
+                ax.plot(lons_t, lats_t, color='#94a3b8', linewidth=0.85, alpha=0.28,
+                        linestyle='-', zorder=12, transform=ccrs.PlateCarree())
+
+        # ── Geographic Reference Labels ───────────────────────────────────────
+        geo_labels = [
+            ("CHINA", 115.0, 27.5, 14.5, "heavy"),
+            ("TAIWAN", 121.0, 23.8, 13.0, "heavy"),
+            ("PHILIPPINES", 122.5, 12.8, 14.0, "heavy"),
+            ("GUAM", 144.8, 13.5, 11.5, "heavy"),
+            ("NORTHERN\nMARIANA\nISLANDS", 145.8, 18.2, 10.5, "heavy"),
+            ("PALAU", 134.5, 7.5, 10.0, "heavy"),
+            ("YAP", 138.1, 9.5, 10.0, "heavy"),
+            ("PACIFIC  OCEAN", 148.0, 23.5, 13.5, "bold"),
+            ("PHILIPPINE  SEA", 131.0, 17.5, 12.5, "bold"),
+            ("WEST  PHILIPPINE  SEA", 115.5, 15.0, 10.5, "bold"),
+        ]
+
+        for lbl, clon, clat, fsize, fweight in geo_labels:
+            if (extent[0] + 1.0 <= clon <= extent[1] - 1.0) and (extent[2] + 1.0 <= clat <= extent[3] - 1.0):
+                if "OCEAN" in lbl or "SEA" in lbl:
+                    ax.text(clon, clat, lbl, transform=ccrs.PlateCarree(),
+                            fontsize=fsize, fontweight=fweight, fontstyle='italic',
+                            color='#64748b', alpha=0.60, ha='center', va='center', zorder=5)
+                else:
+                    txt_obj = ax.text(clon, clat, lbl, transform=ccrs.PlateCarree(),
+                                      fontsize=fsize, fontweight=fweight,
+                                      color='#ffffff', ha='center', va='center', zorder=14)
+                    txt_obj.set_path_effects(stroke_dark)
+
+        # ── Active Storm Badges (e.g. BAVI style pill) ────────────────────────
+        for sname, slon, slat in active_storm_badges:
+            if (extent[0] <= slon <= extent[1]) and (extent[2] <= slat <= extent[3]):
+                offset_y = -1.8 if slat > (extent[3] - 6.5) else 1.8
+                ax.text(slon, slat + offset_y, sname, transform=ccrs.PlateCarree(),
+                        fontsize=11.5, fontweight="heavy", color="#ffffff", ha="center", va="center",
+                        bbox=dict(boxstyle="round,pad=0.35,rounding_size=0.25", facecolor="#0b2344", edgecolor="#ffffff", lw=1.5, alpha=0.96),
+                        zorder=16)
+
+        # ── Fox Weather Top Header Bar ─────────────────────────────────────────
+        header_bg = patches.Rectangle((0, 0.880), 1.0, 0.120, transform=fig.transFigure,
+                                      facecolor='#08172b', alpha=0.96, zorder=40)
+        fig.patches.append(header_bg)
+
+        header_border = patches.Rectangle((0, 0.877), 1.0, 0.003, transform=fig.transFigure,
+                                          facecolor='#0284c7', zorder=41)
+        fig.patches.append(header_border)
+
+        # Left Container (Threat Outlook + Through Date)
+        excl_pill = FancyBboxPatch((0.022, 0.942), 0.145, 0.046,
+                                   boxstyle="round,pad=0.004,rounding_size=0.012",
+                                   transform=fig.transFigure, facecolor="#0284c7", edgecolor="#38bdf8", lw=1.5, zorder=42)
+        fig.patches.append(excl_pill)
+        fig.text(0.0945, 0.965, "THREAT OUTLOOK", fontsize=11.5, fontweight="heavy", color="#ffffff", ha="center", va="center", zorder=44)
+
+        valid_box = FancyBboxPatch((0.022, 0.892), 0.145, 0.038,
+                                   boxstyle="round,pad=0.003,rounding_size=0.008",
+                                   transform=fig.transFigure, facecolor="#0b2344", edgecolor="#1e3a8a", lw=1.0, zorder=42)
+        fig.patches.append(valid_box)
+        fig.text(0.0945, 0.911, f"THROUGH {valid_str}", fontsize=9.5, fontweight="heavy", color="#f8fafc", ha="center", va="center", zorder=44)
+
+        # Center Headline Pill: "TROPICAL THREAT"
+        v_meta = var_meta.get(var_name, {'headline': 'TROPICAL THREAT', 'subtitle': var_name.upper()})
+        title_pill = FancyBboxPatch((0.185, 0.936), 0.440, 0.054,
+                                    boxstyle="round,pad=0.004,rounding_size=0.012",
+                                    transform=fig.transFigure, facecolor="#0b2344", edgecolor="#ffffff", lw=1.6, zorder=42)
+        fig.patches.append(title_pill)
+        fig.text(0.405, 0.963, v_meta['headline'], fontsize=20.5, fontweight="heavy", color="#ffffff", ha="center", va="center", zorder=44)
+
+        # Continuous Rainbow Threat Gradient Bar (LOW to HIGH)
+        cbar_ax = fig.add_axes([0.222, 0.898, 0.366, 0.020], zorder=43)
+        threat_grad = LinearSegmentedColormap.from_list("tg", THREAT_COLORS)
+        cbar_ax.imshow(np.linspace(0, 1, 256).reshape(1, -1), aspect='auto', cmap=threat_grad)
+        cbar_ax.set_axis_off()
+        cbar_ax.add_patch(patches.Rectangle((0, 0), 1, 1, transform=cbar_ax.transAxes, fill=False, edgecolor='#ffffff', linewidth=1.2))
+
+        fig.text(0.214, 0.908, "LOW", fontsize=10.5, fontweight="heavy", color="#ffffff", ha="right", va="center", zorder=44)
+        fig.text(0.596, 0.908, "HIGH", fontsize=10.5, fontweight="heavy", color="#ffffff", ha="left", va="center", zorder=44)
+
+        # Right Brand Pill: "PHILIPPINE TYPHOON WEATHER"
+        brand_pill = FancyBboxPatch((0.685, 0.916), 0.292, 0.062,
+                                    boxstyle="round,pad=0.005,rounding_size=0.014",
+                                    transform=fig.transFigure, facecolor="#ffffff", edgecolor="#0284c7", lw=1.6, zorder=42)
+        fig.patches.append(brand_pill)
+
+        red_badge = FancyBboxPatch((0.884, 0.920), 0.088, 0.054,
+                                   boxstyle="round,pad=0.003,rounding_size=0.010",
+                                   transform=fig.transFigure, facecolor="#dc2626", edgecolor="none", zorder=43)
+        fig.patches.append(red_badge)
+
+        fig.text(0.785, 0.947, "PHILIPPINE TYPHOON", fontsize=12.5, fontweight="heavy", color="#0a1d37", ha="center", va="center", zorder=44)
+        fig.text(0.928, 0.947, "WEATHER", fontsize=12.5, fontweight="heavy", color="#ffffff", ha="center", va="center", zorder=44)
+
+        # Subtitle right under brand pill
+        fig.text(0.977, 0.895, f"{v_meta['subtitle']} · {date_display}",
+                 fontsize=8.5, fontweight="bold", color="#94a3b8", ha="right", va="center", zorder=42)
+
+        # ── Bottom-Left Brand Logo (Direct on Canvas, No White Card) ──────────
+        found_logo = next((p for p in LOGO_PATHS if os.path.exists(p)), None)
+        logo_w, logo_h = 0.085, 0.085
+        logo_x, logo_y = 0.022, 0.028
+        if found_logo:
+            try:
+                l_img = mpimg.imread(found_logo)
+                logo_ax = fig.add_axes([logo_x, logo_y, logo_w, logo_h], zorder=50)
+                logo_ax.imshow(l_img)
+                logo_ax.axis("off")
+            except Exception:
+                fig.text(logo_x + logo_w / 2.0, logo_y + logo_h / 2.0, "PHIL\nWX",
+                         fontsize=12, fontweight="heavy", color="#38bdf8", ha="center", va="center", zorder=50)
         else:
-            step = 10
-            
-        gl.xlocator = plt.FixedLocator(np.arange(100, 160, step))
-        gl.ylocator = plt.FixedLocator(np.arange(-10, 50, step))
-        gl.xlabel_style = {'size': 12, 'weight': 'bold', 'color': '#64748b'}
-        gl.ylabel_style = {'size': 12, 'weight': 'bold', 'color': '#64748b'}
-        gl.top_labels = False
-        gl.right_labels = False
-        
-        # Draw horizontal colorbar for strike probabilities
-        import matplotlib.colors as mcolors
-        cb_levels = [0.05, 0.10, 0.20, 0.30, 0.50, 0.70, 1.01]
-        cb_colors = ["#1d4ed8", "#38bdf8", "#34d399", "#facc15", "#f97316", "#dc2626"]
-        cb_cmap = mcolors.ListedColormap(cb_colors)
-        cb_norm = mcolors.BoundaryNorm(cb_levels, ncolors=len(cb_colors))
-        
-        sm = plt.cm.ScalarMappable(cmap=cb_cmap, norm=cb_norm)
-        sm.set_array([])
-        
-        cb = fig.colorbar(sm, ax=ax, orientation='horizontal', pad=0.04, shrink=0.75, extend='neither')
-        cb.set_ticks(cb_levels)
-        cb.set_ticklabels(['5%', '10%', '20%', '30%', '50%', '70%', '100%'])
-        cb.ax.tick_params(labelsize=9, colors='#1e293b')
-        for label in cb.ax.get_xticklabels():
-            label.set_weight('bold')
-        cb.set_label("Strike Probability", fontsize=9, weight='bold', color='#1e293b', labelpad=4)
-        cb.outline.set_edgecolor("#cbd5e1")
-        cb.outline.set_linewidth(1.5)
-        
-        # Legend: tracks
-        track_handles = []
-        if len(tracks_to_plot) > 0:
-            track_handles.append(plt.Line2D([0], [0], color='#94a3b8', linewidth=1.5, alpha=0.7, linestyle='-', label='Ensemble Tracks'))
-            
-        if track_handles:
-            leg_mean = ax.legend(handles=track_handles, loc='upper right', frameon=True, facecolor='white', edgecolor='#cbd5e1', fontsize=8)
-            leg_mean.set_zorder(10)
-        
-        # Warnings & Watermarks
-        warning_text = (
-            "This is an experimental guidance product and should\n"
-            "not be used for critical decision-making.\n"
-            "Always refer to PAGASA for official warnings."
-        )
-        ax.text(0.98, 0.08, warning_text, transform=ax.transAxes, fontsize=6.5,
-                color='red', weight='bold', verticalalignment='bottom', horizontalalignment='right',
-                bbox=dict(facecolor='white', alpha=0.85, edgecolor='#cbd5e1', boxstyle='round,pad=0.2'),
-                zorder=10)
-                  
-        var_label = var_labels.get(var_name, var_name)
-        
-        # Title (Top-Left)
-        ax.text(0.0, 1.07, "POTENTIAL RISK AREA", transform=ax.transAxes,
-                fontsize=9, color='#4f46e5', weight='black', va='bottom', ha='left', zorder=10)
-        ax.text(0.0, 1.01, f"15-Day Cumulative {var_label}", transform=ax.transAxes,
-                fontsize=13, color='#0f172a', weight='bold', va='bottom', ha='left', zorder=10)
-                
-        # Metadata (Top-Right)
-        ax.text(1.0, 1.07, "Model: GDM-WNC", transform=ax.transAxes,
-                fontsize=8.5, color='#475569', weight='bold', va='bottom', ha='right', zorder=10)
-        ax.text(1.0, 1.01, f"Run: {date_str.replace('_', '-')} {hour_str}:00 UTC", transform=ax.transAxes,
-                fontsize=8.5, color='#475569', weight='bold', va='bottom', ha='right', zorder=10)
-                
-        ax.text(0.98, 0.02, "Philippine Typhoon/Weather", transform=ax.transAxes,
-                fontsize=10, color='#1e293b', weight='bold', alpha=0.6,
-                ha='right', va='bottom', zorder=100)
-                
+            fig.text(logo_x + logo_w / 2.0, logo_y + logo_h / 2.0, "PHIL\nWX",
+                     fontsize=12, fontweight="heavy", color="#38bdf8", ha="center", va="center", zorder=50)
+
+        # ── Bottom-Right Guidance & Disclaimer Card ───────────────────────────
+        leg_x, leg_y, leg_w, leg_h = 0.680, 0.028, 0.298, 0.095
+        leg_bg = FancyBboxPatch((leg_x, leg_y), leg_w, leg_h,
+                                boxstyle="round,pad=0.005,rounding_size=0.012",
+                                transform=fig.transFigure, facecolor="#09182b", edgecolor="#0284c7",
+                                lw=1.2, alpha=0.94, zorder=50)
+        fig.patches.append(leg_bg)
+
+        fig.text(leg_x + leg_w / 2.0, leg_y + 0.068, "15-DAY CUMULATIVE GUIDANCE · GOOGLE WEATHERNEXT 3",
+                 fontsize=8.8, fontweight="heavy", color="#38bdf8", ha="center", va="center", zorder=52)
+        fig.text(leg_x + leg_w / 2.0, leg_y + 0.030, "EXPERIMENTAL GUIDANCE PRODUCT · NOT AN OFFICIAL FORECAST\nREFER TO PAGASA FOR OFFICIAL WARNINGS AND ADVISORIES",
+                 fontsize=6.8, fontweight="bold", color="#94a3b8", ha="center", va="center", multialignment="center", zorder=52)
+
+        # ── Save Outputs ──────────────────────────────────────────────────────
         out_path = os.path.join(MAPS_OUT_DIR, f"risk_map_{var_name}.png")
-        plt.savefig(out_path, dpi=200, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.savefig(out_path, dpi=140, facecolor="#08172b")
         plt.close(fig)
-        logger.info(f"Saved pre-rendered map to {out_path}")
+        logger.info(f"Saved 16:9 Broadcast Map to {out_path}")
 
 if __name__ == '__main__':
     try:

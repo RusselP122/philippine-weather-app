@@ -34,7 +34,7 @@ OCEAN_COLOR   = "#08101e"   # Deep midnight slate ocean
 LAND_COLOR    = "#152234"   # Dark slate landmass
 LAND_EDGE     = "#293c56"   # Coastline and borders
 PROVINCE_EDGE = "#334b6e"   # Subtle Philippine provinces
-PAR_COLOR     = "#f97316"   # Glowing orange PAR boundary
+PAR_COLOR     = "#7c2d12"   # Solid 7c2d12 PAR boundary
 GRID_COLOR    = "#142236"   # Gridlines
 GRID_TEXT     = "#64748b"   # Lat/Lon grid labels
 

@@ -4,9 +4,14 @@ on:
     - cron: '45 2,8,14,20 * * *' # Run 4 times a day, 15 minutes after TC track updates
   workflow_dispatch:
 
+concurrency:
+  group: weather-data-sync
+  cancel-in-progress: false
+
 jobs:
   update-advisory:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: write
     steps:
@@ -28,16 +33,20 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy scipy shapely requests xarray zarr gcsfs ecmwf-opendata eccodes
+          pip install numpy scipy shapely requests xarray zarr gcsfs ecmwf-opendata eccodes google-cloud-storage google-auth numcodecs matplotlib
 
       - name: Authenticate to Google Cloud
         env:
           GCP_KEY_JSON: ${{ secrets.GCP_SA_KEY }}
         run: |
-          # Write the secret Google Cloud Service Account JSON key to a temporary file
-          echo "$GCP_KEY_JSON" > gcp-key.json
-          # Export GOOGLE_APPLICATION_CREDENTIALS environment variable for gcsfs to detect automatically
-          echo "GOOGLE_APPLICATION_CREDENTIALS=gcp-key.json" >> $GITHUB_ENV
+          if [ -z "$GCP_KEY_JSON" ]; then
+            echo "ERROR: GCP_SA_KEY secret is not configured or empty!"
+            exit 1
+          fi
+          KEY_PATH="$GITHUB_WORKSPACE/gcp-key.json"
+          echo "$GCP_KEY_JSON" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$KEY_PATH" >> $GITHUB_ENV
 
       - name: Fetch and Generate AI Multi-Model Advisory Data
         run: |
@@ -45,7 +54,7 @@ jobs:
 
       - name: Clean up GCP key
         if: always()
-        run: rm -f gcp-key.json
+        run: rm -f "$GITHUB_WORKSPACE/gcp-key.json"
           
       - name: Commit and push changes
         run: |
@@ -56,6 +65,11 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Auto-update AI Multi-Model Weather Advisory Data [skip ci]"
-            git pull --rebase origin main
-            git push
+            for i in 1 2 3 4 5; do
+              echo "Push attempt $i..."
+              git pull --rebase origin main
+              git push && echo "Push successful!" && break
+              echo "Push failed. Retrying..."
+              sleep $((15 * i))
+            done
           fi
