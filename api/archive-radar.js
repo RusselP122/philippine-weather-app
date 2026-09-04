@@ -1,21 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 
+export const maxDuration = 60; // Allow longer execution time on Vercel if needed
+
 export default async function handler(req, res) {
-  // Simple token authorization check to prevent malicious spamming of the endpoint
+  // Simple token authorization check to prevent unauthorized calls
   const { auth } = req.query;
   if (auth !== "vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k") {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    return res.status(500).json({ 
-      error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in your Vercel project environment settings. Please configure them in the Vercel Dashboard!"
-    });
-  }
+  const supabaseUrl = process.env.SUPABASE_URL || "https://jzbgofsdnniflospoggl.supabase.co";
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6YmdvZnNkbm5pZmxvc3BvZ2dsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDM0NDQzMSwiZXhwIjoyMDk1OTIwNDMxfQ.IQ0covu3g4Oh1M4a1EMcFGi1jfu2jCmh3R88TAKcQWg";
 
   let supabase;
   try {
@@ -39,25 +35,59 @@ export default async function handler(req, res) {
 
     const html = await homeRes.text();
 
-    const cookies = [];
-    const rawCookies = homeRes.headers.getSetCookie 
-      ? homeRes.headers.getSetCookie() 
-      : (homeRes.headers.get("set-cookie") ? [homeRes.headers.get("set-cookie")] : []);
-    
-    for (const c of rawCookies) {
-      const part = c.split(";")[0];
-      if (part) cookies.push(part);
-    }
-    const cookieHeader = cookies.join("; ");
+    const cookieMap = new Map();
+    const parseCookies = (res) => {
+      const raw = res.headers.getSetCookie 
+        ? res.headers.getSetCookie() 
+        : (res.headers.get("set-cookie") ? [res.headers.get("set-cookie")] : []);
+      for (const c of raw) {
+        const part = c.split(";")[0].trim();
+        if (part) {
+          const eqIdx = part.indexOf("=");
+          if (eqIdx > 0) {
+            cookieMap.set(part.slice(0, eqIdx), part);
+          }
+        }
+      }
+    };
+
+    parseCookies(homeRes);
 
     const csrfMatch = html.match(/<meta name="csrf-token" content="([^"]+)"/);
     const apiSigMatch = html.match(/<meta name="api-sig" content="([^"]+)"/);
+    const apiSigHandleMatch = html.match(/<meta name="api-sig-handle" content="([^"]+)"/);
 
     const csrfToken = csrfMatch ? csrfMatch[1] : "";
-    const apiSigSecret = apiSigMatch ? apiSigMatch[1] : "";
+    let apiSigSecret = apiSigMatch ? apiSigMatch[1] : "";
+    const apiSigHandle = apiSigHandleMatch ? apiSigHandleMatch[1] : "";
 
-    if (!csrfToken || !apiSigSecret) {
-      throw new Error("Could not extract security tokens from PANaHON portal");
+    if (!csrfToken) {
+      throw new Error("Could not extract csrf-token from PANaHON portal");
+    }
+
+    // Exchange api-sig-handle via /api/v1/sig if api-sig is not directly embedded
+    if (!apiSigSecret && apiSigHandle) {
+      const sigUrl = `https://panahon.gov.ph/api/v1/sig?token=${encodeURIComponent(csrfToken)}`;
+      const sigRes = await fetch(sigUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Cookie": Array.from(cookieMap.values()).join("; "),
+          "X-Sig-Handle": apiSigHandle,
+          "Referer": "https://panahon.gov.ph/",
+        }
+      });
+
+      if (sigRes.ok) {
+        parseCookies(sigRes);
+        const sigData = await sigRes.json();
+        if (sigData && sigData.secret) {
+          apiSigSecret = sigData.secret;
+        }
+      }
+    }
+
+    if (!apiSigSecret) {
+      throw new Error("Could not extract or resolve api-sig secret from PANaHON portal");
     }
 
     // Helper to generate dynamic HMAC-SHA256 headers for any PANaHON endpoint
@@ -73,12 +103,21 @@ export default async function handler(req, res) {
         "X-Requested-With": "XMLHttpRequest",
         "Referer": "https://panahon.gov.ph/",
         "Origin": "https://panahon.gov.ph",
-        "Cookie": cookieHeader,
+        "Cookie": Array.from(cookieMap.values()).join("; "),
         "X-CSRF-TOKEN": csrfToken,
         "X-Ts": ts,
         "X-Nonce": nonce,
         "X-Sig": sig,
       };
+    }
+
+    // Acquire asset-ticket cookie
+    const assetRes = await fetch(`https://panahon.gov.ph/api/v1/asset-ticket?token=${encodeURIComponent(csrfToken)}`, {
+      headers: getSignedHeaders("api/v1/asset-ticket"),
+    });
+
+    if (assetRes.ok) {
+      parseCookies(assetRes);
     }
 
     // 2. Fetch current timeline from PAGASA
@@ -98,11 +137,16 @@ export default async function handler(req, res) {
     }
 
     const timeline = data.data.timeline;
-    const tileVersion = data.data.tile_version || 4;
+    const tileVersion = data.data.tile_version || 5;
     const archived = [];
 
-    // 3. Loop through frames and archive new ones
-    for (const frame of timeline) {
+    // 3. Process frames (newest to oldest), archiving up to 3 missing frames per run
+    const reversedTimeline = timeline.slice().reverse();
+    let processedCount = 0;
+
+    for (const frame of reversedTimeline) {
+      if (processedCount >= 3) break; // Keep execution fast and well within serverless timeout
+
       const observed_at = frame.observed_at;
       const observed_at_unix = parseInt(frame.observed_at_unix, 10);
 
@@ -117,12 +161,19 @@ export default async function handler(req, res) {
 
       console.log(`New Frame Detected: ${observed_at} (${observed_at_unix}). Archiving...`);
 
-      // 4. Download 2K Ultra-High-Definition PNG radar image from PAGASA
+      // 4. Download radar image from PAGASA (try 2048 first, fallback to 896)
       const imagePath = "api/v1/radar-data-image";
-      const imgRes = await fetch(
+      let imgRes = await fetch(
         `https://panahon.gov.ph/api/v1/radar-data-image?token=${csrfToken}&t=${observed_at_unix}&mode=dbz&size=2048&v=${tileVersion}`,
         { headers: getSignedHeaders(imagePath) }
       );
+
+      if (!imgRes.ok) {
+        imgRes = await fetch(
+          `https://panahon.gov.ph/api/v1/radar-data-image?token=${csrfToken}&t=${observed_at_unix}&mode=dbz&size=896&v=${tileVersion}`,
+          { headers: getSignedHeaders(imagePath) }
+        );
+      }
 
       if (!imgRes.ok) {
         console.warn(`Failed to download radar image for ${observed_at} (HTTP ${imgRes.status})`);
@@ -172,9 +223,10 @@ export default async function handler(req, res) {
       }
 
       archived.push(observed_at);
+      processedCount++;
     }
 
-    return res.status(200).json({ success: true, archived });
+    return res.status(200).json({ success: true, archived, totalTimelineFrames: timeline.length });
   } catch (error) {
     console.error("Serverless Handler Error:", error);
     return res.status(500).json({ error: error.message });

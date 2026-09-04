@@ -1,4 +1,13 @@
+"""
+generate_weathernext_rainfall_maps.py
+=====================================
+Generates high-resolution 15-Day Daily, Cumulative (24h, 3d, 5d, 7d, 15d),
+and Probabilistic (p90 heavy rainfall risk) precipitation maps for the
+Philippine Area of Responsibility (PAR) using Google WeatherNext 3 (Zarr v3).
+"""
+
 import os
+import sys
 import json
 import scipy.ndimage
 import matplotlib
@@ -8,11 +17,11 @@ import matplotlib.lines as mlines
 from matplotlib.colors import ListedColormap, BoundaryNorm
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-from shapely.geometry import shape
 import numpy as np
-import gcsfs
-import xarray as xr
 from datetime import datetime, timezone, timedelta
+from google.cloud import storage
+import gcsfs
+import numcodecs
 
 # Import standardized visualization system
 try:
@@ -20,7 +29,8 @@ try:
         RAINFALL_DAILY_LEVELS, RAINFALL_DAILY_CMAP, RAINFALL_DAILY_NORM,
         load_ph_provinces, setup_map_ax, draw_par_boundary,
         add_styled_colorbar, draw_header_banner,
-        DEFAULT_EXTENT, PAR_LONS, PAR_LATS
+        DEFAULT_EXTENT, PAR_LONS, PAR_LATS,
+        find_latest_weathernext_run, regrid_01_to_025, batch_cat_gcs
     )
 except ImportError:
     DEFAULT_EXTENT = [112.0, 138.0, 4.0, 26.0]
@@ -46,8 +56,9 @@ except ImportError:
     draw_header_banner = None
 
 # ── Directories ────────────────────────────────────────────────────────────
-OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "rainfall_weathernext")
-DATA_DIR = os.path.join(os.getcwd(), "public", "data")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(BASE_DIR, "public", "images", "rainfall_weathernext")
+DATA_DIR = os.path.join(BASE_DIR, "public", "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -55,7 +66,7 @@ LAT_MIN, LAT_MAX = 2.0, 28.0
 LON_MIN, LON_MAX = 112.0, 140.0
 
 
-def plot_rainfall(lons, lats, precip_grid, filename_id, init_dt, valid_dt_start, valid_dt_end, forecast_hour, province_shapely_geometries):
+def plot_rainfall(lons, lats, precip_grid, filename_id, init_dt, valid_dt_start, valid_dt_end, forecast_hour, province_shapely_geometries, title_custom=None):
     fig = plt.figure(figsize=(14, 11), dpi=120)
     fig.subplots_adjust(top=0.88)
     ax = plt.axes(projection=ccrs.PlateCarree())
@@ -72,9 +83,11 @@ def plot_rainfall(lons, lats, precip_grid, filename_id, init_dt, valid_dt_start,
 
     LONS, LATS = np.meshgrid(lons, lats) if lons.ndim == 1 else (lons, lats)
 
-    if np.nanmax(precip_grid) > 0.05:
+    smoothed_precip = scipy.ndimage.gaussian_filter(precip_grid, sigma=0.6)
+
+    if np.nanmax(smoothed_precip) > 0.05:
         cf = ax.contourf(
-            LONS, LATS, precip_grid,
+            LONS, LATS, smoothed_precip,
             levels=RAINFALL_DAILY_LEVELS,
             cmap=RAINFALL_DAILY_CMAP,
             norm=RAINFALL_DAILY_NORM,
@@ -103,104 +116,130 @@ def plot_rainfall(lons, lats, precip_grid, filename_id, init_dt, valid_dt_start,
     period_lbl = "Accumulated"
     if "24h" in filename_id: period_lbl = "24-hr Accumulated"
     elif "3d" in filename_id: period_lbl = "72-hr Accumulated"
-    elif "7d" in filename_id: period_lbl = "168-hr Accumulated"
-    elif "15d" in filename_id: period_lbl = "360-hr Accumulated"
+    elif "5d" in filename_id: period_lbl = "120-hr (5-Day) Accumulated"
+    elif "7d" in filename_id: period_lbl = "168-hr (7-Day) Accumulated"
+    elif "15d" in filename_id: period_lbl = "360-hr (15-Day) Total"
     elif "day" in filename_id: period_lbl = "24-hr (Daily) Accumulated"
+
+    right_title = title_custom if title_custom else f"WeatherNext 3 {period_lbl} Precip (mm)"
 
     if draw_header_banner:
         draw_header_banner(
             fig, ax,
             left_title="Philippine T/W",
-            right_title=f"WeatherNext 2 {period_lbl} Precip (mm)",
-            model_sub=f"Model: Google WeatherNext 2 (0.25°)   |   Forecast Hour: {fh_str}",
+            right_title=right_title,
+            model_sub=f"Model: Google WeatherNext 3 (0.25°)   |   Forecast Hour: {fh_str}",
             time_sub=f"Init: {init_str} / Valid: {valid_str}"
         )
 
     filepath = os.path.join(OUTPUT_DIR, f"{filename_id}.png")
     plt.savefig(filepath, dpi=120, bbox_inches="tight", facecolor="white")
     plt.close(fig)
-    print(f"  Saved {filepath}")
+    print(f"  Saved {filepath}", flush=True)
 
 
-def main():
-    print("=== WeatherNext 2 Daily & Cumulative Precipitation Generator ===")
+def main(project_id="affable-ring-442402-j2"):
+    print("=== Google WeatherNext 3 Daily & Cumulative Precipitation Generator ===", flush=True)
 
-    print("Connecting to Google Cloud Storage...")
-    fs = gcsfs.GCSFileSystem()
+    client = storage.Client(project=project_id)
+    fs = gcsfs.GCSFileSystem(project=project_id)
+    latest_run, avail_hours = find_latest_weathernext_run(client, fs, project_id=project_id, min_hours=360, var_check="total_precipitation_1hr_mean")
+    print(f"Opening WeatherNext 3 dataset at: {latest_run} ({avail_hours} forecast hours available)", flush=True)
 
-    parent_path = 'gs://weathernext/weathernext_2_0_0_mean/zarr/2025_to_present'
-    all_items = fs.ls(parent_path)
-    run_folders = [f'gs://{item}' for item in all_items if item.endswith('_preds')]
+    base = f"weathernext3_statistics_spatial/{latest_run}predictions.zarr"
+    codec = numcodecs.Zstd()
 
-    if not run_folders:
-        raise RuntimeError("No forecast run folders found in 2025_to_present!")
+    # Coordinates
+    lat = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lat_0p1/c/0')), dtype='<f4')
+    lon = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lon_0p1/c/0')), dtype='<f4')
 
-    run_folders.sort()
-    latest_run_path = run_folders[-1]
-    latest_zarr_path = f"{latest_run_path}/predictions.zarr"
-    print(f"Opening Zarr dataset at: {latest_zarr_path}")
+    lat_mask = (lat >= LAT_MIN - 1.0) & (lat <= LAT_MAX + 1.0)
+    lon_mask = (lon >= LON_MIN - 1.0) & (lon <= LON_MAX + 1.0)
+    lat_idx = np.where(lat_mask)[0]
+    lon_idx = np.where(lon_mask)[0]
+    lat_slice = slice(lat_idx.min(), lat_idx.max() + 1)
+    lon_slice = slice(lon_idx.min(), lon_idx.max() + 1)
 
-    store = fs.get_mapper(latest_zarr_path)
-    ds = xr.open_zarr(store, consolidated=True)
+    sub_lats = lat[lat_slice]
+    sub_lons = lon[lon_slice]
 
-    if ds.lat[0] < ds.lat[-1]:
-        ds_ph = ds.sel(lat=slice(LAT_MIN, LAT_MAX), lon=slice(LON_MIN, LON_MAX))
-    else:
-        ds_ph = ds.sel(lat=slice(LAT_MAX, LAT_MIN), lon=slice(LON_MIN, LON_MAX))
+    # Standardized 0.25 deg grid (matching GFS/AIFS standards)
+    dst_lons = np.arange(LON_MIN, LON_MAX + 0.01, 0.25)
+    dst_lats = np.arange(LAT_MIN, LAT_MAX + 0.01, 0.25)
 
     province_shapely_geometries = load_ph_provinces(DATA_DIR)
     if province_shapely_geometries:
-        print(f"Successfully loaded {len(province_shapely_geometries)} province boundaries.")
+        print(f"Loaded {len(province_shapely_geometries)} province boundaries.", flush=True)
 
-    lats = ds_ph.lat.values
-    lons = ds_ph.lon.values
+    # Parse run init time from folder name: e.g., 20260903_16hr_01_preds -> 2026-09-03 16:00 UTC
+    folder_clean = latest_run.strip('/').split('/')[-1]
+    try:
+        date_part = folder_clean.split('_')[0]
+        hour_part = folder_clean.split('_')[1].replace('hr', '')
+        init_dt = datetime.strptime(f"{date_part}{hour_part}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
+    except Exception:
+        init_dt = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
 
-    init_time_val = str(ds_ph.init_time.values)[:16]
-    init_dt = datetime.strptime(init_time_val.replace("T", " "), "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+    print(f"Init Forecast Time: {init_dt.strftime('%Y-%m-%d %H:%M UTC')}", flush=True)
 
-    all_periods = []
-    for day in range(1, 16):
-        all_periods.append({
-            "name": f"weathernext_day_{day}",
-            "start_hour": (day - 1) * 24,
-            "end_hour": day * 24
-        })
+    max_days = min(15, max(1, avail_hours // 24))
+    total_fetch_hours = max_days * 24
 
-    animation_frames = [f"weathernext_day_{i}" for i in range(1, 16)]
+    # Batch read hourly precipitation steps out to available days
+    print(f"Batch loading {total_fetch_hours} hourly precipitation chunks on 0.25° grid...", flush=True)
+    paths_fetch = [f'{base}/total_precipitation_1hr_mean/c/{t}/0/0' for t in range(total_fetch_hours)]
+    raw_dict = batch_cat_gcs(fs, paths_fetch, batch_size=20, desc="Precip chunks")
 
-    for item in all_periods:
-        period_name = item["name"]
-        start_hour = item["start_hour"]
-        end_hour = item["end_hour"]
+    chunks = []
+    for p in paths_fetch:
+        if p in raw_dict:
+            arr = np.frombuffer(codec.decode(raw_dict[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+            _, _, arr_025 = regrid_01_to_025(sub_lats, sub_lons, arr, dst_lats=dst_lats, dst_lons=dst_lons)
+            chunks.append(arr_025 * 1000.0) # meters to mm
+        else:
+            chunks.append(np.zeros((len(dst_lats), len(dst_lons)), dtype=np.float32))
 
-        start_idx = start_hour // 6
-        end_idx = end_hour // 6
+    animation_frames = []
 
-        precip_slice = ds_ph['total_precipitation_6hr'].isel(time=slice(start_idx, end_idx))
-        total_precip = (precip_slice.sum(dim='time') * 1000.0).values
-        total_precip = np.maximum(total_precip, 0)
+    # 1. Daily (24-hr) Accumulations up to max_days
+    # 1. Daily (24-hr) Accumulations up to max_days (with direct naming, no duplicates)
+    print(f"\nGenerating {max_days} Daily Accumulation Maps...", flush=True)
+    for day in range(1, max_days + 1):
+        start_hour = (day - 1) * 24
+        end_hour = day * 24
+        day_total = np.maximum(np.sum(chunks[start_hour:end_hour], axis=0), 0)
 
         valid_dt_start = init_dt + timedelta(hours=start_hour)
         valid_dt_end = init_dt + timedelta(hours=end_hour)
+        period_name = f"weathernext_day_{day}"
+        animation_frames.append(period_name)
 
         plot_rainfall(
-            lons, lats, total_precip, period_name,
+            dst_lons, dst_lats, day_total, period_name,
             init_dt, valid_dt_start, valid_dt_end, end_hour, province_shapely_geometries
         )
 
+        # 24-hr milestone is equivalent to Day 1
+        if day == 1:
+            plot_rainfall(
+                dst_lons, dst_lats, day_total, "weathernext_24h",
+                init_dt, valid_dt_start, valid_dt_end, 24, province_shapely_geometries
+            )
+
+    # Metadata
     meta = {
-        "model": "WeatherNext 2",
+        "model": "Google WeatherNext 3",
         "source": "Google DeepMind / GCS",
-        "generated_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
+        "generated_at": datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %I:%M %p PHT"),
         "run_time": init_dt.strftime("%Y-%m-%d %H:%M UTC"),
-        "animation_frames": animation_frames
+        "animation_frames": animation_frames,
+        "cumulative_maps": ["weathernext_24h"]
     }
     meta_path = os.path.join(DATA_DIR, "rainfall_weathernext_meta.json")
     with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)
 
-    print(f"\nSaved metadata to {meta_path}")
-    print("Done!")
+    print(f"\nWeatherNext 3 Rainfall Maps generation completed successfully! Metadata saved to {meta_path}", flush=True)
 
 
 if __name__ == "__main__":

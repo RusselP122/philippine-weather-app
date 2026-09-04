@@ -232,7 +232,7 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
   const [isImageDownloading, setIsImageDownloading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("satellite"); // "satellite" | "spaghetti" | "windy"
-  const [selectedModel, setSelectedModel] = useState("gdm_wnc"); // "gdm_wnc" | "ecmwf_ifs" | "ecmwf_aifs"
+  const [selectedModel, setSelectedModel] = useState("gdm_wncv3"); // "gdm_wncv3" | "ecmwf_ifs" | "ecmwf_aifs"
   const [selectedCycle, setSelectedCycle] = useState(stormData.initCycle || "00Z");
   const [spaghettiError, setSpaghettiError] = useState(false);
   const [spaghettiLoading, setSpaghettiLoading] = useState(true);
@@ -292,6 +292,7 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
     const avail = { "00Z": false, "06Z": false, "12Z": false, "18Z": false };
 
     const stormAtcfId = (stormData?.atcf_id || "").toUpperCase();
+    const matchesModel = (m) => m === selectedModel || (selectedModel === "gdm_wncv3" && (m === "gdm_wnc" || m === "gdm_wncv3"));
     let stormEntries = manifestData.filter(e => {
       const eStorm = (e.storm_id || "").toUpperCase();
       const eAtcf = (e.atcf_id || "").toUpperCase();
@@ -300,7 +301,7 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
         (numWId && (eStorm === numWId.toUpperCase() || eAtcf === numWId.toUpperCase())) ||
         (floaterId && (eStorm === floaterId.toUpperCase() || eAtcf === floaterId.toUpperCase())) ||
         (stormAtcfId && (eStorm.includes(stormAtcfId) || stormAtcfId.includes(eStorm) || eAtcf.includes(stormAtcfId) || stormAtcfId.includes(eAtcf)))
-      ) && e.model === selectedModel;
+      ) && matchesModel(e.model);
     });
 
     if (stormEntries.length === 0) {
@@ -309,7 +310,7 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
         const eAtcf = (e.atcf_id || "").toUpperCase();
         const eStorm = (e.storm_id || "").toUpperCase();
         const isInvest = /^9\d[Ww]$/.test(eAtcf) || /^WP9\d$/i.test(eStorm);
-        return isInvest && e.model === selectedModel;
+        return isInvest && matchesModel(e.model);
       });
     }
 
@@ -390,6 +391,7 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
   // Compute spaghetti URL based on current attempt and manifest entries
   const spaghettiUrl = React.useMemo(() => {
     const stormAtcfId = (stormData?.atcf_id || "").toUpperCase();
+    const matchesModel = (m) => m === selectedModel || (selectedModel === "gdm_wncv3" && (m === "gdm_wnc" || m === "gdm_wncv3"));
     if (manifestData && manifestData.length > 0) {
       let stormEntries = manifestData.filter(e => {
         const eStorm = (e.storm_id || "").toUpperCase();
@@ -399,7 +401,7 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
           (numWId && (eStorm === numWId.toUpperCase() || eAtcf === numWId.toUpperCase())) ||
           (floaterId && (eStorm === floaterId.toUpperCase() || eAtcf === floaterId.toUpperCase())) ||
           (stormAtcfId && (eStorm.includes(stormAtcfId) || stormAtcfId.includes(eStorm) || eAtcf.includes(stormAtcfId) || stormAtcfId.includes(eAtcf)))
-        ) && e.model === selectedModel && e.cycle === selectedCycle;
+        ) && matchesModel(e.model) && e.cycle === selectedCycle;
       });
 
       if (stormEntries.length === 0) {
@@ -408,7 +410,7 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
           const eAtcf = (e.atcf_id || "").toUpperCase();
           const eStorm = (e.storm_id || "").toUpperCase();
           const isInvest = /^9\d[Ww]$/.test(eAtcf) || /^WP9\d$/i.test(eStorm);
-          return isInvest && e.model === selectedModel && e.cycle === selectedCycle;
+          return isInvest && matchesModel(e.model) && e.cycle === selectedCycle;
         });
       }
 
@@ -420,14 +422,17 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
       }
     }
 
+    const altModel = selectedModel === "gdm_wncv3" ? "gdm_wnc" : selectedModel;
     if (urlAttempt === 0) return `/assets/${wpId}_${stormDateStr}_${selectedCycle}_${selectedModel}.png`;
     if (urlAttempt === 1) return `/assets/${numWId}_${stormDateStr}_${selectedCycle}_${selectedModel}.png`;
     if (urlAttempt === 2) return `/assets/${wpId.toLowerCase()}_${selectedModel}_spaghetti.png`;
+    if (urlAttempt === 3) return `/assets/${wpId}_${stormDateStr}_${selectedCycle}_${altModel}.png`;
+    if (urlAttempt === 4) return `/assets/${numWId}_${stormDateStr}_${selectedCycle}_${altModel}.png`;
     return `/assets/${wpId}_${stormDateStr}_${selectedCycle}_${selectedModel}.png`;
   }, [manifestData, urlAttempt, wpId, numWId, floaterId, stormDateStr, selectedCycle, selectedModel, stormData]);
 
   const handleSpaghettiError = () => {
-    if (urlAttempt < 2) {
+    if (urlAttempt < 4) {
       setUrlAttempt(prev => prev + 1);
     } else {
       setSpaghettiLoading(false);
@@ -601,11 +606,11 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
               {/* Model Selector */}
               <div className="flex bg-slate-950/80 border border-slate-800 rounded-lg p-0.5 shadow-inner flex-wrap gap-0.5">
                 <button
-                  onClick={() => setSelectedModel("gdm_wnc")}
-                  className={`px-2.5 py-1.5 text-[10px] font-semibold rounded-md transition-all cursor-pointer text-center whitespace-nowrap ${selectedModel === "gdm_wnc" ? "bg-cyan-500 text-slate-950 font-bold shadow" : "text-slate-400 hover:text-slate-200"
+                  onClick={() => setSelectedModel("gdm_wncv3")}
+                  className={`px-2.5 py-1.5 text-[10px] font-semibold rounded-md transition-all cursor-pointer text-center whitespace-nowrap ${selectedModel === "gdm_wncv3" || selectedModel === "gdm_wnc" ? "bg-cyan-500 text-slate-950 font-bold shadow" : "text-slate-400 hover:text-slate-200"
                     }`}
                 >
-                  GDM WNC
+                  GDM WNCv3
                 </button>
                 <button
                   onClick={() => setSelectedModel("ecmwf_ifs")}

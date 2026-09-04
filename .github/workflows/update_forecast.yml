@@ -99,6 +99,8 @@ jobs:
           git add -f public/data/fnv3p2_paired_latest.dat || true
           git add -f public/data/fnv3p1_latest.dat || true
           git add -f public/data/fnv3p1_paired_latest.dat || true
+          git add -f public/data/wnv3_latest.dat || true
+          git add -f public/data/wnv3_paired_latest.dat || true
           git add -f public/data/oper_latest.dat || true
           git add -f public/data/oper_paired_latest.dat || true
           git add -f public/data/fnv3p2_*.dat || true

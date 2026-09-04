@@ -539,9 +539,9 @@ const LiveRadar = () => {
       return "linear-gradient(to top, #041f0f 0%, #14532d 20%, #15803d 40%, #22c55e 60%, #4ade80 80%, #86efac 100%)";
     }
     if (theme === "custom" || theme === "default") {
-      return "linear-gradient(to top, #0e4200 0%, #40de01 15%, #eeed01 30%, #fe8501 45%, #ba0001 65%, #ff00ff 85%, #8b0189 100%)";
+      return "linear-gradient(to top, #595959 0%, #aaaaaa 15%, #43e843 23%, #00c900 31%, #1ca500 38%, #eff000 46%, #ffc100 54%, #ff6a00 62%, #f50500 69%, #c20000 77%, #ad0033 85%, #e600cc 92%, #9e07fb 100%)";
     }
-    return "linear-gradient(to top, #0e4200 0%, #40de01 15%, #eeed01 30%, #fe8501 45%, #ba0001 65%, #ff00ff 85%, #8b0189 100%)";
+    return "linear-gradient(to top, #595959 0%, #aaaaaa 15%, #43e843 23%, #00c900 31%, #1ca500 38%, #eff000 46%, #ffc100 54%, #ff6a00 62%, #f50500 69%, #c20000 77%, #ad0033 85%, #e600cc 92%, #9e07fb 100%)";
   };
 
   useEffect(() => {
@@ -935,9 +935,9 @@ const LiveRadar = () => {
     ctx.stroke();
 
     // 3. Define color stops based on theme
-    let colors = ["#0e4200", "#40de01", "#eeed01", "#fe8501", "#ba0001", "#ff00ff", "#8b0189"]; // default & custom
-    if (theme === "custom") {
-      colors = ["#0e4200", "#40de01", "#eeed01", "#fe8501", "#ba0001", "#ff00ff", "#8b0189"];
+    let colors = ["#595959", "#43e843", "#00c900", "#eff000", "#ff6a00", "#f50500", "#e600cc", "#9e07fb"]; // default & custom
+    if (theme === "custom" || theme === "default") {
+      colors = ["#595959", "#43e843", "#00c900", "#eff000", "#ff6a00", "#f50500", "#e600cc", "#9e07fb"];
     } else if (theme === "vaporwave") {
       colors = ["#1c1533", "#00f0ff", "#05d9e8", "#ff2a74", "#ff007f", "#ab00cd"];
     } else if (theme === "storm") {
@@ -971,13 +971,13 @@ const LiveRadar = () => {
 
     // 5. Draw Labels & color indicators
     const labels = [
-      { text: "65+", color: "#8b0189" },
-      { text: "45-65", color: "#ff00ff" },
-      { text: "30-45", color: "#ba0001" },
-      { text: "20-30", color: "#fe8501" },
-      { text: "10-20", color: "#eeed01" },
-      { text: "3-10", color: "#40de01" },
-      { text: "0-3", color: "#0e4200" }
+      { text: "65 dBZ (65+)", color: "#9e07fb" },
+      { text: "60 dBZ (45)", color: "#e600cc" },
+      { text: "45 dBZ (30)", color: "#f50500" },
+      { text: "30 dBZ (15)", color: "#eff000" },
+      { text: "20 dBZ (7)", color: "#00c900" },
+      { text: "15 dBZ (1-3)", color: "#43e843" },
+      { text: "0 dBZ (Clutter)", color: "#595959" }
     ];
 
     ctx.textAlign = "left";
@@ -1856,21 +1856,38 @@ const LiveRadar = () => {
       />
 
       {/* Floating Legend Panel */}
-      <div className={`absolute bottom-[195px] md:bottom-28 z-35 bg-slate-900/80 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-3 flex-col select-none pointer-events-auto shadow-2xl text-[9px] text-slate-350 max-w-[130px] transition-all duration-300 ${showLeftPanel || showRightPanel ? "hidden md:flex" : "flex"} ${showLeftPanel ? "left-4 md:left-[352px]" : "left-4"}`}>
-        <span className="font-bold tracking-widest font-mono text-[8px] text-slate-400 uppercase leading-none border-b border-slate-800/50 pb-1.5 mb-1.5">dBZ Intensity</span>
-        <div className="flex gap-2.5 items-center">
+      <div className={`absolute bottom-[195px] md:bottom-28 z-35 bg-slate-900/85 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-2.5 flex-col select-none pointer-events-auto shadow-2xl text-[9px] text-slate-350 min-w-[140px] max-w-[160px] transition-all duration-300 ${showLeftPanel || showRightPanel ? "hidden md:flex" : "flex"} ${showLeftPanel ? "left-4 md:left-[352px]" : "left-4"}`}>
+        <div className="flex justify-between items-center border-b border-slate-800/60 pb-1 mb-1.5 px-0.5">
+          <span className="font-bold tracking-wider font-mono text-[8px] text-slate-400 uppercase">dBZ</span>
+          <span className="font-bold tracking-wider font-mono text-[8px] text-slate-400 uppercase">Rain Rate</span>
+        </div>
+        <div className="flex gap-2 items-center justify-between px-0.5">
+          {/* Left dBZ numbers */}
+          <div className="flex flex-col justify-between h-36 font-mono text-[8px] font-bold text-slate-300 text-right w-5 leading-none">
+            <span>65</span>
+            <span>60</span>
+            <span>45</span>
+            <span>30</span>
+            <span>15</span>
+            <span className="text-[7.5px] text-slate-400">0</span>
+          </div>
+
+          {/* Color gradient bar */}
           <div
-            className="w-2.5 h-28 rounded-full border border-slate-950/60"
+            className="w-2.5 h-36 rounded-full border border-slate-950/80 flex-shrink-0 shadow-inner"
             style={{ background: getLegendGradientStyle(colorTheme) }}
           ></div>
-          <div className="flex flex-col justify-between h-28 leading-none font-mono text-[8px]">
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#8b0189]"></span>65+</span>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#ff00ff]"></span>45-65</span>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#ba0001]"></span>30-45</span>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#fe8501]"></span>20-30</span>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#eeed01]"></span>10-20</span>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#40de01]"></span>3-10</span>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded bg-[#0e4200]"></span>0-3</span>
+
+          {/* Right mm/hr & clutter labels */}
+          <div className="flex flex-col justify-between h-36 font-mono text-[8px] text-slate-350 text-left leading-none">
+            <span className="font-bold text-[#9e07fb]">65+</span>
+            <span className="text-[#f50500]">45</span>
+            <span className="text-[#ff6a00]">30</span>
+            <span className="text-[#eff000]">15</span>
+            <span className="text-[#00c900]">7</span>
+            <span className="text-[#43e843]">3</span>
+            <span className="text-[7.5px] text-emerald-300 whitespace-nowrap font-medium">1 mm/hr</span>
+            <span className="text-[7px] text-slate-400 whitespace-nowrap">Radar Clutter</span>
           </div>
         </div>
       </div>

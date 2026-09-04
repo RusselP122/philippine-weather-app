@@ -75,11 +75,13 @@ function parseCSV(text) {
 const LOCAL_CSV = {
     fnv3p2: "/data/fnv3p2_latest.dat",
     fnv3p1: "/data/fnv3p1_latest.dat",
-    oper: "/data/oper_latest.dat",
+    oper: "/data/wnv3_latest.dat",
+    wnv3: "/data/wnv3_latest.dat",
     large: "/data/fnv3_large_latest.dat",
     fnv3p2Paired: "/data/fnv3p2_paired_latest.dat",
     fnv3p1Paired: "/data/fnv3p1_paired_latest.dat",
-    operPaired: "/data/oper_paired_latest.dat",
+    operPaired: "/data/wnv3_paired_latest.dat",
+    wnv3Paired: "/data/wnv3_paired_latest.dat",
     largePaired: "/data/fnv3_large_paired_latest.dat",
     ifs: "/data/ifs_tc_latest.dat",
     aifs: "/data/aifs_tc_latest.dat",
@@ -2792,7 +2794,7 @@ export default function SpaghettiPlot() {
             const url = canvas.toDataURL("image/png");
             const a = document.createElement('a');
             a.href = url;
-            const modelPrefix = dataset === 'ifs' ? 'ECMWF' : dataset === 'aifs' ? 'ECMWF-AIFS' : dataset === 'aigefs' ? 'NOAA-AIGEFS' : dataset === 'large' ? 'GDM-WNC-Large' : dataset === 'fnv3p2' ? 'GDM-WNC-Base' : dataset === 'fnv3p1' ? 'GDM-WNCP1' : dataset === 'oper' ? 'GDM-OPER' : 'GDM-WNC';
+            const modelPrefix = dataset === 'ifs' ? 'ECMWF' : dataset === 'aifs' ? 'ECMWF-AIFS' : dataset === 'aigefs' ? 'NOAA-AIGEFS' : dataset === 'large' ? 'GDM-WNC-Large' : dataset === 'fnv3p2' ? 'GDM-WNC-Base' : dataset === 'fnv3p1' ? 'GDM-WNCP1' : (dataset === 'oper' || dataset === 'wnv3') ? 'GDM-WNCv3' : 'GDM-WNC';
             a.download = `${modelPrefix}-Snapshot-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
             a.click();
         } catch (err) {
@@ -3153,7 +3155,7 @@ export default function SpaghettiPlot() {
                 <div className="segmented-control">
                     {[{ id: "fnv3p2", label: "WNC Base" },
                     { id: "fnv3p1", label: "WNCP1" },
-                    { id: "oper", label: "OPER" },
+                    { id: "oper", label: "WNCv3" },
                     { id: "large", label: "WNC Large" },
                     { id: "ifs", label: "ECMWF IFS" },
                     { id: "aifs", label: "ECMWF AIFS" },
@@ -3406,7 +3408,7 @@ export default function SpaghettiPlot() {
             <div className="spaghetti-footer">
                 <p className="spaghetti-footer-text">
                     Powered by <strong className="spaghetti-footer-highlight">Philippine Typoon/Weather</strong><br />
-                    Data: {dataset === "ifs" ? "ECMWF IFS Ensemble" : dataset === "aifs" ? "ECMWF AIFS Ensemble" : dataset === "aigefs" ? "AI-GEFS Ensemble" : dataset === "large" ? "WNC Large Ensemble" : dataset === "fnv3p2" ? "GDM WNC Base (WNCP2)" : dataset === "fnv3p1" ? "GDM WNCP1" : dataset === "oper" ? "GDM OPER" : "GDM WNC"}<br />
+                    Data: {dataset === "ifs" ? "ECMWF IFS Ensemble" : dataset === "aifs" ? "ECMWF AIFS Ensemble" : dataset === "aigefs" ? "AI-GEFS Ensemble" : dataset === "large" ? "WNC Large Ensemble" : dataset === "fnv3p2" ? "GDM WNC Base (WNCP2)" : dataset === "fnv3p1" ? "GDM WNCP1" : (dataset === "oper" || dataset === "wnv3") ? "GDM WNCv3" : "GDM WNC"}<br />
                     Consult official agencies for guidance.
                 </p>
             </div>
@@ -3494,7 +3496,7 @@ export default function SpaghettiPlot() {
                             textOverflow: "ellipsis"
                         }}
                     >
-                        {dataset === "ifs" ? "ECMWF IFS" : dataset === "aifs" ? "ECMWF AIFS" : dataset === "aigefs" ? "NOAA AI-GEFS" : dataset === "large" ? "GDM WNC Large" : dataset === "fnv3p2" ? "GDM WNC Base" : dataset === "fnv3p1" ? "GDM WNCP1" : dataset === "oper" ? "GDM OPER" : "GDM WNC"} · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
+                        {dataset === "ifs" ? "ECMWF IFS" : dataset === "aifs" ? "ECMWF AIFS" : dataset === "aigefs" ? "NOAA AI-GEFS" : dataset === "large" ? "GDM WNC Large" : dataset === "fnv3p2" ? "GDM WNC Base" : dataset === "fnv3p1" ? "GDM WNCP1" : (dataset === "oper" || dataset === "wnv3") ? "GDM WNCv3" : "GDM WNC"} · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
                     </span>
                 </div>
 
@@ -3981,7 +3983,7 @@ export default function SpaghettiPlot() {
                     {(viewMode === "animation" || (isExporting && viewMode !== "trends")) && (
                         <div className="gif-watermark">
                             <h3 className="gif-watermark-title">
-                                {dataset === 'ifs' ? 'ECMWF IFS Ensemble Track' : dataset === 'aifs' ? 'ECMWF AIFS Ensemble Track' : dataset === 'aigefs' ? 'AI-GEFS Ensemble Track' : dataset === 'large' ? 'Google Deepmind WNC 1000 Ensemble Track' : dataset === 'fnv3p2' ? 'Google Deepmind WNC Base Ensemble Track' : dataset === 'fnv3p1' ? 'Google Deepmind WNCP1 Ensemble Track' : dataset === 'oper' ? 'Google Deepmind OPER Ensemble Track' : 'Google Deepmind WNC Ensemble Track'}
+                                {dataset === 'ifs' ? 'ECMWF IFS Ensemble Track' : dataset === 'aifs' ? 'ECMWF AIFS Ensemble Track' : dataset === 'aigefs' ? 'AI-GEFS Ensemble Track' : dataset === 'large' ? 'Google Deepmind WNC 1000 Ensemble Track' : dataset === 'fnv3p2' ? 'Google Deepmind WNC Base Ensemble Track' : dataset === 'fnv3p1' ? 'Google Deepmind WNCP1 Ensemble Track' : (dataset === 'oper' || dataset === 'wnv3') ? 'Google Deepmind WNCv3 Ensemble Track' : 'Google Deepmind WNC Ensemble Track'}
                             </h3>
                             <div className="gif-watermark-row">
                                 <strong>Init:</strong> {runInitDate ? runInitDate.toISOString().replace('T', ' ').substring(0, 19) + ' UTC' : 'Loading...'}

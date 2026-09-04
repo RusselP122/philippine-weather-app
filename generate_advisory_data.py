@@ -3,7 +3,7 @@ generate_advisory_data.py
 =========================
 AI Multi-Model Consensus Weather Advisory Data Generator for the Philippines.
 Blends top operational global AI weather forecasting models:
-1. Google WeatherNext 2 (via GCS Zarr)
+1. Google WeatherNext 3 (via GCS Zarr v3)
 2. ECMWF AIFS v2 (via ECMWF Open Data Azure)
 3. NOAA AIGFS (via NOAA NCEP NOMADS byte-range)
 
@@ -34,7 +34,7 @@ from shapely.geometry import shape, Point
 from shapely.validation import make_valid
 from datetime import datetime, timedelta, timezone
 
-# ── Directories ─────────────────────────────────────────────────────────────
+# ── Directories ────────────────────────────────────────────────────────────
 PUBLIC_DIR = os.path.join(os.path.dirname(__file__), 'public', 'data')
 GEOJSON_PATH = os.path.join(PUBLIC_DIR, 'ph_provinces.json')
 OUTPUT_PATH = os.path.join(PUBLIC_DIR, 'advisory_data.json')
@@ -54,7 +54,7 @@ STEPS = [24, 48, 72, 96, 120]
 
 def regrid_to_master(lats, lons, values):
     """
-    Interpolates coarse model data (0.25° ~28km) onto the 0.02° (~2.2km) master grid
+    Interpolates coarse model data onto the 0.02° (~2.2km) master grid
     using bounding-box cropping and cubic/linear interpolation.
     """
     if values is None or lats is None or lons is None:
@@ -80,7 +80,7 @@ def regrid_to_master(lats, lons, values):
     )
     if np.any(mask):
         sub_lats = lats_2d[mask]
-        sub_lons = lons_2d[mask]
+        sub_lons = lon_2d = lons_2d[mask]
         sub_vals = values[mask]
     else:
         sub_lats = lats_2d.ravel()
@@ -178,7 +178,6 @@ def precompute_province_masks(geometries):
     prov_masks = {}
     for name, geom in geometries.items():
         minx, miny, maxx, maxy = geom.bounds
-        # Find index slice in master grid
         col_mask = (MASTER_LONS >= minx - 0.01) & (MASTER_LONS <= maxx + 0.01)
         row_mask = (MASTER_LATS >= miny - 0.01) & (MASTER_LATS <= maxy + 0.01)
 
@@ -196,7 +195,6 @@ def precompute_province_masks(geometries):
 
         sub_mask = shapely.contains_xy(geom, sub_lons, sub_lats)
 
-        # If province is very small and no grid points fall inside, check intersects or centroid
         if not np.any(sub_mask):
             sub_mask = shapely.intersects_xy(geom, sub_lons, sub_lats)
 
@@ -240,82 +238,106 @@ def get_active_storm_name():
     return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# MODEL 1: Google WeatherNext 2 (via GCS Zarr)
-# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
+# MODEL 1: Google WeatherNext 3 (via GCS Zarr v3)
+# ─────────────────────────────────────────────────────────────────────────────
 
-def fetch_weathernext2_daily():
-    """Extracts daily 24h precipitation and wind speed from Google WeatherNext 2."""
-    print("Fetching Google WeatherNext 2 dataset...")
+def fetch_weathernext3_daily(project_id="affable-ring-442402-j2"):
+    """
+    Extracts daily 24h precipitation (mm) and wind speed (kph) for 5 days from Google WeatherNext 3.
+    """
+    print("Fetching Google WeatherNext 3 dataset...")
     try:
+        from google.cloud import storage
         import gcsfs
-        import xarray as xr
-
-        # gs://weathernext is a public bucket, token='anon' enables zero-auth access anywhere
-        try:
-            fs = gcsfs.GCSFileSystem(token='anon')
-            parent_path = 'gs://weathernext/weathernext_2_0_0/zarr/2025_to_present'
-            all_items = fs.ls(parent_path)
-        except Exception:
-            fs = gcsfs.GCSFileSystem()
-            parent_path = 'gs://weathernext/weathernext_2_0_0/zarr/2025_to_present'
-            all_items = fs.ls(parent_path)
-        run_folders = [f'gs://{item}' for item in all_items if item.endswith('_preds')]
-        if not run_folders:
+        import numcodecs
+        
+        client = storage.Client(project=project_id)
+        fs = gcsfs.GCSFileSystem(project=project_id)
+        
+        today_prefix = 'weathernext_3_0_0_statistics/zarr/2026_to_present/' + datetime.now(timezone.utc).strftime('%Y%m')
+        blobs = client.list_blobs('weathernext3_statistics_spatial', prefix=today_prefix, delimiter='/')
+        runs = []
+        for page in blobs.pages:
+            runs.extend(list(page.prefixes))
+            
+        if not runs:
+            blobs = client.list_blobs('weathernext3_statistics_spatial', prefix='weathernext_3_0_0_statistics/zarr/2026_to_present/', delimiter='/')
+            for page in blobs.pages:
+                runs.extend(list(page.prefixes))
+                
+        if not runs:
+            print("  WeatherNext 3: No forecast runs found in bucket.")
             return None, None, None
 
-        run_folders.sort()
-        latest_run_path = run_folders[-1]
-        print(f"  WeatherNext 2: Connected to {latest_run_path}")
+        from weather_viz_styles import find_latest_weathernext_run, batch_cat_gcs
+        latest_run, avail_hours = find_latest_weathernext_run(client, fs, project_id=project_id, min_hours=120, var_check="total_precipitation_1hr_mean")
+        print(f"  WeatherNext 3: Connected to {latest_run} ({avail_hours}h available)")
 
-        store = fs.get_mapper(f"{latest_run_path}/predictions.zarr")
-        ds = xr.open_zarr(store, consolidated=True)
+        base = f"weathernext3_statistics_spatial/{latest_run}predictions.zarr"
+        codec = numcodecs.Zstd()
 
-        if ds.lat[0] < ds.lat[-1]:
-            ds_ph = ds.sel(lat=slice(LAT_MIN - 1.0, LAT_MAX + 1.0), lon=slice(LON_MIN - 1.0, LON_MAX + 1.0))
-        else:
-            ds_ph = ds.sel(lat=slice(LAT_MAX + 1.0, LAT_MIN - 1.0), lon=slice(LON_MIN - 1.0, LON_MAX + 1.0))
+        lat = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lat_0p1/c/0')), dtype='<f4')
+        lon = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lon_0p1/c/0')), dtype='<f4')
 
-        wn_lats = ds_ph.lat.values
-        wn_lons = ds_ph.lon.values
+        lat_mask = (lat >= LAT_MIN - 1.0) & (lat <= LAT_MAX + 1.0)
+        lon_mask = (lon >= LON_MIN - 1.0) & (lon <= LON_MAX + 1.0)
+        lat_idx = np.where(lat_mask)[0]
+        lon_idx = np.where(lon_mask)[0]
+        lat_slice = slice(lat_idx.min(), lat_idx.max() + 1)
+        lon_slice = slice(lon_idx.min(), lon_idx.max() + 1)
 
+        sub_lats = lat[lat_slice]
+        sub_lons = lon[lon_slice]
+        WN_LONS, WN_LATS = np.meshgrid(sub_lons, sub_lats)
+
+        # Batch fetch 120 hourly steps of precipitation and wind
+        max_h = min(120, avail_hours)
+        precip_paths = [f'{base}/total_precipitation_1hr_mean/c/{t}/0/0' for t in range(max_h)]
+        wind_steps = list(range(0, max_h, 3))
+        wind_paths = [f'{base}/wind_speed_10m_mean/c/{t}/0/0' for t in wind_steps]
+
+        all_paths = precip_paths + wind_paths
+        raw_dict = batch_cat_gcs(fs, all_paths, batch_size=20, desc="WeatherNext chunks")
+        
+        p_chunks = []
+        for p in precip_paths:
+            if p in raw_dict:
+                arr = np.frombuffer(codec.decode(raw_dict[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+                p_chunks.append(arr * 1000.0) # meters to mm
+            else:
+                p_chunks.append(np.zeros_like(WN_LATS))
+                
+        w_dict = {}
+        for t, p in zip(wind_steps, wind_paths):
+            if p in raw_dict:
+                arr = np.frombuffer(codec.decode(raw_dict[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+                w_dict[t] = arr * 3.6 * 1.25 # m/s to kph gust
+                
         daily_precip_master = {}
         daily_wind_master = {}
-
-        precip_var = ds_ph.get('total_precipitation_6hr')
-        u10_var = ds_ph.get('10m_u_component_of_wind')
-        v10_var = ds_ph.get('10m_v_component_of_wind')
-
+        
         for d in range(1, 6):
-            t_start = (d - 1) * 4
-            t_end = d * 4
-
-            if precip_var is not None and ds_ph.sizes.get('time', 0) >= t_end:
-                slice_p = precip_var.isel(time=slice(t_start, t_end))
-                total_24h = (slice_p.sum(dim='time') * 1000.0).values
-                if total_24h.ndim == 3:
-                    total_24h = total_24h[0]
-                daily_precip_master[d] = regrid_to_master(wn_lats, wn_lons, np.maximum(total_24h, 0))
-
-            if u10_var is not None and v10_var is not None and ds_ph.sizes.get('time', 0) >= t_end:
-                u_slice = u10_var.isel(time=slice(t_start, t_end)).values
-                v_slice = v10_var.isel(time=slice(t_start, t_end)).values
-                ws_max = np.max(np.sqrt(u_slice**2 + v_slice**2) * 3.6 * 1.25, axis=0)
-                if ws_max.ndim == 3:
-                    ws_max = ws_max[0]
-                daily_wind_master[d] = regrid_to_master(wn_lats, wn_lons, ws_max)
-
-        run_time_str = str(ds.get('time', {}).values[0]) if 'time' in ds else None
-        return daily_precip_master, daily_wind_master, run_time_str
-
+            t_start = (d - 1) * 24
+            t_end = d * 24
+            
+            day_p = np.maximum(np.sum(p_chunks[t_start:t_end], axis=0), 0)
+            daily_precip_master[d] = regrid_to_master(WN_LATS, WN_LONS, day_p)
+            
+            day_w_steps = [t for t in wind_steps if t_start <= t < t_end and t in w_dict]
+            if day_w_steps:
+                day_w = np.max([w_dict[t] for t in day_w_steps], axis=0)
+                daily_wind_master[d] = regrid_to_master(WN_LATS, WN_LONS, day_w)
+                
+        return daily_precip_master, daily_wind_master, latest_run
     except Exception as e:
-        print(f"  WeatherNext 2 fetch notice: {e}")
+        print(f"  WeatherNext 3 fetch notice: {e}")
         return None, None, None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
 # MODEL 2: ECMWF AIFS v2 (via Azure Open Data)
-# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
 
 def fetch_aifs_daily():
     """Extracts daily 24h precipitation and wind speed from ECMWF AIFS."""
@@ -406,9 +428,9 @@ def fetch_aifs_daily():
         return None, None, None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
 # MODEL 3: NOAA AIGFS (via NOMADS byte-range)
-# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
 
 def get_latest_aigfs_run(session):
     base_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigfs/prod"
@@ -553,9 +575,9 @@ def fetch_aigfs_daily(session):
         return None, None, None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
 # Offline Fallback Generator
-# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
 
 def generate_offline_fallback(geometries, day):
     """Generates realistic synoptic weather distributions if all networks are offline."""
@@ -601,14 +623,14 @@ def generate_offline_fallback(geometries, day):
     return results
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
 # Main Pipeline
-# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
 
 def generate_advisory_data():
     print("\n====================================================================")
     print("AI Multi-Model Consensus Weather Advisory Generator (5-Day)")
-    print("Ensemble: Google WeatherNext 2 + ECMWF AIFS v2 + NOAA AIGFS")
+    print("Ensemble: Google WeatherNext 3 + ECMWF AIFS v2 + NOAA AIGFS")
     print("====================================================================\n")
 
     geometries = get_province_geometries()
@@ -623,13 +645,13 @@ def generate_advisory_data():
     session.headers.update({"User-Agent": "Mozilla/5.0 (WeatherAdvisory)"})
 
     # Fetch all 3 AI Models
-    wn_p, wn_w, wn_init = fetch_weathernext2_daily()
+    wn_p, wn_w, wn_init = fetch_weathernext3_daily()
     aifs_p, aifs_w, aifs_init = fetch_aifs_daily()
     aigfs_p, aigfs_w, aigfs_init = fetch_aigfs_daily(session)
 
     models_active = []
     if wn_p is not None:
-        models_active.append("WeatherNext 2")
+        models_active.append("WeatherNext 3")
     if aifs_p is not None:
         models_active.append("AIFS")
     if aigfs_p is not None:
@@ -684,14 +706,14 @@ def generate_advisory_data():
 
             if wn_p and d in wn_p:
                 grid_p = wn_p[d][r_slice, c_slice][sub_mask]
-                p_vals_dict["WeatherNext 2"] = {
+                p_vals_dict["WeatherNext 3"] = {
                     'val': round((percentile(grid_p, 75) + float(np.mean(grid_p))) / 2.0, 1),
                     'min': round(float(np.min(grid_p)), 1),
                     'max': round(float(np.max(grid_p)), 1)
                 }
             if wn_w and d in wn_w:
                 grid_w = wn_w[d][r_slice, c_slice][sub_mask]
-                w_vals_dict["WeatherNext 2"] = round(float(np.max(grid_w)), 1)
+                w_vals_dict["WeatherNext 3"] = round(float(np.max(grid_w)), 1)
 
             if aifs_p and d in aifs_p:
                 grid_p = aifs_p[d][r_slice, c_slice][sub_mask]
@@ -727,7 +749,7 @@ def generate_advisory_data():
                 r_min = round(max(0.0, base_r - 10.0), 1)
                 r_max = round(base_r + 20.0, 1)
                 p_vals_dict = {
-                    "WeatherNext 2": {'val': round(base_r * 1.05, 1)},
+                    "WeatherNext 3": {'val': round(base_r * 1.05, 1)},
                     "AIFS": {'val': round(base_r * 0.95, 1)},
                     "AIGFS": {'val': round(base_r, 1)}
                 }
@@ -737,7 +759,7 @@ def generate_advisory_data():
                 w_kph = round(float(np.max(list(w_vals_dict.values()))), 1)
             else:
                 w_kph = round(random.uniform(15, 35), 1)
-                w_vals_dict = {"WeatherNext 2": w_kph, "AIFS": w_kph, "AIGFS": w_kph}
+                w_vals_dict = {"WeatherNext 3": w_kph, "AIFS": w_kph, "AIGFS": w_kph}
 
             category, advisory = get_rainfall_category_and_advisory(r_val)
             confidence, agreement = calculate_confidence_and_agreement(raw_model_vals)
@@ -775,7 +797,7 @@ def generate_advisory_data():
             "generated": generated_at,
             "run": init_time_str,
             "storm": active_storm,
-            "models": models_active if models_active else ["WeatherNext 2", "AIFS", "AIGFS"]
+            "models": models_active if models_active else ["WeatherNext 3", "AIFS", "AIGFS"]
         },
         "days": days_output
     }

@@ -48,13 +48,37 @@ def archive_radar():
         home = session.get("https://panahon.gov.ph/", timeout=15)
         csrf_match = re.search(r'<meta name="csrf-token" content="([^"]+)"', home.text)
         api_sig_match = re.search(r'<meta name="api-sig" content="([^"]+)"', home.text)
+        api_sig_handle_match = re.search(r'<meta name="api-sig-handle" content="([^"]+)"', home.text)
 
         csrf_token = csrf_match.group(1) if csrf_match else None
         api_sig_secret = api_sig_match.group(1) if api_sig_match else None
+        api_sig_handle = api_sig_handle_match.group(1) if api_sig_handle_match else None
 
-        if not csrf_token or not api_sig_secret:
-            print("Failed to extract security tokens from PANaHON gateway.")
+        if not csrf_token:
+            print("Failed to extract csrf-token from PANaHON gateway.")
             return
+
+        if not api_sig_secret and api_sig_handle:
+            sig_url = f"https://panahon.gov.ph/api/v1/sig?token={csrf_token}"
+            sig_res = session.get(sig_url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "X-Sig-Handle": api_sig_handle,
+                "Referer": "https://panahon.gov.ph/",
+            }, timeout=15)
+            if sig_res.ok:
+                sig_data = sig_res.json()
+                api_sig_secret = sig_data.get("secret")
+
+        if not api_sig_secret:
+            print("Failed to extract or resolve api-sig secret from PANaHON gateway.")
+            return
+
+        # Acquire asset-ticket to ensure access to protected radar assets
+        session.get(
+            f"https://panahon.gov.ph/api/v1/asset-ticket?token={csrf_token}",
+            headers=get_signed_headers(session, api_sig_secret, csrf_token, "api/v1/asset-ticket"),
+            timeout=15
+        )
 
         # 2. Fetch active timeline with dynamic HMAC signing
         timeline_path = "api/v1/radar/timeline"

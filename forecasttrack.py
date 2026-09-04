@@ -371,10 +371,12 @@ def parse_atcf_latlon(val_str):
 
 def get_fnv3_paired_mean_track(storm, data_dir='public/data'):
     """
-    Checks for available FNV3p2 paired mean track files (fnv3p2_paired_latest.dat or newest paired CSVs).
+    Checks for available WNCv3 / FNV3 paired mean track files (wnv3_paired_latest.dat, fnv3p2_paired_latest.dat, etc.).
     Only uses recent/latest model initialization files.
     """
     latest_files = [
+        os.path.join(data_dir, 'wnv3_paired_latest.dat'),
+        os.path.join(data_dir, 'wnv3_paired_latest.csv'),
         os.path.join(data_dir, 'fnv3p2_paired_latest.dat'),
         os.path.join(data_dir, 'oper_paired_latest.dat')
     ]
@@ -429,7 +431,7 @@ def get_fnv3_paired_mean_track(storm, data_dir='public/data'):
             if 'pressure' in matched.columns: cols_to_keep.append('pressure')
             res = matched[cols_to_keep].dropna(subset=['lat', 'lon'])
             if not res.empty:
-                print(f"Found official FNV3p2 paired mean track for {short_id} in {os.path.basename(fpath)} (dist: {best_dist:.1f}km)")
+                print(f"Found official WNCv3 paired mean track for {short_id} in {os.path.basename(fpath)} (dist: {best_dist:.1f}km)")
                 return res
                 
     return pd.DataFrame()
@@ -1031,21 +1033,30 @@ def load_all_actual_tracks_for_storm(storm):
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public', 'data')
     fallback_cycle = get_fallback_cycle_str(storm)
     
-    # 1. WeatherNext Cyclone (FNV3p2): Check paired file first, fallback to calculated ensemble mean
-    fnv3_paired = get_fnv3_paired_mean_track(storm, data_dir)
-    if not fnv3_paired.empty:
-        ensemble_means['WeatherNext Cyclone'] = fnv3_paired
+    # 1. WeatherNext Cyclone (WNCv3): Check paired file first, fallback to calculated ensemble mean
+    wnc_paired = get_fnv3_paired_mean_track(storm, data_dir)
+    if not wnc_paired.empty:
+        ensemble_means['WeatherNext Cyclone'] = wnc_paired
     else:
-        fnv3_calc = get_actual_ensemble_mean_for_storm(storm, os.path.join(data_dir, 'fnv3p2_latest.dat'))
-        if not fnv3_calc.empty:
-            ensemble_means['WeatherNext Cyclone'] = fnv3_calc
+        for raw_cand in ['wnv3_latest.dat', 'wnv3_latest.csv', 'fnv3p2_latest.dat', 'fnv3p2_latest.csv']:
+            cand_path = os.path.join(data_dir, raw_cand)
+            if os.path.exists(cand_path):
+                wnc_calc = get_actual_ensemble_mean_for_storm(storm, cand_path)
+                if not wnc_calc.empty:
+                    ensemble_means['WeatherNext Cyclone'] = wnc_calc
+                    break
 
-    for fnv3_f in [os.path.join(data_dir, 'fnv3p2_paired_latest.dat'), os.path.join(data_dir, 'fnv3p2_latest.dat')]:
-        if os.path.exists(fnv3_f):
-            df_fnv3 = load_and_decrypt_track_file(fnv3_f)
-            if 'init_time' in df_fnv3.columns and not df_fnv3['init_time'].dropna().empty:
+    for wnc_f in [
+        os.path.join(data_dir, 'wnv3_paired_latest.dat'),
+        os.path.join(data_dir, 'wnv3_latest.dat'),
+        os.path.join(data_dir, 'fnv3p2_paired_latest.dat'),
+        os.path.join(data_dir, 'fnv3p2_latest.dat')
+    ]:
+        if os.path.exists(wnc_f):
+            df_wnc = load_and_decrypt_track_file(wnc_f)
+            if 'init_time' in df_wnc.columns and not df_wnc['init_time'].dropna().empty:
                 try:
-                    dt = pd.to_datetime(df_fnv3['init_time'].dropna().iloc[0])
+                    dt = pd.to_datetime(df_wnc['init_time'].dropna().iloc[0])
                     track_inits['WeatherNext Cyclone'] = dt.strftime('%Y-%m-%d %HZ')
                     break
                 except Exception:

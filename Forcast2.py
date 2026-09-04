@@ -14,8 +14,8 @@ import requests
 import subprocess
 from datetime import datetime, timedelta, timezone
 
-def get_latest_run_datetime():
-    models = ["FNV3P2", "FNV3P1", "OPER"]
+def get_latest_run_datetime(target_model=None):
+    models = [target_model] if target_model else ["FNV3P2", "FNV3P1", "WNV3"]
     today = datetime.now(timezone.utc).date()
     dates = [today, today - timedelta(days=1), today - timedelta(days=2), today - timedelta(days=3)]
     hours_desc = ["18", "12", "06", "00"]
@@ -26,14 +26,14 @@ def get_latest_run_datetime():
             for model in models:
                 url = f"https://deepmind.google.com/science/weatherlab/download/cyclones/{model}/ensemble/cyclogenesis/csv/{model}_{date_str}T{h}_00_cyclogenesis.csv"
                 try:
-                    resp = requests.head(url, allow_redirects=True, timeout=10)
+                    resp = requests.head(url, allow_redirects=True, timeout=4)
                     if resp.status_code == 200:
                         print(f"Latest available run found: {model} {date_str}T{h}:00")
                         return date_str, h
                 except requests.RequestException:
                     continue
 
-    raise RuntimeError("No available cyclogenesis runs found in the last 4 days.")
+    raise RuntimeError(f"No available cyclogenesis runs found for {models} in the last 4 days.")
 
 def get_pressure_color(pressure):
     if np.isnan(pressure):
@@ -301,6 +301,7 @@ def process_and_plot(model, latest_url, date_str, hour_str, is_base_model):
     model_display = {
         "FNV3P2": "GDM WNCP2",
         "FNV3P1": "GDM WNCP1",
+        "WNV3": "GDM WNCv3",
         "OPER": "GDM OPER"
     }.get(model, model)
 
@@ -318,7 +319,8 @@ def process_and_plot(model, latest_url, date_str, hour_str, is_base_model):
     # Add title
     start_date = forecast_start_date_text or "Start"
     end_date = forecast_end_date_text or "End"
-    ax.set_title(f"{model_display} 50 Ensemble 5-Day Forecast Tropical Cyclone Tracks\nWestern Pacific ({start_date} to {end_date})", fontsize=14, weight='bold')
+    ensemble_size = 64 if model == "WNV3" else 50
+    ax.set_title(f"{model_display} {ensemble_size} Ensemble 5-Day Forecast Tropical Cyclone Tracks\nWestern Pacific ({start_date} to {end_date})", fontsize=14, weight='bold')
 
     # Save the plot
     try:
@@ -338,37 +340,30 @@ def process_and_plot(model, latest_url, date_str, hour_str, is_base_model):
     plt.close()
 
 def main():
-    try:
-        date_str, hour_str = get_latest_run_datetime()
-    except Exception as e:
-        print(f"Error finding latest run: {e}")
-        exit()
-
-    models = ["FNV3P2", "FNV3P1", "OPER"]
-    base_model_candidates = [m for m in models if m != "OPER"]
+    models = ["FNV3P2", "FNV3P1", "WNV3"]
+    base_model_candidates = [m for m in models if m != "WNV3"]
 
     found_models = []
     base_model_identified = None
 
     for model in models:
-        url = f"https://deepmind.google.com/science/weatherlab/download/cyclones/{model}/ensemble/cyclogenesis/csv/{model}_{date_str}T{hour_str}_00_cyclogenesis.csv"
         try:
-            resp = requests.head(url, allow_redirects=True, timeout=10)
-            if resp.status_code == 200:
-                found_models.append((model, url))
-                if model in base_model_candidates and base_model_identified is None:
-                    base_model_identified = model
-        except requests.RequestException:
-            continue
+            date_str, hour_str = get_latest_run_datetime(model)
+            url = f"https://deepmind.google.com/science/weatherlab/download/cyclones/{model}/ensemble/cyclogenesis/csv/{model}_{date_str}T{hour_str}_00_cyclogenesis.csv"
+            found_models.append((model, url, date_str, hour_str))
+            if model in base_model_candidates and base_model_identified is None:
+                base_model_identified = model
+        except Exception as e:
+            print(f"Notice: No run found for {model}: {e}")
 
     if not found_models:
-        print(f"Error: No model datasets found for cycle {date_str}T{hour_str}:00")
+        print("Error: No model datasets found for any target models.")
         exit()
 
-    print(f"Models found with data for cycle {date_str}T{hour_str}:00: {[m[0] for m in found_models]}")
+    print(f"Models found with data: {[(m[0], f'{m[2]}T{m[3]}:00') for m in found_models]}")
     print(f"Identified primary base model: {base_model_identified}")
 
-    for model, url in found_models:
+    for model, url, date_str, hour_str in found_models:
         is_base = (model == base_model_identified)
         process_and_plot(model, url, date_str, hour_str, is_base)
 

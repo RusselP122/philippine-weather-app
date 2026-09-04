@@ -1,4 +1,13 @@
+"""
+generate_weathernext_maps.py
+============================
+Generates 6-hourly Synoptic Maps (6h Precip Accumulation + MSLP Isobars + 1000-500 mb Thickness)
+out to 15 Days (f006 to f360) for the Philippine Area of Responsibility (PAR)
+using Google WeatherNext 3 (Zarr v3).
+"""
+
 import os
+import sys
 import json
 import scipy.ndimage
 import matplotlib
@@ -8,11 +17,11 @@ import matplotlib.lines as mlines
 from matplotlib.colors import ListedColormap, BoundaryNorm
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-from shapely.geometry import shape
 import numpy as np
-import gcsfs
-import xarray as xr
 from datetime import datetime, timezone, timedelta
+from google.cloud import storage
+import gcsfs
+import numcodecs
 
 # Import standardized visualization system
 try:
@@ -21,10 +30,10 @@ try:
         load_ph_provinces, setup_map_ax, draw_par_boundary,
         add_mslp_contours, add_thickness_contours,
         add_styled_colorbar, draw_header_banner,
-        DEFAULT_EXTENT, PAR_LONS, PAR_LATS
+        DEFAULT_EXTENT, PAR_LONS, PAR_LATS,
+        find_latest_weathernext_run, regrid_01_to_025, batch_cat_gcs
     )
 except ImportError:
-    # Fallback definition if run in isolated environment
     DEFAULT_EXTENT = [112.0, 140.0, 2.0, 28.0]
     PAR_LONS = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
     PAR_LATS = [5.0, 15.0, 21.0, 25.0, 25.0, 5.0, 5.0]
@@ -46,9 +55,10 @@ except ImportError:
     draw_header_banner = None
 
 # ── Directories ────────────────────────────────────────────────────────────
-OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "precip_mslp_weathernext")
-OUTPUT_OVERLAY_DIR = os.path.join(os.getcwd(), "public", "images", "precip_mslp_weathernext_overlay")
-DATA_DIR = os.path.join(os.getcwd(), "public", "data")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(BASE_DIR, "public", "images", "precip_mslp_weathernext")
+OUTPUT_OVERLAY_DIR = os.path.join(BASE_DIR, "public", "images", "precip_mslp_weathernext_overlay")
+DATA_DIR = os.path.join(BASE_DIR, "public", "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(OUTPUT_OVERLAY_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -57,177 +67,197 @@ LAT_MIN, LAT_MAX = 2.0, 28.0
 LON_MIN, LON_MAX = 112.0, 140.0
 
 
-def main():
-    print("=== WeatherNext 2 Precip + MSLP + Thickness Generator ===")
+def plot_precip_mslp_frame(X, Y, precip_6h, mslp_hpa, lead_hours, init_dt, valid_dt, province_shapely_geometries):
+    # 1. Main Broadcast Map
+    fig = plt.figure(figsize=(14, 11), dpi=120)
+    fig.subplots_adjust(top=0.88)
+    ax = plt.axes(projection=ccrs.PlateCarree())
 
-    print("Connecting to Google Cloud Storage...")
-    fs = gcsfs.GCSFileSystem()
-
-    parent_path = 'gs://weathernext/weathernext_2_0_0_mean/zarr/2025_to_present'
-    all_items = fs.ls(parent_path)
-    run_folders = [f'gs://{item}' for item in all_items if item.endswith('_preds')]
-
-    if not run_folders:
-        raise RuntimeError("No forecast run folders found in 2025_to_present!")
-
-    run_folders.sort()
-    latest_run_path = run_folders[-1]
-    latest_zarr_path = f"{latest_run_path}/predictions.zarr"
-    print(f"Opening Zarr dataset at: {latest_zarr_path}")
-
-    store = fs.get_mapper(latest_zarr_path)
-    ds = xr.open_zarr(store, consolidated=True)
-
-    if ds.lat[0] < ds.lat[-1]:
-        ds_ph = ds.sel(lat=slice(LAT_MIN, LAT_MAX), lon=slice(LON_MIN, LON_MAX))
+    extent = [112.0, 140.0, 2.0, 28.0]
+    if setup_map_ax:
+        setup_map_ax(ax, extent=extent, provinces=province_shapely_geometries)
     else:
-        ds_ph = ds.sel(lat=slice(LAT_MAX, LAT_MIN), lon=slice(LON_MIN, LON_MAX))
+        ax.set_extent(extent, crs=ccrs.PlateCarree())
+        ax.add_feature(cfeature.LAND, facecolor="#edf2f7", zorder=0)
+        ax.add_feature(cfeature.OCEAN, facecolor="#d9e8f5", zorder=0)
+        ax.add_feature(cfeature.COASTLINE, linewidth=0.9, edgecolor="#1e293b", zorder=3)
+        ax.add_feature(cfeature.BORDERS, linestyle="-", linewidth=0.55, edgecolor="#64748b", zorder=3)
+
+    # 6h Precipitation fill
+    smoothed_precip = scipy.ndimage.gaussian_filter(precip_6h, sigma=0.6)
+    if np.nanmax(smoothed_precip) > 0.1:
+        cf = ax.contourf(
+            X, Y, smoothed_precip,
+            levels=PRECIP_6H_LEVELS,
+            cmap=PRECIP_6H_CMAP,
+            norm=PRECIP_6H_NORM,
+            extend="max",
+            transform=ccrs.PlateCarree(),
+            zorder=2
+        )
+        if add_styled_colorbar:
+            add_styled_colorbar(fig, cf, ax, label="6-hr Accumulated Precip (mm)", ticks=PRECIP_6H_LEVELS)
+        else:
+            cb = fig.colorbar(cf, ax=ax, orientation="vertical", pad=0.02, shrink=0.85, aspect=25)
+            cb.set_ticks(PRECIP_6H_LEVELS)
+
+    # MSLP Isobars
+    if add_mslp_contours:
+        add_mslp_contours(ax, X, Y, mslp_hpa, levels=np.arange(980, 1032, 2))
+    else:
+        smoothed_mslp = scipy.ndimage.gaussian_filter(mslp_hpa, sigma=1.2)
+        cs = ax.contour(X, Y, smoothed_mslp, levels=np.arange(980, 1032, 2), colors="#0f172a", linewidths=1.0, transform=ccrs.PlateCarree(), zorder=5)
+        ax.clabel(cs, inline=True, fontsize=8, fmt="%d")
+
+    # PAR Boundary
+    if draw_par_boundary:
+        draw_par_boundary(ax)
+    else:
+        ax.plot(PAR_LONS, PAR_LATS, transform=ccrs.PlateCarree(), color="#dc2626", linestyle="-", linewidth=2.2, zorder=7)
+
+    # Header banner
+    time_fmt = "%Hz %a, %b %d, %Y"
+    init_str = init_dt.strftime(time_fmt)
+    valid_str = valid_dt.strftime(time_fmt)
+    fh_str = f"f{lead_hours:03d}"
+
+    if draw_header_banner:
+        draw_header_banner(
+            fig, ax,
+            left_title="Philippine T/W",
+            right_title="WeatherNext 3 6h Precip + MSLP (mm)",
+            model_sub=f"Model: Google WeatherNext 3 (0.25°)   |   Forecast Hour: {fh_str}",
+            time_sub=f"Init: {init_str} / Valid: {valid_str}"
+        )
+
+    out_file = os.path.join(OUTPUT_DIR, f"precip_mslp_weathernext_f{lead_hours:03d}.png")
+    plt.savefig(out_file, dpi=120, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+    # 2. Transparent Web Overlay (for Cyclone visualizer: /images/precip_mslp_weathernext_overlay/precip_mslp_{hour:03d}.png)
+    fig_ov, ax_ov = plt.subplots(figsize=(10, 8), dpi=100)
+    fig_ov.patch.set_alpha(0.0)
+    ax_ov.patch.set_alpha(0.0)
+    ax_ov.axis('off')
+    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+    plt.margins(0, 0)
+    ax_ov.xaxis.set_major_locator(plt.NullLocator())
+    ax_ov.yaxis.set_major_locator(plt.NullLocator())
+
+    if np.nanmax(smoothed_precip) > 0.1:
+        ax_ov.contourf(
+            X, Y, smoothed_precip,
+            levels=PRECIP_6H_LEVELS,
+            cmap=PRECIP_6H_CMAP,
+            norm=PRECIP_6H_NORM,
+            extend="max",
+            alpha=0.85
+        )
+
+    overlay_file = os.path.join(OUTPUT_OVERLAY_DIR, f"precip_mslp_{lead_hours:03d}.png")
+    plt.savefig(overlay_file, dpi=100, transparent=True, bbox_inches='tight', pad_inches=0)
+    plt.close(fig_ov)
+    print(f"  Generated +{lead_hours:03d}h Precip+MSLP map & overlay.", flush=True)
+
+
+def main(project_id="affable-ring-442402-j2"):
+    print("=== Google WeatherNext 3 Precip + MSLP Generator ===", flush=True)
+
+    client = storage.Client(project=project_id)
+    fs = gcsfs.GCSFileSystem(project=project_id)
+    latest_run, avail_hours = find_latest_weathernext_run(client, fs, project_id=project_id, min_hours=360, var_check="mean_sea_level_pressure_mean")
+    print(f"Opening WeatherNext 3 dataset at: {latest_run} ({avail_hours} forecast hours available)", flush=True)
+
+    base = f"weathernext3_statistics_spatial/{latest_run}predictions.zarr"
+    codec = numcodecs.Zstd()
+
+    # Read coordinates
+    lat = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lat_0p1/c/0')), dtype='<f4')
+    lon = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lon_0p1/c/0')), dtype='<f4')
+
+    lat_mask = (lat >= LAT_MIN - 1.0) & (lat <= LAT_MAX + 1.0)
+    lon_mask = (lon >= LON_MIN - 1.0) & (lon <= LON_MAX + 1.0)
+    lat_idx = np.where(lat_mask)[0]
+    lon_idx = np.where(lon_mask)[0]
+    lat_slice = slice(lat_idx.min(), lat_idx.max() + 1)
+    lon_slice = slice(lon_idx.min(), lon_idx.max() + 1)
+
+    sub_lats = lat[lat_slice]
+    sub_lons = lon[lon_slice]
+
+    # Standardized 0.25 deg grid (matching GFS/AIFS standards)
+    dst_lons = np.arange(LON_MIN, LON_MAX + 0.01, 0.25)
+    dst_lats = np.arange(LAT_MIN, LAT_MAX + 0.01, 0.25)
+    X, Y = np.meshgrid(dst_lons, dst_lats)
 
     province_shapely_geometries = load_ph_provinces(DATA_DIR)
-    if province_shapely_geometries:
-        print(f"Successfully loaded {len(province_shapely_geometries)} province boundaries.")
 
-    X, Y = np.meshgrid(ds_ph.lon, ds_ph.lat)
+    folder_clean = latest_run.strip('/').split('/')[-1]
+    try:
+        date_part = folder_clean.split('_')[0]
+        hour_part = folder_clean.split('_')[1].replace('hr', '')
+        init_dt = datetime.strptime(f"{date_part}{hour_part}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
+    except Exception:
+        init_dt = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+
+    # 6-hourly steps out to available hours (up to 360 hours / 60 steps)
+    target_steps = [t for t in range(6, min(361, avail_hours + 1), 6)]
+    max_hour_fetch = target_steps[-1] if target_steps else avail_hours
+
+    print(f"Batch loading 1-hr precipitation and MSLP chunks out to {max_hour_fetch}h on 0.25° grid...", flush=True)
+    precip_paths = [f'{base}/total_precipitation_1hr_mean/c/{t}/0/0' for t in range(max_hour_fetch)]
+    mslp_paths = [f'{base}/mean_sea_level_pressure_mean/c/{t}/0/0' for t in target_steps]
+
+    all_paths = precip_paths + mslp_paths
+    raw_dict = batch_cat_gcs(fs, all_paths, batch_size=20, desc="Precip+MSLP chunks")
+
+    p_chunks = []
+    for p in precip_paths:
+        if p in raw_dict:
+            arr = np.frombuffer(codec.decode(raw_dict[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+            _, _, arr_025 = regrid_01_to_025(sub_lats, sub_lons, arr, dst_lats=dst_lats, dst_lons=dst_lons)
+            p_chunks.append(arr_025 * 1000.0) # meters to mm
+        else:
+            p_chunks.append(np.zeros((len(dst_lats), len(dst_lons)), dtype=np.float32))
 
     valid_frames = []
-    total_steps = len(ds_ph.time)
 
-    for i in range(total_steps):
-        ds_target = ds_ph.isel(time=i)
-        lead_hours = int(ds_target.time.values / np.timedelta64(1, 'h'))
+    for t in target_steps:
+        # Sum 6 hourly chunks leading up to t (t-6 to t)
+        p_6h = np.maximum(np.sum(p_chunks[t-6:t], axis=0), 0)
 
-        if lead_hours == 0:
-            continue
-
-        frame_id = f"precip_mslp_{lead_hours:03d}"
-        init_time_val = str(ds_target.init_time.values)[:16]
-        init_dt = datetime.strptime(init_time_val.replace("T", " "), "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
-        valid_dt = init_dt + timedelta(hours=lead_hours)
-
-        print(f"Generating frame {i+1}/{total_steps} (Forecast Hour f{lead_hours:03d})...")
-
-        precip_rate = (ds_target['total_precipitation_6hr'] * 1000.0).values
-        msl_data = (ds_target['mean_sea_level_pressure'] / 100.0).values
-
-        phi_500 = ds_target['geopotential'].sel(level=500)
-        phi_1000 = ds_target['geopotential'].sel(level=1000)
-        thickness = ((phi_500 - phi_1000) / 98.0665).values
-
-        # ── 1. Standard Forecast Map ─────────────────────────────────────────
-        fig = plt.figure(figsize=(14, 11), dpi=120)
-        fig.subplots_adjust(top=0.88)
-        ax = plt.axes(projection=ccrs.PlateCarree())
-
-        if setup_map_ax:
-            setup_map_ax(ax, extent=[LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], provinces=province_shapely_geometries)
+        p_mslp = f'{base}/mean_sea_level_pressure_mean/c/{t}/0/0'
+        if p_mslp in raw_dict:
+            mslp_arr = np.frombuffer(codec.decode(raw_dict[p_mslp]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+            _, _, mslp_arr_025 = regrid_01_to_025(sub_lats, sub_lons, mslp_arr, dst_lats=dst_lats, dst_lons=dst_lons)
+            mslp_hpa = mslp_arr_025 / 100.0
         else:
-            ax.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=ccrs.PlateCarree())
-            ax.add_feature(cfeature.LAND, facecolor='#edf2f7', zorder=0)
-            ax.add_feature(cfeature.OCEAN, facecolor='#d9e8f5', zorder=0)
-            ax.add_feature(cfeature.COASTLINE, linewidth=0.9, edgecolor='#1e293b', zorder=5)
-            ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.55, edgecolor='#64748b', zorder=5)
+            mslp_hpa = np.full_like(X, 1012.0)
 
-        # Precipitation Fill
-        if np.nanmax(precip_rate) > 0.05:
-            cf = ax.contourf(
-                X, Y, precip_rate,
-                levels=PRECIP_6H_LEVELS,
-                cmap=PRECIP_6H_CMAP,
-                norm=PRECIP_6H_NORM,
-                extend='max',
-                transform=ccrs.PlateCarree(),
-                zorder=2
-            )
-            if add_styled_colorbar:
-                add_styled_colorbar(fig, cf, ax, label='6-hr Precipitation (mm)', ticks=PRECIP_6H_LEVELS)
-            else:
-                cb = fig.colorbar(cf, ax=ax, orientation='vertical', pad=0.02, shrink=0.85, aspect=25)
-                cb.set_ticks(PRECIP_6H_LEVELS)
+        valid_dt = init_dt + timedelta(hours=t)
 
-        # MSLP Isobars
-        if add_mslp_contours:
-            add_mslp_contours(ax, X, Y, msl_data, levels=range(900, 1050, 4), sigma=1.0)
-        else:
-            msl_smooth = scipy.ndimage.gaussian_filter(msl_data, sigma=1)
-            cs = ax.contour(X, Y, msl_smooth, levels=range(900, 1050, 4), colors='#0f172a', linewidths=1.1, transform=ccrs.PlateCarree(), zorder=3)
-            ax.clabel(cs, inline=True, fontsize=8.5, fmt='%d', colors='#0f172a')
+        plot_precip_mslp_frame(
+            X, Y, p_6h, mslp_hpa,
+            t, init_dt, valid_dt, province_shapely_geometries
+        )
+        valid_frames.append(f"precip_mslp_{t:03d}")
 
-        # Thickness Contours (1000-500 mb)
-        if add_thickness_contours:
-            add_thickness_contours(ax, X, Y, thickness, sigma=1.5)
-        else:
-            thick_smooth = scipy.ndimage.gaussian_filter(thickness, sigma=1.5)
-            ct = ax.contour(X, Y, thick_smooth, levels=list(range(492, 600, 6)), colors='#2563eb', linewidths=0.85, linestyles='dashed', transform=ccrs.PlateCarree(), zorder=3)
-            ax.clabel(ct, inline=True, fontsize=8, fmt='%d', colors='#2563eb')
-            ct540 = ax.contour(X, Y, thick_smooth, levels=[540], colors='#dc2626', linewidths=2.2, linestyles='solid', transform=ccrs.PlateCarree(), zorder=4)
-            ax.clabel(ct540, inline=True, fontsize=9, fmt='%d', colors='#dc2626')
-
-        # PAR Boundary
-        if draw_par_boundary:
-            draw_par_boundary(ax)
-        else:
-            ax.plot(PAR_LONS, PAR_LATS, transform=ccrs.PlateCarree(), color='#dc2626', linestyle='-', linewidth=2.2, zorder=7)
-
-        # Modern Header Banner
-        time_fmt = "%Hz %a, %b %d, %Y"
-        init_str = init_dt.strftime(time_fmt)
-        valid_str = valid_dt.strftime(time_fmt)
-        fh_str = f"f{lead_hours:03d}"
-
-        if draw_header_banner:
-            draw_header_banner(
-                fig, ax,
-                left_title="Philippine T/W",
-                right_title="6-hr Precip (mm), MSLP (hPa) & 1000-500 mb Thickness (dam)",
-                model_sub=f"Model: Google WeatherNext 2 (0.25°)   |   Forecast Hour: {fh_str}",
-                time_sub=f"Init: {init_str} / Valid: {valid_str}"
-            )
-
-        filepath = os.path.join(OUTPUT_DIR, f"{frame_id}.png")
-        plt.savefig(filepath, dpi=120, bbox_inches='tight', facecolor='white')
-        plt.close(fig)
-
-        # ── 2. Leaflet Overlay Frame (Transparent & Borderless) ──────────────
-        fig_ol = plt.figure(figsize=(10, 10), facecolor='none')
-        ax_ol = fig_ol.add_axes([0, 0, 1, 1], projection=ccrs.PlateCarree(), facecolor='none')
-        ax_ol.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=ccrs.PlateCarree())
-        ax_ol.axis('off')
-
-        if np.nanmax(precip_rate) > 0.05:
-            ax_ol.contourf(
-                X, Y, precip_rate,
-                levels=PRECIP_6H_LEVELS,
-                cmap=PRECIP_6H_CMAP,
-                norm=PRECIP_6H_NORM,
-                extend='max',
-                transform=ccrs.PlateCarree(),
-                zorder=2
-            )
-
-        if add_mslp_contours:
-            add_mslp_contours(ax_ol, X, Y, msl_data, levels=range(900, 1050, 4), sigma=1.0)
-        if add_thickness_contours:
-            add_thickness_contours(ax_ol, X, Y, thickness, sigma=1.5)
-
-        filepath_ol = os.path.join(OUTPUT_OVERLAY_DIR, f"{frame_id}.png")
-        fig_ol.savefig(filepath_ol, dpi=120, transparent=True)
-        plt.close(fig_ol)
-
-        valid_frames.append(frame_id)
-
+    # Metadata
     meta = {
-        "model": "WeatherNext 2",
+        "model": "Google WeatherNext 3",
         "source": "Google DeepMind / GCS",
-        "generated_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
+        "generated_at": datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %I:%M %p PHT"),
         "run_time": init_dt.strftime("%Y-%m-%d %H:%M UTC"),
+        "total_timesteps": len(valid_frames),
+        "step_hours": 6,
+        "max_hour": target_steps[-1] if target_steps else 360,
         "animation_frames": valid_frames
     }
     meta_path = os.path.join(DATA_DIR, "precip_mslp_weathernext_meta.json")
     with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)
 
-    print(f"\nSaved metadata to {meta_path}")
-    print(f"Successfully generated {len(valid_frames)} frames. Done!")
+    print(f"\nWeatherNext 3 Precip+MSLP Maps generation completed successfully! Metadata saved to {meta_path}", flush=True)
 
 
 if __name__ == "__main__":

@@ -22,6 +22,9 @@ from eccodes import codes_grib_new_from_file, codes_get, codes_get_double_array,
 from ecmwf.opendata import Client
 import xarray as xr
 import gcsfs
+import numcodecs
+from google.cloud import storage
+from weather_viz_styles import find_latest_weathernext_run, batch_cat_gcs
 
 # ── Directories ────────────────────────────────────────────────────────────
 OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "ai_precip_outlook")
@@ -237,25 +240,62 @@ def get_aifs_tp(client, step):
     finally:
         if os.path.exists(target_file): os.remove(target_file)
 
-def load_weathernext_dataset():
+def load_weathernext_dataset(project_id="affable-ring-442402-j2"):
+    """
+    Loads Google WeatherNext 3 high-resolution precipitation forecasts (1-hour accumulation steps).
+    Returns a dictionary with 2D coordinates and 24h, 72h, and 120h total accumulated precipitation (in mm).
+    """
     try:
-        fs = gcsfs.GCSFileSystem()
-        parent_path = 'gs://weathernext/weathernext_2_0_0/zarr/2025_to_present'
-        all_items = fs.ls(parent_path)
-        run_folders = [f'gs://{item}' for item in all_items if item.endswith('_preds')]
-        if not run_folders: return None
-        run_folders.sort()
-        latest_run_path = run_folders[-1]
-        print(f"WeatherNext2: Reading from {latest_run_path}")
-        store = fs.get_mapper(f"{latest_run_path}/predictions.zarr")
-        ds = xr.open_zarr(store, consolidated=True)
-        if ds.lat[0] < ds.lat[-1]:
-            ds_ph = ds.sel(lat=slice(LAT_MIN, LAT_MAX), lon=slice(LON_MIN, LON_MAX))
-        else:
-            ds_ph = ds.sel(lat=slice(LAT_MAX, LAT_MIN), lon=slice(LON_MIN, LON_MAX))
-        return ds_ph
+        client = storage.Client(project=project_id)
+        fs = gcsfs.GCSFileSystem(project=project_id)
+        latest_run, avail_hours = find_latest_weathernext_run(client, fs, project_id=project_id, min_hours=120, var_check="total_precipitation_1hr_mean")
+        print(f"WeatherNext 3: Reading latest forecast from {latest_run} ({avail_hours}h available)")
+
+        base = f"weathernext3_statistics_spatial/{latest_run}predictions.zarr"
+        codec = numcodecs.Zstd()
+
+        # Read 0.1 deg coordinates
+        lat = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lat_0p1/c/0')), dtype='<f4')
+        lon = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lon_0p1/c/0')), dtype='<f4')
+
+        lat_mask = (lat >= LAT_MIN - 1.0) & (lat <= LAT_MAX + 1.0)
+        lon_mask = (lon >= LON_MIN - 1.0) & (lon <= LON_MAX + 1.0)
+        lat_idx = np.where(lat_mask)[0]
+        lon_idx = np.where(lon_mask)[0]
+        lat_slice = slice(lat_idx.min(), lat_idx.max() + 1)
+        lon_slice = slice(lon_idx.min(), lon_idx.max() + 1)
+
+        sub_lats = lat[lat_slice]
+        sub_lons = lon[lon_slice]
+        WN_LONS, WN_LATS = np.meshgrid(sub_lons, sub_lats)
+
+        # Batch fetch 120 hourly steps (covers 24h, 72h, 120h)
+        paths_120 = [f'{base}/total_precipitation_1hr_mean/c/{t}/0/0' for t in range(min(120, avail_hours))]
+        raw_dict = batch_cat_gcs(fs, paths_120, batch_size=20, desc="WeatherNext Precip chunks")
+
+        chunks = []
+        for p in paths_120:
+            if p in raw_dict:
+                arr = np.frombuffer(codec.decode(raw_dict[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+                chunks.append(arr)
+            else:
+                chunks.append(np.zeros_like(WN_LATS))
+
+        # Calculate accumulation totals in mm (data is in meters, * 1000)
+        total_24h = np.maximum(np.sum(chunks[:24], axis=0) * 1000.0, 0)
+        total_72h = np.maximum(np.sum(chunks[:min(72, len(chunks))], axis=0) * 1000.0, 0)
+        total_120h = np.maximum(np.sum(chunks[:min(120, len(chunks))], axis=0) * 1000.0, 0)
+
+        return {
+            "lats_2d": WN_LATS,
+            "lons_2d": WN_LONS,
+            "total_24h": total_24h,
+            "total_72h": total_72h,
+            "total_120h": total_120h,
+            "run_name": latest_run
+        }
     except Exception as e:
-        print(f"WeatherNext2 error: {e}")
+        print(f"WeatherNext 3 error: {e}")
         return None
 
 # ── Load Philippine Province Geometries Categorized by Region ─────────────
@@ -591,11 +631,7 @@ def main():
     if not init_dt:
         init_dt = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         
-    wn2_ds = load_weathernext_dataset()
-    if wn2_ds is not None:
-        wn_lats = wn2_ds.lat.values
-        wn_lons = wn2_ds.lon.values
-        WN_LONS, WN_LATS = np.meshgrid(wn_lons, wn_lats)
+    wn3_data = load_weathernext_dataset()
     
     geoms_dict, masks = load_ph_regional_geometries()
     valid_frames = []
@@ -626,26 +662,21 @@ def main():
     if current_total is not None:
         aifs_today_master = regrid_to_master(lats, lons, current_total)
 
-    # WeatherNext 2 Today
-    wn2_today_master = np.zeros_like(M_LATS)
-    if wn2_ds is not None:
-        print("Extracting Google WeatherNext 2 0-24h...")
+    # WeatherNext 3 Today
+    wn3_today_master = np.zeros_like(M_LATS)
+    if wn3_data is not None and wn3_data.get("total_24h") is not None:
+        print("Extracting Google WeatherNext 3 0-24h...")
         try:
-            precip_slice = wn2_ds['total_precipitation_6hr'].isel(time=slice(0, 4))
-            total_24h = (precip_slice.sum(dim='time') * 1000.0).values
-            total_24h = np.maximum(total_24h, 0)
-            if total_24h.ndim == 3:
-                total_24h = total_24h[0]
-            wn2_today_master = regrid_to_master(WN_LATS, WN_LONS, total_24h)
+            wn3_today_master = regrid_to_master(wn3_data["lats_2d"], wn3_data["lons_2d"], wn3_data["total_24h"])
         except Exception as e:
-            print(f"WeatherNext2 Today extraction error: {e}")
+            print(f"WeatherNext 3 Today extraction error: {e}")
 
     # Combine Today
     valid_models_today = []
     models_used_today = []
-    if np.nanmax(wn2_today_master) > 0:
-        valid_models_today.append(wn2_today_master)
-        models_used_today.append("WeatherNext 2")
+    if np.nanmax(wn3_today_master) > 0:
+        valid_models_today.append(wn3_today_master)
+        models_used_today.append("Google WeatherNext 3")
     if np.nanmax(aifs_today_master) > 0:
         valid_models_today.append(aifs_today_master)
         models_used_today.append("ECMWF AIFS")
@@ -696,26 +727,21 @@ def main():
     if current_total is not None:
         aifs_3day_master = regrid_to_master(lats, lons, current_total)
 
-    # WeatherNext 2 3-Day
-    wn2_3day_master = np.zeros_like(M_LATS)
-    if wn2_ds is not None:
-        print("Extracting Google WeatherNext 2 0-72h...")
+    # WeatherNext 3 3-Day
+    wn3_3day_master = np.zeros_like(M_LATS)
+    if wn3_data is not None and wn3_data.get("total_72h") is not None:
+        print("Extracting Google WeatherNext 3 0-72h...")
         try:
-            precip_slice = wn2_ds['total_precipitation_6hr'].isel(time=slice(0, 12))
-            total_72h = (precip_slice.sum(dim='time') * 1000.0).values
-            total_72h = np.maximum(total_72h, 0)
-            if total_72h.ndim == 3:
-                total_72h = total_72h[0]
-            wn2_3day_master = regrid_to_master(WN_LATS, WN_LONS, total_72h)
+            wn3_3day_master = regrid_to_master(wn3_data["lats_2d"], wn3_data["lons_2d"], wn3_data["total_72h"])
         except Exception as e:
-            print(f"WeatherNext2 3-day extraction error: {e}")
+            print(f"WeatherNext 3 3-day extraction error: {e}")
 
     # Combine 3-Day
     valid_models_3day = []
     models_used_3day = []
-    if np.nanmax(wn2_3day_master) > 0:
-        valid_models_3day.append(wn2_3day_master)
-        models_used_3day.append("WeatherNext 2")
+    if np.nanmax(wn3_3day_master) > 0:
+        valid_models_3day.append(wn3_3day_master)
+        models_used_3day.append("Google WeatherNext 3")
     if np.nanmax(aifs_3day_master) > 0:
         valid_models_3day.append(aifs_3day_master)
         models_used_3day.append("ECMWF AIFS")
@@ -766,26 +792,21 @@ def main():
     if current_total is not None:
         aifs_5day_master = regrid_to_master(lats, lons, current_total)
         
-    # WeatherNext2 5-Day
-    wn2_5day_master = np.zeros_like(M_LATS)
-    if wn2_ds is not None:
-        print("Extracting Google WeatherNext 2 0-120h...")
+    # WeatherNext 3 5-Day
+    wn3_5day_master = np.zeros_like(M_LATS)
+    if wn3_data is not None and wn3_data.get("total_120h") is not None:
+        print("Extracting Google WeatherNext 3 0-120h...")
         try:
-            precip_slice = wn2_ds['total_precipitation_6hr'].isel(time=slice(0, 20))
-            total_120h = (precip_slice.sum(dim='time') * 1000.0).values
-            total_120h = np.maximum(total_120h, 0)
-            if total_120h.ndim == 3:
-                total_120h = total_120h[0]
-            wn2_5day_master = regrid_to_master(WN_LATS, WN_LONS, total_120h)
+            wn3_5day_master = regrid_to_master(wn3_data["lats_2d"], wn3_data["lons_2d"], wn3_data["total_120h"])
         except Exception as e:
-            print(f"WeatherNext2 5-day extraction error: {e}")
+            print(f"WeatherNext 3 5-day extraction error: {e}")
 
     # Combine 5-Day
     valid_models_5day = []
     models_used_5day = []
-    if np.nanmax(wn2_5day_master) > 0:
-        valid_models_5day.append(wn2_5day_master)
-        models_used_5day.append("WeatherNext 2")
+    if np.nanmax(wn3_5day_master) > 0:
+        valid_models_5day.append(wn3_5day_master)
+        models_used_5day.append("Google WeatherNext 3")
     if np.nanmax(aifs_5day_master) > 0:
         valid_models_5day.append(aifs_5day_master)
         models_used_5day.append("ECMWF AIFS")

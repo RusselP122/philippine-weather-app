@@ -81,11 +81,11 @@ const MODEL_INFO = {
     type: "Machine Learning (ML)",
     resolution: "High Resolution"
   },
-  oper: {
-    name: "GDM OPER",
-    desc: "The best operational cyclone forecasts from Google models, utilizing historical version adjustments.",
-    type: "Operational Ensemble",
-    resolution: "Continuous Forecast History"
+  wnv3: {
+    name: "GDM WNCv3",
+    desc: "Google DeepMind WeatherNext Cyclone V3 (WNCv3) high-resolution operational track forecasting ensemble.",
+    type: "Machine Learning (ML)",
+    resolution: "High Resolution / 64-Member Ensemble"
   },
   fnv3_large: {
     name: "WNC Large Ensemble",
@@ -125,8 +125,8 @@ const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
     const fnv3p15Day = isMidnight ? `/assets/tropical_cyclone_5day_forecast_FNV3P1_${dateStr}.png` : `/assets/tropical_cyclone_5day_forecast_FNV3P1_${modelTime}.png`;
     const fnv3p115Day = isMidnight ? `/assets/tropical_cyclone_15day_forecast_FNV3P1_${dateStr}.png` : `/assets/tropical_cyclone_15day_forecast_FNV3P1_${modelTime}.png`;
 
-    const oper5Day = isMidnight ? `/assets/tropical_cyclone_5day_forecast_OPER_${dateStr}.png` : `/assets/tropical_cyclone_5day_forecast_OPER_${modelTime}.png`;
-    const oper15Day = isMidnight ? `/assets/tropical_cyclone_15day_forecast_OPER_${dateStr}.png` : `/assets/tropical_cyclone_15day_forecast_OPER_${modelTime}.png`;
+    const wnv35Day = isMidnight ? `/assets/tropical_cyclone_5day_forecast_WNV3_${dateStr}.png` : `/assets/tropical_cyclone_5day_forecast_WNV3_${modelTime}.png`;
+    const wnv315Day = isMidnight ? `/assets/tropical_cyclone_15day_forecast_WNV3_${dateStr}.png` : `/assets/tropical_cyclone_15day_forecast_WNV3_${modelTime}.png`;
 
     const fnv3Large5Day = isMidnight ? `/assets/fnv3_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/fnv3_tropical_cyclone_5day_forecast_${modelTime}.png`;
     const fnv3Large15Day = isMidnight ? `/assets/fnv3_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/fnv3_tropical_cyclone_15day_forecast_${modelTime}.png`;
@@ -145,8 +145,8 @@ const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
       { id: `fnv3-base-15day-${modelTime}`, type: "15day", model: "fnv3_base", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Base15Day) },
       { id: `fnv3p1-5day-${modelTime}`, type: "5day", model: "fnv3p1", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3p15Day) },
       { id: `fnv3p1-15day-${modelTime}`, type: "15day", model: "fnv3p1", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3p115Day) },
-      { id: `oper-5day-${modelTime}`, type: "5day", model: "oper", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(oper5Day) },
-      { id: `oper-15day-${modelTime}`, type: "15day", model: "oper", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(oper15Day) },
+      { id: `wnv3-5day-${modelTime}`, type: "5day", model: "wnv3", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(wnv35Day) },
+      { id: `wnv3-15day-${modelTime}`, type: "15day", model: "wnv3", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(wnv315Day) },
       { id: `fnv3-large-5day-${modelTime}`, type: "5day", model: "fnv3_large", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Large5Day) },
       { id: `fnv3-large-15day-${modelTime}`, type: "15day", model: "fnv3_large", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Large15Day) },
       { id: `ifs-5day-${modelTime}`, type: "5day", model: "ifs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(ifs5Day) },

@@ -22,6 +22,9 @@ from eccodes import codes_grib_new_from_file, codes_get, codes_get_double_array,
 from ecmwf.opendata import Client
 import xarray as xr
 import gcsfs
+import numcodecs
+from google.cloud import storage
+from weather_viz_styles import find_latest_weathernext_run
 
 # ── Directories ────────────────────────────────────────────────────────────
 OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "ai_temp_outlook")
@@ -38,30 +41,29 @@ os.makedirs(DATA_DIR, exist_ok=True)
 LAT_MIN, LAT_MAX = 4.5, 21.5
 LON_MIN, LON_MAX = 114.0, 129.5
 
+# High-resolution master grid (0.02° ≈ 2.2 km resolution for smooth, crisp contours)
 GRID_RES = 0.02
 MASTER_LATS = np.arange(LAT_MIN, LAT_MAX + GRID_RES, GRID_RES)
 MASTER_LONS = np.arange(LON_MIN, LON_MAX + GRID_RES, GRID_RES)
 M_LONS, M_LATS = np.meshgrid(MASTER_LONS, MASTER_LATS)
 
-# ── Maximum Temperature Colormap (Daytime Highs: Warm / Heat Scale) ────────
+# ── TV Broadcast Colormaps ──────────────────────────────────────────────────
+# Max Temperature (Daytime Highs: 24°C to 38°C)
 MAX_TEMP_LEVELS = [24, 26, 28, 30, 32, 34, 36, 38]
-MAX_TEMP_COLORS = [
-    '#5bc0be', '#90e0ef', '#e0e1dd', '#ffd166', '#f48c06', '#dc2f02', '#9d0208'
-]
+MAX_TEMP_COLORS = ['#7bccc4', '#c7e9c0', '#ffffbf', '#fee08b', '#fdae61', '#f46d43', '#d73027']
 max_temp_cmap = ListedColormap(MAX_TEMP_COLORS)
-max_temp_cmap.set_over('#6a040f')
-max_temp_cmap.set_under('#0077b6')
+max_temp_cmap.set_under('#43a2ca')
+max_temp_cmap.set_over('#67001f')
 max_temp_norm = BoundaryNorm(MAX_TEMP_LEVELS, ncolors=len(MAX_TEMP_COLORS), clip=False)
 
-# ── Minimum Temperature Colormap (Night/Morning Lows: Cool Scale) ──────────
+# Min Temperature (Nighttime Lows: 16°C to 30°C)
 MIN_TEMP_LEVELS = [16, 18, 20, 22, 24, 26, 28, 30]
-MIN_TEMP_COLORS = [
-    '#3a0ca3', '#4361ee', '#4cc9f0', '#80ed99', '#57cc99', '#38b000', '#007200'
-]
+MIN_TEMP_COLORS = ['#0571b0', '#43a2ca', '#7bccc4', '#a8ddb5', '#c7e9c0', '#ffffbf', '#fee08b']
 min_temp_cmap = ListedColormap(MIN_TEMP_COLORS)
-min_temp_cmap.set_over('#004b00')
-min_temp_cmap.set_under('#1e0059')
+min_temp_cmap.set_under('#023858')
+min_temp_cmap.set_over('#f46d43')
 min_temp_norm = BoundaryNorm(MIN_TEMP_LEVELS, ncolors=len(MIN_TEMP_COLORS), clip=False)
+
 
 # ── Regional Definitions with Exact 16:9 Aspect Ratio Extents ─────────────
 BROADCAST_REGIONS = {
@@ -132,6 +134,59 @@ BATANES_BABUYAN_CITIES = [
     ("CALAYAN", 121.47, 19.26, (-0.28, -0.05)),
     ("CAMIGUIN IS.", 121.93, 18.92, (0.35, -0.05))
 ]
+
+def load_weathernext_dataset(today_max_step=6, today_min_step=18, tmrw_max_step=30, tmrw_min_step=42, project_id="affable-ring-442402-j2"):
+    """
+    Loads Google WeatherNext 3 surface temperature forecasts for target diurnal steps.
+    """
+    try:
+        client = storage.Client(project=project_id)
+        fs = gcsfs.GCSFileSystem(project=project_id)
+        latest_run, avail_hours = find_latest_weathernext_run(client, fs, project_id=project_id, min_hours=48, var_check="2m_temperature_mean")
+        print(f"WeatherNext 3: Reading latest forecast from {latest_run} ({avail_hours}h available)")
+
+        base = f"weathernext3_statistics_spatial/{latest_run}predictions.zarr"
+        codec = numcodecs.Zstd()
+
+        lat = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lat_0p1/c/0')), dtype='<f4')
+        lon = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lon_0p1/c/0')), dtype='<f4')
+
+        lat_mask = (lat >= LAT_MIN - 1.0) & (lat <= LAT_MAX + 1.0)
+        lon_mask = (lon >= LON_MIN - 1.0) & (lon <= LON_MAX + 1.0)
+        lat_idx = np.where(lat_mask)[0]
+        lon_idx = np.where(lon_mask)[0]
+        lat_slice = slice(lat_idx.min(), lat_idx.max() + 1)
+        lon_slice = slice(lon_idx.min(), lon_idx.max() + 1)
+
+        sub_lats = lat[lat_slice]
+        sub_lons = lon[lon_slice]
+        WN_LONS, WN_LATS = np.meshgrid(sub_lons, sub_lats)
+
+        max_valid_step = max(0, avail_hours - 1)
+        steps = [min(today_max_step, max_valid_step), min(today_min_step, max_valid_step), min(tmrw_max_step, max_valid_step), min(tmrw_min_step, max_valid_step)]
+        paths = [f'{base}/2m_temperature_mean/c/{t}/0/0' for t in steps]
+        raw_dict = fs.cat(paths, on_error='omit')
+        
+        step_maps = {}
+        for t, p in zip(steps, paths):
+            if p in raw_dict:
+                arr = np.frombuffer(codec.decode(raw_dict[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+                step_maps[t] = arr - 273.15 # Kelvin to Celsius
+            else:
+                step_maps[t] = np.full_like(WN_LATS, 30.0)
+                
+        return {
+            "lats_2d": WN_LATS,
+            "lons_2d": WN_LONS,
+            "today_max": step_maps.get(min(today_max_step, 47)),
+            "today_min": step_maps.get(min(today_min_step, 47)),
+            "tmrw_max": step_maps.get(min(tmrw_max_step, 47)),
+            "tmrw_min": step_maps.get(min(tmrw_min_step, 47)),
+            "run_name": latest_run
+        }
+    except Exception as e:
+        print(f"WeatherNext 3 temperature error: {e}")
+        return None
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Regridding
@@ -260,27 +315,6 @@ def get_aifs_t2m(client, step):
         return None, None, None
     finally:
         if os.path.exists(target_file): os.remove(target_file)
-
-def load_weathernext_dataset():
-    try:
-        fs = gcsfs.GCSFileSystem()
-        parent_path = 'gs://weathernext/weathernext_2_0_0/zarr/2025_to_present'
-        all_items = fs.ls(parent_path)
-        run_folders = [f'gs://{item}' for item in all_items if item.endswith('_preds')]
-        if not run_folders: return None
-        run_folders.sort()
-        latest_run_path = run_folders[-1]
-        print(f"WeatherNext2: Reading from {latest_run_path}")
-        store = fs.get_mapper(f"{latest_run_path}/predictions.zarr")
-        ds = xr.open_zarr(store, consolidated=True)
-        if ds.lat[0] < ds.lat[-1]:
-            ds_ph = ds.sel(lat=slice(LAT_MIN, LAT_MAX), lon=slice(LON_MIN, LON_MAX))
-        else:
-            ds_ph = ds.sel(lat=slice(LAT_MAX, LAT_MIN), lon=slice(LON_MIN, LON_MAX))
-        return ds_ph
-    except Exception as e:
-        print(f"WeatherNext2 error: {e}")
-        return None
 
 # ── Load Philippine Province Geometries Categorized by Region ─────────────
 def load_ph_regional_geometries():
@@ -646,12 +680,6 @@ def main():
         init_dt = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         aigfs_cycle = "18"
         
-    wn2_ds = load_weathernext_dataset()
-    if wn2_ds is not None:
-        wn_lats = wn2_ds.lat.values
-        wn_lons = wn2_ds.lon.values
-        WN_LONS, WN_LATS = np.meshgrid(wn_lons, wn_lats)
-    
     geoms_dict, masks = load_ph_regional_geometries()
     valid_frames = []
 
@@ -663,19 +691,19 @@ def main():
     print(f"  Today Max step: {today_max_step}h | Today Min step: {today_min_step}h")
     print(f"  Tomorrow Max step: {tmrw_max_step}h | Tomorrow Min step: {tmrw_min_step}h")
 
+    # Fetch Google WeatherNext 3 dataset
+    wn3_data = load_weathernext_dataset(today_max_step, today_min_step, tmrw_max_step, tmrw_min_step)
+
     # ═══════════════════════════════════════════════════════════════════════
     # 1. TODAY MAXIMUM TEMPERATURE (Daytime High)
     # ═══════════════════════════════════════════════════════════════════════
     print("\n--- Processing TODAY MAXIMUM TEMPERATURE ($T_{max}$) ---")
-    wn2_max_today = np.zeros_like(M_LATS)
-    if wn2_ds is not None:
+    wn3_max_today = np.zeros_like(M_LATS)
+    if wn3_data is not None and wn3_data.get("today_max") is not None:
         try:
-            t_slice = wn2_ds['2m_temperature'].isel(time=slice(0, 5))
-            m = (t_slice.max(dim='time') - 273.15).values
-            if m.ndim == 3: m = m[0]
-            wn2_max_today = regrid_to_master(WN_LATS, WN_LONS, m, default_val=31.0)
+            wn3_max_today = regrid_to_master(wn3_data["lats_2d"], wn3_data["lons_2d"], wn3_data["today_max"], default_val=31.0)
         except Exception as e:
-            print(f"WeatherNext2 Max Today error: {e}")
+            print(f"WeatherNext 3 Max Today error: {e}")
 
     aifs_max_today = np.zeros_like(M_LATS)
     lats, lons, current_t2m = get_aifs_t2m(aifs_client, today_max_step)
@@ -694,7 +722,7 @@ def main():
                 aigfs_max_today = regrid_to_master(lats, lons, current_t2m, default_val=31.0)
             if os.path.exists(tmp_path): os.remove(tmp_path)
 
-    models_max_today = [m for m in [wn2_max_today, aifs_max_today, aigfs_max_today] if np.nanmax(m) > 0]
+    models_max_today = [m for m in [wn3_max_today, aifs_max_today, aigfs_max_today] if np.nanmax(m) > 0]
     consensus_max_today = np.mean(models_max_today, axis=0) if models_max_today else np.full_like(M_LATS, 31.0)
 
     for reg_key in ["luzon", "visayas", "mindanao"]:
@@ -706,15 +734,12 @@ def main():
     # 2. TODAY MINIMUM TEMPERATURE (Night / Early Morning Low)
     # ═══════════════════════════════════════════════════════════════════════
     print("\n--- Processing TODAY MINIMUM TEMPERATURE ($T_{min}$) ---")
-    wn2_min_today = np.zeros_like(M_LATS)
-    if wn2_ds is not None:
+    wn3_min_today = np.zeros_like(M_LATS)
+    if wn3_data is not None and wn3_data.get("today_min") is not None:
         try:
-            t_slice = wn2_ds['2m_temperature'].isel(time=slice(0, 5))
-            m = (t_slice.min(dim='time') - 273.15).values
-            if m.ndim == 3: m = m[0]
-            wn2_min_today = regrid_to_master(WN_LATS, WN_LONS, m, default_val=24.0)
+            wn3_min_today = regrid_to_master(wn3_data["lats_2d"], wn3_data["lons_2d"], wn3_data["today_min"], default_val=24.0)
         except Exception as e:
-            print(f"WeatherNext2 Min Today error: {e}")
+            print(f"WeatherNext 3 Min Today error: {e}")
 
     aifs_min_today = np.zeros_like(M_LATS)
     lats, lons, current_t2m = get_aifs_t2m(aifs_client, today_min_step)
@@ -733,7 +758,7 @@ def main():
                 aigfs_min_today = regrid_to_master(lats, lons, current_t2m, default_val=24.0)
             if os.path.exists(tmp_path): os.remove(tmp_path)
 
-    models_min_today = [m for m in [wn2_min_today, aifs_min_today, aigfs_min_today] if np.nanmax(m) > 0]
+    models_min_today = [m for m in [wn3_min_today, aifs_min_today, aigfs_min_today] if np.nanmax(m) > 0]
     consensus_min_today = np.mean(models_min_today, axis=0) if models_min_today else np.full_like(M_LATS, 24.0)
 
     for reg_key in ["luzon", "visayas", "mindanao"]:
@@ -745,15 +770,12 @@ def main():
     # 3. TOMORROW MAXIMUM TEMPERATURE (Daytime High)
     # ═══════════════════════════════════════════════════════════════════════
     print("\n--- Processing TOMORROW MAXIMUM TEMPERATURE ($T_{max}$) ---")
-    wn2_max_tmrw = np.zeros_like(M_LATS)
-    if wn2_ds is not None:
+    wn3_max_tmrw = np.zeros_like(M_LATS)
+    if wn3_data is not None and wn3_data.get("tmrw_max") is not None:
         try:
-            t_slice = wn2_ds['2m_temperature'].isel(time=slice(4, 9))
-            m = (t_slice.max(dim='time') - 273.15).values
-            if m.ndim == 3: m = m[0]
-            wn2_max_tmrw = regrid_to_master(WN_LATS, WN_LONS, m, default_val=31.0)
+            wn3_max_tmrw = regrid_to_master(wn3_data["lats_2d"], wn3_data["lons_2d"], wn3_data["tmrw_max"], default_val=31.0)
         except Exception as e:
-            print(f"WeatherNext2 Max Tomorrow error: {e}")
+            print(f"WeatherNext 3 Max Tomorrow error: {e}")
 
     aifs_max_tmrw = np.zeros_like(M_LATS)
     lats, lons, current_t2m = get_aifs_t2m(aifs_client, tmrw_max_step)
@@ -772,7 +794,7 @@ def main():
                 aigfs_max_tmrw = regrid_to_master(lats, lons, current_t2m, default_val=31.0)
             if os.path.exists(tmp_path): os.remove(tmp_path)
 
-    models_max_tmrw = [m for m in [wn2_max_tmrw, aifs_max_tmrw, aigfs_max_tmrw] if np.nanmax(m) > 0]
+    models_max_tmrw = [m for m in [wn3_max_tmrw, aifs_max_tmrw, aigfs_max_tmrw] if np.nanmax(m) > 0]
     consensus_max_tmrw = np.mean(models_max_tmrw, axis=0) if models_max_tmrw else np.full_like(M_LATS, 31.0)
 
     for reg_key in ["luzon", "visayas", "mindanao"]:
@@ -784,15 +806,12 @@ def main():
     # 4. TOMORROW MINIMUM TEMPERATURE (Night / Early Morning Low)
     # ═══════════════════════════════════════════════════════════════════════
     print("\n--- Processing TOMORROW MINIMUM TEMPERATURE ($T_{min}$) ---")
-    wn2_min_tmrw = np.zeros_like(M_LATS)
-    if wn2_ds is not None:
+    wn3_min_tmrw = np.zeros_like(M_LATS)
+    if wn3_data is not None and wn3_data.get("tmrw_min") is not None:
         try:
-            t_slice = wn2_ds['2m_temperature'].isel(time=slice(4, 9))
-            m = (t_slice.min(dim='time') - 273.15).values
-            if m.ndim == 3: m = m[0]
-            wn2_min_tmrw = regrid_to_master(WN_LATS, WN_LONS, m, default_val=24.0)
+            wn3_min_tmrw = regrid_to_master(wn3_data["lats_2d"], wn3_data["lons_2d"], wn3_data["tmrw_min"], default_val=24.0)
         except Exception as e:
-            print(f"WeatherNext2 Min Tomorrow error: {e}")
+            print(f"WeatherNext 3 Min Tomorrow error: {e}")
 
     aifs_min_tmrw = np.zeros_like(M_LATS)
     lats, lons, current_t2m = get_aifs_t2m(aifs_client, tmrw_min_step)
@@ -811,7 +830,7 @@ def main():
                 aigfs_min_tmrw = regrid_to_master(lats, lons, current_t2m, default_val=24.0)
             if os.path.exists(tmp_path): os.remove(tmp_path)
 
-    models_min_tmrw = [m for m in [wn2_min_tmrw, aifs_min_tmrw, aigfs_min_tmrw] if np.nanmax(m) > 0]
+    models_min_tmrw = [m for m in [wn3_min_tmrw, aifs_min_tmrw, aigfs_min_tmrw] if np.nanmax(m) > 0]
     consensus_min_tmrw = np.mean(models_min_tmrw, axis=0) if models_min_tmrw else np.full_like(M_LATS, 24.0)
 
     for reg_key in ["luzon", "visayas", "mindanao"]:
@@ -825,7 +844,7 @@ def main():
     
     meta = {
         "title": "AI Multi-Model Regional Maximum & Minimum Temperature Forecast Maps",
-        "models_used": ["Google WeatherNext 2", "ECMWF AIFS", "NOAA AIGFS"],
+        "models_used": ["Google WeatherNext 3", "ECMWF AIFS", "NOAA AIGFS"],
         "generated_at": datetime.now(ph_tz).strftime("%Y-%m-%d %I:%M %p PHT"),
         "run_time": init_dt_ph.strftime("%Y-%m-%d %I:%M %p PHT") if init_dt_ph else "Unknown",
         "regions": ["luzon", "visayas", "mindanao"],

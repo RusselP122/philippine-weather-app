@@ -571,10 +571,12 @@ def detect_model_name(file_path):
         return 'ECMWF AIFS'
     elif 'ifs' in name:
         return 'ECMWF IFS'
+    elif 'wnv3' in name:
+        return 'GDM WNCv3'
     elif 'fnv3' in name:
         return 'GDM WNC'
     elif 'oper' in name:
-        return 'GDM OPER'
+        return 'GDM WNCv3'
     else:
         return 'Ensemble Model'
 
@@ -1456,6 +1458,7 @@ def main():
         possible_files = [
             'aifs_tc_latest.dat', 'aifs_tc_latest.csv',
             'ifs_tc_latest.dat', 'ifs_tc_latest.csv',
+            'wnv3_latest.dat', 'wnv3_latest.csv',
             'fnv3p2_latest.dat', 'fnv3p2_latest.csv'
         ]
         input_files = []
@@ -1503,17 +1506,25 @@ def main():
                 
         model = detect_model_name(f_path)
         
-        # Load corresponding paired file if available (only for GDM FNV3)
+        # Load corresponding paired file if available (for GDM FNV3 and WNV3)
         df_paired = pd.DataFrame()
-        if 'fnv3' in f_path.lower():
-            if 'fnv3p2_latest.dat' in f_path:
+        if 'fnv3' in f_path.lower() or 'wnv3' in f_path.lower() or 'oper' in f_path.lower():
+            if 'wnv3_latest.dat' in f_path:
+                paired_path = f_path.replace('wnv3_latest.dat', 'wnv3_paired_latest.dat')
+            elif 'wnv3_latest.csv' in f_path:
+                paired_path = f_path.replace('wnv3_latest.csv', 'wnv3_paired_latest.csv')
+            elif 'fnv3p2_latest.dat' in f_path:
                 paired_path = f_path.replace('fnv3p2_latest.dat', 'fnv3p2_paired_latest.dat')
             elif 'fnv3p2_latest.csv' in f_path:
                 paired_path = f_path.replace('fnv3p2_latest.csv', 'fnv3p2_paired_latest.csv')
+            elif 'oper_latest.dat' in f_path:
+                paired_path = f_path.replace('oper_latest.dat', 'oper_paired_latest.dat')
+            elif 'oper_latest.csv' in f_path:
+                paired_path = f_path.replace('oper_latest.csv', 'oper_paired_latest.csv')
             else:
                 base = os.path.basename(f_path)
                 dir_name = os.path.dirname(f_path)
-                paired_base = base.replace('fnv3p2', 'fnv3p2_paired')
+                paired_base = base.replace('wnv3', 'wnv3_paired').replace('fnv3p2', 'fnv3p2_paired').replace('oper', 'oper_paired')
                 paired_path = os.path.join(dir_name, paired_base)
                 
             if os.path.exists(paired_path):

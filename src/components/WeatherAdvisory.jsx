@@ -1079,7 +1079,7 @@ const WeatherAdvisory = () => {
                   <div className="grid grid-cols-3 gap-1 text-slate-400 text-[9px] border-t border-slate-900 pt-1.5 mt-0.5">
                     {Object.entries(activeHazard === "Wind" && hoveredProvince.wind_models ? hoveredProvince.wind_models : hoveredProvince.models).map(([modelKey, val]) => (
                       <div key={modelKey} className="flex flex-col">
-                        <span className="text-slate-500 truncate">{modelKey.replace("WeatherNext 2", "WNC")}</span>
+                        <span className="text-slate-500 truncate">{modelKey.replace("WeatherNext 3", "WN3").replace("WeatherNext 2", "WN2")}</span>
                         <span className="font-bold text-slate-200">{Math.round(val)} {activeHazard === "Wind" ? "kph" : "mm"}</span>
                       </div>
                     ))}
@@ -1163,7 +1163,7 @@ const WeatherAdvisory = () => {
                   <div className="grid grid-cols-3 gap-1 text-slate-400 text-[9px] border-t border-slate-900 pt-1.5 mt-0.5">
                     {Object.entries(activeHazard === "Wind" && resolvedSelectedProvince.wind_models ? resolvedSelectedProvince.wind_models : resolvedSelectedProvince.models).map(([modelKey, val]) => (
                       <div key={modelKey} className="flex flex-col">
-                        <span className="text-slate-500 truncate">{modelKey.replace("WeatherNext 2", "WN2")}</span>
+                        <span className="text-slate-500 truncate">{modelKey.replace("WeatherNext 3", "WN3").replace("WeatherNext 2", "WN2")}</span>
                         <span className="font-bold text-slate-200">{Math.round(val)} {activeHazard === "Wind" ? "kph" : "mm"}</span>
                       </div>
                     ))}
@@ -1701,7 +1701,7 @@ const WeatherAdvisory = () => {
               <div className="flex justify-between items-center text-slate-300">
                 {Object.entries(activeHazard === "Wind" && activeDisplayProvince.wind_models ? activeDisplayProvince.wind_models : activeDisplayProvince.models).map(([modelKey, val]) => (
                   <span key={modelKey}>
-                    {modelKey.replace("WeatherNext 2", "WN2")}: <strong className="text-white">{Math.round(val)} {activeHazard === "Wind" ? "kph" : "mm"}</strong>
+                    {modelKey.replace("WeatherNext 3", "WN3").replace("WeatherNext 2", "WN2")}: <strong className="text-white">{Math.round(val)} {activeHazard === "Wind" ? "kph" : "mm"}</strong>
                   </span>
                 ))}
               </div>

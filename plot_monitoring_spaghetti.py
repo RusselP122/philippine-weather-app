@@ -333,10 +333,12 @@ def detect_model_name(file_path):
         return 'ECMWF AIFS'
     elif 'ifs' in name:
         return 'ECMWF IFS'
+    elif 'wnv3' in name:
+        return 'GDM WNCv3'
     elif 'fnv3' in name:
         return 'GDM WNC'
     elif 'oper' in name:
-        return 'GDM OPER'
+        return 'GDM WNCv3'
     else:
         return 'Ensemble Model'
 
@@ -966,6 +968,7 @@ def main():
         possible_files = [
             'aifs_tc_latest.dat', 'aifs_tc_latest.csv',
             'ifs_tc_latest.dat', 'ifs_tc_latest.csv',
+            'wnv3_latest.dat', 'wnv3_latest.csv',
             'fnv3p2_latest.dat', 'fnv3p2_latest.csv'
         ]
         input_files = []

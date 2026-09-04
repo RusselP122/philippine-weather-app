@@ -15,8 +15,10 @@ Provides:
 
 import os
 import json
+from datetime import datetime, timezone, timedelta
 import numpy as np
 import scipy.ndimage
+from scipy.interpolate import RegularGridInterpolator
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
@@ -372,3 +374,141 @@ def draw_header_banner(fig, ax, left_title, right_title, model_sub, time_sub):
         transform=fig.transFigure
     )
     fig.add_artist(sep)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 5. WeatherNext Utilities
+# ════════════════════════════════════════════════════════════════════════════
+
+def find_latest_weathernext_run(client=None, fs=None, project_id="affable-ring-442402-j2", min_hours=360, var_check="mean_sea_level_pressure_mean"):
+    """
+    Finds the latest available and fully completed Google WeatherNext 3 forecast run in GCS.
+    Prioritizes 6-hourly synoptic runs (00, 06, 12, 18 UTC) which contain 360-hour (15-day) forecasts.
+    Verifies that the Zarr dataset shape meets min_hours and that the final chunk exists.
+    """
+    if client is None:
+        from google.cloud import storage
+        client = storage.Client(project=project_id)
+    if fs is None:
+        import gcsfs
+        fs = gcsfs.GCSFileSystem(project=project_id)
+
+    now = datetime.now(timezone.utc)
+    prefixes = [
+        'weathernext_3_0_0_statistics/zarr/2026_to_present/' + now.strftime('%Y%m'),
+    ]
+    if now.day <= 2:
+        prev_month = (now.replace(day=1) - timedelta(days=1)).strftime('%Y%m')
+        prefixes.append(f'weathernext_3_0_0_statistics/zarr/2026_to_present/{prev_month}')
+
+    runs = []
+    for prefix in prefixes:
+        try:
+            blobs = client.list_blobs('weathernext3_statistics_spatial', prefix=prefix, delimiter='/')
+            for page in blobs.pages:
+                runs.extend(list(page.prefixes))
+        except Exception as e:
+            print(f"Notice listing prefix {prefix}: {e}")
+
+    if not runs:
+        try:
+            blobs = client.list_blobs('weathernext3_statistics_spatial', prefix='weathernext_3_0_0_statistics/zarr/2026_to_present/', delimiter='/')
+            for page in blobs.pages:
+                runs.extend(list(page.prefixes))
+        except Exception as e:
+            print(f"Notice broad listing: {e}")
+
+    if not runs:
+        raise RuntimeError("No WeatherNext 3 forecast run folders found in 2026_to_present!")
+
+    runs = sorted(list(set(runs)), reverse=True)
+
+    # 1. Synoptic runs check (00, 06, 12, 18) for long-range / 360h requests
+    if min_hours > 48:
+        synoptic_runs = [r for r in runs if any(f'_{h:02d}hr_' in r for h in (0, 6, 12, 18))]
+        for r in synoptic_runs:
+            base = f"weathernext3_statistics_spatial/{r}predictions.zarr"
+            zarr_json_path = f"{base}/{var_check}/zarr.json"
+            try:
+                content = fs.cat_file(zarr_json_path)
+                data = json.loads(content)
+                shape = data.get('shape', [0])
+                if shape[0] >= min_hours:
+                    last_chunk = f"{base}/{var_check}/c/{shape[0] - 1}/0/0"
+                    if fs.exists(last_chunk):
+                        return r, shape[0]
+            except Exception:
+                continue
+
+    # 2. General check for any complete run matching min_hours
+    for r in runs:
+        base = f"weathernext3_statistics_spatial/{r}predictions.zarr"
+        zarr_json_path = f"{base}/{var_check}/zarr.json"
+        try:
+            content = fs.cat_file(zarr_json_path)
+            data = json.loads(content)
+            shape = data.get('shape', [0])
+            if shape[0] >= min_hours:
+                last_chunk = f"{base}/{var_check}/c/{shape[0] - 1}/0/0"
+                if fs.exists(last_chunk):
+                    return r, shape[0]
+        except Exception:
+            continue
+
+    # 3. Fallback: newest run available with its reported hours
+    for r in runs:
+        base = f"weathernext3_statistics_spatial/{r}predictions.zarr"
+        zarr_json_path = f"{base}/{var_check}/zarr.json"
+        try:
+            content = fs.cat_file(zarr_json_path)
+            data = json.loads(content)
+            shape = data.get('shape', [0])
+            return r, shape[0]
+        except Exception:
+            continue
+
+    return runs[0], 48
+
+
+def regrid_01_to_025(src_lats, src_lons, data_2d, dst_lats=None, dst_lons=None):
+    """
+    Interpolates native 0.1 deg WeatherNext 3 data to standardized 0.25 deg grid (matching GFS/ECMWF standards).
+    """
+    if dst_lats is None:
+        dst_lats = np.arange(2.0, 28.01, 0.25)
+    if dst_lons is None:
+        dst_lons = np.arange(112.0, 140.01, 0.25)
+
+    lat_asc = bool(np.all(np.diff(src_lats) > 0))
+    lon_asc = bool(np.all(np.diff(src_lons) > 0))
+
+    cur_lats = src_lats if lat_asc else src_lats[::-1]
+    cur_data = data_2d if lat_asc else data_2d[::-1, :]
+    cur_lons = src_lons if lon_asc else src_lons[::-1]
+    cur_data = cur_data if lon_asc else cur_data[:, ::-1]
+
+    rgi = RegularGridInterpolator((cur_lats, cur_lons), cur_data, method='linear', bounds_error=False, fill_value=None)
+    XX, YY = np.meshgrid(dst_lons, dst_lats)
+    pts = np.stack([YY.ravel(), XX.ravel()], axis=-1)
+    regridded = rgi(pts).reshape(YY.shape)
+    return dst_lons, dst_lats, regridded
+
+
+def batch_cat_gcs(fs, paths, batch_size=20, desc="chunks"):
+    """
+    Downloads GCS chunk paths in controlled batches to prevent WinError 10054
+    (socket connection resets) and provides clean real-time download progress.
+    """
+    results = {}
+    total = len(paths)
+    step = batch_size * 2
+    for i in range(0, total, step):
+        sub = paths[i:i + step]
+        try:
+            part = fs.cat(sub, on_error='omit', batch_size=batch_size)
+            results.update(part)
+        except Exception as e:
+            print(f"  Notice during {desc} batch ({i}/{total}): {e}", flush=True)
+        print(f"  -> Loaded {min(i + len(sub), total)}/{total} {desc}...", flush=True)
+    return results
+

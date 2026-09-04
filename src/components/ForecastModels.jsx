@@ -329,7 +329,7 @@ const ForecastModels = () => {
                                     <svg className="w-4 h-4 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                                     </svg>
-                                    <span>Google WeatherNext 2</span>
+                                    <span>Google WeatherNext 3</span>
                                 </div>
                                 <svg className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${weathernextOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -508,7 +508,7 @@ const ForecastModels = () => {
                         {activeParam === "rainfall"
                             ? `Precipitation · ${rainfallView === "daily" ? "Daily Animation" : rainfallView === "24h" ? "1-Day Total" : rainfallView === "3d" ? "3-Day Total" : "7-Day Total"}`
                             : activeParam === "precip_mslp"
-                                ? `6h Precip Rate + MSLP + Thickness · ${activeModel === "weathernext" ? "WeatherNext 2" : activeModel === "aifs" ? "ECMWF AIFS" : activeModel === "aigfs" ? "NOAA AIGFS" : "GFS"}`
+                                ? `6h Precip Rate + MSLP + Thickness · ${activeModel === "weathernext" ? "WeatherNext 3" : activeModel === "aifs" ? "ECMWF AIFS" : activeModel === "aigfs" ? "NOAA AIGFS" : "GFS"}`
                                 : activeParam === "wind_gfs"
                                     ? "Wind & MSLP · GFS 0.25°"
                                     : (activeParam === "wind_aigfs" || activeParam === "wind_hgefs")
