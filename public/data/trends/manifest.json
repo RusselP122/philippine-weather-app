@@ -53,13 +53,13 @@
       "wide": "/data/trends/base_15day_dist_20260904_06_6_wide.png"
     }
   ],
-  "large_5day_cycle": "2026-09-04 00:00",
+  "large_5day_cycle": "2026-09-04 06:00",
   "large_5day": [
     {
       "id": "22W",
       "local_id": 1,
       "name": "TC 22W",
-      "trackCount": 997,
+      "trackCount": 1000,
       "standard": "/data/trends/large_5day_22W_standard.png",
       "wide": "/data/trends/large_5day_22W_wide.png"
     },
@@ -67,18 +67,18 @@
       "id": "97W",
       "local_id": 2,
       "name": "Invest 97W",
-      "trackCount": 990,
+      "trackCount": 974,
       "standard": "/data/trends/large_5day_97W_standard.png",
       "wide": "/data/trends/large_5day_97W_wide.png"
     }
   ],
-  "large_15day_cycle": "2026-09-04 00:00",
+  "large_15day_cycle": "2026-09-04 06:00",
   "large_15day": [
     {
       "id": "22W",
       "local_id": 1,
       "name": "TC 22W",
-      "trackCount": 993,
+      "trackCount": 998,
       "standard": "/data/trends/large_15day_22W_standard.png",
       "wide": "/data/trends/large_15day_22W_wide.png"
     },
@@ -86,25 +86,25 @@
       "id": "97W",
       "local_id": 2,
       "name": "Invest 97W",
-      "trackCount": 990,
+      "trackCount": 983,
       "standard": "/data/trends/large_15day_97W_standard.png",
       "wide": "/data/trends/large_15day_97W_wide.png"
     },
     {
-      "id": "dist_20260904_00_3",
+      "id": "dist_20260904_06_3",
       "local_id": 3,
       "name": "Disturbance 3",
-      "trackCount": 975,
-      "standard": "/data/trends/large_15day_dist_20260904_00_3_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260904_00_3_wide.png"
+      "trackCount": 941,
+      "standard": "/data/trends/large_15day_dist_20260904_06_3_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260904_06_3_wide.png"
     },
     {
-      "id": "dist_20260903_00_4",
+      "id": "dist_20260903_06_5",
       "local_id": 4,
       "name": "Disturbance 4",
-      "trackCount": 665,
-      "standard": "/data/trends/large_15day_dist_20260903_00_4_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260903_00_4_wide.png"
+      "trackCount": 300,
+      "standard": "/data/trends/large_15day_dist_20260903_06_5_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260903_06_5_wide.png"
     }
   ]
 }
