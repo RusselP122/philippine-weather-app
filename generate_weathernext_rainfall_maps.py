@@ -128,7 +128,7 @@ def plot_rainfall(lons, lats, precip_grid, filename_id, init_dt, valid_dt_start,
             fig, ax,
             left_title="Philippine T/W",
             right_title=right_title,
-            model_sub=f"Model: Google WeatherNext 3 (0.25°)   |   Forecast Hour: {fh_str}",
+            model_sub=f"Model: Google WeatherNext 3 (0.1° / 10 km)   |   Forecast Hour: {fh_str}",
             time_sub=f"Init: {init_str} / Valid: {valid_str}"
         )
 
@@ -139,17 +139,17 @@ def plot_rainfall(lons, lats, precip_grid, filename_id, init_dt, valid_dt_start,
 
 
 def main(project_id="affable-ring-442402-j2"):
-    print("=== Google WeatherNext 3 Daily & Cumulative Precipitation Generator ===", flush=True)
+    print("=== Google WeatherNext 3 Daily & Cumulative Precipitation Generator (10 km Native) ===", flush=True)
 
     client = storage.Client(project=project_id)
-    fs = gcsfs.GCSFileSystem(project=project_id)
+    fs = gcsfs.GCSFileSystem(project=project_id, token=getattr(client, '_credentials', None))
     latest_run, avail_hours = find_latest_weathernext_run(client, fs, project_id=project_id, min_hours=360, var_check="total_precipitation_1hr_mean")
     print(f"Opening WeatherNext 3 dataset at: {latest_run} ({avail_hours} forecast hours available)", flush=True)
 
     base = f"weathernext3_statistics_spatial/{latest_run}predictions.zarr"
     codec = numcodecs.Zstd()
 
-    # Coordinates
+    # Coordinates (0.1 deg native)
     lat = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lat_0p1/c/0')), dtype='<f4')
     lon = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lon_0p1/c/0')), dtype='<f4')
 
@@ -162,10 +162,6 @@ def main(project_id="affable-ring-442402-j2"):
 
     sub_lats = lat[lat_slice]
     sub_lons = lon[lon_slice]
-
-    # Standardized 0.25 deg grid (matching GFS/AIFS standards)
-    dst_lons = np.arange(LON_MIN, LON_MAX + 0.01, 0.25)
-    dst_lats = np.arange(LAT_MIN, LAT_MAX + 0.01, 0.25)
 
     province_shapely_geometries = load_ph_provinces(DATA_DIR)
     if province_shapely_geometries:
@@ -186,7 +182,7 @@ def main(project_id="affable-ring-442402-j2"):
     total_fetch_hours = max_days * 24
 
     # Batch read hourly precipitation steps out to available days
-    print(f"Batch loading {total_fetch_hours} hourly precipitation chunks on 0.25° grid...", flush=True)
+    print(f"Batch loading {total_fetch_hours} hourly precipitation chunks on native 0.1° (~10 km) grid...", flush=True)
     paths_fetch = [f'{base}/total_precipitation_1hr_mean/c/{t}/0/0' for t in range(total_fetch_hours)]
     raw_dict = batch_cat_gcs(fs, paths_fetch, batch_size=20, desc="Precip chunks")
 
@@ -194,16 +190,14 @@ def main(project_id="affable-ring-442402-j2"):
     for p in paths_fetch:
         if p in raw_dict:
             arr = np.frombuffer(codec.decode(raw_dict[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
-            _, _, arr_025 = regrid_01_to_025(sub_lats, sub_lons, arr, dst_lats=dst_lats, dst_lons=dst_lons)
-            chunks.append(arr_025 * 1000.0) # meters to mm
+            chunks.append(arr * 1000.0) # meters to mm
         else:
-            chunks.append(np.zeros((len(dst_lats), len(dst_lons)), dtype=np.float32))
+            chunks.append(np.zeros((len(sub_lats), len(sub_lons)), dtype=np.float32))
 
     animation_frames = []
 
-    # 1. Daily (24-hr) Accumulations up to max_days
     # 1. Daily (24-hr) Accumulations up to max_days (with direct naming, no duplicates)
-    print(f"\nGenerating {max_days} Daily Accumulation Maps...", flush=True)
+    print(f"\nGenerating {max_days} Daily Accumulation Maps at 10 km resolution...", flush=True)
     for day in range(1, max_days + 1):
         start_hour = (day - 1) * 24
         end_hour = day * 24
@@ -215,20 +209,21 @@ def main(project_id="affable-ring-442402-j2"):
         animation_frames.append(period_name)
 
         plot_rainfall(
-            dst_lons, dst_lats, day_total, period_name,
+            sub_lons, sub_lats, day_total, period_name,
             init_dt, valid_dt_start, valid_dt_end, end_hour, province_shapely_geometries
         )
 
         # 24-hr milestone is equivalent to Day 1
         if day == 1:
             plot_rainfall(
-                dst_lons, dst_lats, day_total, "weathernext_24h",
+                sub_lons, sub_lats, day_total, "weathernext_24h",
                 init_dt, valid_dt_start, valid_dt_end, 24, province_shapely_geometries
             )
 
     # Metadata
     meta = {
         "model": "Google WeatherNext 3",
+        "resolution": "0.1° (~10 km native)",
         "source": "Google DeepMind / GCS",
         "generated_at": datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %I:%M %p PHT"),
         "run_time": init_dt.strftime("%Y-%m-%d %H:%M UTC"),

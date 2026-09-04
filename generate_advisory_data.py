@@ -253,7 +253,7 @@ def fetch_weathernext3_daily(project_id="affable-ring-442402-j2"):
         import numcodecs
         
         client = storage.Client(project=project_id)
-        fs = gcsfs.GCSFileSystem(project=project_id)
+        fs = gcsfs.GCSFileSystem(project=project_id, token=getattr(client, '_credentials', None))
         
         today_prefix = 'weathernext_3_0_0_statistics/zarr/2026_to_present/' + datetime.now(timezone.utc).strftime('%Y%m')
         blobs = client.list_blobs('weathernext3_statistics_spatial', prefix=today_prefix, delimiter='/')

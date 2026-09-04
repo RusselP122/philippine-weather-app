@@ -1,4 +1,4 @@
-name: Update WeatherNext 2 Forecast Maps
+name: Update WeatherNext 3 Forecast Maps
 
 on:
   schedule:
@@ -7,15 +7,22 @@ on:
     - cron: '0 4,10,16,22 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: weather-data-sync
+  cancel-in-progress: false
+
 jobs:
   update-weathernext-maps:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install system dependencies
         run: |
@@ -25,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Install Python dependencies
         run: |
@@ -35,21 +42,29 @@ jobs:
             cartopy \
             numpy \
             scipy \
+            shapely \
             requests \
+            google-cloud-storage \
+            google-auth \
             gcsfs \
             zarr \
+            numcodecs \
             xarray
 
       - name: Authenticate to Google Cloud
         env:
           GCP_KEY_JSON: ${{ secrets.GCP_SA_KEY }}
         run: |
-          # Write the secret Google Cloud Service Account JSON key to a temporary file
-          echo "$GCP_KEY_JSON" > gcp-key.json
-          # Export GOOGLE_APPLICATION_CREDENTIALS environment variable for gcsfs to detect automatically
-          echo "GOOGLE_APPLICATION_CREDENTIALS=gcp-key.json" >> $GITHUB_ENV
+          if [ -z "$GCP_KEY_JSON" ]; then
+            echo "ERROR: GCP_SA_KEY secret is not set or empty!"
+            exit 1
+          fi
+          KEY_PATH="$GITHUB_WORKSPACE/gcp-key.json"
+          echo "$GCP_KEY_JSON" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$KEY_PATH" >> $GITHUB_ENV
 
-      - name: Run WeatherNext 2 maps generators
+      - name: Run WeatherNext 3 maps generators
         run: |
           python generate_weathernext_maps.py
           python generate_weathernext_wind_maps.py
@@ -57,7 +72,7 @@ jobs:
 
       - name: Clean up GCP key
         if: always()
-        run: rm -f gcp-key.json
+        run: rm -f "$GITHUB_WORKSPACE/gcp-key.json"
 
       - name: Commit and push changes
         run: |
@@ -78,7 +93,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "Auto-update WeatherNext 2 Forecast maps [skip ci]"
+            git commit -m "Auto-update WeatherNext 3 Forecast maps [skip ci]"
 
             # Retry push to handle transient concurrency locks
             for i in 1 2 3 4 5; do

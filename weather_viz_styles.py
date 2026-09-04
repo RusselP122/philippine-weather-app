@@ -391,7 +391,8 @@ def find_latest_weathernext_run(client=None, fs=None, project_id="affable-ring-4
         client = storage.Client(project=project_id)
     if fs is None:
         import gcsfs
-        fs = gcsfs.GCSFileSystem(project=project_id)
+        creds = getattr(client, '_credentials', None)
+        fs = gcsfs.GCSFileSystem(project=project_id, token=creds)
 
     now = datetime.now(timezone.utc)
     prefixes = [

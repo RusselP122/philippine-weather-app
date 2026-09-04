@@ -164,7 +164,7 @@ def main(project_id="affable-ring-442402-j2"):
     print("=== Google WeatherNext 3 Precip + MSLP Generator ===", flush=True)
 
     client = storage.Client(project=project_id)
-    fs = gcsfs.GCSFileSystem(project=project_id)
+    fs = gcsfs.GCSFileSystem(project=project_id, token=getattr(client, '_credentials', None))
     latest_run, avail_hours = find_latest_weathernext_run(client, fs, project_id=project_id, min_hours=360, var_check="mean_sea_level_pressure_mean")
     print(f"Opening WeatherNext 3 dataset at: {latest_run} ({avail_hours} forecast hours available)", flush=True)
 
@@ -245,6 +245,7 @@ def main(project_id="affable-ring-442402-j2"):
     # Metadata
     meta = {
         "model": "Google WeatherNext 3",
+        "resolution": "0.25° (~28 km)",
         "source": "Google DeepMind / GCS",
         "generated_at": datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %I:%M %p PHT"),
         "run_time": init_dt.strftime("%Y-%m-%d %H:%M UTC"),

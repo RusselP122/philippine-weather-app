@@ -110,9 +110,9 @@ def plot_wind_frame(X, Y, ws_kph, u_grid, v_grid, mslp_hpa, lead_hours, init_dt,
 
     # Wind Vectors / Quivers
     if add_wind_vectors:
-        add_wind_vectors(ax, X, Y, u_grid, v_grid, skip=6)
+        add_wind_vectors(ax, X, Y, u_grid, v_grid, skip=14)
     else:
-        skip = 6
+        skip = 14
         ax.quiver(X[::skip, ::skip], Y[::skip, ::skip], u_grid[::skip, ::skip], v_grid[::skip, ::skip],
                   transform=ccrs.PlateCarree(), scale=400, color="#1e293b", width=0.002, zorder=6)
 
@@ -133,7 +133,7 @@ def plot_wind_frame(X, Y, ws_kph, u_grid, v_grid, mslp_hpa, lead_hours, init_dt,
             fig, ax,
             left_title="Philippine T/W",
             right_title="WeatherNext 3 10m Wind & MSLP (km/h)",
-            model_sub=f"Model: Google WeatherNext 3 (0.25°)   |   Forecast Hour: {fh_str}",
+            model_sub=f"Model: Google WeatherNext 3 (0.1° / 10 km)   |   Forecast Hour: {fh_str}",
             time_sub=f"Init: {init_str} / Valid: {valid_str}"
         )
 
@@ -170,7 +170,7 @@ def main(project_id="affable-ring-442402-j2"):
     print("=== Google WeatherNext 3 Wind & MSLP Generator ===", flush=True)
 
     client = storage.Client(project=project_id)
-    fs = gcsfs.GCSFileSystem(project=project_id)
+    fs = gcsfs.GCSFileSystem(project=project_id, token=getattr(client, '_credentials', None))
     latest_run, avail_hours = find_latest_weathernext_run(client, fs, project_id=project_id, min_hours=360, var_check="u_component_of_wind_10m_mean")
     print(f"Opening WeatherNext 3 dataset at: {latest_run} ({avail_hours} forecast hours available)", flush=True)
 
@@ -190,11 +190,7 @@ def main(project_id="affable-ring-442402-j2"):
 
     sub_lats = lat[lat_slice]
     sub_lons = lon[lon_slice]
-
-    # Standardized 0.25 deg grid (matching GFS/AIFS standards)
-    dst_lons = np.arange(LON_MIN, LON_MAX + 0.01, 0.25)
-    dst_lats = np.arange(LAT_MIN, LAT_MAX + 0.01, 0.25)
-    X, Y = np.meshgrid(dst_lons, dst_lats)
+    X, Y = np.meshgrid(sub_lons, sub_lats)
 
     province_shapely_geometries = load_ph_provinces(DATA_DIR)
 
@@ -209,7 +205,7 @@ def main(project_id="affable-ring-442402-j2"):
     # 6-hourly steps out to available hours (up to 360 hours / 60 steps)
     target_steps = [t for t in range(6, min(361, avail_hours + 1), 6)]
 
-    print(f"Batch loading 10m Wind & MSLP chunks for {len(target_steps)} forecast timesteps on 0.25° grid...", flush=True)
+    print(f"Batch loading 10m Wind & MSLP chunks for {len(target_steps)} forecast timesteps on native 0.1° (~10 km) grid...", flush=True)
     ws_paths = [f'{base}/wind_speed_10m_mean/c/{t}/0/0' for t in target_steps]
     u_paths = [f'{base}/u_component_of_wind_10m_mean/c/{t}/0/0' for t in target_steps]
     v_paths = [f'{base}/v_component_of_wind_10m_mean/c/{t}/0/0' for t in target_steps]
@@ -232,17 +228,12 @@ def main(project_id="affable-ring-442402-j2"):
             v_arr = np.frombuffer(codec.decode(raw_dict[p_v]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
             mslp_arr = np.frombuffer(codec.decode(raw_dict[p_mslp]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
 
-            _, _, ws_025 = regrid_01_to_025(sub_lats, sub_lons, ws_arr, dst_lats=dst_lats, dst_lons=dst_lons)
-            _, _, u_025 = regrid_01_to_025(sub_lats, sub_lons, u_arr, dst_lats=dst_lats, dst_lons=dst_lons)
-            _, _, v_025 = regrid_01_to_025(sub_lats, sub_lons, v_arr, dst_lats=dst_lats, dst_lons=dst_lons)
-            _, _, mslp_025 = regrid_01_to_025(sub_lats, sub_lons, mslp_arr, dst_lats=dst_lats, dst_lons=dst_lons)
-
-            ws_kph = ws_025 * 3.6  # m/s to kph
-            mslp_hpa = mslp_025 / 100.0  # Pa to hPa
+            ws_kph = ws_arr * 3.6  # m/s to kph
+            mslp_hpa = mslp_arr / 100.0  # Pa to hPa
             valid_dt = init_dt + timedelta(hours=t)
 
             plot_wind_frame(
-                X, Y, ws_kph, u_025, v_025, mslp_hpa,
+                X, Y, ws_kph, u_arr, v_arr, mslp_hpa,
                 t, init_dt, valid_dt, province_shapely_geometries
             )
             valid_frames.append(f"weathernext_wind_f{t:03d}")
@@ -250,6 +241,7 @@ def main(project_id="affable-ring-442402-j2"):
     # Metadata
     meta = {
         "model": "Google WeatherNext 3",
+        "resolution": "0.1° (~10 km native)",
         "source": "Google DeepMind / GCS",
         "generated_at": datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %I:%M %p PHT"),
         "run_time": init_dt.strftime("%Y-%m-%d %H:%M UTC"),
