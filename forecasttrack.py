@@ -371,17 +371,15 @@ def parse_atcf_latlon(val_str):
 
 def get_fnv3_paired_mean_track(storm, data_dir='public/data'):
     """
-    Checks for available WNCv3 / FNV3 paired mean track files (wnv3_paired_latest.dat, fnv3p2_paired_latest.dat, etc.).
+    Checks for available WNCv3 paired mean track files (wnv3_paired_latest.dat, wnv3_paired_latest.csv).
     Only uses recent/latest model initialization files.
     """
     latest_files = [
         os.path.join(data_dir, 'wnv3_paired_latest.dat'),
-        os.path.join(data_dir, 'wnv3_paired_latest.csv'),
-        os.path.join(data_dir, 'fnv3p2_paired_latest.dat'),
-        os.path.join(data_dir, 'oper_paired_latest.dat')
+        os.path.join(data_dir, 'wnv3_paired_latest.csv')
     ]
     
-    other_candidates = glob.glob(os.path.join(data_dir, '*paired*.dat')) + glob.glob(os.path.join('temp_data', '*paired*.csv'))
+    other_candidates = glob.glob(os.path.join(data_dir, 'wn*paired*.dat')) + glob.glob(os.path.join(data_dir, 'wn*paired*.csv')) + glob.glob(os.path.join('temp_data', 'wn*paired*.csv'))
     other_candidates = [f for f in other_candidates if 'latest' not in os.path.basename(f)]
     other_candidates.sort(key=lambda f: os.path.getmtime(f), reverse=True)
     
@@ -1038,7 +1036,7 @@ def load_all_actual_tracks_for_storm(storm):
     if not wnc_paired.empty:
         ensemble_means['WeatherNext Cyclone'] = wnc_paired
     else:
-        for raw_cand in ['wnv3_latest.dat', 'wnv3_latest.csv', 'fnv3p2_latest.dat', 'fnv3p2_latest.csv']:
+        for raw_cand in ['wnv3_latest.dat', 'wnv3_latest.csv']:
             cand_path = os.path.join(data_dir, raw_cand)
             if os.path.exists(cand_path):
                 wnc_calc = get_actual_ensemble_mean_for_storm(storm, cand_path)
@@ -1048,9 +1046,9 @@ def load_all_actual_tracks_for_storm(storm):
 
     for wnc_f in [
         os.path.join(data_dir, 'wnv3_paired_latest.dat'),
+        os.path.join(data_dir, 'wnv3_paired_latest.csv'),
         os.path.join(data_dir, 'wnv3_latest.dat'),
-        os.path.join(data_dir, 'fnv3p2_paired_latest.dat'),
-        os.path.join(data_dir, 'fnv3p2_latest.dat')
+        os.path.join(data_dir, 'wnv3_latest.csv')
     ]:
         if os.path.exists(wnc_f):
             df_wnc = load_and_decrypt_track_file(wnc_f)

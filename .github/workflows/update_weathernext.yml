@@ -4,7 +4,7 @@ on:
   schedule:
     # Runs 4 times daily at 04:00, 10:00, 16:00, and 22:00 UTC
     # (Approx. 4 hours after model initializations at 00, 06, 12, and 18 UTC)
-    - cron: '0 4,10,16,22 * * *'
+    - cron: "0 4,10,16,22 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -32,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.9"
 
       - name: Install Python dependencies
         run: |
