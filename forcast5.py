@@ -409,17 +409,27 @@ def main():
 
     if len(genesis_data) >= 2:
         coords = np.column_stack((genesis_data["lon"].values, genesis_data["lat"].values))
-        db = DBSCAN(eps=4.0, min_samples=2).fit(coords)
-        unique_labels = sorted(set(db.labels_) - {-1})
+        # Tighter clustering (eps=2.5 degrees ~ 270 km) so separate basins (West PH Sea vs East) do not merge across Luzon
+        db = DBSCAN(eps=2.5, min_samples=3).fit(coords)
+        raw_labels = sorted(set(db.labels_) - {-1})
 
-        for i, lbl in enumerate(unique_labels, start=1):
-            cluster_mask = (db.labels_ == lbl)
-            c_pts = genesis_data.iloc[cluster_mask]
+        # Filter clusters to require significant formation potential (>= 6.0% raw prob / >= 4 members)
+        valid_clusters = []
+        for lbl in raw_labels:
+            c_pts = genesis_data.iloc[db.labels_ == lbl]
+            s_7day = c_pts["sample"].unique()
+            prob_7day = len(s_7day) / total_samples * 100
+            if prob_7day >= 6.0 and len(s_7day) >= 4:
+                valid_clusters.append((lbl, prob_7day, c_pts))
+
+        # Sort clusters by 7-day probability descending
+        valid_clusters.sort(key=lambda x: x[1], reverse=True)
+
+        for i, (lbl, prob_7day, c_pts) in enumerate(valid_clusters, start=1):
             c_lons = c_pts["lon"].values
             c_lats = c_pts["lat"].values
 
             s_7day = c_pts["sample"].unique()
-            prob_7day = len(s_7day) / total_samples * 100
             s_2day = c_pts[c_pts["lead_time_hours"] <= 48]["sample"].unique()
             prob_2day = len(s_2day) / total_samples * 100
 
@@ -436,13 +446,14 @@ def main():
             pts = np.column_stack((c_lons, c_lats))
             area_polys_json = []
 
+            # Snug, realistic disturbance envelope (1.3 degrees buffer ~ 140km) avoiding land bridging
             if len(pts) == 1:
-                c_geom = Point(center_lon, center_lat).buffer(2.8)
+                c_geom = Point(center_lon, center_lat).buffer(1.5)
                 ext = list(c_geom.exterior.coords)
                 area_polys_json.append([[lat, lon] for lon, lat in ext])
             else:
                 hull = MultiPoint(pts).convex_hull
-                buffered = hull.buffer(2.5, join_style="round")
+                buffered = hull.buffer(1.3, join_style="round")
                 if isinstance(buffered, Polygon):
                     ext = list(buffered.exterior.coords)
                     area_polys_json.append([[lat, lon] for lon, lat in ext])
@@ -518,11 +529,7 @@ def main():
         path_effects=[patheffects.Stroke(linewidth=4.0, foreground="#451a03", alpha=0.5), patheffects.Normal()]
     )
 
-    # PAR Boundary Label inside extent if visible
-    if extent[0] <= 120.0 <= extent[1] and extent[2] <= 25.0 <= extent[3]:
-        ax.text(131.5, 25.4, "PAR (Philippine Area of Responsibility)", color="#ffedd5", fontsize=8.5, fontweight="bold",
-                transform=ccrs.PlateCarree(), ha="center", va="bottom", zorder=6,
-                bbox=dict(boxstyle="round,pad=0.25", facecolor="#7c2d12", edgecolor="#ea580c", alpha=0.90, lw=1.0))
+
 
     # Water Body Labels (Adaptive based on extent visibility)
     if extent[0] <= 133.0 <= extent[1] and extent[2] <= 16.5 <= extent[3]:

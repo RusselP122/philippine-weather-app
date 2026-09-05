@@ -349,17 +349,27 @@ def main():
 
     if len(genesis_data) >= 2:
         coords = np.column_stack((genesis_data["lon"].values, genesis_data["lat"].values))
-        db = DBSCAN(eps=4.0, min_samples=2).fit(coords)
-        unique_labels = sorted(set(db.labels_) - {-1})
+        # Tighter clustering (eps=2.5 degrees ~ 270 km) so separate basins (West PH Sea vs East) do not merge across Luzon
+        db = DBSCAN(eps=2.5, min_samples=3).fit(coords)
+        raw_labels = sorted(set(db.labels_) - {-1})
 
-        for i, lbl in enumerate(unique_labels, start=1):
-            cluster_mask = (db.labels_ == lbl)
-            c_pts = genesis_data.iloc[cluster_mask]
+        # Filter clusters to require significant formation potential (>= 6.0% raw prob / >= 4 members)
+        valid_clusters = []
+        for lbl in raw_labels:
+            c_pts = genesis_data.iloc[db.labels_ == lbl]
+            s_14day = c_pts["sample"].unique()
+            prob_14day = len(s_14day) / total_samples * 100
+            if prob_14day >= 6.0 and len(s_14day) >= 4:
+                valid_clusters.append((lbl, prob_14day, c_pts))
+
+        # Sort clusters by 14-day probability descending
+        valid_clusters.sort(key=lambda x: x[1], reverse=True)
+
+        for i, (lbl, prob_14day, c_pts) in enumerate(valid_clusters, start=1):
             c_lons = c_pts["lon"].values
             c_lats = c_pts["lat"].values
 
             s_14day = c_pts["sample"].unique()
-            prob_14day = len(s_14day) / total_samples * 100
             s_9day = c_pts[c_pts["lead_time_hours"] <= 216]["sample"].unique()
             prob_9day = len(s_9day) / total_samples * 100
 
@@ -376,13 +386,14 @@ def main():
             pts = np.column_stack((c_lons, c_lats))
             area_polys_json = []
 
+            # Snug, realistic disturbance envelope (1.3 degrees buffer ~ 140km) avoiding land bridging
             if len(pts) == 1:
-                c_geom = Point(center_lon, center_lat).buffer(2.8)
+                c_geom = Point(center_lon, center_lat).buffer(1.5)
                 ext = list(c_geom.exterior.coords)
                 area_polys_json.append([[lat, lon] for lon, lat in ext])
             else:
                 hull = MultiPoint(pts).convex_hull
-                buffered = hull.buffer(2.5, join_style="round")
+                buffered = hull.buffer(1.3, join_style="round")
                 if isinstance(buffered, Polygon):
                     ext = list(buffered.exterior.coords)
                     area_polys_json.append([[lat, lon] for lon, lat in ext])
@@ -455,10 +466,7 @@ def main():
         path_effects=[patheffects.Stroke(linewidth=4.0, foreground="#451a03", alpha=0.5), patheffects.Normal()]
     )
 
-    if extent[0] <= 120.0 <= extent[1] and extent[2] <= 25.0 <= extent[3]:
-        ax.text(131.5, 25.4, "PAR (Philippine Area of Responsibility)", color="#ffedd5", fontsize=8.5, fontweight="bold",
-                transform=ccrs.PlateCarree(), ha="center", va="bottom", zorder=6,
-                bbox=dict(boxstyle="round,pad=0.25", facecolor="#7c2d12", edgecolor="#ea580c", alpha=0.90, lw=1.0))
+
 
     # Water Body Labels (Adaptive based on extent visibility)
     if extent[0] <= 133.0 <= extent[1] and extent[2] <= 16.5 <= extent[3]:
@@ -562,102 +570,115 @@ def main():
     if len(display_areas) == 1:
         # Single Area: Large 2-Column Broadcast Card (Classic Fox Weather)
         primary_area = display_areas[0]
-        card_x, card_y, card_w, card_h = 0.025, 0.560, 0.270, 0.275
-        card_bg = FancyBboxPatch((card_x, card_y), card_w, card_h, boxstyle="round,pad=0.006,rounding_size=0.020",
+        card_w, card_h = 0.250, 0.240
+        card_x = 0.022
+        # If threat is in the northwest / West Philippine Sea, place card in lower-left to avoid obstructing it
+        if primary_area["center"][1] < 125.0 and primary_area["center"][0] > 12.0:
+            card_y = 0.125
+        else:
+            card_y = 0.580
+
+        card_bg = FancyBboxPatch((card_x, card_y), card_w, card_h, boxstyle="round,pad=0.005,rounding_size=0.018",
                                 transform=fig.transFigure, facecolor="#ffffff", edgecolor="#cbd5e1", lw=1.5, zorder=50)
         fig.patches.append(card_bg)
 
-        card_header = FancyBboxPatch((card_x + 0.008, card_y + card_h - 0.054), card_w - 0.016, 0.046,
-                                     boxstyle="round,pad=0.004,rounding_size=0.012",
+        card_header = FancyBboxPatch((card_x + 0.007, card_y + card_h - 0.048), card_w - 0.014, 0.040,
+                                     boxstyle="round,pad=0.004,rounding_size=0.010",
                                      transform=fig.transFigure, facecolor="#0d2342", edgecolor="none", zorder=51)
         fig.patches.append(card_header)
-        fig.text(card_x + card_w / 2.0, card_y + card_h - 0.031, "CHANCE OF DEVELOPMENT",
-                 fontsize=12.5, fontweight="heavy", color="#ffffff", ha="center", va="center", zorder=52)
+        fig.text(card_x + card_w / 2.0, card_y + card_h - 0.028, "CHANCE OF DEVELOPMENT",
+                 fontsize=11.5, fontweight="heavy", color="#ffffff", ha="center", va="center", zorder=52)
 
-        col1_x = card_x + 0.068
-        col2_x = card_x + card_w - 0.068
+        col1_x = card_x + 0.062
+        col2_x = card_x + card_w - 0.062
         mid_divider_x = card_x + card_w / 2.0
 
-        divider = patches.FancyArrowPatch((mid_divider_x, card_y + 0.025), (mid_divider_x, card_y + card_h - 0.065),
-                                          transform=fig.transFigure, color="#cbd5e1", linewidth=1.5, zorder=51)
+        divider = patches.FancyArrowPatch((mid_divider_x, card_y + 0.025), (mid_divider_x, card_y + card_h - 0.060),
+                                          transform=fig.transFigure, color="#cbd5e1", linewidth=1.4, zorder=51)
         fig.patches.append(divider)
 
-        fig.text(col1_x, card_y + 0.138, f"{primary_area['prob_2day']}%",
-                 fontsize=35, fontweight="heavy", color="#0a1d37", ha="center", va="center", zorder=52)
-        fig.text(col1_x, card_y + 0.068, lead1_label,
-                 fontsize=10.0, fontweight="heavy", color="#0284c7", ha="center", va="center", multialignment="center", zorder=52)
+        fig.text(col1_x, card_y + 0.120, f"{primary_area['prob_2day']}%",
+                 fontsize=32, fontweight="heavy", color="#0a1d37", ha="center", va="center", zorder=52)
+        fig.text(col1_x, card_y + 0.060, lead1_label,
+                 fontsize=9.5, fontweight="heavy", color="#0284c7", ha="center", va="center", multialignment="center", zorder=52)
 
-        fig.text(col2_x, card_y + 0.138, f"{primary_area['prob_7day']}%",
-                 fontsize=35, fontweight="heavy", color="#0a1d37", ha="center", va="center", zorder=52)
-        fig.text(col2_x, card_y + 0.068, lead2_label,
-                 fontsize=10.0, fontweight="heavy", color="#0284c7", ha="center", va="center", multialignment="center", zorder=52)
+        fig.text(col2_x, card_y + 0.120, f"{primary_area['prob_7day']}%",
+                 fontsize=32, fontweight="heavy", color="#0a1d37", ha="center", va="center", zorder=52)
+        fig.text(col2_x, card_y + 0.060, lead2_label,
+                 fontsize=9.5, fontweight="heavy", color="#0284c7", ha="center", va="center", multialignment="center", zorder=52)
 
         reg_name = get_region_name(primary_area["center"][0], primary_area["center"][1])
-        fig.text(card_x + card_w / 2.0, card_y + 0.016, f"Area {primary_area['id']} · {reg_name}",
-                 fontsize=8.5, fontweight="bold", color="#64748b", ha="center", va="center", zorder=52)
+        fig.text(card_x + card_w / 2.0, card_y + 0.015, f"Area {primary_area['id']} · {reg_name}",
+                 fontsize=8.0, fontweight="bold", color="#64748b", ha="center", va="center", zorder=52)
 
     elif len(display_areas) > 1:
         # Multi-Area: Clean Broadcast Table Breakdown
         table_areas = sorted(display_areas, key=lambda x: x["id"])
         num_rows = min(len(table_areas), 4)
-        row_height = 0.054
-        card_w = 0.320
-        card_h = 0.088 + (num_rows * row_height) + 0.024
-        card_x = 0.025
-        card_y = 0.840 - card_h
+        row_height = 0.042
+        card_w = 0.275
+        card_h = 0.066 + (num_rows * row_height) + 0.022
+        card_x = 0.022
 
-        card_bg = FancyBboxPatch((card_x, card_y), card_w, card_h, boxstyle="round,pad=0.006,rounding_size=0.018",
+        # If any threat is in the Northwest / West Philippine Sea, place card in lower-left so West is unobstructed
+        has_nw_threat = any(a["center"][1] < 125.0 and a["center"][0] > 12.0 for a in display_areas)
+        if has_nw_threat:
+            card_y = 0.125
+        else:
+            card_y = 0.840 - card_h
+
+        card_bg = FancyBboxPatch((card_x, card_y), card_w, card_h, boxstyle="round,pad=0.005,rounding_size=0.016",
                                 transform=fig.transFigure, facecolor="#ffffff", edgecolor="#cbd5e1", lw=1.5, zorder=50)
         fig.patches.append(card_bg)
 
         # Card Title Header
-        card_header = FancyBboxPatch((card_x + 0.008, card_y + card_h - 0.048), card_w - 0.016, 0.040,
-                                     boxstyle="round,pad=0.004,rounding_size=0.010",
+        card_header = FancyBboxPatch((card_x + 0.006, card_y + card_h - 0.038), card_w - 0.012, 0.032,
+                                     boxstyle="round,pad=0.003,rounding_size=0.008",
                                      transform=fig.transFigure, facecolor="#0d2342", edgecolor="none", zorder=51)
         fig.patches.append(card_header)
-        fig.text(card_x + card_w / 2.0, card_y + card_h - 0.028, "CHANCE OF DEVELOPMENT",
-                 fontsize=12.0, fontweight="heavy", color="#ffffff", ha="center", va="center", zorder=52)
+        fig.text(card_x + card_w / 2.0, card_y + card_h - 0.022, "CHANCE OF DEVELOPMENT",
+                 fontsize=10.5, fontweight="heavy", color="#ffffff", ha="center", va="center", zorder=52)
 
         # Table Column Subheaders
-        hdr_y = card_y + card_h - 0.068
-        c_area_x = card_x + 0.022
-        c_p1_x   = card_x + 0.170
-        c_p2_x   = card_x + 0.236
-        c_risk_x = card_x + 0.292
+        hdr_y = card_y + card_h - 0.054
+        c_area_x = card_x + 0.016
+        c_p1_x   = card_x + 0.144
+        c_p2_x   = card_x + 0.202
+        c_risk_x = card_x + 0.248
 
-        fig.text(c_area_x, hdr_y, "AREA", fontsize=8.0, fontweight="heavy", color="#64748b", ha="left", va="center", zorder=52)
-        fig.text(c_p1_x, hdr_y, col1_hdr, fontsize=7.5, fontweight="heavy", color="#64748b", ha="center", va="center", zorder=52)
-        fig.text(c_p2_x, hdr_y, col2_hdr, fontsize=7.5, fontweight="heavy", color="#0284c7", ha="center", va="center", zorder=52)
-        fig.text(c_risk_x, hdr_y, "RISK", fontsize=7.5, fontweight="heavy", color="#64748b", ha="center", va="center", zorder=52)
+        fig.text(c_area_x, hdr_y, "AREA", fontsize=7.5, fontweight="heavy", color="#64748b", ha="left", va="center", zorder=52)
+        fig.text(c_p1_x, hdr_y, col1_hdr, fontsize=7.2, fontweight="heavy", color="#64748b", ha="center", va="center", zorder=52)
+        fig.text(c_p2_x, hdr_y, col2_hdr, fontsize=7.2, fontweight="heavy", color="#0284c7", ha="center", va="center", zorder=52)
+        fig.text(c_risk_x, hdr_y, "RISK", fontsize=7.2, fontweight="heavy", color="#64748b", ha="center", va="center", zorder=52)
 
-        hdr_line = patches.FancyArrowPatch((card_x + 0.012, hdr_y - 0.012), (card_x + card_w - 0.012, hdr_y - 0.012),
-                                          transform=fig.transFigure, color="#e2e8f0", linewidth=1.2, zorder=51)
+        hdr_line = patches.FancyArrowPatch((card_x + 0.010, hdr_y - 0.009), (card_x + card_w - 0.010, hdr_y - 0.009),
+                                          transform=fig.transFigure, color="#e2e8f0", linewidth=1.0, zorder=51)
         fig.patches.append(hdr_line)
 
         # Render Each Area Row
-        start_y = hdr_y - 0.038
+        start_y = hdr_y - 0.030
         for idx, a in enumerate(table_areas[:num_rows]):
             curr_row_y = start_y - (idx * row_height)
             reg_name = get_region_name(a["center"][0], a["center"][1])
 
             # Area Color Dot
-            dot = patches.Circle((c_area_x + 0.005, curr_row_y + 0.006), 0.0045,
-                                transform=fig.transFigure, facecolor=a["color"], edgecolor="#0f172a", lw=0.6, zorder=53)
+            dot = patches.Circle((c_area_x + 0.004, curr_row_y + 0.004), 0.0040,
+                                transform=fig.transFigure, facecolor=a["color"], edgecolor="#0f172a", lw=0.5, zorder=53)
             fig.patches.append(dot)
 
             # Area Title and Location Subtitle
-            fig.text(c_area_x + 0.014, curr_row_y + 0.007, f"Area {a['id']}",
-                     fontsize=9.5, fontweight="heavy", color="#0a1d37", ha="left", va="center", zorder=52)
-            fig.text(c_area_x + 0.014, curr_row_y - 0.008, reg_name,
-                     fontsize=7.0, fontweight="bold", color="#64748b", ha="left", va="center", zorder=52)
+            fig.text(c_area_x + 0.012, curr_row_y + 0.005, f"Area {a['id']}",
+                     fontsize=8.5, fontweight="heavy", color="#0a1d37", ha="left", va="center", zorder=52)
+            fig.text(c_area_x + 0.012, curr_row_y - 0.007, reg_name,
+                     fontsize=6.5, fontweight="bold", color="#64748b", ha="left", va="center", zorder=52)
 
             # 2-day / 9-day Probability
             fig.text(c_p1_x, curr_row_y, f"{a['prob_2day']}%",
-                     fontsize=12.0, fontweight="heavy", color="#0f172a", ha="center", va="center", zorder=52)
+                     fontsize=10.5, fontweight="heavy", color="#0f172a", ha="center", va="center", zorder=52)
 
             # 7-day / 14-day Probability (Bold & Risk Tinted)
             fig.text(c_p2_x, curr_row_y, f"{a['prob_7day']}%",
-                     fontsize=13.0, fontweight="heavy", color="#0284c7", ha="center", va="center", zorder=52)
+                     fontsize=11.5, fontweight="heavy", color="#0284c7", ha="center", va="center", zorder=52)
 
             # Risk Category Pill Badge
             risk_text = a["cat"].upper()
@@ -670,43 +691,43 @@ def main():
                 rbg, rfg = "#fef9c3", "#a16207"
                 risk_text = "LOW"
 
-            risk_badge = FancyBboxPatch((c_risk_x - 0.018, curr_row_y - 0.010), 0.036, 0.020,
-                                       boxstyle="round,pad=0.002,rounding_size=0.006",
+            risk_badge = FancyBboxPatch((c_risk_x - 0.016, curr_row_y - 0.009), 0.032, 0.018,
+                                       boxstyle="round,pad=0.002,rounding_size=0.005",
                                        transform=fig.transFigure, facecolor=rbg, edgecolor="none", zorder=52)
             fig.patches.append(risk_badge)
             fig.text(c_risk_x, curr_row_y, risk_text,
-                     fontsize=7.0, fontweight="heavy", color=rfg, ha="center", va="center", zorder=53)
+                     fontsize=6.8, fontweight="heavy", color=rfg, ha="center", va="center", zorder=53)
 
             # Row Divider Line
             if idx < num_rows - 1:
-                row_div = patches.FancyArrowPatch((card_x + 0.015, curr_row_y - 0.018), (card_x + card_w - 0.015, curr_row_y - 0.018),
-                                                  transform=fig.transFigure, color="#f1f5f9", linewidth=1.0, zorder=51)
+                row_div = patches.FancyArrowPatch((card_x + 0.012, curr_row_y - 0.016), (card_x + card_w - 0.012, curr_row_y - 0.016),
+                                                  transform=fig.transFigure, color="#f1f5f9", linewidth=0.8, zorder=51)
                 fig.patches.append(row_div)
 
         # Footer Note
-        fig.text(card_x + card_w / 2.0, card_y + 0.012, f"Tracking {len(table_areas)} Active Formation Areas",
-                 fontsize=7.5, fontweight="bold", color="#64748b", ha="center", va="center", zorder=52)
+        fig.text(card_x + card_w / 2.0, card_y + 0.010, f"Tracking {len(table_areas)} Active Formation Areas",
+                 fontsize=7.0, fontweight="bold", color="#64748b", ha="center", va="center", zorder=52)
 
     else:
         # Zero Areas Case
-        card_x, card_y, card_w, card_h = 0.025, 0.620, 0.270, 0.160
-        card_bg = FancyBboxPatch((card_x, card_y), card_w, card_h, boxstyle="round,pad=0.006,rounding_size=0.020",
+        card_x, card_y, card_w, card_h = 0.022, 0.125, 0.250, 0.140
+        card_bg = FancyBboxPatch((card_x, card_y), card_w, card_h, boxstyle="round,pad=0.005,rounding_size=0.018",
                                 transform=fig.transFigure, facecolor="#ffffff", edgecolor="#cbd5e1", lw=1.5, zorder=50)
         fig.patches.append(card_bg)
 
-        card_header = FancyBboxPatch((card_x + 0.008, card_y + card_h - 0.054), card_w - 0.016, 0.046,
-                                     boxstyle="round,pad=0.004,rounding_size=0.012",
+        card_header = FancyBboxPatch((card_x + 0.006, card_y + card_h - 0.040), card_w - 0.012, 0.034,
+                                     boxstyle="round,pad=0.003,rounding_size=0.008",
                                      transform=fig.transFigure, facecolor="#0d2342", edgecolor="none", zorder=51)
         fig.patches.append(card_header)
-        fig.text(card_x + card_w / 2.0, card_y + card_h - 0.031, "CHANCE OF DEVELOPMENT",
-                 fontsize=12.5, fontweight="heavy", color="#ffffff", ha="center", va="center", zorder=52)
+        fig.text(card_x + card_w / 2.0, card_y + card_h - 0.023, "CHANCE OF DEVELOPMENT",
+                 fontsize=11.0, fontweight="heavy", color="#ffffff", ha="center", va="center", zorder=52)
 
-        fig.text(card_x + card_w / 2.0, card_y + 0.050, "NO TROPICAL CYCLONE\nFORMATION EXPECTED",
-                 fontsize=10.0, fontweight="heavy", color="#15803d", ha="center", va="center", multialignment="center", zorder=52)
+        fig.text(card_x + card_w / 2.0, card_y + 0.045, "NO TROPICAL CYCLONE\nFORMATION EXPECTED",
+                 fontsize=9.5, fontweight="heavy", color="#15803d", ha="center", va="center", multialignment="center", zorder=52)
 
     # ── Bottom-Left Brand Logo (Direct on Canvas, No White Background) ─────────
-    logo_w, logo_h = 0.088, 0.088
-    logo_x, logo_y = 0.022, 0.028
+    logo_w, logo_h = 0.076, 0.076
+    logo_x, logo_y = 0.022, 0.024
     found_logo = next((p for p in LOGO_PATHS if os.path.exists(p)), None)
 
     if found_logo:

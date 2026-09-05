@@ -3,7 +3,7 @@ name: Update Forecast Images
 on:
   schedule:
     # Runs at 00:00, 06:00, 12:00, and 18:00 UTC every day
-    - cron: '0 0,6,12,18 * * *'
+    - cron: "0 0,6,12,18 * * *"
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -17,7 +17,7 @@ jobs:
     permissions:
       contents: write
 
-    steps:  
+    steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -29,7 +29,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9' # Adjust if your script uses a newer version
+          python-version: "3.9" # Adjust if your script uses a newer version
 
       - name: Install dependencies
         run: |
@@ -87,12 +87,12 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config merge.renames false
-          
+
           python scripts/obfuscate_csvs.py
-          
+
           # Stage all modifications and deletions of tracked files in public/data
           git add -u public/data/
-          
+
           # Add forecast PNGs and the proxied CSVs for browser use
           git add public/assets/*.png 2>/dev/null || true
           git add -f public/data/fnv3p2_latest.dat || true
@@ -101,8 +101,6 @@ jobs:
           git add -f public/data/fnv3p1_paired_latest.dat || true
           git add -f public/data/wnv3_latest.dat || true
           git add -f public/data/wnv3_paired_latest.dat || true
-          git add -f public/data/oper_latest.dat || true
-          git add -f public/data/oper_paired_latest.dat || true
           git add -f public/data/fnv3p2_*.dat || true
           git add -f public/data/fnv3p2_paired_*.dat || true
           git add -f public/data/cycles_manifest.json || true
@@ -110,7 +108,7 @@ jobs:
           git add -f public/data/tc_positions_*.json || true
           git add -f public/data/tc_storms_index.json || true
           git add public/data/trends/* 2>/dev/null || true
-          
+
           # Commit if there are changes
           if git diff --staged --quiet; then
             echo "No changes to commit"
