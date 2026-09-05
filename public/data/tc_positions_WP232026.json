@@ -1,15 +1,15 @@
 {
   "active": true,
-  "storm_name": "TC 23W (Invest 97W)",
+  "storm_name": "TC 23W",
   "track_id": "WP232026",
   "latest": {
-    "lat": 27.6,
-    "lon": 135.2,
+    "lat": 28.5,
+    "lon": 133.8,
     "pressure_hpa": 998.0,
     "wind_kt": 25.0,
     "wind_kmh": 46,
-    "movement": "NW at 30.2 km/h (16.3 kt)",
-    "init_time": "2026-09-05 06:00",
+    "movement": "NW at 28.3 km/h (15.3 kt)",
+    "init_time": "2026-09-05 12:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -80,6 +80,15 @@
       "cycle": "2026-09-05 06:00",
       "lat": 27.6,
       "lon": 135.2,
+      "pressure_hpa": 998.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-09-05 12:00",
+      "lat": 28.5,
+      "lon": 133.8,
       "pressure_hpa": 998.0,
       "wind_kt": 25.0,
       "wind_kmh": 46,
