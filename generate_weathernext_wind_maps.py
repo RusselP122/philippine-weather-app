@@ -205,31 +205,49 @@ def main(project_id="affable-ring-442402-j2"):
     # 6-hourly steps out to available hours (up to 360 hours / 60 steps)
     target_steps = [t for t in range(6, min(361, avail_hours + 1), 6)]
 
-    print(f"Batch loading 10m Wind & MSLP chunks for {len(target_steps)} forecast timesteps on native 0.1° (~10 km) grid...", flush=True)
-    ws_paths = [f'{base}/wind_speed_10m_mean/c/{t}/0/0' for t in target_steps]
-    u_paths = [f'{base}/u_component_of_wind_10m_mean/c/{t}/0/0' for t in target_steps]
-    v_paths = [f'{base}/v_component_of_wind_10m_mean/c/{t}/0/0' for t in target_steps]
-    mslp_paths = [f'{base}/mean_sea_level_pressure_mean/c/{t}/0/0' for t in target_steps]
+    print(f"Stream loading 10m Wind & MSLP chunks for {len(target_steps)} forecast timesteps on native 0.1° (~10 km) grid in batches...", flush=True)
+    frames_data = {}
+    batch_steps_size = 5  # 5 timesteps * 4 variables = 20 chunks per batch
 
-    all_paths = ws_paths + u_paths + v_paths + mslp_paths
-    raw_dict = batch_cat_gcs(fs, all_paths, batch_size=20, desc="Wind chunks")
+    for i in range(0, len(target_steps), batch_steps_size):
+        sub_steps = target_steps[i:i + batch_steps_size]
+        sub_paths = []
+        for st in sub_steps:
+            sub_paths.extend([
+                f'{base}/wind_speed_10m_mean/c/{st}/0/0',
+                f'{base}/u_component_of_wind_10m_mean/c/{st}/0/0',
+                f'{base}/v_component_of_wind_10m_mean/c/{st}/0/0',
+                f'{base}/mean_sea_level_pressure_mean/c/{st}/0/0'
+            ])
+        try:
+            part = fs.cat(sub_paths, on_error='omit', batch_size=20)
+        except Exception as e:
+            print(f"  Notice during wind batch {i}-{min(i+batch_steps_size, len(target_steps))}: {e}", flush=True)
+            part = {}
+
+        for st in sub_steps:
+            p_ws = f'{base}/wind_speed_10m_mean/c/{st}/0/0'
+            p_u = f'{base}/u_component_of_wind_10m_mean/c/{st}/0/0'
+            p_v = f'{base}/v_component_of_wind_10m_mean/c/{st}/0/0'
+            p_mslp = f'{base}/mean_sea_level_pressure_mean/c/{st}/0/0'
+            if p_ws in part and p_u in part and p_v in part and p_mslp in part:
+                ws_arr = np.frombuffer(codec.decode(part[p_ws]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+                u_arr = np.frombuffer(codec.decode(part[p_u]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+                v_arr = np.frombuffer(codec.decode(part[p_v]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+                mslp_arr = np.frombuffer(codec.decode(part[p_mslp]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+
+                ws_kph = ws_arr * 3.6  # m/s to kph
+                mslp_hpa = mslp_arr / 100.0  # Pa to hPa
+                frames_data[st] = (ws_kph, u_arr, v_arr, mslp_hpa)
+
+        del part
+        print(f"  -> Loaded {min(i + batch_steps_size, len(target_steps))}/{len(target_steps)} timesteps...", flush=True)
 
     valid_frames = []
 
     for t in target_steps:
-        p_ws = f'{base}/wind_speed_10m_mean/c/{t}/0/0'
-        p_u = f'{base}/u_component_of_wind_10m_mean/c/{t}/0/0'
-        p_v = f'{base}/v_component_of_wind_10m_mean/c/{t}/0/0'
-        p_mslp = f'{base}/mean_sea_level_pressure_mean/c/{t}/0/0'
-
-        if p_ws in raw_dict and p_u in raw_dict and p_v in raw_dict and p_mslp in raw_dict:
-            ws_arr = np.frombuffer(codec.decode(raw_dict[p_ws]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
-            u_arr = np.frombuffer(codec.decode(raw_dict[p_u]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
-            v_arr = np.frombuffer(codec.decode(raw_dict[p_v]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
-            mslp_arr = np.frombuffer(codec.decode(raw_dict[p_mslp]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
-
-            ws_kph = ws_arr * 3.6  # m/s to kph
-            mslp_hpa = mslp_arr / 100.0  # Pa to hPa
+        if t in frames_data:
+            ws_kph, u_arr, v_arr, mslp_hpa = frames_data[t]
             valid_dt = init_dt + timedelta(hours=t)
 
             plot_wind_frame(

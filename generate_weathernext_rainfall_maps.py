@@ -182,17 +182,29 @@ def main(project_id="affable-ring-442402-j2"):
     total_fetch_hours = max_days * 24
 
     # Batch read hourly precipitation steps out to available days
-    print(f"Batch loading {total_fetch_hours} hourly precipitation chunks on native 0.1° (~10 km) grid...", flush=True)
+    print(f"Stream loading {total_fetch_hours} hourly precipitation chunks on native 0.1° (~10 km) grid in batches...", flush=True)
     paths_fetch = [f'{base}/total_precipitation_1hr_mean/c/{t}/0/0' for t in range(total_fetch_hours)]
-    raw_dict = batch_cat_gcs(fs, paths_fetch, batch_size=20, desc="Precip chunks")
+    chunks = [None] * total_fetch_hours
+    batch_size = 20
 
-    chunks = []
-    for p in paths_fetch:
-        if p in raw_dict:
-            arr = np.frombuffer(codec.decode(raw_dict[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
-            chunks.append(arr * 1000.0) # meters to mm
-        else:
-            chunks.append(np.zeros((len(sub_lats), len(sub_lons)), dtype=np.float32))
+    for i in range(0, total_fetch_hours, batch_size):
+        batch_paths = paths_fetch[i:i + batch_size]
+        try:
+            part = fs.cat(batch_paths, on_error='omit', batch_size=batch_size)
+        except Exception as e:
+            print(f"  Notice during precip batch {i}-{min(i+batch_size, total_fetch_hours)}: {e}", flush=True)
+            part = {}
+
+        for idx_offset, p in enumerate(batch_paths):
+            hour_idx = i + idx_offset
+            if p in part:
+                arr = np.frombuffer(codec.decode(part[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+                chunks[hour_idx] = arr * 1000.0  # meters to mm
+            else:
+                chunks[hour_idx] = np.zeros((len(sub_lats), len(sub_lons)), dtype=np.float32)
+
+        del part
+        print(f"  -> Loaded {min(i + batch_size, total_fetch_hours)}/{total_fetch_hours} chunks...", flush=True)
 
     animation_frames = []
 

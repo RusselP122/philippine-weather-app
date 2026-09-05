@@ -126,11 +126,11 @@ def plot_precip_mslp_frame(X, Y, precip_6h, mslp_hpa, lead_hours, init_dt, valid
             fig, ax,
             left_title="Philippine T/W",
             right_title="WeatherNext 3 6h Precip + MSLP (mm)",
-            model_sub=f"Model: Google WeatherNext 3 (10 km)   |   Forecast Hour: {fh_str}",
+            model_sub=f"Model: Google WeatherNext 3 (0.25°)   |   Forecast Hour: {fh_str}",
             time_sub=f"Init: {init_str} / Valid: {valid_str}"
         )
 
-    out_file = os.path.join(OUTPUT_DIR, f"precip_mslp_weathernext_f{lead_hours:03d}.png")
+    out_file = os.path.join(OUTPUT_DIR, f"precip_mslp_{lead_hours:03d}.png")
     plt.savefig(out_file, dpi=120, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
@@ -204,36 +204,61 @@ def main(project_id="affable-ring-442402-j2"):
     target_steps = [t for t in range(6, min(361, avail_hours + 1), 6)]
     max_hour_fetch = target_steps[-1] if target_steps else avail_hours
 
-    print(f"Batch loading 1-hr precipitation and MSLP chunks out to {max_hour_fetch}h on 0.25° grid...", flush=True)
+    print(f"Stream loading 1-hr precipitation chunks (0 to {max_hour_fetch}h) on 0.25° grid in batches...", flush=True)
     precip_paths = [f'{base}/total_precipitation_1hr_mean/c/{t}/0/0' for t in range(max_hour_fetch)]
+    p_chunks = [None] * max_hour_fetch
+
+    batch_size = 20
+    for i in range(0, max_hour_fetch, batch_size):
+        batch_paths = precip_paths[i:i + batch_size]
+        try:
+            part = fs.cat(batch_paths, on_error='omit', batch_size=batch_size)
+        except Exception as e:
+            print(f"  Notice during precip batch {i}-{min(i+batch_size, max_hour_fetch)}: {e}", flush=True)
+            part = {}
+
+        for idx_offset, p in enumerate(batch_paths):
+            hour_idx = i + idx_offset
+            if p in part:
+                arr = np.frombuffer(codec.decode(part[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+                _, _, arr_025 = regrid_01_to_025(sub_lats, sub_lons, arr, dst_lats=dst_lats, dst_lons=dst_lons)
+                p_chunks[hour_idx] = arr_025 * 1000.0  # meters to mm
+            else:
+                p_chunks[hour_idx] = np.zeros((len(dst_lats), len(dst_lons)), dtype=np.float32)
+
+        del part
+        print(f"  -> Loaded & regridded {min(i + batch_size, max_hour_fetch)}/{max_hour_fetch} precip chunks...", flush=True)
+
+    print(f"Stream loading MSLP chunks for {len(target_steps)} steps on 0.25° grid...", flush=True)
     mslp_paths = [f'{base}/mean_sea_level_pressure_mean/c/{t}/0/0' for t in target_steps]
+    mslp_dict = {}
 
-    all_paths = precip_paths + mslp_paths
-    raw_dict = batch_cat_gcs(fs, all_paths, batch_size=20, desc="Precip+MSLP chunks")
+    for i in range(0, len(mslp_paths), batch_size):
+        batch_paths = mslp_paths[i:i + batch_size]
+        batch_steps = target_steps[i:i + batch_size]
+        try:
+            part = fs.cat(batch_paths, on_error='omit', batch_size=batch_size)
+        except Exception as e:
+            print(f"  Notice during MSLP batch {i}-{min(i+batch_size, len(mslp_paths))}: {e}", flush=True)
+            part = {}
 
-    p_chunks = []
-    for p in precip_paths:
-        if p in raw_dict:
-            arr = np.frombuffer(codec.decode(raw_dict[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
-            _, _, arr_025 = regrid_01_to_025(sub_lats, sub_lons, arr, dst_lats=dst_lats, dst_lons=dst_lons)
-            p_chunks.append(arr_025 * 1000.0) # meters to mm
-        else:
-            p_chunks.append(np.zeros((len(dst_lats), len(dst_lons)), dtype=np.float32))
+        for step_val, p in zip(batch_steps, batch_paths):
+            if p in part:
+                mslp_arr = np.frombuffer(codec.decode(part[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+                _, _, mslp_arr_025 = regrid_01_to_025(sub_lats, sub_lons, mslp_arr, dst_lats=dst_lats, dst_lons=dst_lons)
+                mslp_dict[step_val] = mslp_arr_025 / 100.0  # Pa to hPa
+            else:
+                mslp_dict[step_val] = np.full_like(X, 1012.0)
+
+        del part
+        print(f"  -> Loaded & regridded {min(i + batch_size, len(mslp_paths))}/{len(mslp_paths)} MSLP chunks...", flush=True)
 
     valid_frames = []
 
     for t in target_steps:
         # Sum 6 hourly chunks leading up to t (t-6 to t)
         p_6h = np.maximum(np.sum(p_chunks[t-6:t], axis=0), 0)
-
-        p_mslp = f'{base}/mean_sea_level_pressure_mean/c/{t}/0/0'
-        if p_mslp in raw_dict:
-            mslp_arr = np.frombuffer(codec.decode(raw_dict[p_mslp]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
-            _, _, mslp_arr_025 = regrid_01_to_025(sub_lats, sub_lons, mslp_arr, dst_lats=dst_lats, dst_lons=dst_lons)
-            mslp_hpa = mslp_arr_025 / 100.0
-        else:
-            mslp_hpa = np.full_like(X, 1012.0)
-
+        mslp_hpa = mslp_dict.get(t, np.full_like(X, 1012.0))
         valid_dt = init_dt + timedelta(hours=t)
 
         plot_precip_mslp_frame(

@@ -65,6 +65,8 @@ jobs:
           echo "GOOGLE_APPLICATION_CREDENTIALS=$KEY_PATH" >> $GITHUB_ENV
 
       - name: Run WeatherNext 3 maps generators
+        env:
+          PYTHONWARNINGS: "ignore::FutureWarning"
         run: |
           python generate_weathernext_maps.py
           python generate_weathernext_wind_maps.py
