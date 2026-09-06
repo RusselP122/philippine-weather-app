@@ -2,7 +2,7 @@
   "model": "Google WeatherNext 3",
   "resolution": "0.1\u00b0 (~10 km native)",
   "source": "Google DeepMind / GCS",
-  "generated_at": "2026-09-06 09:18 PM PHT",
+  "generated_at": "2026-09-07 01:53 AM PHT",
   "run_time": "2026-09-06 06:00 UTC",
   "total_timesteps": 59,
   "step_hours": 6,
