@@ -104,27 +104,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/ogimet/, '/cgi-bin'),
       },
-      '/api/lightning': {
-        target: 'https://panahon.gov.ph',
-        changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/api\/lightning/, '/api/v1/lightning'),
-      },
       '/api/radar': {
         target: 'https://www.panahon.gov.ph',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/radar/, '/api/v1/radar/timeline'),
-      },
-      '/socket.io': {
-        target: 'https://ws.panahon.gov.ph',
-        changeOrigin: true,
-        ws: true,
-        secure: false,
-        headers: {
-          Origin: 'https://panahon.gov.ph',
-          Referer: 'https://panahon.gov.ph/'
-        }
       },
     },
   },

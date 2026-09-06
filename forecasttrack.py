@@ -12,6 +12,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 import matplotlib.patches as mpatches
 import matplotlib.patheffects as path_effects
 from matplotlib.patches import FancyBboxPatch
@@ -23,27 +24,38 @@ import urllib.request
 import concurrent.futures
 from datetime import datetime, timezone, timedelta
 
+# ── Brand Logo Paths (matching ai_precip_outlook.py) ──────────────────
+LOGO_PATHS = [
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "public", "images", "logo.png"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "public", "logo512.png"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "public", "logo192.png"),
+    os.path.join(os.getcwd(), "public", "images", "logo.png"),
+    os.path.join(os.getcwd(), "public", "logo512.png"),
+    os.path.join(os.getcwd(), "public", "logo192.png")
+]
+
 # JTWC / PAGASA Western North Pacific climatological error cone radii (nautical miles) by lead time (hours)
 # Incorporates realistic satellite / analysis fix uncertainty (~12 NM) at T+0
 LEAD_STANDARD = [0,   12,  24,  36,  48,   60,   72,   96,  120,  144]
 RADII_NM      = [12,  28,  42,  56,  72,   88,  105,  155,  210,  260]
 
-# ── Deep Slate Dark Theme Palette Constants ───────────────────────
-BG_DARK       = "#070d18"   # Deep canvas background
-OCEAN_COLOR   = "#08101e"   # Deep midnight slate ocean
-LAND_COLOR    = "#152234"   # Dark slate landmass
-LAND_EDGE     = "#293c56"   # Coastline and borders
-PROVINCE_EDGE = "#334b6e"   # Subtle Philippine provinces
+# ── TV Broadcast Dark Theme Palette Constants (matching forcast5.py) ─────
+BG_DARK       = "#0b131e"   # Deep broadcast backdrop canvas
+OCEAN_COLOR   = "#162533"   # Deep Navy TV ocean
+LAND_COLOR    = "#23313d"   # Sleek Slate-Dark terrain (from forcast5.py)
+LAND_EDGE     = "#0f172a"   # Crisp dark coastline
+BORDER_EDGE   = "#475569"   # International borders
+PROVINCE_EDGE = "#475569"   # Clean steel slate Philippine provinces
 PAR_COLOR     = "#7c2d12"   # Solid 7c2d12 PAR boundary
-GRID_COLOR    = "#142236"   # Gridlines
+GRID_COLOR    = "#475569"   # Subtle coordinate gridlines
 GRID_TEXT     = "#64748b"   # Lat/Lon grid labels
 
-HEADER_BG     = "#0c1524"   # Glassmorphism header card
-HEADER_BORDER = "#1e2e46"   # Header border
+HEADER_BG     = "#08172b"   # Glassmorphism header card
+HEADER_BORDER = "#0284c7"   # Header border accent
 
-PANEL_BG      = "#070d18"   # Forecast panel background
-CARD_BG       = "#0f1a2c"   # Surface card
-CARD_BORDER   = "#1e314b"   # Card border
+PANEL_BG      = "#0b131e"   # Forecast panel background
+CARD_BG       = "#0b172a"   # Surface card
+CARD_BORDER   = "#1e293b"   # Card border
 
 ACCENT_LINE   = "#38bdf8"   # Cyan trend line
 MSLP_LINE     = "#fb923c"   # Orange pressure line
@@ -1508,7 +1520,7 @@ def render_sea_labels(ax, extent):
             
         ax.text(
             wps_lon, wps_lat, wps_txt,
-            fontsize=fs_wps, color='#3b5275', weight='bold',
+            fontsize=fs_wps, color='#527196', weight='bold',
             transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=alpha_wps,
             zorder=1, clip_on=True,
             path_effects=[path_effects.withStroke(linewidth=1.8, foreground=OCEAN_COLOR)]
@@ -1524,7 +1536,7 @@ def render_sea_labels(ax, extent):
         fs_ps = max(6.0, min(10.0, 11.2 - (span_lon * 0.095)))
         ax.text(
             ps_lon, ps_lat, 'Philippine Sea',
-            fontsize=fs_ps, color='#3b5275', weight='bold',
+            fontsize=fs_ps, color='#527196', weight='bold',
             transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.68,
             zorder=1, clip_on=True,
             path_effects=[path_effects.withStroke(linewidth=2.2, foreground=OCEAN_COLOR)]
@@ -1674,13 +1686,26 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     )
     ax_head.add_patch(head_box)
     
+    # User Brand Logo (from ai_precip_outlook style)
+    found_logo = next((p for p in LOGO_PATHS if os.path.exists(p)), None)
+    title_x = 0.025
+    if found_logo:
+        try:
+            logo_img = mpimg.imread(found_logo)
+            logo_ax = fig.add_axes([0.058, 0.872, 0.045, 0.098], zorder=45)
+            logo_ax.imshow(logo_img)
+            logo_ax.axis('off')
+            title_x = 0.082
+        except Exception:
+            title_x = 0.025
+
     # Title & Left Column
     ax_head.text(
-        0.025, 0.68, f"{full_storm_title} — Forecast Track Comparison",
+        title_x, 0.68, f"{full_storm_title} — Forecast Track Comparison",
         fontsize=13.5, fontweight='bold', color=TEXT_PRI, transform=ax_head.transAxes, va='center'
     )
     ax_head.text(
-        0.025, 0.28, f"Latest Center Fix: {curr_lat:.1f}°N, {curr_lon:.1f}°E  |  Initialized: {init_time_str}",
+        title_x, 0.28, f"Latest Center Fix: {curr_lat:.1f}°N, {curr_lon:.1f}°E  |  Initialized: {init_time_str}",
         fontsize=9.5, color=TEXT_SEC, transform=ax_head.transAxes, va='center'
     )
     
@@ -1698,11 +1723,9 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     ax = fig.add_axes([0.05, 0.235, 0.90, 0.615], projection=ccrs.PlateCarree())
     ax.set_facecolor(OCEAN_COLOR)
     
-    # Base Map Features
+    # Base Map Features (Deep Navy TV ocean, Slate-Dark terrain, crisp dark coastline)
     ax.add_feature(cfeature.OCEAN, facecolor=OCEAN_COLOR, zorder=0)
-    ax.add_feature(cfeature.LAND, facecolor=LAND_COLOR, edgecolor=LAND_EDGE, linewidth=0.8, zorder=2)
-    ax.add_feature(cfeature.COASTLINE, edgecolor=LAND_EDGE, linewidth=0.9, zorder=3)
-    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor=LAND_EDGE, linewidth=0.7, zorder=3)
+    ax.add_feature(cfeature.LAND, facecolor=LAND_COLOR, zorder=1)
     
     # Philippine Province Overlay
     try:
@@ -1716,24 +1739,28 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             with open(found_geojson, 'r', encoding='utf-8') as gf:
                 geojson_data = json.load(gf)
             prov_geoms = [shape(feature['geometry']) for feature in geojson_data['features']]
-            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor=PROVINCE_EDGE, linewidth=0.45, alpha=0.55, zorder=3)
+            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor=PROVINCE_EDGE, linewidth=0.65, alpha=0.85, zorder=2)
     except Exception:
         pass
+
+    # Coastlines & International Borders (Matching forcast5.py)
+    ax.add_feature(cfeature.COASTLINE, linewidth=1.3, edgecolor=LAND_EDGE, zorder=3)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.8, edgecolor=BORDER_EDGE, zorder=3)
         
-    # PAR Boundary Polygon
+    # PAR Boundary Polygon (Matching forcast5.py solid PAR with dark warm halo)
     par_vertices = [
         (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
         (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
     ]
     ax.add_patch(mpatches.Polygon(
         par_vertices, facecolor='none', edgecolor=PAR_COLOR,
-        linestyle='-', linewidth=2.4, alpha=0.9,
-        transform=ccrs.PlateCarree(), zorder=4, label='PAR',
-        path_effects=[path_effects.Stroke(linewidth=4.0, foreground='#7c2d12', alpha=0.6), path_effects.Normal()]
+        linestyle='-', linewidth=2.5, alpha=0.95,
+        transform=ccrs.PlateCarree(), zorder=5, label='PAR',
+        path_effects=[path_effects.Stroke(linewidth=4.0, foreground='#451a03', alpha=0.5), path_effects.Normal()]
     ))
     
-    # Gridlines Configuration
-    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color=GRID_COLOR, alpha=0.7, linestyle='--')
+    # Subtle Gridlines Configuration (Matching forcast5.py)
+    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color=GRID_COLOR, alpha=0.25, linestyle=':', zorder=4)
     gl.xlocator = plt.FixedLocator(np.arange(90, 181, 5))
     gl.ylocator = plt.FixedLocator(np.arange(-10, 51, 5))
     gl.xlabel_style = {'size': 9.0, 'weight': 'bold', 'color': GRID_TEXT}
@@ -1817,20 +1844,24 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     )
     panel_ax.add_patch(panel_box)
     
-    # Left Section: OFFICIAL AGENCIES
+    # Left Section: OFFICIAL AGENCIES (2-column layout: PAGASA, JTWC on left; JMA on right)
     panel_ax.text(0.025, 0.88, "OFFICIAL AGENCIES", color='#00d2ff', fontsize=9.5, weight='bold', transform=panel_ax.transAxes)
-    agency_y = 0.68
-    active_agencies = [(n, c) for n, c in AGENCY_COLORS.items() if n in agency_tracks and not agency_tracks[n].empty]
-    for ag_name, ag_color in AGENCY_COLORS.items():
+    for idx, (ag_name, ag_color) in enumerate(AGENCY_COLORS.items()):
         is_active = ag_name in agency_tracks and not agency_tracks[ag_name].empty
         line_color = ag_color if is_active else '#334155'
         text_color = TEXT_PRI if is_active else TEXT_MUT
         
-        panel_ax.plot([0.025, 0.065], [agency_y, agency_y], color=line_color, linestyle='-', linewidth=2.8, transform=panel_ax.transAxes)
-        panel_ax.text(0.08, agency_y + 0.03, ag_name, color=text_color, fontsize=8.8, weight='bold', transform=panel_ax.transAxes)
+        if idx < 2:
+            x_start, x_text = 0.025, 0.08
+            y_val = 0.68 - (idx * 0.28)
+        else:
+            x_start, x_text = 0.235, 0.29
+            y_val = 0.68 - ((idx - 2) * 0.28)
+            
+        panel_ax.plot([x_start, x_start + 0.04], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.8, transform=panel_ax.transAxes)
+        panel_ax.text(x_text, y_val + 0.03, ag_name, color=text_color, fontsize=8.8, weight='bold', transform=panel_ax.transAxes)
         run_str = track_inits.get(ag_name, 'Latest' if is_active else 'Not Available')
-        panel_ax.text(0.08, agency_y - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=7.2, transform=panel_ax.transAxes)
-        agency_y -= 0.28
+        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=7.2, transform=panel_ax.transAxes)
         
     # Vertical Divider Line
     panel_ax.axvline(0.44, ymin=0.1, ymax=0.9, color=CARD_BORDER, linewidth=1.0)
@@ -1854,10 +1885,16 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
         run_str = track_inits.get(ens_name, 'Latest' if is_active else 'Not Available')
         panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=7.2, transform=panel_ax.transAxes)
         
-    os.makedirs(os.path.dirname(os.path.abspath(output_filepath)), exist_ok=True)
-    plt.savefig(output_filepath, dpi=200, bbox_inches='tight', facecolor=BG_DARK)
+    out_abs = os.path.normpath(os.path.abspath(output_filepath))
+    os.makedirs(os.path.dirname(out_abs), exist_ok=True)
+    try:
+        plt.savefig(out_abs, dpi=200, bbox_inches='tight', facecolor=BG_DARK)
+    except OSError:
+        import time
+        time.sleep(0.6)
+        plt.savefig(out_abs, dpi=200, bbox_inches='tight', facecolor=BG_DARK)
     plt.close(fig)
-    print(f"Successfully generated publication-quality forecast track plot: {output_filepath}")
+    print(f"Successfully generated publication-quality forecast track plot: {out_abs}")
 
 
 def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepath, init_time_str="Latest", track_inits=None):
@@ -1888,12 +1925,25 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
     )
     ax_head.add_patch(head_box)
     
+    # User Brand Logo (from ai_precip_outlook style)
+    found_logo = next((p for p in LOGO_PATHS if os.path.exists(p)), None)
+    title_x = 0.025
+    if found_logo:
+        try:
+            logo_img = mpimg.imread(found_logo)
+            logo_ax = fig.add_axes([0.058, 0.872, 0.045, 0.098], zorder=45)
+            logo_ax.imshow(logo_img)
+            logo_ax.axis('off')
+            title_x = 0.082
+        except Exception:
+            title_x = 0.025
+
     ax_head.text(
-        0.025, 0.68, f"{full_storm_title} — Consensus Mean Track & Cone of Uncertainty",
+        title_x, 0.68, f"{full_storm_title} — Consensus Mean Track & Cone of Uncertainty",
         fontsize=13.5, fontweight='bold', color=TEXT_PRI, transform=ax_head.transAxes, va='center'
     )
     ax_head.text(
-        0.025, 0.28, f"Compiled Multi-Model & Agency Ensemble Consensus  |  Initialized: {init_time_str}",
+        title_x, 0.28, f"Compiled Multi-Model & Agency Ensemble Consensus  |  Initialized: {init_time_str}",
         fontsize=9.5, color=TEXT_SEC, transform=ax_head.transAxes, va='center'
     )
     
@@ -1910,10 +1960,9 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
     ax = fig.add_axes([0.05, 0.235, 0.90, 0.615], projection=ccrs.PlateCarree())
     ax.set_facecolor(OCEAN_COLOR)
     
+    # Base Map Features (Deep Navy TV ocean, Slate-Dark terrain, crisp dark coastline)
     ax.add_feature(cfeature.OCEAN, facecolor=OCEAN_COLOR, zorder=0)
-    ax.add_feature(cfeature.LAND, facecolor=LAND_COLOR, edgecolor=LAND_EDGE, linewidth=0.8, zorder=2)
-    ax.add_feature(cfeature.COASTLINE, edgecolor=LAND_EDGE, linewidth=0.9, zorder=3)
-    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor=LAND_EDGE, linewidth=0.7, zorder=3)
+    ax.add_feature(cfeature.LAND, facecolor=LAND_COLOR, zorder=1)
     
     # Philippine Province Overlay
     try:
@@ -1927,23 +1976,28 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             with open(found_geojson, 'r', encoding='utf-8') as gf:
                 geojson_data = json.load(gf)
             prov_geoms = [shape(feature['geometry']) for feature in geojson_data['features']]
-            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor=PROVINCE_EDGE, linewidth=0.45, alpha=0.55, zorder=3)
+            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor=PROVINCE_EDGE, linewidth=0.65, alpha=0.85, zorder=2)
     except Exception:
         pass
+
+    # Coastlines & International Borders (Matching forcast5.py)
+    ax.add_feature(cfeature.COASTLINE, linewidth=1.3, edgecolor=LAND_EDGE, zorder=3)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.8, edgecolor=BORDER_EDGE, zorder=3)
     
-    # PAR Boundary Polygon
+    # PAR Boundary Polygon (Matching forcast5.py solid PAR with dark warm halo)
     par_vertices = [
         (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
         (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
     ]
     ax.add_patch(mpatches.Polygon(
         par_vertices, facecolor='none', edgecolor=PAR_COLOR,
-        linestyle='-', linewidth=2.4, alpha=0.9,
-        transform=ccrs.PlateCarree(), zorder=4, label='PAR',
-        path_effects=[path_effects.Stroke(linewidth=4.0, foreground='#7c2d12', alpha=0.6), path_effects.Normal()]
+        linestyle='-', linewidth=2.5, alpha=0.95,
+        transform=ccrs.PlateCarree(), zorder=5, label='PAR',
+        path_effects=[path_effects.Stroke(linewidth=4.0, foreground='#451a03', alpha=0.5), path_effects.Normal()]
     ))
     
-    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color=GRID_COLOR, alpha=0.7, linestyle='--')
+    # Subtle Gridlines Configuration (Matching forcast5.py)
+    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color=GRID_COLOR, alpha=0.25, linestyle=':', zorder=4)
     gl.xlocator = plt.FixedLocator(np.arange(90, 181, 5))
     gl.ylocator = plt.FixedLocator(np.arange(-10, 51, 5))
     gl.xlabel_style = {'size': 9.0, 'weight': 'bold', 'color': GRID_TEXT}
@@ -2132,7 +2186,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             card = FancyBboxPatch(
                 (x0, 0.05), cw, 0.81, boxstyle="round,pad=0.005,rounding_size=0.03",
                 transform=panel_ax.transAxes,
-                facecolor='#121e30', edgecolor='#22354c', linewidth=0.8, zorder=1
+                facecolor='#1e293b', edgecolor='#334155', linewidth=0.8, zorder=1
             )
             panel_ax.add_patch(card)
             
@@ -2160,7 +2214,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
                 fontsize=7.0, color=TEXT_SEC, zorder=2
             )
             
-            panel_ax.axhline(0.44, color='#1f334d', linewidth=0.6, xmin=x0 + 0.005, xmax=x1 - 0.005)
+            panel_ax.axhline(0.44, color='#334155', linewidth=0.6, xmin=x0 + 0.005, xmax=x1 - 0.005)
             
             # Wind Speed in km/h and kt
             panel_ax.text(
@@ -2181,10 +2235,16 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
                 fontsize=7.5, fontweight="bold", color=TEXT_PRI, zorder=2
             )
             
-    os.makedirs(os.path.dirname(os.path.abspath(output_filepath)), exist_ok=True)
-    plt.savefig(output_filepath, dpi=200, bbox_inches='tight', facecolor=BG_DARK)
+    out_abs = os.path.normpath(os.path.abspath(output_filepath))
+    os.makedirs(os.path.dirname(out_abs), exist_ok=True)
+    try:
+        plt.savefig(out_abs, dpi=200, bbox_inches='tight', facecolor=BG_DARK)
+    except OSError:
+        import time
+        time.sleep(0.6)
+        plt.savefig(out_abs, dpi=200, bbox_inches='tight', facecolor=BG_DARK)
     plt.close(fig)
-    print(f"Successfully generated Philippine Typhoon/Weather unofficial forecast track plot: {output_filepath}")
+    print(f"Successfully generated Philippine Typhoon/Weather unofficial forecast track plot: {out_abs}")
 
 
 

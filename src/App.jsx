@@ -57,7 +57,6 @@ const SpaghettiPlot = lazyWithRetry(() => import("./components/SpaghettiPlot"));
 const EnsoMonitor = lazyWithRetry(() => import("./components/EnsoMonitor"));
 const TropicalCyclonePrediction = lazyWithRetry(() => import("./components/TropicalCyclonePrediction"));
 const WeatherAdvisory = lazyWithRetry(() => import("./components/WeatherAdvisory"));
-const Lightning = lazyWithRetry(() => import("./components/Lightning"));
 const LiveRadar = lazyWithRetry(() => import("./components/LiveRadar"));
 const RiskArea = lazyWithRetry(() => import("./components/RiskArea"));
 const SupportUs = lazyWithRetry(() => import("./components/SupportUs"));
@@ -181,16 +180,6 @@ function PageLoader() {
 function AppContent() {
   const path = window.location.pathname;
 
-  if (path === "/lightning") {
-    return (
-      <div className="min-h-screen flex flex-col bg-slate-950">
-        <Navbar />
-        <main className="flex-grow">
-          <Lightning />
-        </main>
-      </div>
-    );
-  }
 
   if (path === "/radar") {
     return (

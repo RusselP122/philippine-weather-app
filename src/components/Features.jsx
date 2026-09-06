@@ -4,7 +4,6 @@ import {
   Cpu,
   Radio,
   Wind,
-  Zap,
   ShieldAlert,
   GitFork,
   Activity,
@@ -197,21 +196,6 @@ const WarningVisual = () => (
   </div>
 );
 
-const LightningVisual = () => (
-  <div className="relative w-full h-full bg-slate-950/80 rounded-2xl overflow-hidden border border-amber-500/20 flex items-center justify-center p-4">
-    <div className="absolute inset-0 bg-[radial-gradient(#f59e0b15_1px,transparent_1px)] [background-size:14px_14px]"></div>
-    {/* Strike points */}
-    <span className="absolute top-1/4 left-1/3 w-3 h-3 rounded-full bg-amber-400/90 blur-[1px] animate-ping [animation-duration:1.5s]"></span>
-    <span className="absolute top-1/3 right-1/4 w-2.5 h-2.5 rounded-full bg-yellow-300/90 blur-[1px] animate-pulse"></span>
-    <span className="absolute bottom-1/3 left-1/2 w-3.5 h-3.5 rounded-full bg-amber-400/80 blur-[2px] animate-ping [animation-duration:2.5s]"></span>
-
-    <div className="relative z-10 flex flex-col items-center gap-1 bg-slate-900/90 border border-amber-500/40 px-4 py-2 rounded-xl backdrop-blur-sm">
-      <Zap className="w-5 h-5 text-amber-400 animate-bounce" />
-      <span className="text-[10px] font-mono text-amber-300 font-semibold">C-to-G & C-to-C Real-time</span>
-    </div>
-  </div>
-);
-
 const EarthquakeVisual = () => (
   <div className="relative w-full h-full bg-slate-950/80 rounded-2xl overflow-hidden border border-violet-500/20 flex flex-col justify-between p-4">
     <div className="flex items-center justify-between">
@@ -366,24 +350,6 @@ const ALL_FEATURES = [
     featured: true,
     visual: <CycloneVisual />,
     tags: ["ATCF Live", "PAR Polygon", "JTWC / PAGASA", "Intensity"]
-  },
-  {
-    id: "lightning",
-    title: "Lightning Detection Network",
-    tagline: "Live intracloud (C-to-C) & ground (C-to-G) strikes",
-    category: "Radar & Weather",
-    badge: "30s UPDATES",
-    badgeColor: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-    icon: Zap,
-    iconColor: "text-amber-400",
-    accentGlow: "from-amber-500/20 via-yellow-500/5 to-transparent",
-    borderClass: "hover:border-amber-500/50 hover:shadow-amber-500/10",
-    description: "Monitor electrical discharge strokes across the Philippines. Identify rapidly intensifying severe convective storms and flash-flood candidates.",
-    link: "/lightning",
-    linkText: "Launch Lightning Map",
-    featured: true,
-    visual: <LightningVisual />,
-    tags: ["Real-Time Strikes", "Thunderstorm Cells", "Provincial Alerts"]
   },
   {
     id: "warning",
