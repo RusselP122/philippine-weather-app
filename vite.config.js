@@ -110,6 +110,12 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/radar/, '/api/v1/radar/timeline'),
       },
+      '/api/irain': {
+        target: 'https://irain.eng.uci.edu',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api\/irain/, ''),
+      },
     },
   },
 });

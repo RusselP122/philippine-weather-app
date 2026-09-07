@@ -14,6 +14,10 @@
             "destination": "https://www.panahon.gov.ph/api/v1/radar/timeline?token=vYopE7FszD6VmZ71qnG0GAh0dc4Qtv8G2Wp7eJ4k&sublayer=hybrid-reflectivity"
         },
         {
+            "source": "/api/irain/:path*",
+            "destination": "https://irain.eng.uci.edu/:path*"
+        },
+        {
             "source": "/((?!data/|api/|assets/|.*\\.[\\w]+$).*)",
             "destination": "/index.html"
         }

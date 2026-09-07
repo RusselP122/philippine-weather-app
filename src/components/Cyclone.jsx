@@ -460,6 +460,8 @@ const CycloneMapLogic = ({
         if (displayMode === "precip" || displayMode === "wind") {
           return;
         }
+        slider.min = "0";
+        slider.step = "1";
         slider.max = (mapFrames.length > 0 ? mapFrames.length - 1 : 0).toString();
         if (slider.value !== animationPosition.toString()) {
           slider.value = animationPosition.toString();
@@ -983,6 +985,12 @@ const CycloneMapLogic = ({
       map.getPane(OWM_PANE).style.zIndex = 500; // Above tilePane (200) and overlayPane (400)
     }
 
+    const PERSIANN_PANE = "persiannPane";
+    if (!map.getPane(PERSIANN_PANE)) {
+      map.createPane(PERSIANN_PANE);
+      map.getPane(PERSIANN_PANE).style.zIndex = 450;
+    }
+
     // OWM Layers
     const owmTiles = {
       precip: new L.TileLayer(precipLayer, { opacity: 0.7, pane: OWM_PANE, maxZoom: 18 }),
@@ -1002,7 +1010,7 @@ const CycloneMapLogic = ({
     let radarLayers = {};
     let satOverlayLayer = null; // for Radar + Satellite combined mode
     let optionKind = "satellite"; // dataset driving animation: "radar" or "satellite"
-    let displayMode = "satellite"; // UI mode: "radar" | "satellite" | "satellite_ir" | "both" | "precip" | "pressure" | "wind"
+    let displayMode = "satellite"; // UI mode: "radar" | "satellite" | "satellite_ir" | "both" | "precip" | "pressure" | "wind" | "persiann" | "pdir"
     const optionTileSize = 256;
     let optionColorScheme = 2;
     const optionSmoothData = 1;
@@ -1012,6 +1020,76 @@ const CycloneMapLogic = ({
     let animationTimer = false;
     let loadingTilesCount = 0;
     let loadedTilesCount = 0;
+
+    // --- CHRS iRain (PERSIANN-CCS & PDIR-Now) Real-Time Satellite Precipitation ---
+    const IRAIN_MAPSERV = (typeof window !== "undefined" && window.location.hostname === "localhost" ? "/api/irain" : "https://irain.eng.uci.edu") + "/cgi-bin/mapserv";
+    let rainLayers = {};
+    let activeRainOverlay = null; // null | "persiann" | "pdir"
+    let currentRainDatapath = null;
+    const RAIN_DATAPATHS = ["sprior3h_02.tif", "sprior3h_01.tif", "cur_3hrs.tif"];
+
+    function getRainDatapath(pos, totalFrames) {
+      const len = totalFrames || (mapFrames.length || 18);
+      const step = len / 3;
+      if (pos < step) return "sprior3h_02.tif";
+      if (pos < step * 2) return "sprior3h_01.tif";
+      return "cur_3hrs.tif";
+    }
+
+    function mountPersiannLayer(kind, pos) {
+      setShowStrikeProb(false);
+      setShowOutlookWeek1(false);
+      setShowOutlookWeek2(false);
+
+      removePersiannLayer();
+
+      const mapParam = kind === "persiann" ? "IRAIN_PUNET_MAP" : "IRAIN_MAP";
+      const layerParam = kind === "persiann" ? "PUNET_REALTIME" : "PERSIANN_CCS";
+      const framePos = typeof pos === "number" ? pos : animationPosition;
+      currentRainDatapath = getRainDatapath(framePos);
+
+      RAIN_DATAPATHS.forEach((dp) => {
+        const layer = L.tileLayer.wms(IRAIN_MAPSERV, {
+          map: mapParam,
+          layers: layerParam,
+          format: "image/png",
+          transparent: true,
+          version: "1.1.1",
+          srs: "EPSG:3857",
+          DATAPATH: dp,
+          opacity: dp === currentRainDatapath ? 0.85 : 0,
+          zIndex: 460,
+          pane: PERSIANN_PANE,
+          maxZoom: 18,
+        });
+        layer.addTo(map);
+        rainLayers[dp] = layer;
+      });
+
+      updateSliderUI();
+    }
+
+    function updateRainOverlayFrame(pos) {
+      if (!activeRainOverlay || !Object.keys(rainLayers).length) return;
+      const targetDatapath = getRainDatapath(pos);
+      if (targetDatapath === currentRainDatapath) return;
+      currentRainDatapath = targetDatapath;
+      Object.entries(rainLayers).forEach(([dp, layer]) => {
+        if (layer) {
+          layer.setOpacity(dp === currentRainDatapath ? 0.85 : 0);
+        }
+      });
+    }
+
+    function removePersiannLayer() {
+      Object.values(rainLayers).forEach((layer) => {
+        if (layer && map.hasLayer(layer)) {
+          map.removeLayer(layer);
+        }
+      });
+      rainLayers = {};
+      currentRainDatapath = null;
+    }
 
     // --- Zoom Earth helpers ---
     async function fetchServerTime() {
@@ -1207,11 +1285,22 @@ const CycloneMapLogic = ({
       // Sync storm markers with the displayed frame time
       updateStormPositions(nextFrame.time * 1000);
 
-      const pastOrForecast =
-        nextFrame.time > Date.now() / 1000 ? "FORECAST" : "PAST";
-      timestampEl.innerHTML = `${pastOrForecast}: ${new Date(
-        nextFrame.time * 1000
-      ).toLocaleString()}`;
+      // Update rain overlay frame in sync with satellite
+      if (activeRainOverlay) {
+        updateRainOverlayFrame(position);
+      }
+
+      const frameDate = nextFrame.jmaTime || new Date(nextFrame.time * 1000);
+      const phtDateStr = frameDate.toLocaleString("en-US", { timeZone: "Asia/Manila" });
+
+      if (activeRainOverlay) {
+        const rainName = activeRainOverlay === "pdir" ? "PDIR-Now" : "PERSIANN-CCS";
+        timestampEl.innerHTML = `<span class="text-amber-400 font-bold tracking-normal">${rainName} + Satellite</span> • ${phtDateStr} PHT`;
+      } else {
+        const pastOrForecast =
+          nextFrame.time > Date.now() / 1000 ? "FORECAST" : "PAST";
+        timestampEl.innerHTML = `${pastOrForecast}: ${phtDateStr} PHT`;
+      }
 
       updateSliderUI();
     }
@@ -1288,11 +1377,19 @@ const CycloneMapLogic = ({
       }
       timestampEl.innerHTML = "";
 
+      // Clear PERSIANN/PDIR layers & timers unless active
+      if (!activeRainOverlay) {
+        removePersiannLayer();
+      }
+
       // 2. Nuclear Option: Scan all map layers and remove any untracked RainViewer/Himawari tiles
       map.eachLayer((layer) => {
         if (layer instanceof L.TileLayer) {
           const url = layer._url || (layer.options && layer.options.url) || "";
           if (url.includes("rainviewer.com") || url.includes("jma.go.jp")) {
+            map.removeLayer(layer);
+          }
+          if (!activeRainOverlay && (url.includes("irain") || url.includes("mapserv"))) {
             map.removeLayer(layer);
           }
         }
@@ -1317,6 +1414,13 @@ const CycloneMapLogic = ({
       setShowWeatherNextWind(kind === "wind");
       setIsWeatherNextPlaying(false);
       setWeatherNextHour(6);
+
+      // If persiann or pdir is requested as kind, route into satellite base with overlay
+      if (kind === "persiann" || kind === "pdir") {
+        activeRainOverlay = kind;
+        displayMode = "satellite";
+        kind = "satellite";
+      }
 
       // Check if kind is one of the OWM layers
       if (["precip", "pressure", "wind"].includes(kind)) {
@@ -1367,7 +1471,11 @@ const CycloneMapLogic = ({
           latestFrameIndex = frames.length - 1;
           animationPosition = latestFrameIndex;
           showFrame(animationPosition, true);
-          updateSliderUI();
+          if (activeRainOverlay) {
+            mountPersiannLayer(activeRainOverlay);
+          } else {
+            updateSliderUI();
+          }
         });
         return; // async – return early, frames will come from promise
       } else if (kind === "satellite_ir") {
@@ -1382,7 +1490,11 @@ const CycloneMapLogic = ({
           latestFrameIndex = frames.length - 1;
           animationPosition = latestFrameIndex;
           showFrame(animationPosition, true);
-          updateSliderUI();
+          if (activeRainOverlay) {
+            mountPersiannLayer(activeRainOverlay);
+          } else {
+            updateSliderUI();
+          }
         });
         return;
       } else if (kind === "radar") {
@@ -1429,7 +1541,7 @@ const CycloneMapLogic = ({
       }
     }
 
-    function updateButtonStates(mode) {
+    function updateButtonStates() {
       const activeClasses = ["bg-sky-500", "text-slate-900", "ring", "ring-sky-400", "ring-offset-1"];
       const inactiveClasses = ["bg-slate-700/80", "text-slate-100", "ring-0", "ring-transparent", "ring-offset-0"];
 
@@ -1439,22 +1551,62 @@ const CycloneMapLogic = ({
         btn.classList.add(...(active ? activeClasses : inactiveClasses));
       }
 
-      setActive(btnRadar, mode === "radar");
-      setActive(btnSatellite, mode === "satellite");
-      setActive(btnBoth, mode === "both");
-      setActive(btnPrecip, mode === "precip");
-      setActive(btnPressure, mode === "pressure");
-      setActive(btnWind, mode === "wind");
+      setActive(btnRadar, displayMode === "radar" && !activeRainOverlay);
+      setActive(btnSatellite, displayMode === "satellite");
+      setActive(btnBoth, displayMode === "both" && !activeRainOverlay);
+      setActive(btnPrecip, displayMode === "precip" && !activeRainOverlay);
+      setActive(btnPressure, displayMode === "pressure" && !activeRainOverlay);
+      setActive(btnWind, displayMode === "wind" && !activeRainOverlay);
 
       const btnIR = document.getElementById("btn-infrared");
-      setActive(btnIR, mode === "satellite_ir");
+      setActive(btnIR, displayMode === "satellite_ir");
+
+      const btnPersiann = document.getElementById("btn-persiann");
+      setActive(btnPersiann, activeRainOverlay === "persiann");
+
+      const btnPdir = document.getElementById("btn-pdir");
+      setActive(btnPdir, activeRainOverlay === "pdir");
 
     }
 
     function setKind(kind) {
+      if (kind === "persiann" || kind === "pdir") {
+        if (activeRainOverlay === kind) {
+          // Toggle off: remove rain overlay, keep satellite!
+          removePersiannLayer();
+          activeRainOverlay = null;
+          setActiveWeatherLayer(displayMode);
+          updateButtonStates();
+          updateSliderUI();
+          if (mapFrames.length && animationPosition >= 0) {
+            showFrame(animationPosition, true);
+          }
+        } else {
+          // If not currently in satellite mode, switch base to satellite first
+          if (displayMode !== "satellite" && displayMode !== "satellite_ir") {
+            displayMode = "satellite";
+            initialize(apiData, "satellite");
+          }
+          activeRainOverlay = kind;
+          setActiveWeatherLayer(kind);
+          mountPersiannLayer(kind, animationPosition);
+          updateButtonStates();
+          if (mapFrames.length && animationPosition >= 0) {
+            showFrame(animationPosition, true);
+          }
+        }
+        return;
+      }
+
+      // Normal base mode switch (satellite, radar, both, precip, wind, etc.)
+      if (kind !== "satellite" && kind !== "satellite_ir") {
+        removePersiannLayer();
+        activeRainOverlay = null;
+      }
+
       displayMode = kind;
-      setActiveWeatherLayer(kind);
-      updateButtonStates(displayMode);
+      setActiveWeatherLayer(activeRainOverlay || kind);
+      updateButtonStates();
 
       // Clear loading state when switching modes (fresh lookup)
       const currentLoader = document.getElementById("cyclone-loading");
@@ -1464,6 +1616,11 @@ const CycloneMapLogic = ({
       loadedTilesCount = 0;
 
       initialize(apiData, kind);
+
+      // If activeRainOverlay is still set (e.g. switched between satellite and satellite_ir), re-mount
+      if (activeRainOverlay && (kind === "satellite" || kind === "satellite_ir")) {
+        mountPersiannLayer(activeRainOverlay, animationPosition);
+      }
     }
 
     // Fetch RainViewer API data (only needed for Radar / Both modes)
@@ -1471,9 +1628,8 @@ const CycloneMapLogic = ({
     apiRequest.open("GET", "https://api.rainviewer.com/public/weather-maps.json", true);
     apiRequest.onload = () => {
       apiData = JSON.parse(apiRequest.response);
-      // Only call setKind if we're not already in satellite mode
-      // (satellite mode is self-contained via Zoom Earth/Meteored)
-      if (displayMode !== "satellite" && displayMode !== "satellite_ir") {
+      // Only call setKind if we're not already in satellite or persiann/pdir mode
+      if (!["satellite", "satellite_ir", "persiann", "pdir"].includes(displayMode)) {
         setKind(displayMode);
       }
     };
@@ -1591,6 +1747,14 @@ const CycloneMapLogic = ({
     if (btnInfrared) {
       btnInfrared.addEventListener("click", () => setKind("satellite_ir"));
     }
+    const btnPersiann = document.getElementById("btn-persiann");
+    if (btnPersiann) {
+      btnPersiann.addEventListener("click", () => setKind("persiann"));
+    }
+    const btnPdir = document.getElementById("btn-pdir");
+    if (btnPdir) {
+      btnPdir.addEventListener("click", () => setKind("pdir"));
+    }
 
     if (btnPlay) {
       btnPlay.addEventListener("click", () => playStop());
@@ -1598,13 +1762,14 @@ const CycloneMapLogic = ({
 
     const slider = document.getElementById("radar-slider");
     const onSliderInput = (e) => {
-      stop();
       const pos = parseInt(e.target.value, 10);
       if (displayMode === "precip" || displayMode === "wind") {
+        stop();
         setIsWeatherNextPlaying(false);
         setWeatherNextHour(pos);
         return;
       }
+      stop();
       showFrame(pos, true);
     };
     if (slider) {
@@ -1654,6 +1819,8 @@ const CycloneMapLogic = ({
       if (btnWind) btnWind.replaceWith(btnWind.cloneNode(true));
       const btnIRCleanup = document.getElementById("btn-infrared");
       if (btnIRCleanup) btnIRCleanup.replaceWith(btnIRCleanup.cloneNode(true));
+      if (btnPersiann) btnPersiann.replaceWith(btnPersiann.cloneNode(true));
+      if (btnPdir) btnPdir.replaceWith(btnPdir.cloneNode(true));
 
       if (btnPlay) btnPlay.replaceWith(btnPlay.cloneNode(true));
     };
@@ -2666,6 +2833,24 @@ const Cyclone = () => {
                   Infrared
                 </button>
                 <div className="h-px bg-slate-700 my-1"></div>
+                <span className="text-[9px] font-bold uppercase tracking-wider text-cyan-400 px-1 py-0.5 select-none">
+                  Satellite Rain
+                </span>
+                <button
+                  id="btn-persiann"
+                  className="rounded px-2 py-1 text-[10px] sm:text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
+                  title="PERSIANN-CCS Real-Time Satellite Precipitation (CHRS)"
+                >
+                  PERSIANN-CCS
+                </button>
+                <button
+                  id="btn-pdir"
+                  className="rounded px-2 py-1 text-[10px] sm:text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer"
+                  title="PDIR-Now Near-Real-Time High-Resolution Precipitation (CHRS)"
+                >
+                  PDIR-Now
+                </button>
+                <div className="h-px bg-slate-700 my-1"></div>
                 <button
                   id="btn-precip"
                   className="rounded px-2 py-1 text-[10px] sm:text-xs font-medium text-slate-100 transition hover:bg-slate-700 active text-left cursor-pointer"
@@ -3083,6 +3268,37 @@ const Cyclone = () => {
                 <span>80 kph (Strong)</span>
                 <span>120 kph (Destructive)</span>
                 <span>220kph+ (Super Typhoon)</span>
+              </div>
+            </div>
+          )}
+
+          {/* PERSIANN-CCS / PDIR-Now Rain Legend */}
+          {(activeWeatherLayer === "persiann" || activeWeatherLayer === "pdir") && (
+            <div className="w-full flex flex-col px-1 mb-3">
+              <div className="flex items-center justify-between mb-1.5 select-none">
+                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider text-left">
+                  {activeWeatherLayer === "pdir" ? "PDIR-Now" : "PERSIANN-CCS"} Rain Rate / Accumulation (mm)
+                </span>
+                <span className="text-[9px] text-cyan-400/90 font-mono">
+                  CHRS Satellite • Unmasked
+                </span>
+              </div>
+              <div className="h-2 w-full rounded flex overflow-hidden border border-slate-700/50">
+                <div className="flex-1 bg-[#2b83ba]" title="0.5 - 2.5 mm" />
+                <div className="flex-1 bg-[#abdda4]" title="2.5 - 5 mm" />
+                <div className="flex-1 bg-[#ffffbf]" title="5 - 10 mm" />
+                <div className="flex-1 bg-[#fdae61]" title="10 - 20 mm" />
+                <div className="flex-1 bg-[#f46d43]" title="20 - 35 mm" />
+                <div className="flex-1 bg-[#d7191c]" title="35 - 50 mm" />
+                <div className="flex-1 bg-[#99000d]" title="50 - 75 mm" />
+                <div className="flex-1 bg-[#67000d]" title=">75 mm" />
+              </div>
+              <div className="flex justify-between text-[8px] sm:text-[9px] text-slate-400 font-mono mt-1 px-0.5">
+                <span>0.5 mm (Light)</span>
+                <span>5 mm (Moderate)</span>
+                <span>20 mm (Heavy)</span>
+                <span>50 mm (Intense)</span>
+                <span>75mm+ (Torrential)</span>
               </div>
             </div>
           )}

@@ -154,6 +154,14 @@ const getPeisColor = (level) => {
     return '#73dfff';
 };
 
+// Defensive cleaner to guarantee aftershock notes or bulletin remarks are never displayed in Intensity Details
+const cleanIntensityDisplay = (text) => {
+    if (!text) return '';
+    return text
+        .replace(/(?:(?:\s|\b|^)(?:\*+\s*)?(?:This\s+(?:is\s+an?|earthquake\s+is\s+an?|event\s+is\s+an?)\s+aftershock|Aftershock\s+of|Note\s*:|Remarks?\s*:|Inst?rumental\s*Intensit(?:y|ies)\s*:?).*$)/i, '')
+        .trim();
+};
+
 const Earthquake = () => {
     // Mode State: 'map' (National Monitoring) | 'intensity' (Seismic Intensity ShakeMap)
     const [activeMode, setActiveMode] = useState('map');
@@ -1156,7 +1164,7 @@ const Earthquake = () => {
                                                             </span>
                                                         </div>
                                                         <p className="text-xs text-slate-300 leading-relaxed">
-                                                            {group.raw_text}
+                                                            {cleanIntensityDisplay(group.raw_text)}
                                                         </p>
                                                     </div>
                                                 );
@@ -1190,7 +1198,7 @@ const Earthquake = () => {
                                                             </span>
                                                         </div>
                                                         <p className="text-xs text-slate-300 leading-relaxed">
-                                                            {group.raw_text}
+                                                            {cleanIntensityDisplay(group.raw_text)}
                                                         </p>
                                                     </div>
                                                 );

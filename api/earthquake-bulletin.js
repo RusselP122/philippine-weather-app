@@ -5,27 +5,41 @@ const ROMAN_MAP = {
   'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10
 };
 
+function cleanIntensityText(text) {
+  if (!text) return '';
+  return text
+    // Remove aftershock mentions, remarks, notes, or accidental instrumental headers
+    .replace(/(?:(?:\s|\b|^)(?:\*+\s*)?(?:This\s+(?:is\s+an?|earthquake\s+is\s+an?|event\s+is\s+an?)\s+aftershock|Aftershock\s+of|Note\s*:|Remarks?\s*:|Inst?rumental\s*Intensit(?:y|ies)\s*:?).*$)/i, '')
+    .trim();
+}
+
 function parsePlaces(rawText) {
   const items = [];
+  const cleanRaw = cleanIntensityText(rawText);
   // Split by semicolon first
-  const segments = rawText.split(';').map(s => s.trim()).filter(Boolean);
+  const segments = cleanRaw.split(';').map(s => s.trim()).filter(Boolean);
   for (const seg of segments) {
     const commaParts = seg.split(',').map(p => p.trim()).filter(Boolean);
     if (commaParts.length >= 2) {
       // The last element is usually the province: e.g. "ZAMBALES"
-      const province = commaParts[commaParts.length - 1].replace(/\band\b/gi, '').trim();
+      let province = commaParts[commaParts.length - 1].replace(/\band\b/gi, '').trim();
+      province = cleanIntensityText(province);
       const townsPart = commaParts.slice(0, commaParts.length - 1);
       for (const t of townsPart) {
         const subTowns = t.split(/\band\b/i).map(x => x.trim()).filter(Boolean);
         for (const st of subTowns) {
-          if (st.length > 1) {
-            items.push({ name: st, province });
+          const cleanTown = cleanIntensityText(st);
+          if (cleanTown.length > 1 && !/(?:aftershock|earthquake|mainshock)/i.test(cleanTown)) {
+            items.push({ name: cleanTown, province });
           }
         }
       }
     } else {
       // Single city like "CITY OF DAGUPAN" or "CITY OF OLONGAPO"
-      items.push({ name: seg, province: '' });
+      const cleanTown = cleanIntensityText(seg);
+      if (cleanTown.length > 1 && !/(?:aftershock|earthquake|mainshock)/i.test(cleanTown)) {
+        items.push({ name: cleanTown, province: '' });
+      }
     }
   }
   return items;
@@ -33,11 +47,13 @@ function parsePlaces(rawText) {
 
 function parseIntensityLines(block) {
   const results = [];
-  const intensityRegex = /Intensity\s+([IVXLCDM]+)\s*-\s*([^\n]+(?:\n(?!\s*Intensity|\s*Instrumental|\s*Expecting)[^\n]+)*)/gi;
+  const intensityRegex = /Intensity\s+([IVXLCDM]+)\s*-\s*([^\n]+(?:\n(?!\s*(?:Intensity|Inst?rumental|Expecting|This\s+(?:is|earthquake|event)|Aftershock|Note:|Remarks?:))[^\n]+)*)/gi;
   let m;
   while ((m = intensityRegex.exec(block)) !== null) {
     const level = m[1].toUpperCase();
-    const text = m[2].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    let text = m[2].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    text = cleanIntensityText(text);
+    if (!text) continue;
     const places = parsePlaces(text);
     results.push({
       level,
@@ -121,8 +137,8 @@ export default async function handler(req, res) {
 
     // Extract Reported and Instrumental sections
     let reportedBlock = '';
-    const reportedStart = fullText.search(/Reported\s*Intensities\s*:/i);
-    const instrumentalStart = fullText.search(/Instrumental\s*Intensities\s*:/i);
+    const reportedStart = fullText.search(/Reported\s*Intensit(?:y|ies)\s*:/i);
+    const instrumentalStart = fullText.search(/Inst?rumental\s*Intensit(?:y|ies)\s*:/i);
     const expectingStart = fullText.search(/Expecting\s*Damage/i);
 
     if (reportedStart !== -1) {
@@ -134,6 +150,13 @@ export default async function handler(req, res) {
     if (instrumentalStart !== -1) {
       const end = expectingStart !== -1 ? expectingStart : fullText.length;
       instrumentalBlock = fullText.slice(instrumentalStart, end);
+    }
+
+    // Extract aftershock advisory/note if present in the bulletin
+    let aftershockNote = null;
+    const noteMatch = fullText.match(/(?:(?:\*+\s*)?(?:This\s+(?:is\s+an?|earthquake\s+is\s+an?|event\s+is\s+an?)\s+aftershock[^\n\r]*|Aftershock\s+of[^\n\r]*))/i);
+    if (noteMatch) {
+      aftershockNote = noteMatch[0].replace(/^\*+\s*/, '').trim();
     }
 
     const reportedIntensities = parseIntensityLines(reportedBlock);
@@ -200,6 +223,7 @@ export default async function handler(req, res) {
       expecting_damage: damageMatch ? damageMatch[1].trim() : 'NO',
       expecting_aftershocks: aftershocksMatch ? aftershocksMatch[1].trim() : 'NO',
       issued_on: issuedMatch ? issuedMatch[1].trim() : null,
+      aftershock_note: aftershockNote,
       max_intensity_level: maxIntensityLevel,
       max_intensity_value: maxIntensityValue,
       reported_intensities: reportedIntensities,
