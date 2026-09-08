@@ -35,9 +35,86 @@ function isInsidePar(lat, lon) {
       yi > lat !== yj > lat &&
       lon < ((xj - xi) * (lat - yi)) / (yj - yi + 0.0000001) + xi;
     if (intersect) inside = !inside;
-  }
-  return inside;
 }
+return inside;
+}
+
+// ── Himawari-9 Channel 13 Clean IR Brightness Temperature (°C) Color Enhancement ──
+// Standard PolarWx / Tropical Cyclone Brightness Temperature scale: +40°C down to -100°C
+const B13_COLOR_STOPS = [
+  [0.00, [0, 0, 0]],       // +40C : Black (Warm Sea)
+  [0.14, [51, 51, 51]],    // +20C : Dark Gray
+  [0.28, [204, 204, 204]], // 0C   : Light Gray (Low clouds)
+  [0.35, [128, 212, 255]], // -10C : Cyan
+  [0.42, [43, 108, 176]],  // -20C : Blue (Mid clouds)
+  [0.50, [26, 54, 93]],    // -30C : Deep Navy
+  [0.57, [246, 224, 94]],  // -40C : Yellow (Convection onset)
+  [0.64, [221, 107, 32]],  // -50C : Orange (Deep convection)
+  [0.71, [229, 62, 62]],   // -60C : Bright Red (Severe convection / Eyewall)
+  [0.78, [155, 44, 44]],   // -70C : Dark Red / Crimson
+  [0.85, [213, 63, 140]],  // -80C : Deep Pink (CDO)
+  [0.92, [246, 135, 179]], // -90C : Hot Pink (Overshooting tops)
+  [1.00, [255, 255, 255]], // -100C: White / Violet (Coldest cloud tops)
+];
+
+const B13_LUT = new Uint8ClampedArray(256 * 3);
+for (let i = 0; i < 256; i++) {
+  const t = i / 255.0;
+  let c1 = B13_COLOR_STOPS[0];
+  let c2 = B13_COLOR_STOPS[B13_COLOR_STOPS.length - 1];
+  for (let s = 0; s < B13_COLOR_STOPS.length - 1; s++) {
+    if (t >= B13_COLOR_STOPS[s][0] && t <= B13_COLOR_STOPS[s + 1][0]) {
+      c1 = B13_COLOR_STOPS[s];
+      c2 = B13_COLOR_STOPS[s + 1];
+      break;
+    }
+  }
+  const range = c2[0] - c1[0];
+  const factor = range > 0 ? (t - c1[0]) / range : 0;
+  B13_LUT[i * 3] = Math.round(c1[1][0] + factor * (c2[1][0] - c1[1][0]));
+  B13_LUT[i * 3 + 1] = Math.round(c1[1][1] + factor * (c2[1][1] - c1[1][1]));
+  B13_LUT[i * 3 + 2] = Math.round(c1[1][2] + factor * (c2[1][2] - c1[1][2]));
+}
+
+const HimawariB13TileLayer = L.TileLayer.extend({
+  createTile: function (coords, done) {
+    const tile = document.createElement("canvas");
+    tile.width = 256;
+    tile.height = 256;
+    const ctx = tile.getContext("2d", { willReadFrequently: true });
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    const url = this.getTileUrl(coords);
+
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0);
+      try {
+        const imgData = ctx.getImageData(0, 0, 256, 256);
+        const d = imgData.data;
+        for (let p = 0; p < d.length; p += 4) {
+          const v = d[p]; // JMA B13 grayscale byte: 0 (+40°C) to 255 (-100°C)
+          const idx = v * 3;
+          d[p] = B13_LUT[idx];
+          d[p + 1] = B13_LUT[idx + 1];
+          d[p + 2] = B13_LUT[idx + 2];
+          // Keep clear warm sea slightly translucent so base map details show
+          d[p + 3] = v < 10 ? 175 : 255;
+        }
+        ctx.putImageData(imgData, 0, 0);
+      } catch (e) {
+        // Fallback gracefully
+      }
+      done(null, tile);
+    };
+
+    img.onerror = (err) => {
+      done(err, tile);
+    };
+
+    img.src = url;
+    return tile;
+  },
+});
 
 // Helper: Custom Leaflet Control to stack seamlessly with other controls
 const LeafletCustomControl = ({ position, children }) => {
@@ -1207,27 +1284,41 @@ const CycloneMapLogic = ({
           const minute = String(d.getUTCMinutes()).padStart(2, "0");
           const timestamp = `${year}${month}${day}${hour}${minute}00`;
 
-          let product = "B13/TBB"; // default to Infrared
-          if (displayMode === "satellite") {
-            // For standard satellite, use true color during the day, infrared at night
-            const hrUTC = d.getUTCHours();
-            const isNight = hrUTC >= 10 && hrUTC < 22;
-            if (!isNight) {
-              product = "REP/ETC";
+          if (displayMode === "b13") {
+            const jmaUrl = `https://www.jma.go.jp/bosai/himawari/data/satimg/${timestamp}/fd/${timestamp}/B13/TBB/{z}/{x}/{y}.jpg`;
+            source = new HimawariB13TileLayer(jmaUrl, {
+              tileSize: 256,
+              opacity: 0.01,
+              zIndex: frame.time,
+              maxNativeZoom: 5,
+              maxZoom: 18,
+              minZoom: 2,
+              noWrap: true,
+              errorTileUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+            });
+          } else {
+            let product = "B13/TBB"; // default to Infrared
+            if (displayMode === "satellite") {
+              // For standard satellite, use true color during the day, infrared at night
+              const hrUTC = d.getUTCHours();
+              const isNight = hrUTC >= 10 && hrUTC < 22;
+              if (!isNight) {
+                product = "REP/ETC";
+              }
             }
-          }
 
-          const jmaUrl = `https://www.jma.go.jp/bosai/himawari/data/satimg/${timestamp}/fd/${timestamp}/${product}/{z}/{x}/{y}.jpg`;
-          source = new L.TileLayer(jmaUrl, {
-            tileSize: 256,
-            opacity: 0.01,
-            zIndex: frame.time,
-            maxNativeZoom: 5,
-            maxZoom: 18,
-            minZoom: 2,
-            noWrap: true,
-            errorTileUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
-          });
+            const jmaUrl = `https://www.jma.go.jp/bosai/himawari/data/satimg/${timestamp}/fd/${timestamp}/${product}/{z}/{x}/{y}.jpg`;
+            source = new L.TileLayer(jmaUrl, {
+              tileSize: 256,
+              opacity: 0.01,
+              zIndex: frame.time,
+              maxNativeZoom: 5,
+              maxZoom: 18,
+              minZoom: 2,
+              noWrap: true,
+              errorTileUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+            });
+          }
         } else {
           // RainViewer (radar / infrared)
           const colorScheme =
@@ -1296,6 +1387,8 @@ const CycloneMapLogic = ({
       if (activeRainOverlay) {
         const rainName = activeRainOverlay === "pdir" ? "PDIR-Now" : "PERSIANN-CCS";
         timestampEl.innerHTML = `<span class="text-amber-400 font-bold tracking-normal">${rainName} + Satellite</span> • ${phtDateStr} PHT`;
+      } else if (displayMode === "b13") {
+        timestampEl.innerHTML = `<span class="text-rose-400 font-bold tracking-normal">Himawari-9 Clean IR (B13)</span> • ${phtDateStr} PHT`;
       } else {
         const pastOrForecast =
           nextFrame.time > Date.now() / 1000 ? "FORECAST" : "PAST";
@@ -1497,6 +1590,25 @@ const CycloneMapLogic = ({
           }
         });
         return;
+      } else if (kind === "b13") {
+        // Himawari-9 Clean IR Channel 13 Brightness Temperature tiles
+        optionKind = "satellite";
+        if (btnPlay) btnPlay.style.display = "block";
+        if (loadingIndicator) loadingIndicator.classList.remove("hidden");
+        fetchJMATimestamps().then((frames) => {
+          if (loadingIndicator) loadingIndicator.classList.remove("hidden");
+          mapFrames = frames;
+          lastPastFramePosition = frames.length - 1;
+          latestFrameIndex = frames.length - 1;
+          animationPosition = latestFrameIndex;
+          showFrame(animationPosition, true);
+          if (activeRainOverlay) {
+            mountPersiannLayer(activeRainOverlay);
+          } else {
+            updateSliderUI();
+          }
+        });
+        return;
       } else if (kind === "radar") {
         // Radar only
         optionKind = "radar";
@@ -1561,6 +1673,9 @@ const CycloneMapLogic = ({
       const btnIR = document.getElementById("btn-infrared");
       setActive(btnIR, displayMode === "satellite_ir");
 
+      const btnB13 = document.getElementById("btn-b13");
+      setActive(btnB13, displayMode === "b13");
+
       const btnPersiann = document.getElementById("btn-persiann");
       setActive(btnPersiann, activeRainOverlay === "persiann");
 
@@ -1583,7 +1698,7 @@ const CycloneMapLogic = ({
           }
         } else {
           // If not currently in satellite mode, switch base to satellite first
-          if (displayMode !== "satellite" && displayMode !== "satellite_ir") {
+          if (displayMode !== "satellite" && displayMode !== "satellite_ir" && displayMode !== "b13") {
             displayMode = "satellite";
             initialize(apiData, "satellite");
           }
@@ -1599,7 +1714,7 @@ const CycloneMapLogic = ({
       }
 
       // Normal base mode switch (satellite, radar, both, precip, wind, etc.)
-      if (kind !== "satellite" && kind !== "satellite_ir") {
+      if (kind !== "satellite" && kind !== "satellite_ir" && kind !== "b13") {
         removePersiannLayer();
         activeRainOverlay = null;
       }
@@ -1617,8 +1732,8 @@ const CycloneMapLogic = ({
 
       initialize(apiData, kind);
 
-      // If activeRainOverlay is still set (e.g. switched between satellite and satellite_ir), re-mount
-      if (activeRainOverlay && (kind === "satellite" || kind === "satellite_ir")) {
+      // If activeRainOverlay is still set (e.g. switched between satellite and b13), re-mount
+      if (activeRainOverlay && (kind === "satellite" || kind === "satellite_ir" || kind === "b13")) {
         mountPersiannLayer(activeRainOverlay, animationPosition);
       }
     }
@@ -1628,8 +1743,8 @@ const CycloneMapLogic = ({
     apiRequest.open("GET", "https://api.rainviewer.com/public/weather-maps.json", true);
     apiRequest.onload = () => {
       apiData = JSON.parse(apiRequest.response);
-      // Only call setKind if we're not already in satellite or persiann/pdir mode
-      if (!["satellite", "satellite_ir", "persiann", "pdir"].includes(displayMode)) {
+      // Only call setKind if we're not already in satellite, b13, or persiann/pdir mode
+      if (!["satellite", "satellite_ir", "b13", "persiann", "pdir"].includes(displayMode)) {
         setKind(displayMode);
       }
     };
@@ -1638,13 +1753,13 @@ const CycloneMapLogic = ({
     // Start satellite immediately; RainViewer data loads in background
     setKind(displayMode);
 
-    // Auto-refresh Zoom Earth satellite frames every 10 minutes.
+    // Auto-refresh satellite frames every 10 minutes.
     // This picks up newly published Himawari frames and updates the timestamp display.
     setInterval(async () => {
-      if (displayMode !== "satellite" && displayMode !== "satellite_ir") return; // only refresh in satellite/IR mode
+      if (displayMode !== "satellite" && displayMode !== "satellite_ir" && displayMode !== "b13") return; // only refresh in satellite/IR/B13 mode
       if (animationTimer) return;              // don't interrupt a playing animation
 
-      const freshFrames = displayMode === "satellite_ir" ? await fetchInfraredTimestamps() : await fetchZoomEarthTimestamps();
+      const freshFrames = (displayMode === "satellite_ir" || displayMode === "b13") ? await fetchJMATimestamps() : await fetchZoomEarthTimestamps();
       if (!freshFrames.length) return;
 
       // Check if there's actually a new frame available
@@ -1672,13 +1787,11 @@ const CycloneMapLogic = ({
     }, 600000); // every 10 minutes
 
     // Also refresh immediately when the user comes back to this browser tab.
-    // Chrome throttles setInterval for background tabs, so this ensures the
-    // satellite tiles and timestamp are always up-to-date when the tab is focused.
     async function refreshSatelliteIfStale() {
-      if (displayMode !== "satellite" && displayMode !== "satellite_ir") return;
+      if (displayMode !== "satellite" && displayMode !== "satellite_ir" && displayMode !== "b13") return;
       if (animationTimer) return;
 
-      const freshFrames = displayMode === "satellite_ir" ? await fetchInfraredTimestamps() : await fetchZoomEarthTimestamps();
+      const freshFrames = (displayMode === "satellite_ir" || displayMode === "b13") ? await fetchJMATimestamps() : await fetchZoomEarthTimestamps();
       if (!freshFrames.length) return;
 
       const latestNew = freshFrames[freshFrames.length - 1].time;
@@ -1746,6 +1859,10 @@ const CycloneMapLogic = ({
     const btnInfrared = document.getElementById("btn-infrared");
     if (btnInfrared) {
       btnInfrared.addEventListener("click", () => setKind("satellite_ir"));
+    }
+    const btnB13 = document.getElementById("btn-b13");
+    if (btnB13) {
+      btnB13.addEventListener("click", () => setKind("b13"));
     }
     const btnPersiann = document.getElementById("btn-persiann");
     if (btnPersiann) {
@@ -2832,6 +2949,14 @@ const Cyclone = () => {
                 >
                   Infrared
                 </button>
+                <button
+                  id="btn-b13"
+                  className="rounded px-2 py-1 text-[10px] sm:text-xs font-medium text-slate-100 transition hover:bg-slate-700 text-left cursor-pointer flex items-center justify-between group"
+                  title="Himawari-9 Channel 13 IR Brightness Temperature (°C) with Tropical Cyclone Enhancement"
+                >
+                  <span>IR Brightness</span>
+                  <span className="text-[8px] font-bold px-1 rounded bg-rose-500/25 text-rose-300 border border-rose-500/40">B13</span>
+                </button>
                 <div className="h-px bg-slate-700 my-1"></div>
                 <span className="text-[9px] font-bold uppercase tracking-wider text-cyan-400 px-1 py-0.5 select-none">
                   Satellite Rain
@@ -3299,6 +3424,36 @@ const Cyclone = () => {
                 <span>20 mm (Heavy)</span>
                 <span>50 mm (Intense)</span>
                 <span>75mm+ (Torrential)</span>
+              </div>
+            </div>
+          )}
+
+          {/* Himawari-9 Clean IR Brightness Temperature (°C) Legend */}
+          {activeWeatherLayer === "b13" && (
+            <div className="w-full flex flex-col px-1 mb-3">
+              <div className="flex items-center justify-between mb-1.5 select-none">
+                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider text-left">
+                  Himawari-9 Clean IR Brightness Temperature (°C)
+                </span>
+                <span className="text-[9px] text-rose-400/90 font-mono font-bold">
+                  B13 (10.4 μm) • TC Enhancement
+                </span>
+              </div>
+              <div
+                className="h-2.5 w-full rounded flex overflow-hidden border border-slate-700/60 shadow-inner"
+                style={{
+                  background:
+                    "linear-gradient(to right, #000000 0%, #333333 14%, #cccccc 28%, #80d4ff 35%, #2b6cb0 42%, #1a365d 50%, #f6e05e 57%, #dd6b20 64%, #e53e3e 71%, #9b2c2c 78%, #d53f8c 85%, #f687b3 92%, #ffffff 100%)",
+                }}
+              />
+              <div className="flex justify-between text-[8px] sm:text-[9px] text-slate-400 font-mono mt-1 px-0.5 font-bold">
+                <span className="text-slate-500">+40°C</span>
+                <span className="text-slate-400">0°C</span>
+                <span className="text-sky-400">-20°C</span>
+                <span className="text-yellow-400">-40°C</span>
+                <span className="text-red-500">-60°C</span>
+                <span className="text-pink-400">-80°C</span>
+                <span className="text-white">-100°C</span>
               </div>
             </div>
           )}
