@@ -16,6 +16,8 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+BASE_URL = "https://www.panahon.gov.ph"
+
 def get_signed_headers(session, api_sig_secret, csrf_token, pathname):
     ts = str(int(time.time()))
     nonce = secrets.token_hex(16)
@@ -23,12 +25,16 @@ def get_signed_headers(session, api_sig_secret, csrf_token, pathname):
     sig = hmac.new(api_sig_secret.encode("utf-8"), string_to_sign, hashlib.sha256).hexdigest()
 
     return {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "User-Agent": "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9,fil;q=0.8",
         "X-Requested-With": "XMLHttpRequest",
-        "Referer": "https://panahon.gov.ph/",
-        "Origin": "https://panahon.gov.ph",
+        "Referer": f"{BASE_URL}/",
+        "Origin": BASE_URL,
         "X-CSRF-TOKEN": csrf_token,
+        "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
         "X-Ts": ts,
         "X-Nonce": nonce,
         "X-Sig": sig,
@@ -39,13 +45,17 @@ def archive_radar():
     
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        "User-Agent": "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,fil;q=0.8",
+        "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
     })
 
     try:
         # 1. Fetch gateway page to extract session cookies and security tokens
-        home = session.get("https://panahon.gov.ph/", timeout=15)
+        home = session.get(f"{BASE_URL}/", timeout=15)
         csrf_match = re.search(r'<meta name="csrf-token" content="([^"]+)"', home.text)
         api_sig_match = re.search(r'<meta name="api-sig" content="([^"]+)"', home.text)
         api_sig_handle_match = re.search(r'<meta name="api-sig-handle" content="([^"]+)"', home.text)
@@ -59,15 +69,23 @@ def archive_radar():
             return
 
         if not api_sig_secret and api_sig_handle:
-            sig_url = f"https://panahon.gov.ph/api/v1/sig?token={csrf_token}"
+            sig_url = f"{BASE_URL}/api/v1/sig?token={csrf_token}"
             sig_res = session.get(sig_url, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "User-Agent": "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
                 "X-Sig-Handle": api_sig_handle,
-                "Referer": "https://panahon.gov.ph/",
+                "Referer": f"{BASE_URL}/",
+                "Origin": BASE_URL,
+                "X-Requested-With": "XMLHttpRequest",
+                "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
+                "sec-ch-ua-mobile": "?1",
+                "sec-ch-ua-platform": '"Android"',
             }, timeout=15)
             if sig_res.ok:
-                sig_data = sig_res.json()
-                api_sig_secret = sig_data.get("secret")
+                try:
+                    sig_data = sig_res.json()
+                    api_sig_secret = sig_data.get("secret")
+                except Exception:
+                    pass
 
         if not api_sig_secret:
             print("Failed to extract or resolve api-sig secret from PANaHON gateway.")
@@ -75,14 +93,14 @@ def archive_radar():
 
         # Acquire asset-ticket to ensure access to protected radar assets
         session.get(
-            f"https://panahon.gov.ph/api/v1/asset-ticket?token={csrf_token}",
+            f"{BASE_URL}/api/v1/asset-ticket?token={csrf_token}",
             headers=get_signed_headers(session, api_sig_secret, csrf_token, "api/v1/asset-ticket"),
             timeout=15
         )
 
         # 2. Fetch active timeline with dynamic HMAC signing
         timeline_path = "api/v1/radar/timeline"
-        timeline_url = f"https://panahon.gov.ph/api/v1/radar/timeline?token={csrf_token}&sublayer=mosaic-reflectivity"
+        timeline_url = f"{BASE_URL}/api/v1/radar/timeline?token={csrf_token}&sublayer=mosaic-reflectivity"
         response = session.get(timeline_url, headers=get_signed_headers(session, api_sig_secret, csrf_token, timeline_path), timeout=15)
         response.raise_for_status()
         data = response.json()
@@ -92,7 +110,7 @@ def archive_radar():
             return
             
         timeline = data["data"]["timeline"]
-        tile_version = data.get("data", {}).get("tile_version", 4)
+        tile_version = data.get("data", {}).get("tile_version", 5)
     except Exception as e:
         print(f"Error fetching PAGASA timeline: {e}")
         return
@@ -113,15 +131,21 @@ def archive_radar():
 
         print(f"New Frame Detected: {observed_at_str} (Unix: {observed_at_unix}). Archiving...")
 
-        # 4. Download 2K Ultra-High-Definition PNG radar image
+        # 4. Download radar image (try size 1536 first, fallback to 2048 and 896)
         img_path = "api/v1/radar-data-image"
-        img_url = f"https://panahon.gov.ph/api/v1/radar-data-image?token={csrf_token}&t={observed_at_unix}&mode=dbz&size=2048&v={tile_version}"
-        try:
-            img_res = session.get(img_url, headers=get_signed_headers(session, api_sig_secret, csrf_token, img_path), timeout=20)
-            img_res.raise_for_status()
-            img_data = img_res.content
-        except Exception as e:
-            print(f"Failed to download image for {observed_at_str}: {e}")
+        img_data = None
+        for size in [1536, 2048, 896]:
+            img_url = f"{BASE_URL}/api/v1/radar-data-image?token={csrf_token}&t={observed_at_unix}&mode=dbz&size={size}&v={tile_version}"
+            try:
+                img_res = session.get(img_url, headers=get_signed_headers(session, api_sig_secret, csrf_token, img_path), timeout=20)
+                if img_res.ok and len(img_res.content) > 100:
+                    img_data = img_res.content
+                    break
+            except Exception:
+                continue
+
+        if not img_data:
+            print(f"Failed to download image for {observed_at_str}")
             continue
 
         # 5. Upload image to Supabase Storage Bucket

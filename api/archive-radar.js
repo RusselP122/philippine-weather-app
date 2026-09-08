@@ -3,6 +3,8 @@ import crypto from "crypto";
 
 export const maxDuration = 60; // Allow longer execution time on Vercel if needed
 
+const BASE_URL = "https://www.panahon.gov.ph";
+
 export default async function handler(req, res) {
   // Simple token authorization check to prevent unauthorized calls
   const { auth } = req.query;
@@ -22,10 +24,14 @@ export default async function handler(req, res) {
 
   try {
     // 1. Fetch gateway page to extract session cookies, csrf-token, and api-sig secret
-    const homeRes = await fetch("https://panahon.gov.ph/", {
+    const homeRes = await fetch(`${BASE_URL}/`, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,fil;q=0.8",
+        "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
       }
     });
 
@@ -67,21 +73,33 @@ export default async function handler(req, res) {
 
     // Exchange api-sig-handle via /api/v1/sig if api-sig is not directly embedded
     if (!apiSigSecret && apiSigHandle) {
-      const sigUrl = `https://panahon.gov.ph/api/v1/sig?token=${encodeURIComponent(csrfToken)}`;
+      const sigUrl = `${BASE_URL}/api/v1/sig?token=${encodeURIComponent(csrfToken)}`;
       const sigRes = await fetch(sigUrl, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "User-Agent": "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
           "Cookie": Array.from(cookieMap.values()).join("; "),
           "X-Sig-Handle": apiSigHandle,
-          "Referer": "https://panahon.gov.ph/",
+          "Referer": `${BASE_URL}/`,
+          "Origin": BASE_URL,
+          "X-Requested-With": "XMLHttpRequest",
+          "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
+          "sec-ch-ua-mobile": "?1",
+          "sec-ch-ua-platform": '"Android"',
         }
       });
 
       if (sigRes.ok) {
         parseCookies(sigRes);
-        const sigData = await sigRes.json();
-        if (sigData && sigData.secret) {
-          apiSigSecret = sigData.secret;
+        const ct = sigRes.headers.get("content-type") || "";
+        if (ct.includes("application/json")) {
+          const sigData = await sigRes.json();
+          if (sigData && sigData.secret) apiSigSecret = sigData.secret;
+        } else {
+          const text = await sigRes.text();
+          try {
+            const sigData = JSON.parse(text);
+            if (sigData && sigData.secret) apiSigSecret = sigData.secret;
+          } catch (_) {}
         }
       }
     }
@@ -98,13 +116,20 @@ export default async function handler(req, res) {
       const sig = crypto.createHmac("sha256", apiSigSecret).update(stringToSign).digest("hex");
 
       return {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "User-Agent": "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9,fil;q=0.8",
         "X-Requested-With": "XMLHttpRequest",
-        "Referer": "https://panahon.gov.ph/",
-        "Origin": "https://panahon.gov.ph",
+        "Referer": `${BASE_URL}/`,
+        "Origin": BASE_URL,
         "Cookie": Array.from(cookieMap.values()).join("; "),
         "X-CSRF-TOKEN": csrfToken,
+        "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
         "X-Ts": ts,
         "X-Nonce": nonce,
         "X-Sig": sig,
@@ -112,7 +137,7 @@ export default async function handler(req, res) {
     }
 
     // Acquire asset-ticket cookie
-    const assetRes = await fetch(`https://panahon.gov.ph/api/v1/asset-ticket?token=${encodeURIComponent(csrfToken)}`, {
+    const assetRes = await fetch(`${BASE_URL}/api/v1/asset-ticket?token=${encodeURIComponent(csrfToken)}`, {
       headers: getSignedHeaders("api/v1/asset-ticket"),
     });
 
@@ -123,7 +148,7 @@ export default async function handler(req, res) {
     // 2. Fetch current timeline from PAGASA
     const timelinePath = "api/v1/radar/timeline";
     const timelineRes = await fetch(
-      `https://panahon.gov.ph/api/v1/radar/timeline?token=${csrfToken}&sublayer=mosaic-reflectivity`,
+      `${BASE_URL}/api/v1/radar/timeline?token=${csrfToken}&sublayer=mosaic-reflectivity`,
       { headers: getSignedHeaders(timelinePath) }
     );
 
@@ -131,7 +156,15 @@ export default async function handler(req, res) {
       throw new Error(`PAGASA Timeline API returned HTTP ${timelineRes.status}`);
     }
 
-    const data = await timelineRes.json();
+    const ct = timelineRes.headers.get("content-type") || "";
+    let data;
+    if (ct.includes("application/json")) {
+      data = await timelineRes.json();
+    } else {
+      const rawText = await timelineRes.text();
+      data = JSON.parse(rawText);
+    }
+
     if (!data.success || !data.data || !data.data.timeline) {
       return res.status(500).json({ error: "Failed to retrieve active timeline from PAGASA." });
     }
@@ -161,16 +194,23 @@ export default async function handler(req, res) {
 
       console.log(`New Frame Detected: ${observed_at} (${observed_at_unix}). Archiving...`);
 
-      // 4. Download radar image from PAGASA (try 2048 first, fallback to 896)
+      // 4. Download radar image from PAGASA (try 1536 first, fallback to 2048 and 896)
       const imagePath = "api/v1/radar-data-image";
       let imgRes = await fetch(
-        `https://panahon.gov.ph/api/v1/radar-data-image?token=${csrfToken}&t=${observed_at_unix}&mode=dbz&size=2048&v=${tileVersion}`,
+        `${BASE_URL}/api/v1/radar-data-image?token=${csrfToken}&t=${observed_at_unix}&mode=dbz&size=1536&v=${tileVersion}`,
         { headers: getSignedHeaders(imagePath) }
       );
 
       if (!imgRes.ok) {
         imgRes = await fetch(
-          `https://panahon.gov.ph/api/v1/radar-data-image?token=${csrfToken}&t=${observed_at_unix}&mode=dbz&size=896&v=${tileVersion}`,
+          `${BASE_URL}/api/v1/radar-data-image?token=${csrfToken}&t=${observed_at_unix}&mode=dbz&size=2048&v=${tileVersion}`,
+          { headers: getSignedHeaders(imagePath) }
+        );
+      }
+
+      if (!imgRes.ok) {
+        imgRes = await fetch(
+          `${BASE_URL}/api/v1/radar-data-image?token=${csrfToken}&t=${observed_at_unix}&mode=dbz&size=896&v=${tileVersion}`,
           { headers: getSignedHeaders(imagePath) }
         );
       }

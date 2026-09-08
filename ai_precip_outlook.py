@@ -63,68 +63,62 @@ BROADCAST_REGIONS = {
         "title": "LUZON",
         "extent": [114.46, 127.94, 12.0, 19.3],
         "cities": [
-            ("LAOAG", 120.59, 18.20, (0, 0)),
-            ("TUGUEGARAO", 121.72, 17.61, (0, 0)),
-            ("BAGUIO", 120.59, 16.41, (-0.35, 0)),
-            ("DAGUPAN", 120.34, 16.04, (-0.45, -0.1)),
-            ("CLARK", 120.56, 15.18, (-0.45, 0)),
-            ("CABANATUAN", 120.96, 15.48, (0.45, 0.1)),
-            ("MANILA", 120.98, 14.59, (-0.5, 0)),
-            ("BATANGAS", 121.05, 13.75, (-0.5, -0.1)),
-            ("LUCENA", 121.61, 13.93, (0.45, 0.05)),
-            ("NAGA", 123.19, 13.62, (0, 0.1)),
-            ("LEGAZPI", 123.73, 13.14, (0.45, -0.1))
+            ("LAOAG", 120.59, 18.20, (-0.85, 0.0)),
+            ("TUGUEGARAO", 121.72, 17.61, (1.30, 0.0)),
+            ("BAGUIO", 120.59, 16.41, (-1.00, 0.10)),
+            ("DAGUPAN", 120.34, 16.04, (-1.05, -0.15)),
+            ("CLARK", 120.56, 15.18, (-1.35, -0.05)),
+            ("CABANATUAN", 120.96, 15.48, (1.75, 0.0)),
+            ("MANILA", 120.98, 14.59, (-0.85, -0.15)),
+            ("NAGA", 123.19, 13.62, (0.0, 0.65)),
+            ("LEGAZPI", 123.73, 13.14, (0.95, 0.10))
         ]
     },
     "visayas": {
         "title": "VISAYAS",
         "extent": [120.08, 127.32, 9.0, 13.0],
         "cities": [
-            ("BORACAY", 121.92, 11.97, (-0.45, 0.1)),
-            ("KALIBO", 122.36, 11.70, (0, 0.15)),
-            ("ROXAS", 122.75, 11.58, (0.35, 0.15)),
-            ("ILOILO", 122.56, 10.72, (-0.45, -0.1)),
-            ("BACOLOD", 122.95, 10.67, (0.45, 0.1)),
-            ("CEBU CITY", 123.89, 10.31, (0.5, -0.05)),
-            ("TAGBILARAN", 123.85, 9.65, (0, -0.18)),
-            ("DUMAGUETE", 123.30, 9.31, (-0.45, -0.1)),
-            ("TACLOBAN", 125.00, 11.24, (0.45, 0.1)),
-            ("ORMOC", 124.60, 11.00, (-0.45, 0)),
-            ("CATBALOGAN", 124.88, 11.77, (0, 0.18))
+            ("BORACAY", 121.92, 11.97, (-0.48, 0.15)),
+            ("ROXAS", 122.75, 11.58, (0.20, 0.42)),
+            ("ILOILO", 122.56, 10.72, (-0.71, -0.30)),
+            ("BACOLOD", 122.95, 10.67, (0.45, 0.28)),
+            ("CEBU CITY", 123.89, 10.31, (0.46, 0.20)),
+            ("TAGBILARAN", 123.85, 9.65, (0.50, -0.30)),
+            ("DUMAGUETE", 123.30, 9.31, (0.35, 0.08)),
+            ("TACLOBAN", 125.00, 11.24, (0.65, -0.19)),
+            ("CATBALOGAN", 124.88, 11.77, (-0.63, 0.05))
         ]
     },
     "mindanao": {
         "title": "MINDANAO",
         "extent": [120.02, 128.98, 5.2, 10.2],
         "cities": [
-            ("SURIGAO", 125.49, 9.79, (-0.45, -0.45)),
-            ("BUTUAN", 125.54, 8.95, (0.45, 0.05)),
-            ("CAGAYAN DE ORO", 124.63, 8.48, (-0.55, 0.1)),
-            ("ILIGAN", 124.24, 8.23, (-0.55, -0.1)),
-            ("DIPOLOG", 123.34, 8.58, (-0.45, 0.1)),
-            ("PAGADIAN", 123.43, 7.82, (-0.45, 0)),
-            ("ZAMBOANGA", 122.07, 6.92, (0, -0.18)),
-            ("COTABATO", 124.24, 7.22, (-0.45, 0)),
-            ("DAVAO", 125.60, 7.19, (0.45, 0.05)),
-            ("TAGUM", 125.80, 7.44, (0.45, 0.1)),
-            ("GEN SANTOS", 125.17, 6.11, (0, -0.18))
+            ("SURIGAO", 125.49, 9.79, (-0.95, -0.40)),
+            ("BUTUAN", 125.54, 8.95, (-0.25, 0.15)),
+            ("CAGAYAN DE ORO", 124.63, 8.48, (0.0, 0.40)),
+            ("DIPOLOG", 123.34, 8.58, (-0.45, 0.25)),
+            ("PAGADIAN", 123.43, 7.82, (0.05, -0.35)),
+            ("ZAMBOANGA", 122.07, 6.92, (0.0, -0.30)),
+            ("COTABATO", 124.24, 7.22, (-0.55, 0.0)),
+            ("DAVAO", 125.60, 7.19, (0.35, -0.30)),
+            ("GEN SANTOS", 125.17, 6.11, (0.0, -0.35))
         ]
     }
 }
 
 PALAWAN_CITIES = [
-    ("CORON", 120.20, 12.00, (-0.35, 0.05)),
-    ("EL NIDO", 119.39, 11.18, (-0.45, 0.05)),
-    ("PTO PRINCESA", 118.73, 9.74, (0.55, 0)),
-    ("BROOKE’S PT", 117.83, 8.77, (-0.45, 0))
+    ("CORON", 120.20, 12.00, (-0.65, 0.22)),
+    ("EL NIDO", 119.39, 11.18, (-0.60, 0.05)),
+    ("PTO PRINCESA", 118.73, 9.74, (0.85, 0.0)),
+    ("BROOKE’S PT", 117.83, 8.77, (0.70, -0.10))
 ]
 
 BATANES_BABUYAN_CITIES = [
-    ("ITBAYAT", 121.84, 20.78, (0, 0.08)),
-    ("BASCO", 121.97, 20.45, (0.28, 0)),
-    ("BABUYAN IS.", 121.93, 19.52, (0.35, 0)),
-    ("CALAYAN", 121.47, 19.26, (-0.28, -0.05)),
-    ("CAMIGUIN IS.", 121.93, 18.92, (0.35, -0.05))
+    ("ITBAYAT", 121.84, 20.78, (-0.42, 0.0)),
+    ("BASCO", 121.97, 20.45, (0.35, 0.0)),
+    ("BABUYAN IS.", 121.93, 19.52, (0.38, 0.0)),
+    ("CALAYAN", 121.47, 19.26, (-0.42, -0.02)),
+    ("CAMIGUIN IS.", 121.93, 18.92, (0.38, -0.02))
 ]
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -456,8 +450,16 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
             else:
                 val_str = f"{val:.0f} mm"
 
-            bbox_props = dict(boxstyle='round,pad=0.35', facecolor='#000000', edgecolor='#ffffff', alpha=0.75, lw=1.1)
+            bbox_props = dict(boxstyle='round,pad=0.35', facecolor='#000000', edgecolor='#ffffff', alpha=0.78, lw=1.1)
             callout = f"{val_str}\n{name}"
+            
+            # City pin dot on land
+            ax.plot(clon, clat, marker='o', markersize=4.2, color='#38bdf8', markeredgecolor='#ffffff', markeredgewidth=0.9, zorder=11, transform=ccrs.PlateCarree())
+            
+            # Sleek leader line connecting city to floating badge
+            if abs(offset_x) > 0.05 or abs(offset_y) > 0.05:
+                ax.plot([clon, clon + offset_x * 0.78], [clat, clat + offset_y * 0.78], color='#cbd5e1', lw=1.2, alpha=0.80, zorder=9, transform=ccrs.PlateCarree())
+
             ax.text(
                 clon + offset_x, clat + offset_y, callout,
                 transform=ccrs.PlateCarree(),
@@ -502,12 +504,15 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
                 val = palawan_rain[min_idx]
                 val_str = f"{val:.0f} mm" if not np.isnan(val) and val >= 1 else "Trace"
 
-                bbox_props = dict(boxstyle='round,pad=0.3', facecolor='#000000', edgecolor='#ffffff', alpha=0.75, lw=1.0)
+                bbox_props = dict(boxstyle='round,pad=0.25', facecolor='#000000', edgecolor='#ffffff', alpha=0.78, lw=0.9)
                 callout = f"{val_str}\n{name}"
+                ax_pal.plot(clon, clat, marker='o', markersize=3.2, color='#38bdf8', markeredgecolor='#ffffff', markeredgewidth=0.8, zorder=11, transform=ccrs.PlateCarree())
+                if abs(ox) > 0.05 or abs(oy) > 0.05:
+                    ax_pal.plot([clon, clon + ox * 0.76], [clat, clat + oy * 0.76], color='#cbd5e1', lw=1.0, alpha=0.80, zorder=9, transform=ccrs.PlateCarree())
                 ax_pal.text(
                     clon + ox, clat + oy, callout,
                     transform=ccrs.PlateCarree(),
-                    fontsize=10.5, fontweight='heavy',
+                    fontsize=8.8, fontweight='heavy',
                     color='#ffffff', ha='center', va='center',
                     bbox=bbox_props, zorder=10
                 )
@@ -546,12 +551,15 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
                 val = bb_rain[min_idx]
                 val_str = f"{val:.0f} mm" if not np.isnan(val) and val >= 1 else "Trace"
 
-                bbox_props = dict(boxstyle='round,pad=0.3', facecolor='#000000', edgecolor='#ffffff', alpha=0.75, lw=1.0)
+                bbox_props = dict(boxstyle='round,pad=0.22', facecolor='#000000', edgecolor='#ffffff', alpha=0.78, lw=0.85)
                 callout = f"{val_str}\n{name}"
+                ax_bb.plot(clon, clat, marker='o', markersize=3.0, color='#38bdf8', markeredgecolor='#ffffff', markeredgewidth=0.8, zorder=11, transform=ccrs.PlateCarree())
+                if abs(ox) > 0.05 or abs(oy) > 0.05:
+                    ax_bb.plot([clon, clon + ox * 0.76], [clat, clat + oy * 0.76], color='#cbd5e1', lw=1.0, alpha=0.80, zorder=9, transform=ccrs.PlateCarree())
                 ax_bb.text(
                     clon + ox, clat + oy, callout,
                     transform=ccrs.PlateCarree(),
-                    fontsize=10.5, fontweight='heavy',
+                    fontsize=8.2, fontweight='heavy',
                     color='#ffffff', ha='center', va='center',
                     bbox=bbox_props, zorder=10
                 )
@@ -611,8 +619,22 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
         fig.text(0.052, 0.936, 'PHIL\nWX', fontsize=12, fontweight='heavy', color='#38bdf8', ha='center', va='center', zorder=42)
 
     out_path = os.path.join(OUTPUT_DIR, f"{filename_id}.png")
-    plt.savefig(out_path, dpi=120, bbox_inches="tight", facecolor="#0d1821")
-    plt.close()
+    tmp_path = os.path.join(OUTPUT_DIR, f"{filename_id}.tmp.png")
+    try:
+        fig.savefig(tmp_path, dpi=120, facecolor="#0d1821", edgecolor="none")
+        plt.close(fig)
+        if os.path.exists(out_path):
+            try:
+                os.remove(out_path)
+            except Exception:
+                pass
+        os.replace(tmp_path, out_path)
+    except Exception as e:
+        try:
+            fig.savefig(out_path, dpi=120, facecolor="#0d1821", edgecolor="none")
+            plt.close(fig)
+        except Exception:
+            pass
     print(f"  Successfully saved {out_path}")
 
 

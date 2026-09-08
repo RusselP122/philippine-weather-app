@@ -43,11 +43,9 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     wp_data = wp_data.sort_values(by=['init_time', 'track_id', 'sample', 'lead_time_hours'])
     init_times = wp_data['init_time'].unique()
 
-    # 1. Use a clear rectangular aspect ratio to perfectly fit the map coordinates
-    fig = plt.figure(figsize=(12, 10), facecolor='white')
-    
-    # Explicitly position the map inside the figure to leave clean margins for labels and title
-    ax = fig.add_axes([0.08, 0.08, 0.88, 0.80], projection=ccrs.PlateCarree())
+    # 1. Set up the figure and map projection
+    fig = plt.figure(figsize=(14, 11), facecolor='#FFFFFF')
+    ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([105, 155, 0, 40], crs=ccrs.PlateCarree())
 
     # Add land, ocean, and coastlines
@@ -156,14 +154,16 @@ def generate_plot(data, max_lead_time, output_file, title, runtime_text):
     legend_text = f"Runtime: {runtime_text}\nProcessed By: Philippine Typhoon/Weather"
     plt.text(0.99, 0.01, legend_text, transform=ax.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right')
     
-    # 2. Use global figure title configuration so it stays pinned within the safe canvas margins
-    fig.suptitle(title, fontsize=14, weight='bold', y=0.94)
+    # 2. Add title attached to the axes to eliminate floating margins
+    title_obj = ax.set_title(title, fontsize=14, weight='bold', pad=12)
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     
-    # 3. Save directly WITHOUT bbox_inches='tight'. 
-    # This prevents the headless system from trying to recalculate margins dynamically.
-    plt.savefig(output_file, dpi=300, facecolor='white', edgecolor='none')
+    # 3. Save with bbox_inches='tight' to eliminate excessive whitespace around plot
+    extra_artists = [title_obj, gl]
+    if legend is not None:
+        extra_artists.append(legend)
+    plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor(), edgecolor='none', bbox_extra_artists=extra_artists)
     print(f"Plot saved to {output_file} ({plotted_tracks} plotted, {skipped_tracks} skipped)")
     plt.close()
 
