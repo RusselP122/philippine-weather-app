@@ -71,13 +71,21 @@ AGENCY_COLORS = {
     'JMA':    '#10b981'   # Radiant Emerald Green
 }
 
-# Ensemble Means (Distinct High-Contrast Accents)
-ENSEMBLE_COLORS = {
-    'WeatherNext Cyclone': '#a855f7',  # Radiant Violet
-    'ECMWF IFS':           '#fbbf24',  # Warm Amber / Gold
-    'ECMWF AIFS':          '#2dd4bf',  # Bright Mint / Teal
-    'AIGEFS':              '#fb923c'   # Coral Orange
+# NWP Models (Numerical Weather Prediction)
+NWP_COLORS = {
+    'ECMWF IFS': '#fbbf24',  # Warm Amber / Gold
+    'GFS':       '#60a5fa'   # Crisp Cornflower Blue
 }
+
+# AI Models (Machine Learning & Deep Learning Weather Forecasting)
+AI_COLORS = {
+    'AIGEFS':                '#fb923c',  # Coral Orange
+    'ECMWF AIFS':            '#2dd4bf',  # Bright Mint / Teal
+    'WeatherNext 3 Cyclone': '#a855f7'   # Radiant Violet
+}
+
+# Combined dictionary for multi-model processing and map rendering
+ENSEMBLE_COLORS = {**NWP_COLORS, **AI_COLORS}
 
 # Intensity Scale (PAGASA Standard in km/h)
 INTENSITY_PALETTE = {
@@ -268,6 +276,7 @@ def normalize_dataframe(df):
 def load_and_decrypt_track_file(file_path):
     """
     Decrypts XOR base64 DAT files or loads CSV/ATCF files, returning normalized track DataFrames.
+    Supports both standard 0xAA XOR key and CalauanWeather2026 XOR key.
     """
     if not os.path.exists(file_path):
         return pd.DataFrame()
@@ -281,9 +290,17 @@ def load_and_decrypt_track_file(file_path):
                 decrypted_bytes = bytearray([b ^ 0xAA for b in xored_bytes])
                 csv_text = decrypted_bytes.decode('utf-8', errors='ignore')
                 df = pd.read_csv(io.StringIO(csv_text), comment='#')
+                if df.empty or ('lat' not in df.columns and 'track_id' not in df.columns):
+                    raise ValueError("0xAA key did not produce valid columns")
             except Exception:
-                # Fallback for plain ATCF text file
-                df = pd.read_csv(file_path, comment='#', header=None, on_bad_lines='skip')
+                try:
+                    key = "CalauanWeather2026".encode('utf-8')
+                    decrypted_bytes = bytearray([xored_bytes[i] ^ key[i % len(key)] for i in range(len(xored_bytes))])
+                    csv_text = decrypted_bytes.decode('utf-8', errors='ignore')
+                    df = pd.read_csv(io.StringIO(csv_text), comment='#')
+                except Exception:
+                    # Fallback for plain ATCF text file
+                    df = pd.read_csv(file_path, comment='#', header=None, on_bad_lines='skip')
         else:
             df = pd.read_csv(file_path, comment='#')
             
@@ -447,87 +464,85 @@ def get_fnv3_paired_mean_track(storm, data_dir='public/data'):
     return pd.DataFrame()
 
 
-def get_aigefs_aimn_mean_track(storm, data_dir='public/data'):
+def get_gfs_control_or_mean_track(storm, data_dir='public/data'):
     """
-    Checks for available AIGEFS aimn mean track file (aimn.t*z.cyclone.trackatcfunix or aigefs_tc_latest.dat).
-    Only uses recent/latest model initialization files.
+    Checks for available GFS / GEFS forecast track for the active storm:
+    1. Phase 1: GFS Deterministic (AVNO) & GEFS Control (AC00).
+    2. Phase 2: GEFS Ensemble Mean (AEMN) as fallback.
+    Checks local files first, then queries live NOAA NOMADS endpoints.
+    Returns (DataFrame, init_time_str, track_type) where track_type is 'Control' or 'Mean'.
     """
-    latest_files = [os.path.join(data_dir, 'aigefs_tc_latest.dat')]
-    other_candidates = glob.glob(os.path.join(data_dir, '*aimn*.trackatcfunix')) + glob.glob(os.path.join('temp_data', '*aimn*.trackatcfunix'))
-    other_candidates.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-    
-    aimn_candidates = [f for f in latest_files if os.path.exists(f)] + other_candidates
-    
     curr_lat, curr_lon = storm['lat'], storm['lon']
     short_id = get_short_atcf_id(storm['atcf_id'])
-    
-    for fpath in aimn_candidates:
+    storm_name = str(storm.get('name', '')).strip().upper()
+    now_utc = datetime.now(timezone.utc)
+
+    # ─────────────────────────────────────────────────────────────
+    # Phase 1: Check Deterministic Control Track (AVNO or AC00)
+    # ─────────────────────────────────────────────────────────────
+    ctrl_local_files = [
+        os.path.join(data_dir, 'gfs_tc_latest.dat'),
+        os.path.join(data_dir, 'gfs_tc_latest.csv'),
+        os.path.join(data_dir, 'gefs_tc_latest.dat'),
+        os.path.join(data_dir, 'gefs_tc_latest.csv')
+    ] + glob.glob(os.path.join(data_dir, '*avno*.trackatcfunix')) \
+      + glob.glob(os.path.join(data_dir, '*ac00*.trackatcfunix')) \
+      + glob.glob(os.path.join('temp_data', '*avno*.trackatcfunix')) \
+      + glob.glob(os.path.join('temp_data', '*ac00*.trackatcfunix'))
+
+    for fpath in ctrl_local_files:
         if not os.path.exists(fpath):
             continue
-            
-        if 'latest' not in os.path.basename(fpath):
-            file_mtime = os.path.getmtime(fpath)
-            age_hours = (datetime.now().timestamp() - file_mtime) / 3600.0
-            if age_hours > 48.0:
-                continue
-
         df = load_and_decrypt_track_file(fpath)
         if df.empty or 'lat' not in df.columns or 'lon' not in df.columns:
             continue
             
-        # Look for aimn track (sample == -1 or tech / track_id containing AIMN)
-        aimn_df = pd.DataFrame()
-        if 'sample' in df.columns and (df['sample'] == -1).any():
-            aimn_df = df[df['sample'] == -1].copy()
+        ctrl_df = pd.DataFrame()
+        if 'sample' in df.columns and (df['sample'] == 0).any():
+            ctrl_df = df[df['sample'] == 0].copy()
         elif 'tech' in df.columns:
-            mask = df['tech'].astype(str).str.upper().str.contains('AIMN')
-            aimn_df = df[mask].copy()
-        elif 'track_id' in df.columns:
-            mask = df['track_id'].astype(str).str.upper().str.contains('AIMN')
-            aimn_df = df[mask].copy()
-            
-        if aimn_df.empty:
-            continue
-            
-        # Match track closest to active storm position (tightened distance threshold to 250km)
-        best_tid = None
-        best_dist = 250.0
-        
-        for tid, t_df in aimn_df.groupby('track_id'):
+            mask = df['tech'].astype(str).str.upper().isin(['AVNO', 'AC00', 'GFS', 'GFSO', 'AVNX'])
+            ctrl_df = df[mask].copy()
+        else:
+            ctrl_df = df.copy()
+
+        for tid, t_df in ctrl_df.groupby('track_id'):
             t_df = t_df.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
             if t_df.empty:
                 continue
             first_row = t_df.iloc[0]
             d_km = haversine_km(first_row['lat'], first_row['lon'], curr_lat, curr_lon)
-            if d_km < best_dist:
-                best_dist = d_km
-                best_tid = tid
-                
-        if best_tid is not None:
-            matched = aimn_df[aimn_df['track_id'] == best_tid].sort_values('lead_time_hours')
-            cols_to_keep = ['lead_time_hours', 'lat', 'lon']
-            if 'wind' in matched.columns: cols_to_keep.append('wind')
-            if 'pressure' in matched.columns: cols_to_keep.append('pressure')
-            res = matched[cols_to_keep].dropna(subset=['lat', 'lon'])
-            if not res.empty:
+            tid_upper = str(tid).upper()
+            is_match = (
+                short_id.upper() in tid_upper or
+                f"WP{short_id.upper().rstrip('W')}" == tid_upper or
+                str(storm.get('atcf_id', '')).upper() in tid_upper or
+                (storm_name != '' and storm_name in tid_upper)
+            )
+            if (is_match and d_km <= 800.0) or d_km <= 500.0:
                 init_str = None
-                if 'init_time' in matched.columns and not matched['init_time'].dropna().empty:
+                if 'init_time' in t_df.columns and not t_df['init_time'].dropna().empty:
                     try:
-                        init_dt = pd.to_datetime(matched['init_time'].dropna().iloc[0])
+                        init_dt = pd.to_datetime(t_df['init_time'].dropna().iloc[0])
                         init_str = init_dt.strftime('%Y-%m-%d %HZ')
                     except Exception:
                         pass
-                print(f"Found official AIGEFS aimn mean track for {short_id} in {os.path.basename(fpath)} (dist: {best_dist:.1f}km)")
-                return res, init_str
+                cols = ['lead_time_hours', 'lat', 'lon']
+                if 'wind' in t_df.columns: cols.append('wind')
+                if 'pressure' in t_df.columns: cols.append('pressure')
+                res = t_df[cols].copy()
+                print(f"Found local GFS Deterministic/Control track for {short_id} in {os.path.basename(fpath)} (dist: {d_km:.1f}km)")
+                return res, init_str, "Control"
 
-    # Attempt fetching live NOAA aimn track if not available locally
-    try:
-        now_utc = datetime.now(timezone.utc)
-        for day_offset in range(2):
-            check_date = (now_utc - timedelta(days=day_offset))
-            date_str = check_date.strftime('%Y%m%d')
-            for rt in ['18', '12', '06', '00']:
-                url = f"https://nomads.ncep.noaa.gov/pub/data/nccf/com/ens_tracker/prod/aigefs.{date_str}/{rt}/tctrack/aimn.t{rt}z.cyclone.trackatcfunix"
+    # Live NOAA NOMADS: GFS Deterministic (AVNO) and GEFS Control (AC00)
+    for day_offset in range(3):
+        date_str = (now_utc - timedelta(days=day_offset)).strftime("%Y%m%d")
+        for rt in ['18', '12', '06', '00']:
+            live_ctrl_urls = [
+                f"https://nomads.ncep.noaa.gov/pub/data/nccf/com/ens_tracker/prod/gfs.{date_str}/{rt}/tctrack/avno.t{rt}z.cyclone.trackatcfunix",
+                f"https://nomads.ncep.noaa.gov/pub/data/nccf/com/ens_tracker/prod/gefs.{date_str}/{rt}/tctrack/ac00.t{rt}z.cyclone.trackatcfunix"
+            ]
+            for url in live_ctrl_urls:
                 try:
                     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                     with urllib.request.urlopen(req, timeout=4) as response:
@@ -540,12 +555,9 @@ def get_aigefs_aimn_mean_track(storm, data_dir='public/data'):
                             b, cy, ymdh, tau, la_str, lo_str = parts[0], parts[1], parts[2], parts[5], parts[6], parts[7]
                             la = parse_atcf_latlon(la_str)
                             lo = parse_atcf_latlon(lo_str)
-                            try:
-                                h = int(tau)
-                            except ValueError:
-                                h = 0
+                            try: h = int(tau)
+                            except ValueError: h = 0
                             row_data = {'track_id': f"{b}{cy}", 'lead_time_hours': h, 'lat': la, 'lon': lo}
-                            # ATCF fields: parts[8] = wind (kt), parts[9] = pressure (hPa)
                             if len(parts) > 8 and parts[8].strip():
                                 try: row_data['wind'] = float(parts[8])
                                 except ValueError: pass
@@ -562,20 +574,362 @@ def get_aigefs_aimn_mean_track(storm, data_dir='public/data'):
                                 continue
                             first_row = t_df.iloc[0]
                             d_km = haversine_km(first_row['lat'], first_row['lon'], curr_lat, curr_lon)
-                            if d_km <= 250.0:
+                            tid_upper = str(tid).upper()
+                            is_match = (
+                                short_id.upper() in tid_upper or
+                                f"WP{short_id.upper().rstrip('W')}" == tid_upper or
+                                str(storm.get('atcf_id', '')).upper() in tid_upper
+                            )
+                            if (is_match and d_km <= 800.0) or d_km <= 500.0:
                                 live_init_str = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]} {rt}Z"
-                                print(f"Successfully fetched live NOAA AIGEFS aimn mean track for {short_id} (Run: {live_init_str}, dist: {d_km:.1f}km)")
+                                src_name = "GFS AVNO" if "avno" in url else "GEFS AC00"
+                                print(f"Successfully fetched live NOAA {src_name} deterministic control track for {short_id} (Run: {live_init_str}, dist: {d_km:.1f}km)")
                                 cols_ret = ['lead_time_hours', 'lat', 'lon']
                                 if 'wind' in t_df.columns: cols_ret.append('wind')
                                 if 'pressure' in t_df.columns: cols_ret.append('pressure')
-                                ret_df = t_df[cols_ret].copy()
-                                return ret_df, live_init_str
+                                return t_df[cols_ret].copy(), live_init_str, "Control"
                 except Exception:
                     continue
-    except Exception:
-        pass
-        
-    return pd.DataFrame(), None
+
+    # ─────────────────────────────────────────────────────────────
+    # Phase 2: Fallback to Ensemble Mean (AEMN)
+    # ─────────────────────────────────────────────────────────────
+    mean_local_files = [
+        os.path.join(data_dir, 'gefs_tc_latest.dat'),
+        os.path.join(data_dir, 'gefs_tc_latest.csv')
+    ] + glob.glob(os.path.join(data_dir, '*aemn*.trackatcfunix')) \
+      + glob.glob(os.path.join(data_dir, '*gemn*.trackatcfunix')) \
+      + glob.glob(os.path.join('temp_data', '*aemn*.trackatcfunix'))
+
+    for fpath in mean_local_files:
+        if not os.path.exists(fpath):
+            continue
+        df = load_and_decrypt_track_file(fpath)
+        if df.empty or 'lat' not in df.columns or 'lon' not in df.columns:
+            continue
+            
+        mean_df = pd.DataFrame()
+        if 'sample' in df.columns and (df['sample'] == -1).any():
+            mean_df = df[df['sample'] == -1].copy()
+        elif 'tech' in df.columns:
+            mask = df['tech'].astype(str).str.upper().isin(['AEMN', 'GEMN'])
+            mean_df = df[mask].copy()
+
+        for tid, t_df in mean_df.groupby('track_id'):
+            t_df = t_df.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
+            if t_df.empty:
+                continue
+            first_row = t_df.iloc[0]
+            d_km = haversine_km(first_row['lat'], first_row['lon'], curr_lat, curr_lon)
+            tid_upper = str(tid).upper()
+            is_match = (
+                short_id.upper() in tid_upper or
+                f"WP{short_id.upper().rstrip('W')}" == tid_upper or
+                str(storm.get('atcf_id', '')).upper() in tid_upper
+            )
+            if (is_match and d_km <= 800.0) or d_km <= 500.0:
+                init_str = None
+                if 'init_time' in t_df.columns and not t_df['init_time'].dropna().empty:
+                    try:
+                        init_dt = pd.to_datetime(t_df['init_time'].dropna().iloc[0])
+                        init_str = init_dt.strftime('%Y-%m-%d %HZ')
+                    except Exception:
+                        pass
+                cols = ['lead_time_hours', 'lat', 'lon']
+                if 'wind' in t_df.columns: cols.append('wind')
+                if 'pressure' in t_df.columns: cols.append('pressure')
+                print(f"Found local GEFS ensemble mean track for {short_id} in {os.path.basename(fpath)} (dist: {d_km:.1f}km)")
+                return t_df[cols].copy(), init_str, "Mean"
+
+    # Live NOAA NOMADS: GEFS Ensemble Mean (AEMN)
+    for day_offset in range(3):
+        date_str = (now_utc - timedelta(days=day_offset)).strftime("%Y%m%d")
+        for rt in ['18', '12', '06', '00']:
+            mean_url = f"https://nomads.ncep.noaa.gov/pub/data/nccf/com/ens_tracker/prod/gefs.{date_str}/{rt}/tctrack/aemn.t{rt}z.cyclone.trackatcfunix"
+            try:
+                req = urllib.request.Request(mean_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=4) as response:
+                    content = response.read().decode('utf-8', errors='ignore')
+                rows = []
+                for line in content.splitlines():
+                    parts = [p.strip() for p in line.split(',')]
+                    if len(parts) >= 10:
+                        b, cy, ymdh, tau, la_str, lo_str = parts[0], parts[1], parts[2], parts[5], parts[6], parts[7]
+                        la = parse_atcf_latlon(la_str)
+                        lo = parse_atcf_latlon(lo_str)
+                        try: h = int(tau)
+                        except ValueError: h = 0
+                        row_data = {'track_id': f"{b}{cy}", 'lead_time_hours': h, 'lat': la, 'lon': lo}
+                        if len(parts) > 8 and parts[8].strip():
+                            try: row_data['wind'] = float(parts[8])
+                            except ValueError: pass
+                        if len(parts) > 9 and parts[9].strip():
+                            try: row_data['pressure'] = float(parts[9])
+                            except ValueError: pass
+                        rows.append(row_data)
+                        
+                if rows:
+                    live_df = pd.DataFrame(rows)
+                    for tid, t_df in live_df.groupby('track_id'):
+                        t_df = t_df.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
+                        if t_df.empty:
+                            continue
+                        first_row = t_df.iloc[0]
+                        d_km = haversine_km(first_row['lat'], first_row['lon'], curr_lat, curr_lon)
+                        tid_upper = str(tid).upper()
+                        is_match = (
+                            short_id.upper() in tid_upper or
+                            f"WP{short_id.upper().rstrip('W')}" == tid_upper or
+                            str(storm.get('atcf_id', '')).upper() in tid_upper
+                        )
+                        if (is_match and d_km <= 800.0) or d_km <= 500.0:
+                            live_init_str = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]} {rt}Z"
+                            print(f"Successfully fetched live NOAA GEFS ensemble mean track for {short_id} (Run: {live_init_str}, dist: {d_km:.1f}km)")
+                            cols_ret = ['lead_time_hours', 'lat', 'lon']
+                            if 'wind' in t_df.columns: cols_ret.append('wind')
+                            if 'pressure' in t_df.columns: cols_ret.append('pressure')
+                            return t_df[cols_ret].copy(), live_init_str, "Mean"
+            except Exception:
+                continue
+
+    return pd.DataFrame(), None, None
+
+
+def get_aigefs_control_or_mean_track(storm, data_dir='public/data'):
+    """
+    Checks for available AIGEFS forecast track for the active storm:
+    1. Phase 1: AIGEFS Control member (a000 / sample == 0).
+    2. Phase 2: AIGEFS Ensemble Mean (aimn / sample == -1) as fallback.
+    Checks local files first (aigefs_tc_latest.dat / csv / glob), then queries live NOAA NOMADS endpoints.
+    Returns (DataFrame, init_time_str, track_type) where track_type is 'Control' or 'Mean'.
+    """
+    curr_lat, curr_lon = storm['lat'], storm['lon']
+    short_id = get_short_atcf_id(storm['atcf_id'])
+    storm_name = str(storm.get('name', '')).strip().upper()
+    now_utc = datetime.now(timezone.utc)
+
+    # ─────────────────────────────────────────────────────────────
+    # Phase 1: Check Deterministic Control Track (sample == 0 / a000)
+    # ─────────────────────────────────────────────────────────────
+    ctrl_local_files = [
+        os.path.join(data_dir, 'aigefs_tc_latest.dat'),
+        os.path.join(data_dir, 'aigefs_tc_latest.csv')
+    ] + glob.glob(os.path.join(data_dir, '*a000*.trackatcfunix')) \
+      + glob.glob(os.path.join('temp_data', '*a000*.trackatcfunix'))
+
+    for fpath in ctrl_local_files:
+        if not os.path.exists(fpath):
+            continue
+        if 'latest' not in os.path.basename(fpath):
+            file_mtime = os.path.getmtime(fpath)
+            age_hours = (datetime.now().timestamp() - file_mtime) / 3600.0
+            if age_hours > 72.0:
+                continue
+
+        df = load_and_decrypt_track_file(fpath)
+        if df.empty or 'lat' not in df.columns or 'lon' not in df.columns:
+            continue
+
+        ctrl_df = pd.DataFrame()
+        if 'sample' in df.columns and (df['sample'] == 0).any():
+            ctrl_df = df[df['sample'] == 0].copy()
+        elif 'tech' in df.columns:
+            mask = df['tech'].astype(str).str.upper().isin(['A000', 'AIG0', 'AC00'])
+            ctrl_df = df[mask].copy()
+
+        if not ctrl_df.empty:
+            for tid, t_df in ctrl_df.groupby('track_id'):
+                t_df = t_df.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
+                if t_df.empty:
+                    continue
+                first_row = t_df.iloc[0]
+                d_km = haversine_km(first_row['lat'], first_row['lon'], curr_lat, curr_lon)
+                tid_upper = str(tid).upper()
+                is_match = (
+                    short_id.upper() in tid_upper or
+                    f"WP{short_id.upper().rstrip('W')}" == tid_upper or
+                    str(storm.get('atcf_id', '')).upper() in tid_upper or
+                    (storm_name != '' and storm_name in tid_upper)
+                )
+                if (is_match and d_km <= 800.0) or d_km <= 500.0:
+                    init_str = None
+                    if 'init_time' in t_df.columns and not t_df['init_time'].dropna().empty:
+                        try:
+                            init_dt = pd.to_datetime(t_df['init_time'].dropna().iloc[0])
+                            init_str = init_dt.strftime('%Y-%m-%d %HZ')
+                        except Exception:
+                            pass
+                    cols = ['lead_time_hours', 'lat', 'lon']
+                    if 'wind' in t_df.columns: cols.append('wind')
+                    if 'pressure' in t_df.columns: cols.append('pressure')
+                    res = t_df[cols].copy()
+                    print(f"Found local AIGEFS Control track for {short_id} in {os.path.basename(fpath)} (dist: {d_km:.1f}km)")
+                    return res, init_str, "Control"
+
+    # Live NOAA NOMADS: AIGEFS Control (a000)
+    for day_offset in range(3):
+        date_str = (now_utc - timedelta(days=day_offset)).strftime("%Y%m%d")
+        for rt in ['18', '12', '06', '00']:
+            live_ctrl_url = f"https://nomads.ncep.noaa.gov/pub/data/nccf/com/ens_tracker/prod/aigefs.{date_str}/{rt}/tctrack/a000.t{rt}z.cyclone.trackatcfunix"
+            try:
+                req = urllib.request.Request(live_ctrl_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=4) as response:
+                    content = response.read().decode('utf-8', errors='ignore')
+                rows = []
+                for line in content.splitlines():
+                    parts = [p.strip() for p in line.split(',')]
+                    if len(parts) >= 10:
+                        b, cy, ymdh, tau, la_str, lo_str = parts[0], parts[1], parts[2], parts[5], parts[6], parts[7]
+                        la = parse_atcf_latlon(la_str)
+                        lo = parse_atcf_latlon(lo_str)
+                        try: h = int(tau)
+                        except ValueError: h = 0
+                        row_data = {'track_id': f"{b}{cy}", 'lead_time_hours': h, 'lat': la, 'lon': lo}
+                        if len(parts) > 8 and parts[8].strip():
+                            try: row_data['wind'] = float(parts[8])
+                            except ValueError: pass
+                        if len(parts) > 9 and parts[9].strip():
+                            try: row_data['pressure'] = float(parts[9])
+                            except ValueError: pass
+                        rows.append(row_data)
+                if rows:
+                    live_df = pd.DataFrame(rows)
+                    for tid, t_df in live_df.groupby('track_id'):
+                        t_df = t_df.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
+                        if t_df.empty:
+                            continue
+                        first_row = t_df.iloc[0]
+                        d_km = haversine_km(first_row['lat'], first_row['lon'], curr_lat, curr_lon)
+                        tid_upper = str(tid).upper()
+                        is_match = (
+                            short_id.upper() in tid_upper or
+                            f"WP{short_id.upper().rstrip('W')}" == tid_upper or
+                            str(storm.get('atcf_id', '')).upper() in tid_upper
+                        )
+                        if (is_match and d_km <= 800.0) or d_km <= 500.0:
+                            live_init_str = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]} {rt}Z"
+                            print(f"Successfully fetched live NOAA AIGEFS a000 control track for {short_id} (Run: {live_init_str}, dist: {d_km:.1f}km)")
+                            cols_ret = ['lead_time_hours', 'lat', 'lon']
+                            if 'wind' in t_df.columns: cols_ret.append('wind')
+                            if 'pressure' in t_df.columns: cols_ret.append('pressure')
+                            return t_df[cols_ret].copy(), live_init_str, "Control"
+            except Exception:
+                continue
+
+    # ─────────────────────────────────────────────────────────────
+    # Phase 2: Fallback to Ensemble Mean (AIMN / sample == -1)
+    # ─────────────────────────────────────────────────────────────
+    mean_local_files = [
+        os.path.join(data_dir, 'aigefs_tc_latest.dat'),
+        os.path.join(data_dir, 'aigefs_tc_latest.csv')
+    ] + glob.glob(os.path.join(data_dir, '*aimn*.trackatcfunix')) \
+      + glob.glob(os.path.join('temp_data', '*aimn*.trackatcfunix'))
+
+    for fpath in mean_local_files:
+        if not os.path.exists(fpath):
+            continue
+        if 'latest' not in os.path.basename(fpath):
+            file_mtime = os.path.getmtime(fpath)
+            age_hours = (datetime.now().timestamp() - file_mtime) / 3600.0
+            if age_hours > 72.0:
+                continue
+
+        df = load_and_decrypt_track_file(fpath)
+        if df.empty or 'lat' not in df.columns or 'lon' not in df.columns:
+            continue
+
+        mean_df = pd.DataFrame()
+        if 'sample' in df.columns and (df['sample'] == -1).any():
+            mean_df = df[df['sample'] == -1].copy()
+        elif 'tech' in df.columns:
+            mask = df['tech'].astype(str).str.upper().str.contains('AIMN')
+            mean_df = df[mask].copy()
+        elif 'track_id' in df.columns:
+            mask = df['track_id'].astype(str).str.upper().str.contains('AIMN')
+            mean_df = df[mask].copy()
+
+        if not mean_df.empty:
+            for tid, t_df in mean_df.groupby('track_id'):
+                t_df = t_df.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
+                if t_df.empty:
+                    continue
+                first_row = t_df.iloc[0]
+                d_km = haversine_km(first_row['lat'], first_row['lon'], curr_lat, curr_lon)
+                tid_upper = str(tid).upper()
+                is_match = (
+                    short_id.upper() in tid_upper or
+                    f"WP{short_id.upper().rstrip('W')}" == tid_upper or
+                    str(storm.get('atcf_id', '')).upper() in tid_upper
+                )
+                if (is_match and d_km <= 800.0) or d_km <= 500.0:
+                    init_str = None
+                    if 'init_time' in t_df.columns and not t_df['init_time'].dropna().empty:
+                        try:
+                            init_dt = pd.to_datetime(t_df['init_time'].dropna().iloc[0])
+                            init_str = init_dt.strftime('%Y-%m-%d %HZ')
+                        except Exception:
+                            pass
+                    cols = ['lead_time_hours', 'lat', 'lon']
+                    if 'wind' in t_df.columns: cols.append('wind')
+                    if 'pressure' in t_df.columns: cols.append('pressure')
+                    print(f"Found local AIGEFS ensemble mean track for {short_id} in {os.path.basename(fpath)} (dist: {d_km:.1f}km)")
+                    return t_df[cols].copy(), init_str, "Mean"
+
+    # Live NOAA NOMADS: AIGEFS Ensemble Mean (AIMN)
+    for day_offset in range(3):
+        date_str = (now_utc - timedelta(days=day_offset)).strftime("%Y%m%d")
+        for rt in ['18', '12', '06', '00']:
+            mean_url = f"https://nomads.ncep.noaa.gov/pub/data/nccf/com/ens_tracker/prod/aigefs.{date_str}/{rt}/tctrack/aimn.t{rt}z.cyclone.trackatcfunix"
+            try:
+                req = urllib.request.Request(mean_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=4) as response:
+                    content = response.read().decode('utf-8', errors='ignore')
+                rows = []
+                for line in content.splitlines():
+                    parts = [p.strip() for p in line.split(',')]
+                    if len(parts) >= 10:
+                        b, cy, ymdh, tau, la_str, lo_str = parts[0], parts[1], parts[2], parts[5], parts[6], parts[7]
+                        la = parse_atcf_latlon(la_str)
+                        lo = parse_atcf_latlon(lo_str)
+                        try: h = int(tau)
+                        except ValueError: h = 0
+                        row_data = {'track_id': f"{b}{cy}", 'lead_time_hours': h, 'lat': la, 'lon': lo}
+                        if len(parts) > 8 and parts[8].strip():
+                            try: row_data['wind'] = float(parts[8])
+                            except ValueError: pass
+                        if len(parts) > 9 and parts[9].strip():
+                            try: row_data['pressure'] = float(parts[9])
+                            except ValueError: pass
+                        rows.append(row_data)
+                if rows:
+                    live_df = pd.DataFrame(rows)
+                    for tid, t_df in live_df.groupby('track_id'):
+                        t_df = t_df.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
+                        if t_df.empty:
+                            continue
+                        first_row = t_df.iloc[0]
+                        d_km = haversine_km(first_row['lat'], first_row['lon'], curr_lat, curr_lon)
+                        tid_upper = str(tid).upper()
+                        is_match = (
+                            short_id.upper() in tid_upper or
+                            f"WP{short_id.upper().rstrip('W')}" == tid_upper or
+                            str(storm.get('atcf_id', '')).upper() in tid_upper
+                        )
+                        if (is_match and d_km <= 800.0) or d_km <= 500.0:
+                            live_init_str = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]} {rt}Z"
+                            print(f"Successfully fetched live NOAA AIGEFS ensemble mean track for {short_id} (Run: {live_init_str}, dist: {d_km:.1f}km)")
+                            cols_ret = ['lead_time_hours', 'lat', 'lon']
+                            if 'wind' in t_df.columns: cols_ret.append('wind')
+                            if 'pressure' in t_df.columns: cols_ret.append('pressure')
+                            return t_df[cols_ret].copy(), live_init_str, "Mean"
+            except Exception:
+                continue
+
+    return pd.DataFrame(), None, None
+
+
+# Backward-compatibility alias
+get_aigefs_aimn_mean_track = get_aigefs_control_or_mean_track
 
 
 def get_pagasa_official_track(storm, data_dir='public/data'):
@@ -695,8 +1049,15 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
 
 def get_ecmwf_control_or_paired_track(storm, fpath):
     """
-    Checks if an ECMWF file contains an official control track (sample == 0) or paired/mean track (sample == -1).
-    If available and within 250 km of active storm position, returns that official track DataFrame.
+    Checks if an ECMWF file contains an official deterministic control track:
+    1. Checks explicit flags: 'forecast_type' == 0 or 'is_control' == True.
+    2. Checks standard control member (sample == 0) or paired track (sample == -1).
+    3. Checks ECMWF 1-indexed BUFR ensemble convention:
+       - AIFS: sample == 52 (unperturbed high-resolution deterministic control forecast, descriptor 001092 = 0)
+               fallback to sample == 51 (control forecast type 1)
+       - IFS:  sample == 51 (unperturbed high-resolution deterministic control forecast, descriptor 001092 = 0)
+    Matches candidates to the active storm by ATCF ID, storm name, or nearest distance within 500 km (or 800 km if name/ID matches).
+    Returns that official deterministic control track DataFrame if available, else an empty DataFrame.
     """
     if not os.path.exists(fpath):
         return pd.DataFrame()
@@ -707,16 +1068,42 @@ def get_ecmwf_control_or_paired_track(storm, fpath):
         
     curr_lat, curr_lon = storm['lat'], storm['lon']
     short_id = get_short_atcf_id(storm['atcf_id'])
+    storm_name = str(storm.get('name', '')).strip().upper()
     
-    # Filter control (sample == 0) or paired (sample == -1)
+    # 1. Filter deterministic control member rows
     ctrl_df = pd.DataFrame()
-    if 'sample' in df.columns:
-        ctrl_df = df[df['sample'].isin([0, -1])].copy()
+    if 'forecast_type' in df.columns and (df['forecast_type'] == 0).any():
+        ctrl_df = df[df['forecast_type'] == 0].copy()
+    elif 'is_control' in df.columns and df['is_control'].any():
+        ctrl_df = df[df['is_control'] == True].copy()
+    elif 'sample' in df.columns:
+        if (df['sample'] == 0).any():
+            ctrl_df = df[df['sample'] == 0].copy()
+        elif (df['sample'] == -1).any():
+            ctrl_df = df[df['sample'] == -1].copy()
+        else:
+            fname = os.path.basename(fpath).lower()
+            samples = set(df['sample'].dropna().unique())
+            if 'aifs' in fname:
+                if 52 in samples:
+                    ctrl_df = df[df['sample'] == 52].copy()
+                elif 51 in samples:
+                    ctrl_df = df[df['sample'] == 51].copy()
+            elif 'ifs' in fname:
+                if 51 in samples:
+                    ctrl_df = df[df['sample'] == 51].copy()
+            else:
+                if 52 in samples:
+                    ctrl_df = df[df['sample'] == 52].copy()
+                elif 51 in samples:
+                    ctrl_df = df[df['sample'] == 51].copy()
+
     if ctrl_df.empty:
         return pd.DataFrame()
         
     best_tid = None
-    best_dist = 250.0  # km threshold
+    best_dist = 500.0  # km threshold
+    best_score = float('inf')
     
     for tid, t_df in ctrl_df.groupby('track_id'):
         t_df = t_df.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
@@ -724,7 +1111,24 @@ def get_ecmwf_control_or_paired_track(storm, fpath):
             continue
         first_row = t_df.iloc[0]
         d_km = haversine_km(first_row['lat'], first_row['lon'], curr_lat, curr_lon)
-        if d_km < best_dist:
+        
+        tid_upper = str(tid).upper()
+        is_id_match = (
+            short_id.upper() in tid_upper or 
+            str(storm.get('atcf_id', '')).upper() in tid_upper or 
+            (storm_name != '' and storm_name in tid_upper)
+        )
+        
+        # Prioritize ID/name matches with a score bonus
+        if is_id_match and d_km <= 800.0:
+            score = d_km - 1000.0
+        elif d_km <= best_dist:
+            score = d_km
+        else:
+            continue
+            
+        if score < best_score:
+            best_score = score
             best_dist = d_km
             best_tid = tid
             
@@ -735,7 +1139,7 @@ def get_ecmwf_control_or_paired_track(storm, fpath):
         if 'pressure' in matched.columns: cols_to_keep.append('pressure')
         res = matched[cols_to_keep].dropna(subset=['lat', 'lon'])
         if not res.empty:
-            print(f"Found official ECMWF control/paired track for {short_id} in {os.path.basename(fpath)} (dist: {best_dist:.1f}km)")
+            print(f"Found official ECMWF deterministic control track for {short_id} (track_id: {best_tid}, dist: {best_dist:.1f}km)")
             return res
             
     return pd.DataFrame()
@@ -1031,7 +1435,7 @@ def load_all_actual_tracks_for_storm(storm):
     - FNV3p2 (prefers paired track if available, else calculated ensemble mean)
     - ECMWF IFS (prefers control/paired track if available, else calculated ensemble mean)
     - ECMWF AIFS (prefers control/paired track if available, else calculated ensemble mean)
-    - AIGEFS (prefers aimn track if available, else calculated ensemble mean)
+    - GFS (prefers deterministic/control track if available, else calculated ensemble mean)
     And official agency tracks (PAGASA from cyclone.dat, JTWC from NOAA/Navy ATCF, JMA from JMA Portal).
     Also returns latest model run initialization strings.
     NO synthetic or fake tracks are generated. If a track does not exist, it is NOT displayed.
@@ -1043,17 +1447,17 @@ def load_all_actual_tracks_for_storm(storm):
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public', 'data')
     fallback_cycle = get_fallback_cycle_str(storm)
     
-    # 1. WeatherNext Cyclone (WNCv3): Check paired file first, fallback to calculated ensemble mean
+    # 1. WeatherNext 3 Cyclone (WNCv3): Check paired file first, fallback to calculated ensemble mean
     wnc_paired = get_fnv3_paired_mean_track(storm, data_dir)
     if not wnc_paired.empty:
-        ensemble_means['WeatherNext Cyclone'] = wnc_paired
+        ensemble_means['WeatherNext 3 Cyclone'] = wnc_paired
     else:
-        for raw_cand in ['wnv3_latest.dat', 'wnv3_latest.csv']:
+        for raw_cand in ['wnv3_paired_latest.dat', 'wnv3_paired_latest.csv', 'wnv3_latest.dat', 'wnv3_latest.csv']:
             cand_path = os.path.join(data_dir, raw_cand)
             if os.path.exists(cand_path):
                 wnc_calc = get_actual_ensemble_mean_for_storm(storm, cand_path)
                 if not wnc_calc.empty:
-                    ensemble_means['WeatherNext Cyclone'] = wnc_calc
+                    ensemble_means['WeatherNext 3 Cyclone'] = wnc_calc
                     break
 
     for wnc_f in [
@@ -1067,14 +1471,14 @@ def load_all_actual_tracks_for_storm(storm):
             if 'init_time' in df_wnc.columns and not df_wnc['init_time'].dropna().empty:
                 try:
                     dt = pd.to_datetime(df_wnc['init_time'].dropna().iloc[0])
-                    track_inits['WeatherNext Cyclone'] = dt.strftime('%Y-%m-%d %HZ')
+                    track_inits['WeatherNext 3 Cyclone'] = dt.strftime('%Y-%m-%d %HZ')
                     break
                 except Exception:
                     pass
-    if 'WeatherNext Cyclone' not in track_inits:
-        track_inits['WeatherNext Cyclone'] = fallback_cycle
+    if 'WeatherNext 3 Cyclone' not in track_inits:
+        track_inits['WeatherNext 3 Cyclone'] = fallback_cycle
 
-    # 2. ECMWF IFS: Check control/paired track first, fallback to calculated ensemble mean
+    # 2. ECMWF IFS: Check deterministic control track first, fallback to calculated ensemble mean
     ifs_files = [os.path.join(data_dir, 'ifs_tc_latest.dat'), os.path.join(data_dir, 'ifs_tc_latest.csv')]
     for fpath in ifs_files:
         if os.path.exists(fpath):
@@ -1092,18 +1496,21 @@ def load_all_actual_tracks_for_storm(storm):
                 except Exception:
                     pass
 
+            base_ifs_init = track_inits.get('ECMWF IFS', fallback_cycle)
             ifs_ctrl = get_ecmwf_control_or_paired_track(storm, fpath)
             if not ifs_ctrl.empty:
                 ensemble_means['ECMWF IFS'] = ifs_ctrl
+                track_inits['ECMWF IFS'] = f"{base_ifs_init} (Control)"
             else:
                 ifs_calc = get_actual_ensemble_mean_for_storm(storm, fpath)
                 if not ifs_calc.empty:
                     ensemble_means['ECMWF IFS'] = ifs_calc
+                    track_inits['ECMWF IFS'] = f"{base_ifs_init} (Mean)"
             break
     if 'ECMWF IFS' not in track_inits:
         track_inits['ECMWF IFS'] = fallback_cycle
 
-    # 3. ECMWF AIFS: Check control/paired track first, fallback to calculated ensemble mean
+    # 3. ECMWF AIFS: Check deterministic control track first, fallback to calculated ensemble mean
     aifs_files = [os.path.join(data_dir, 'aifs_tc_latest.dat'), os.path.join(data_dir, 'aifs_tc_latest.csv')]
     for fpath in aifs_files:
         if os.path.exists(fpath):
@@ -1121,38 +1528,64 @@ def load_all_actual_tracks_for_storm(storm):
                 except Exception:
                     pass
 
+            base_aifs_init = track_inits.get('ECMWF AIFS', fallback_cycle)
             aifs_ctrl = get_ecmwf_control_or_paired_track(storm, fpath)
             if not aifs_ctrl.empty:
                 ensemble_means['ECMWF AIFS'] = aifs_ctrl
+                track_inits['ECMWF AIFS'] = f"{base_aifs_init} (Control)"
             else:
                 aifs_calc = get_actual_ensemble_mean_for_storm(storm, fpath)
                 if not aifs_calc.empty:
                     ensemble_means['ECMWF AIFS'] = aifs_calc
+                    track_inits['ECMWF AIFS'] = f"{base_aifs_init} (Mean)"
             break
     if 'ECMWF AIFS' not in track_inits:
         track_inits['ECMWF AIFS'] = fallback_cycle
 
-    # 4-7. Concurrent Fetching for Official Agencies & AIGEFS
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        f_aigefs = executor.submit(get_aigefs_aimn_mean_track, storm, data_dir)
+    # 4-8. Concurrent Fetching for Official Agencies, GFS & AIGEFS
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        f_gfs = executor.submit(get_gfs_control_or_mean_track, storm, data_dir)
+        f_aigefs = executor.submit(get_aigefs_control_or_mean_track, storm, data_dir)
         f_pagasa = executor.submit(get_pagasa_official_track, storm, data_dir)
         f_jtwc = executor.submit(get_jtwc_official_track, storm, data_dir)
         f_jma = executor.submit(get_jma_official_track, storm, data_dir)
         
-        aigefs_aimn, aigefs_init_str = f_aigefs.result()
+        gfs_track, gfs_init_str, gfs_track_type = f_gfs.result()
+        aigefs_track, aigefs_init_str, aigefs_track_type = f_aigefs.result()
         pagasa_official, pagasa_init_str = f_pagasa.result()
         jtwc_official = f_jtwc.result()
         jma_official, jma_init_str = f_jma.result()
 
-    # 4. AIGEFS: Check aimn mean track file first, fallback to calculated ensemble mean
-    if not aigefs_aimn.empty:
-        ensemble_means['AIGEFS'] = aigefs_aimn
-        if aigefs_init_str:
-            track_inits['AIGEFS'] = aigefs_init_str
+    # 4. GFS: Check deterministic control track first, fallback to calculated ensemble mean
+    if not gfs_track.empty:
+        ensemble_means['GFS'] = gfs_track
+        type_str = f" ({gfs_track_type})" if gfs_track_type else ""
+        track_inits['GFS'] = f"{gfs_init_str or fallback_cycle}{type_str}"
     else:
-        aigefs_calc = get_actual_ensemble_mean_for_storm(storm, os.path.join(data_dir, 'aigefs_tc_latest.dat'))
-        if not aigefs_calc.empty:
-            ensemble_means['AIGEFS'] = aigefs_calc
+        for f_cand in ['gefs_tc_latest.dat', 'gfs_tc_latest.dat']:
+            cand_p = os.path.join(data_dir, f_cand)
+            if os.path.exists(cand_p):
+                gfs_calc = get_actual_ensemble_mean_for_storm(storm, cand_p)
+                if not gfs_calc.empty:
+                    ensemble_means['GFS'] = gfs_calc
+                    track_inits['GFS'] = f"{fallback_cycle} (Mean)"
+                    break
+            
+    if 'GFS' not in track_inits:
+        track_inits['GFS'] = fallback_cycle
+
+    # 5. AIGEFS: Check deterministic control track first, fallback to ensemble mean
+    if not aigefs_track.empty:
+        ensemble_means['AIGEFS'] = aigefs_track
+        type_str = f" ({aigefs_track_type})" if aigefs_track_type else ""
+        track_inits['AIGEFS'] = f"{aigefs_init_str or fallback_cycle}{type_str}"
+    else:
+        aigefs_cand = os.path.join(data_dir, 'aigefs_tc_latest.dat')
+        if os.path.exists(aigefs_cand):
+            aigefs_calc = get_actual_ensemble_mean_for_storm(storm, aigefs_cand)
+            if not aigefs_calc.empty:
+                ensemble_means['AIGEFS'] = aigefs_calc
+                track_inits['AIGEFS'] = f"{fallback_cycle} (Mean)"
             
     if 'AIGEFS' not in track_inits:
         track_inits['AIGEFS'] = fallback_cycle
@@ -1715,7 +2148,7 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
         fontsize=11.5, fontweight='bold', color=TEXT_PRI, transform=ax_head.transAxes, ha='right', va='center'
     )
     ax_head.text(
-        0.975, 0.28, "Official Agencies & Multi-Model Ensembles",
+        0.975, 0.28, "Official Agencies & NWP / AI Models",
         fontsize=9.0, color='#38bdf8', transform=ax_head.transAxes, ha='right', va='center'
     )
     
@@ -1844,46 +2277,78 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     )
     panel_ax.add_patch(panel_box)
     
-    # Left Section: OFFICIAL AGENCIES (2-column layout: PAGASA, JTWC on left; JMA on right)
-    panel_ax.text(0.025, 0.88, "OFFICIAL AGENCIES", color='#00d2ff', fontsize=9.5, weight='bold', transform=panel_ax.transAxes)
+    # ── Section 1: OFFICIAL AGENCIES ──────────────────────────────────
+    panel_ax.text(0.020, 0.88, "OFFICIAL AGENCIES", color='#00d2ff', fontsize=9.2, weight='bold', transform=panel_ax.transAxes)
     for idx, (ag_name, ag_color) in enumerate(AGENCY_COLORS.items()):
         is_active = ag_name in agency_tracks and not agency_tracks[ag_name].empty
         line_color = ag_color if is_active else '#334155'
         text_color = TEXT_PRI if is_active else TEXT_MUT
         
         if idx < 2:
-            x_start, x_text = 0.025, 0.08
+            x_start, x_text = 0.020, 0.054
             y_val = 0.68 - (idx * 0.28)
         else:
-            x_start, x_text = 0.235, 0.29
+            x_start, x_text = 0.142, 0.176
             y_val = 0.68 - ((idx - 2) * 0.28)
             
-        panel_ax.plot([x_start, x_start + 0.04], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.8, transform=panel_ax.transAxes)
-        panel_ax.text(x_text, y_val + 0.03, ag_name, color=text_color, fontsize=8.8, weight='bold', transform=panel_ax.transAxes)
+        panel_ax.plot([x_start, x_start + 0.026], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.8, transform=panel_ax.transAxes)
+        panel_ax.text(x_text, y_val + 0.03, ag_name, color=text_color, fontsize=8.5, weight='bold', transform=panel_ax.transAxes)
         run_str = track_inits.get(ag_name, 'Latest' if is_active else 'Not Available')
-        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=7.2, transform=panel_ax.transAxes)
+        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.8, transform=panel_ax.transAxes)
         
-    # Vertical Divider Line
-    panel_ax.axvline(0.44, ymin=0.1, ymax=0.9, color=CARD_BORDER, linewidth=1.0)
+    # Vertical Divider Line 1 (placed with generous clearance after JMA text)
+    panel_ax.axvline(0.278, ymin=0.10, ymax=0.90, color=CARD_BORDER, linewidth=1.0)
     
-    # Right Section: ENSEMBLE MEANS
-    panel_ax.text(0.47, 0.88, "ENSEMBLE MEANS & AI MODELS", color='#a855f7', fontsize=9.5, weight='bold', transform=panel_ax.transAxes)
-    for idx, (ens_name, ens_color) in enumerate(ENSEMBLE_COLORS.items()):
-        is_active = ens_name in ensemble_means and not ensemble_means[ens_name].empty
-        line_color = ens_color if is_active else '#334155'
+    # ── Section 2: NWP MODELS ─────────────────────────────────────────
+    panel_ax.text(0.298, 0.88, "NWP MODELS", color='#60a5fa', fontsize=9.2, weight='bold', transform=panel_ax.transAxes)
+    nwp_items = [
+        ('ECMWF IFS', NWP_COLORS['ECMWF IFS']),
+        ('GFS', NWP_COLORS['GFS'])
+    ]
+    for idx, (m_name, m_color) in enumerate(nwp_items):
+        is_active = m_name in ensemble_means and not ensemble_means[m_name].empty
+        line_color = m_color if is_active else '#334155'
+        text_color = TEXT_PRI if is_active else TEXT_MUT
+        
+        x_start, x_text = 0.298, 0.332
+        y_val = 0.68 - (idx * 0.28)
+        
+        panel_ax.plot([x_start, x_start + 0.026], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
+        panel_ax.text(x_text, y_val + 0.03, m_name, color=text_color, fontsize=8.2, weight='bold', transform=panel_ax.transAxes)
+        run_str = track_inits.get(m_name, 'Latest' if is_active else 'Not Available')
+        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.7, transform=panel_ax.transAxes)
+        
+    # Vertical Divider Line 2 (placed with generous clearance after ECMWF IFS / GFS Control text)
+    panel_ax.axvline(0.485, ymin=0.10, ymax=0.90, color=CARD_BORDER, linewidth=1.0)
+    
+    # ── Section 3: AI MODELS ──────────────────────────────────────────
+    panel_ax.text(0.505, 0.88, "AI MODELS:", color='#a855f7', fontsize=9.2, weight='bold', transform=panel_ax.transAxes)
+    ai_items = [
+        ('AIGEFS', AI_COLORS['AIGEFS']),
+        ('ECMWF AIFS', AI_COLORS['ECMWF AIFS']),
+        ('WeatherNext 3 Cyclone', AI_COLORS['WeatherNext 3 Cyclone'])
+    ]
+    for idx, (m_name, m_color) in enumerate(ai_items):
+        is_active = (m_name in ensemble_means and not ensemble_means[m_name].empty) or \
+                    (m_name == 'WeatherNext 3 Cyclone' and 'WeatherNext Cyclone' in ensemble_means and not ensemble_means['WeatherNext Cyclone'].empty)
+        line_color = m_color if is_active else '#334155'
         text_color = TEXT_PRI if is_active else TEXT_MUT
         
         if idx < 2:
-            x_start, x_text = 0.47, 0.525
+            x_start, x_text = 0.505, 0.539
             y_val = 0.68 - (idx * 0.28)
         else:
-            x_start, x_text = 0.73, 0.785
-            y_val = 0.68 - ((idx - 2) * 0.28)
+            x_start, x_text = 0.695, 0.729
+            y_val = 0.68
             
-        panel_ax.plot([x_start, x_start + 0.04], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
-        panel_ax.text(x_text, y_val + 0.03, ens_name, color=text_color, fontsize=8.8, weight='bold', transform=panel_ax.transAxes)
-        run_str = track_inits.get(ens_name, 'Latest' if is_active else 'Not Available')
-        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=7.2, transform=panel_ax.transAxes)
+        panel_ax.plot([x_start, x_start + 0.026], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
+        panel_ax.text(x_text, y_val + 0.03, m_name, color=text_color, fontsize=8.2, weight='bold', transform=panel_ax.transAxes)
+        run_str = track_inits.get(m_name)
+        if not run_str and m_name == 'WeatherNext 3 Cyclone':
+            run_str = track_inits.get('WeatherNext Cyclone')
+        if not run_str:
+            run_str = 'Latest' if is_active else 'Not Available'
+        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.7, transform=panel_ax.transAxes)
         
     out_abs = os.path.normpath(os.path.abspath(output_filepath))
     os.makedirs(os.path.dirname(out_abs), exist_ok=True)

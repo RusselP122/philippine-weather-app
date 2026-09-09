@@ -81,6 +81,10 @@ def extract_tc_data(filename):
                 break
                 
         memberNumber = codes_get_array(bufr, "ensembleMemberNumber")
+        try:
+            forecastType = codes_get_array(bufr, "ensembleForecastType")
+        except Exception:
+            forecastType = None
         
         # Code 3: LOCATION OF MAXIMUM WIND
         latitudeMaxWind0 = codes_get_array(bufr, '#3#latitude')
@@ -143,6 +147,8 @@ def extract_tc_data(filename):
         init_time = f"{year}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}:00"
         
         for m in range(len(memberNumber)):
+            ft = int(forecastType[m]) if (forecastType is not None and m < len(forecastType)) else None
+            is_ctrl = bool(ft == 0) if ft is not None else False
             for s in range(len(timePeriod)):
                 if s not in data[m]:
                     continue
@@ -158,6 +164,8 @@ def extract_tc_data(filename):
                         'init_time': init_time,
                         'track_id': storm_id,
                         'sample': memberNumber[m],
+                        'forecast_type': ft,
+                        'is_control': is_ctrl,
                         'lead_time_hours': timePeriod[s],
                         'lat': data[m][s][0],
                         'lon': data[m][s][1],
