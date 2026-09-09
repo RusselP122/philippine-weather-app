@@ -3,13 +3,13 @@
   "storm_name": "TC 22W",
   "track_id": "WP222026",
   "latest": {
-    "lat": 34.3,
-    "lon": 135.9,
+    "lat": 34.8,
+    "lon": 137.8,
     "pressure_hpa": 1003.0,
     "wind_kt": 25.0,
     "wind_kmh": 46,
-    "movement": "ENE at 26.5 km/h (14.3 kt)",
-    "init_time": "2026-09-09 06:00",
+    "movement": "ENE at 30.4 km/h (16.4 kt)",
+    "init_time": "2026-09-09 12:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -404,6 +404,15 @@
       "cycle": "2026-09-09 06:00",
       "lat": 34.3,
       "lon": 135.9,
+      "pressure_hpa": 1003.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-09-09 12:00",
+      "lat": 34.8,
+      "lon": 137.8,
       "pressure_hpa": 1003.0,
       "wind_kt": 25.0,
       "wind_kmh": 46,
