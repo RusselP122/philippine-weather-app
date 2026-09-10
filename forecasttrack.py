@@ -1024,6 +1024,26 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
         valid_pts = candidate_pts
 
     t0 = valid_pts[0]['datetime']
+    
+    # Check bulletin age relative to storm initialization time
+    ref_time = None
+    if storm.get('init_time'):
+        try:
+            ref_time = pd.to_datetime(str(storm['init_time']).split('.')[0])
+            if ref_time.tzinfo is None:
+                ref_time = ref_time.tz_localize(timezone.utc)
+        except Exception:
+            pass
+    if ref_time is None:
+        ref_time = datetime.now(timezone.utc)
+        
+    if t0:
+        t0_utc = t0.replace(tzinfo=timezone.utc)
+        age_hours = (ref_time - t0_utc).total_seconds() / 3600.0
+        if age_hours > 18.0:
+            print(f"Notice: PAGASA bulletin for {short_id} is outdated ({age_hours:.1f}h old); PAGASA has stopped forecasting.")
+            return pd.DataFrame(), None
+
     rows = []
     for pt in valid_pts:
         tau = max(0.0, (pt['datetime'] - t0).total_seconds() / 3600.0)
@@ -1035,10 +1055,21 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
         })
 
     df = pd.DataFrame(rows).drop_duplicates(subset=['lead_time_hours']).sort_values('lead_time_hours')
+    if df.empty:
+        return pd.DataFrame(), None
+        
+    # Check if PAGASA has future forecast positions (not just past / analysis points)
+    future_pts = df[df['lead_time_hours'] > 0]
+    if future_pts.empty or len(df) < 2:
+        print(f"Notice: PAGASA bulletin for {short_id} has no future forecast positions; skipping PAGASA display.")
+        return pd.DataFrame(), None
+
+    first_pt = df.iloc[0]
+    first_dist_km = haversine_km(first_pt['lat'], first_pt['lon'], curr_lat, curr_lon)
     min_dist_km = min(haversine_km(r['lat'], r['lon'], curr_lat, curr_lon) for _, r in df.iterrows())
     
-    # Accept PAGASA track ONLY if within 350 km of the storm center
-    if min_dist_km <= 350.0:
+    # Accept PAGASA track ONLY if active, starting fix within 350 km of storm center
+    if first_dist_km <= 350.0 and min_dist_km <= 350.0:
         if matched_name:
             storm['pagasa_name'] = matched_name
         print(f"Matched official PAGASA track for {short_id} (Name: {matched_name}, dist: {min_dist_km:.1f}km)")
@@ -1159,16 +1190,16 @@ def get_jtwc_official_track(storm, data_dir='public/data'):
     
     m = re.search(r'(\d{2})([A-Z])', short_id)
     if not m:
-        return pd.DataFrame()
+        return pd.DataFrame(), None
         
     num_str, basin_letter = m.group(1), m.group(2)
     if basin_letter != 'W':
-        return pd.DataFrame()  # Western Pacific storms only
+        return pd.DataFrame(), None  # Western Pacific storms only
     
     # Skip invests (90-99) — JTWC only issues warnings for numbered storms
     num_val = int(num_str)
     if num_val >= 90:
-        return pd.DataFrame()
+        return pd.DataFrame(), None
         
     now_year = datetime.now(timezone.utc).year
     year_short = str(now_year)[-2:]
@@ -1204,7 +1235,46 @@ def get_jtwc_official_track(storm, data_dir='public/data'):
             pass
 
     if not content.strip():
-        return pd.DataFrame()
+        return pd.DataFrame(), None
+
+    # Check if JTWC has issued its final warning and ceased advisories
+    content_upper = content.upper()
+    if (
+        "THIS IS THE FINAL WARNING" in content_upper
+        or "FINAL WARNING ON THIS SYSTEM" in content_upper
+        or "FINAL WARNING BY THE JOINT TYPHOON" in content_upper
+        or bool(re.search(r'\bFINAL\s+WARNING\b', content_upper))
+    ):
+        print(f"Notice: JTWC has issued its final warning and ceased advisories for {short_id}; skipping JTWC display.")
+        return pd.DataFrame(), None
+
+    # Parse warning timestamp YYYYMMDDHH (e.g. 2026090906 22W)
+    warn_dt = None
+    dt_match = re.search(r'\b(20\d{8})\s+' + re.escape(short_id), content)
+    if not dt_match:
+        dt_match = re.search(r'\b(20\d{8})\s+\d+[A-Z]', content)
+    if dt_match:
+        try:
+            warn_dt = datetime.strptime(dt_match.group(1), "%Y%m%d%H").replace(tzinfo=timezone.utc)
+        except Exception:
+            pass
+
+    ref_time = None
+    if storm.get('init_time'):
+        try:
+            ref_time = pd.to_datetime(str(storm['init_time']).split('.')[0])
+            if ref_time.tzinfo is None:
+                ref_time = ref_time.tz_localize(timezone.utc)
+        except Exception:
+            pass
+    if ref_time is None:
+        ref_time = datetime.now(timezone.utc)
+
+    if warn_dt:
+        age_hours = (ref_time - warn_dt).total_seconds() / 3600.0
+        if age_hours > 18.0:
+            print(f"Notice: JTWC warning for {short_id} is outdated ({age_hours:.1f}h old); JTWC has ceased forecasting.")
+            return pd.DataFrame(), None
 
     curr_lat, curr_lon = storm['lat'], storm['lon']
     rows = []
@@ -1273,21 +1343,30 @@ def get_jtwc_official_track(storm, data_dir='public/data'):
                     continue
 
     if not rows:
-        return pd.DataFrame()
+        return pd.DataFrame(), None
 
     df = pd.DataFrame(rows).drop_duplicates(subset=['lead_time_hours']).sort_values('lead_time_hours')
+    if df.empty:
+        return pd.DataFrame(), None
+
+    future_pts = df[df['lead_time_hours'] > 0]
+    if future_pts.empty or len(df) < 2:
+        print(f"Notice: JTWC track for {short_id} has no future forecast positions; skipping JTWC display.")
+        return pd.DataFrame(), None
+
     first_pt = df.iloc[0]
     dist_km = haversine_km(first_pt['lat'], first_pt['lon'], curr_lat, curr_lon)
     
-    if dist_km <= 500.0:
-        print(f"Matched official JTWC track for {short_id} (dist: {dist_km:.1f}km)")
+    if dist_km <= 350.0:
+        init_str = warn_dt.strftime("%Y-%m-%d %HZ") if warn_dt else "Latest Warning"
+        print(f"Matched official JTWC track for {short_id} (dist: {dist_km:.1f}km, run: {init_str})")
         cols_ret = ['lead_time_hours', 'lat', 'lon']
         if 'wind' in df.columns: cols_ret.append('wind')
         if 'pressure' in df.columns: cols_ret.append('pressure')
         ret_df = df[cols_ret].copy()
-        return ret_df
+        return ret_df, init_str
         
-    return pd.DataFrame()
+    return pd.DataFrame(), None
 
 
 def parse_jma_latlon(val_str):
@@ -1315,6 +1394,17 @@ def get_jma_official_track(storm, data_dir='public/data'):
     storm_name = storm.get('name', '').upper()
     short_id = get_short_atcf_id(storm['atcf_id'])
     
+    ref_time = None
+    if storm.get('init_time'):
+        try:
+            ref_time = pd.to_datetime(str(storm['init_time']).split('.')[0])
+            if ref_time.tzinfo is None:
+                ref_time = ref_time.tz_localize(timezone.utc)
+        except Exception:
+            pass
+    if ref_time is None:
+        ref_time = datetime.now(timezone.utc)
+
     for i in range(60, 66):
         url = f"https://www.data.jma.go.jp/multi/data/VPTW60/{i}_en.json"
         local_path = os.path.join(data_dir, f"jma_vptw60_{i}.json")
@@ -1342,6 +1432,25 @@ def get_jma_official_track(storm, data_dir='public/data'):
 
         try:
             data = json.loads(res)
+            
+            # If the remark indicates cyclone dissipated, ceased, or transitioned, skip
+            remark = str(data.get('remark', '')).strip()
+            if any(k in remark for k in ['消滅', '低気圧化', '台風消滅', '温帯低気圧']):
+                print(f"Notice: JMA product {i} indicates system ceased/dissipated ({remark}); skipping JMA display.")
+                continue
+
+            target_dt_str = data.get('targetDateTime', '') or data.get('reportDateTime', '')
+            tdt = None
+            if target_dt_str:
+                try:
+                    tdt = datetime.strptime(target_dt_str, "%Y/%m/%d %H:%M").replace(tzinfo=timezone.utc)
+                    age_hours = (ref_time - tdt).total_seconds() / 3600.0
+                    if age_hours > 18.0:
+                        print(f"Notice: JMA product {i} for {short_id} is outdated ({age_hours:.1f}h old); skipping.")
+                        continue
+                except Exception:
+                    pass
+
             infos = data.get('meteorologicalInfos', [])
             if not infos:
                 continue
@@ -1359,8 +1468,11 @@ def get_jma_official_track(storm, data_dir='public/data'):
             dist_km = haversine_km(first_lat, first_lon, curr_lat, curr_lon)
             jma_name = str(data.get('name', '')).upper()
             
-            if dist_km <= 300.0 or (storm_name and storm_name != 'INVEST' and storm_name in jma_name):
-                print(f"Matched official JMA track for {short_id} (ID {i}, Name={jma_name}, dist={dist_km:.1f}km)")
+            # Enforce 350 km distance threshold even if name matches
+            if dist_km > 350.0:
+                continue
+
+            if dist_km <= 250.0 or (storm_name and storm_name != 'INVEST' and storm_name in jma_name):
                 rows = []
                 t0 = None
                 for pt in infos:
@@ -1382,7 +1494,7 @@ def get_jma_official_track(storm, data_dir='public/data'):
                         w_part = pt.get('windPart', {}) or {}
                         wind_kt_str = w_part.get('windSpeedKnot')
                         if wind_kt_str is not None:
-                            try: row_data['wind'] = float(wind_kt_str)  # already 10-min kt
+                            try: row_data['wind'] = float(wind_kt_str)
                             except (ValueError, TypeError): pass
                         # Pressure from centerPart
                         pres_val = c_part.get('pressure')
@@ -1392,20 +1504,29 @@ def get_jma_official_track(storm, data_dir='public/data'):
                         rows.append(row_data)
                 
                 df = pd.DataFrame(rows)
-                if not df.empty:
-                    cols_ret = ['lead_time_hours', 'lat', 'lon']
-                    if 'wind' in df.columns: cols_ret.append('wind')
-                    if 'pressure' in df.columns: cols_ret.append('pressure')
-                    # Extract init time from targetDateTime or first forecast point
-                    init_str = "Latest"
-                    target_dt_str = data.get('targetDateTime', '') or data.get('reportDateTime', '')
-                    if target_dt_str:
-                        try:
-                            tdt = datetime.strptime(target_dt_str, "%Y/%m/%d %H:%M")
-                            init_str = tdt.strftime("%Y-%m-%d %HZ")
-                        except (ValueError, TypeError):
-                            pass
-                    return df[cols_ret], init_str
+                if df.empty:
+                    continue
+
+                future_pts = df[df['lead_time_hours'] > 0]
+                if future_pts.empty or len(df) < 2:
+                    print(f"Notice: JMA product {i} for {short_id} has no future forecast positions; skipping.")
+                    continue
+
+                print(f"Matched official JMA track for {short_id} (ID {i}, Name={jma_name}, dist={dist_km:.1f}km)")
+                cols_ret = ['lead_time_hours', 'lat', 'lon']
+                if 'wind' in df.columns: cols_ret.append('wind')
+                if 'pressure' in df.columns: cols_ret.append('pressure')
+                # Extract init time from targetDateTime or first forecast point
+                init_str = "Latest"
+                if tdt:
+                    init_str = tdt.strftime("%Y-%m-%d %HZ")
+                elif target_dt_str:
+                    try:
+                        p_dt = datetime.strptime(target_dt_str, "%Y/%m/%d %H:%M")
+                        init_str = p_dt.strftime("%Y-%m-%d %HZ")
+                    except (ValueError, TypeError):
+                        pass
+                return df[cols_ret], init_str
         except Exception:
             continue
             
@@ -1553,7 +1674,7 @@ def load_all_actual_tracks_for_storm(storm):
         gfs_track, gfs_init_str, gfs_track_type = f_gfs.result()
         aigefs_track, aigefs_init_str, aigefs_track_type = f_aigefs.result()
         pagasa_official, pagasa_init_str = f_pagasa.result()
-        jtwc_official = f_jtwc.result()
+        jtwc_official, jtwc_init_str = f_jtwc.result()
         jma_official, jma_init_str = f_jma.result()
 
     # 4. GFS: Check deterministic control track first, fallback to calculated ensemble mean
@@ -1591,25 +1712,25 @@ def load_all_actual_tracks_for_storm(storm):
         track_inits['AIGEFS'] = fallback_cycle
 
     # 5. Official PAGASA track from cyclone.dat (pubfiles.pagasa.dost.gov.ph)
-    if not pagasa_official.empty:
+    if isinstance(pagasa_official, pd.DataFrame) and not pagasa_official.empty and len(pagasa_official) >= 2:
         agency_tracks['PAGASA'] = pagasa_official
         track_inits['PAGASA'] = pagasa_init_str or "Latest"
     else:
-        print(f"No official PAGASA track available for {storm['atcf_id']}; skipping PAGASA display.")
+        print(f"No active official PAGASA track available for {storm['atcf_id']}; skipping PAGASA display.")
 
     # 6. Official JTWC track from NOAA ATCF / Navy JTWC
-    if not jtwc_official.empty:
+    if isinstance(jtwc_official, pd.DataFrame) and not jtwc_official.empty and len(jtwc_official) >= 2:
         agency_tracks['JTWC'] = jtwc_official
-        track_inits['JTWC'] = "Latest Warning"
+        track_inits['JTWC'] = jtwc_init_str or "Latest Warning"
     else:
-        print(f"No official JTWC track available for {storm['atcf_id']}; skipping JTWC display.")
+        print(f"No active official JTWC track available for {storm['atcf_id']}; skipping JTWC display.")
 
     # 7. Official JMA track from Japan Meteorological Agency portal (data.jma.go.jp)
-    if not jma_official.empty:
+    if isinstance(jma_official, pd.DataFrame) and not jma_official.empty and len(jma_official) >= 2:
         agency_tracks['JMA'] = jma_official
         track_inits['JMA'] = jma_init_str or "Latest"
     else:
-        print(f"No official JMA track available for {storm['atcf_id']}; skipping JMA display.")
+        print(f"No active official JMA track available for {storm['atcf_id']}; skipping JMA display.")
             
     return agency_tracks, ensemble_means, track_inits
 
@@ -2293,7 +2414,7 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             
         panel_ax.plot([x_start, x_start + 0.026], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.8, transform=panel_ax.transAxes)
         panel_ax.text(x_text, y_val + 0.03, ag_name, color=text_color, fontsize=8.5, weight='bold', transform=panel_ax.transAxes)
-        run_str = track_inits.get(ag_name, 'Latest' if is_active else 'Not Available')
+        run_str = track_inits.get(ag_name, 'Latest') if is_active else 'Not Available'
         panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.8, transform=panel_ax.transAxes)
         
     # Vertical Divider Line 1 (placed with generous clearance after JMA text)
