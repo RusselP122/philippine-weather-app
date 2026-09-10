@@ -532,12 +532,12 @@ def main():
 
 
     # Water Body Labels (Adaptive based on extent visibility)
-    if extent[0] <= 133.0 <= extent[1] and extent[2] <= 16.5 <= extent[3]:
-        ax.text(133.0, 16.5, "PHILIPPINE  SEA", fontsize=13, color="#64748b", fontweight="bold", fontstyle="italic",
-                alpha=0.65, transform=ccrs.PlateCarree(), ha="center", va="center", zorder=4)
-    if extent[0] <= 116.0 <= extent[1] and extent[2] <= 14.5 <= extent[3]:
-        ax.text(116.0, 14.5, "WEST  PHILIPPINE  SEA", fontsize=11, color="#64748b", fontweight="bold", fontstyle="italic",
-                alpha=0.60, transform=ccrs.PlateCarree(), ha="center", va="center", zorder=4)
+    if (extent[0] + 1.8) <= 131.0 <= (extent[1] - 1.8) and (extent[2] + 1.0) <= 13.5 <= (extent[3] - 1.0):
+        ax.text(131.0, 13.5, "Philippine\nSea", fontsize=10.5, color="#64748b", fontweight="bold", fontstyle="italic",
+                alpha=0.65, transform=ccrs.PlateCarree(), ha="center", va="center", multialignment="center", zorder=4)
+    if (extent[0] + 1.8) <= 118.5 <= (extent[1] - 1.8) and (extent[2] + 1.0) <= 13.0 <= (extent[3] - 1.0):
+        ax.text(118.5, 13.0, "West Philippine\nSea", fontsize=7.8, color="#64748b", fontweight="bold", fontstyle="italic",
+                alpha=0.60, transform=ccrs.PlateCarree(), ha="center", va="center", multialignment="center", zorder=4)
     if extent[0] <= 147.0 <= extent[1] and extent[2] <= 8.5 <= extent[3]:
         ax.text(147.0, 8.5, "PACIFIC  OCEAN", fontsize=14, color="#64748b", fontweight="bold", fontstyle="italic",
                 alpha=0.60, transform=ccrs.PlateCarree(), ha="center", va="center", zorder=4)
@@ -848,8 +848,19 @@ def main():
              fontsize=6.8, fontweight="bold", color="#94a3b8", ha="center", va="center", multialignment="center", zorder=52)
 
     # ── Save Outputs ──────────────────────────────────────────────────────────
-    plt.savefig(OUTPUT_IMAGE, dpi=140, facecolor="#0b131e")
+    tmp_output = OUTPUT_IMAGE + ".tmp.png"
+    plt.savefig(tmp_output, dpi=140, facecolor="#0b131e")
     plt.close()
+    try:
+        import time
+        for _ in range(5):
+            try:
+                os.replace(tmp_output, OUTPUT_IMAGE)
+                break
+            except Exception:
+                time.sleep(0.3)
+    except Exception as e:
+        print(f"Warning replacing output image: {e}")
     print(f"Broadcast map saved successfully to: {OUTPUT_IMAGE}")
 
     # JSON export for frontend compatibility

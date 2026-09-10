@@ -606,16 +606,16 @@ def pre_render_maps(ds, date_str, hour_str, time_dim, n_steps, variables):
             ("PALAU", 134.5, 7.5, 10.0, "heavy"),
             ("YAP", 138.1, 9.5, 10.0, "heavy"),
             ("PACIFIC  OCEAN", 148.0, 23.5, 13.5, "bold"),
-            ("PHILIPPINE  SEA", 131.0, 17.5, 12.5, "bold"),
-            ("WEST  PHILIPPINE  SEA", 115.5, 15.0, 10.5, "bold"),
+            ("Philippine\nSea", 131.0, 14.5, 10.5, "bold"),
+            ("West Philippine\nSea", 118.5, 13.0, 7.8, "bold"),
         ]
 
         for lbl, clon, clat, fsize, fweight in geo_labels:
             if (extent[0] + 1.0 <= clon <= extent[1] - 1.0) and (extent[2] + 1.0 <= clat <= extent[3] - 1.0):
-                if "OCEAN" in lbl or "SEA" in lbl:
+                if "OCEAN" in lbl.upper() or "SEA" in lbl.upper():
                     ax.text(clon, clat, lbl, transform=ccrs.PlateCarree(),
                             fontsize=fsize, fontweight=fweight, fontstyle='italic',
-                            color='#64748b', alpha=0.60, ha='center', va='center', zorder=5)
+                            color='#64748b', alpha=0.60, ha='center', va='center', multialignment='center', zorder=5)
                 else:
                     txt_obj = ax.text(clon, clat, lbl, transform=ccrs.PlateCarree(),
                                       fontsize=fsize, fontweight=fweight,
@@ -721,8 +721,19 @@ def pre_render_maps(ds, date_str, hour_str, time_dim, n_steps, variables):
 
         # ── Save Outputs ──────────────────────────────────────────────────────
         out_path = os.path.join(MAPS_OUT_DIR, f"risk_map_{var_name}.png")
-        plt.savefig(out_path, dpi=140, facecolor="#08172b")
+        tmp_out_path = out_path + ".tmp.png"
+        plt.savefig(tmp_out_path, dpi=140, facecolor="#08172b")
         plt.close(fig)
+        try:
+            import time
+            for _ in range(5):
+                try:
+                    os.replace(tmp_out_path, out_path)
+                    break
+                except Exception:
+                    time.sleep(0.3)
+        except Exception as e:
+            logger.warning(f"Failed replacing {out_path}: {e}")
         logger.info(f"Saved 16:9 Broadcast Map to {out_path}")
 
 if __name__ == '__main__':

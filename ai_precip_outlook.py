@@ -446,9 +446,9 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
             val = land_rain[min_idx]
             
             if np.isnan(val) or val < 1.0:
-                val_str = "Trace"
-            else:
-                val_str = f"{val:.0f} mm"
+                continue
+
+            val_str = f"{val:.0f} mm"
 
             bbox_props = dict(boxstyle='round,pad=0.35', facecolor='#000000', edgecolor='#ffffff', alpha=0.78, lw=1.1)
             callout = f"{val_str}\n{name}"
@@ -502,7 +502,10 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
                 dist = (M_LONS - clon)**2 + (M_LATS - clat)**2
                 min_idx = np.unravel_index(np.argmin(dist), dist.shape)
                 val = palawan_rain[min_idx]
-                val_str = f"{val:.0f} mm" if not np.isnan(val) and val >= 1 else "Trace"
+                if np.isnan(val) or val < 1.0:
+                    continue
+
+                val_str = f"{val:.0f} mm"
 
                 bbox_props = dict(boxstyle='round,pad=0.25', facecolor='#000000', edgecolor='#ffffff', alpha=0.78, lw=0.9)
                 callout = f"{val_str}\n{name}"
@@ -549,7 +552,10 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
                 dist = (M_LONS - clon)**2 + (M_LATS - clat)**2
                 min_idx = np.unravel_index(np.argmin(dist), dist.shape)
                 val = bb_rain[min_idx]
-                val_str = f"{val:.0f} mm" if not np.isnan(val) and val >= 1 else "Trace"
+                if np.isnan(val) or val < 1.0:
+                    continue
+
+                val_str = f"{val:.0f} mm"
 
                 bbox_props = dict(boxstyle='round,pad=0.22', facecolor='#000000', edgecolor='#ffffff', alpha=0.78, lw=0.85)
                 callout = f"{val_str}\n{name}"

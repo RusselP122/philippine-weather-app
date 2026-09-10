@@ -1,21 +1,22 @@
 """
 persiann_nowcast.py
 ===================
-Real-Time Satellite Precipitation Nowcasting for the Philippines using PERSIANN-CCS.
+Real-Time Satellite Precipitation Nowcasting for the Philippines using PERSIANN PDIR-Now (Unmasked).
 
 Data Source:
   Center for Hydrometeorology and Remote Sensing (CHRS), University of California, Irvine (UCI)
-  Product: PERSIANN-CCS 1-Hourly Near-Real-Time Global Precipitation (~0.04° / ~4 km resolution)
-  URL: https://persiann.eng.uci.edu/CHRSdata/PERSIANN-CCS/hrly/
+  Product: PERSIANN-PDIR-Now 1-Hourly Near-Real-Time Global Precipitation (~0.04° / ~4 km resolution)
+  URL: https://persiann.eng.uci.edu/CHRSdata/PDIRNow/PDIRNow1hourly/
 
 Features:
-  - Automatically scrapes the latest published hourly files from UCI CHRS (PERSIANN-CCS by default).
+  - Scrapes the latest published hourly files from UCI CHRS (PDIR-Now by default, or PERSIANN-CCS).
+  - Unmasked continuous satellite rainfall covering both ocean and land (matching satellite view / Cyclone.jsx).
   - Generates Nowcast Rainfall Products:
       1. Latest 1-Hour Rain Rate / Intensity (mm/hr)
       2. Past 3-Hour Cumulative Precipitation (mm)
       3. Past 6-Hour Cumulative Precipitation (mm)
       4. Past 24-Hour Daily Cumulative Precipitation (mm)
-  - Broadcast-Quality Visuals (Ported from ai_precip_outlook.py):
+  - Broadcast-Quality Visuals:
       - 16:9 Widescreen TV Studio Aesthetic (dark navy ocean, slate-olive terrain).
       - Regional Zoom Maps: Luzon (with Palawan & Batanes/Babuyan insets), Visayas, Mindanao, and National Overview.
       - City-level rainfall callout badges with offsets and rounded pills.
@@ -67,8 +68,10 @@ LOGO_PATHS = [
 ]
 
 # ── Philippine Master Grid ─────────────────────────────────────────────────
-LAT_MIN, LAT_MAX = 4.5, 21.5
-LON_MIN, LON_MAX = 114.0, 129.5
+# Expanded domain (107.0°E to 141.0°E, 3.5°N to 22.5°N) so rainfall extends seamlessly
+# across the entire widescreen 16:9 canvas on National overview without any cutoffs
+LAT_MIN, LAT_MAX = 3.5, 22.5
+LON_MIN, LON_MAX = 107.0, 141.0
 GRID_RES = 0.02
 MASTER_LATS = np.arange(LAT_MIN, LAT_MAX + GRID_RES, GRID_RES)
 MASTER_LONS = np.arange(LON_MIN, LON_MAX + GRID_RES, GRID_RES)
@@ -273,6 +276,39 @@ def load_ph_regional_geometries():
             u_visayas = unary_union(visayas_geoms)
             u_mindanao = unary_union(mindanao_geoms)
 
+            # Load major Philippine lakes (Laguna de Bay, Taal Lake, etc.)
+            lakes_geoms = []
+            lakes_paths = [
+                os.path.join(DATA_DIR, "ph_major_lakes.json"),
+                os.path.join(BASE_DIR, "public", "data", "ph_major_lakes.json"),
+                os.path.join(os.getcwd(), "public", "data", "ph_major_lakes.json")
+            ]
+            found_lakes = next((p for p in lakes_paths if os.path.exists(p)), None)
+            if found_lakes:
+                try:
+                    with open(found_lakes, "r", encoding="utf-8") as f:
+                        lakes_json = json.load(f)
+                    for feat in lakes_json.get("features", []):
+                        lakes_geoms.append(make_valid(shape(feat["geometry"])))
+                except Exception as e:
+                    print(f"Notice loading major lakes: {e}")
+
+            if not lakes_geoms:
+                try:
+                    import cartopy.io.shapereader as shpreader
+                    reader = shpreader.Reader(shpreader.natural_earth('10m', 'physical', 'lakes'))
+                    for rec in reader.records():
+                        b = rec.geometry.bounds
+                        if 115 <= b[0] and b[2] <= 130 and 4 <= b[1] and b[3] <= 22:
+                            lakes_geoms.append(rec.geometry)
+                except Exception as e:
+                    print(f"Notice loading fallback lakes: {e}")
+
+            lake_mask = None
+            if lakes_geoms:
+                u_lakes = unary_union(lakes_geoms)
+                lake_mask = shapely.contains_xy(u_lakes, M_LONS, M_LATS)
+
             masks = {
                 "all": shapely.contains_xy(u_all, M_LONS, M_LATS),
                 "luzon_main": shapely.contains_xy(u_luzon_main, M_LONS, M_LATS),
@@ -287,7 +323,9 @@ def load_ph_regional_geometries():
                 "palawan": palawan_geoms,
                 "batanes_babuyan": batanes_babuyan_geoms,
                 "visayas": visayas_geoms,
-                "mindanao": mindanao_geoms
+                "mindanao": mindanao_geoms,
+                "lakes": lakes_geoms,
+                "lake_mask": lake_mask
             }
             return geoms_dict, masks
     except Exception as e:
@@ -384,11 +422,11 @@ def download_and_read_persiann_hour(session, dt, fname, url, product="ccs"):
         dtype = '>i2' if product == 'ccs' else '<i2'
         arr = np.frombuffer(raw_bytes, dtype=dtype).reshape((3000, 9000))
 
-        # Coordinates for slicing Philippines (buffer with margin: Lat 4.0 to 22.0, Lon 107.5 to 140.5)
-        r_min = int(round((59.98 - 22.2) / 0.04))
-        r_max = int(round((59.98 - 3.8) / 0.04)) + 1
-        c_min = int(round((107.5 - 0.02) / 0.04))
-        c_max = int(round((140.5 - 0.02) / 0.04)) + 1
+        # Coordinates for slicing Philippines (buffer with margin: Lat 3.2 to 22.8, Lon 106.5 to 141.5)
+        r_min = int(round((59.98 - 22.8) / 0.04))
+        r_max = int(round((59.98 - 3.2) / 0.04)) + 1
+        c_min = int(round((106.5 - 0.02) / 0.04))
+        c_max = int(round((141.5 - 0.02) / 0.04)) + 1
 
         sub_arr = arr[r_min:r_max, c_min:c_max].astype(np.float32)
         # Handle nodata (-9999)
@@ -432,7 +470,7 @@ def plot_broadcast_nowcast_map(
     region_key,
     geoms_dict=None,
     masks=None,
-    product_label="PERSIANN-CCS"
+    product_label="PDIR-Now"
 ):
     """
     Renders a 16:9 Widescreen TV Broadcast Weather Graphic for Real-Time PERSIANN Satellite Rainfall.
@@ -491,6 +529,13 @@ def plot_broadcast_nowcast_map(
         palawan_rain = smoothed_grid
         bb_rain = smoothed_grid
 
+    # Major inland lakes (Laguna de Bay, Taal Lake, etc.) masked so they have no rain color
+    if geoms_dict and geoms_dict.get("lake_mask") is not None:
+        l_mask = geoms_dict["lake_mask"]
+        land_rain = np.where(l_mask, np.nan, land_rain)
+        palawan_rain = np.where(l_mask, np.nan, palawan_rain)
+        bb_rain = np.where(l_mask, np.nan, bb_rain)
+
     fig = plt.figure(figsize=(16, 9), dpi=120)
     fig.patch.set_facecolor('#0d1821')
     ax = fig.add_axes([0, 0, 1, 1], projection=ccrs.PlateCarree())
@@ -500,7 +545,7 @@ def plot_broadcast_nowcast_map(
     ax.add_feature(cfeature.OCEAN, facecolor='#162533', zorder=0)
     ax.add_feature(cfeature.LAND, facecolor='#25342a', zorder=1)
 
-    # Precipitation Heatmap (Strictly masked to this region)
+    # Precipitation Heatmap
     cf = ax.contourf(
         M_LONS, M_LATS, land_rain,
         levels=levels, cmap=cmap, norm=norm,
@@ -512,12 +557,9 @@ def plot_broadcast_nowcast_map(
         ax.add_geometries(geoms_dict["all"], crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#475569', linewidth=0.8, alpha=0.85, zorder=3)
     ax.add_feature(cfeature.COASTLINE, linewidth=1.3, edgecolor='#0f172a', zorder=4)
 
-    # Draw PAR Boundary on National view
-    if region_key == "national":
-        par_lons = [p[0] for p in PAR_VERTICES]
-        par_lats = [p[1] for p in PAR_VERTICES]
-        ax.plot(par_lons, par_lats, color='#f59e0b', linestyle='--', linewidth=1.5, alpha=0.85, transform=ccrs.PlateCarree(), zorder=5)
-        ax.text(134.5, 20.0, "PAR", transform=ccrs.PlateCarree(), color='#f59e0b', fontsize=11, fontweight='heavy', ha='right', zorder=6)
+    # Inland lakes (Laguna de Bay, Taal Lake, etc.) rendered in deep water color with shoreline borders
+    if geoms_dict and geoms_dict.get("lakes"):
+        ax.add_geometries(geoms_dict["lakes"], crs=ccrs.PlateCarree(), facecolor='#162533', edgecolor='#0f172a', linewidth=1.2, zorder=4.5)
 
     # ── City Point-Rainfall Callout Badges ─────────────────────────────────────
     extent = region_info["extent"]
@@ -530,10 +572,11 @@ def plot_broadcast_nowcast_map(
             min_idx = np.unravel_index(np.argmin(dist), dist.shape)
             val = land_rain[min_idx]
 
-            min_threshold = 0.3 if period_key == "1h" else 0.8
+            min_threshold = 0.5 if period_key == "1h" else 0.8
             if np.isnan(val) or val < min_threshold:
-                val_str = "Trace"
-            elif period_key == "1h":
+                continue
+
+            if period_key == "1h":
                 val_str = f"{val:.1f} {val_unit}"
             else:
                 val_str = f"{val:.0f} {val_unit}"
@@ -577,14 +620,18 @@ def plot_broadcast_nowcast_map(
             )
             ax_pal.add_geometries(geoms_dict["palawan"], crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#475569', linewidth=0.8, alpha=0.85, zorder=3)
             ax_pal.add_feature(cfeature.COASTLINE, linewidth=1.2, edgecolor='#0f172a', zorder=4)
+            if geoms_dict.get("lakes"):
+                ax_pal.add_geometries(geoms_dict["lakes"], crs=ccrs.PlateCarree(), facecolor='#162533', edgecolor='#0f172a', linewidth=0.9, zorder=4.5)
 
             for name, clon, clat, (ox, oy) in PALAWAN_CITIES:
                 dist = (M_LONS - clon)**2 + (M_LATS - clat)**2
                 min_idx = np.unravel_index(np.argmin(dist), dist.shape)
                 val = palawan_rain[min_idx]
-                min_threshold = 0.3 if period_key == "1h" else 0.8
-                val_str = f"{val:.1f} {val_unit}" if period_key == "1h" and val >= min_threshold else (f"{val:.0f} {val_unit}" if not np.isnan(val) and val >= min_threshold else "Trace")
+                min_threshold = 0.5 if period_key == "1h" else 0.8
+                if np.isnan(val) or val < min_threshold:
+                    continue
 
+                val_str = f"{val:.1f} {val_unit}" if period_key == "1h" else f"{val:.0f} {val_unit}"
                 bbox_props = dict(boxstyle='round,pad=0.3', facecolor='#000000', edgecolor='#ffffff', alpha=0.75, lw=1.0)
                 callout = f"{val_str}\n{name}"
                 ax_pal.text(
@@ -622,14 +669,18 @@ def plot_broadcast_nowcast_map(
             )
             ax_bb.add_geometries(geoms_dict["batanes_babuyan"], crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#475569', linewidth=0.8, alpha=0.85, zorder=3)
             ax_bb.add_feature(cfeature.COASTLINE, linewidth=1.2, edgecolor='#0f172a', zorder=4)
+            if geoms_dict.get("lakes"):
+                ax_bb.add_geometries(geoms_dict["lakes"], crs=ccrs.PlateCarree(), facecolor='#162533', edgecolor='#0f172a', linewidth=0.9, zorder=4.5)
 
             for name, clon, clat, (ox, oy) in BATANES_BABUYAN_CITIES:
                 dist = (M_LONS - clon)**2 + (M_LATS - clat)**2
                 min_idx = np.unravel_index(np.argmin(dist), dist.shape)
                 val = bb_rain[min_idx]
-                min_threshold = 0.3 if period_key == "1h" else 0.8
-                val_str = f"{val:.1f} {val_unit}" if period_key == "1h" and val >= min_threshold else (f"{val:.0f} {val_unit}" if not np.isnan(val) and val >= min_threshold else "Trace")
+                min_threshold = 0.5 if period_key == "1h" else 0.8
+                if np.isnan(val) or val < min_threshold:
+                    continue
 
+                val_str = f"{val:.1f} {val_unit}" if period_key == "1h" else f"{val:.0f} {val_unit}"
                 bbox_props = dict(boxstyle='round,pad=0.3', facecolor='#000000', edgecolor='#ffffff', alpha=0.75, lw=1.0)
                 callout = f"{val_str}\n{name}"
                 ax_bb.text(
@@ -645,10 +696,10 @@ def plot_broadcast_nowcast_map(
     fig.patches.append(header_bg)
 
     # Title Banner Pill
-    title_pill = FancyBboxPatch((0.23, 0.932), 0.38, 0.052, boxstyle='round,pad=0.01,rounding_size=0.012',
+    title_pill = FancyBboxPatch((0.24, 0.932), 0.36, 0.052, boxstyle='round,pad=0.01,rounding_size=0.012',
                                 transform=fig.transFigure, facecolor='#1e293b', edgecolor='#38bdf8', lw=1.2, zorder=41)
     fig.patches.append(title_pill)
-    fig.text(0.42, 0.957, f'REAL-TIME {product_label.upper()} RAINFALL', fontsize=18, fontweight='heavy', color='#f8fafc', ha='center', va='center', zorder=42)
+    fig.text(0.42, 0.957, 'NEAR REAL-TIME RAINFALL', fontsize=17.5, fontweight='heavy', color='#f8fafc', ha='center', va='center', zorder=42)
 
     # Subtitle Blue Bar with Philippine Standard Time (PHT, UTC+8)
     ph_tz = timezone(timedelta(hours=8))
@@ -656,14 +707,14 @@ def plot_broadcast_nowcast_map(
     t_start_pht = obs_start_utc.astimezone(ph_tz)
 
     if period_key == "1h":
-        sub_title = f'LATEST 1-HOUR NOWCAST · {region_info["title"]} ({t_end_pht.strftime("%b %d, %I:%M %p PHT")})'
-        pill_w = 0.36
-        pill_x = 0.24
+        sub_title = f'15 MIN FROM REAL-TIME OBSERVATION · {region_info["title"]} ({t_end_pht.strftime("%b %d, %I:%M %p PHT")})'
+        pill_w = 0.44
+        pill_x = 0.20
     else:
         time_range_str = f"{t_start_pht.strftime('%b %d %I:%M %p')} - {t_end_pht.strftime('%I:%M %p PHT')}"
-        sub_title = f'{period_title.upper()} · {region_info["title"]} ({time_range_str})'
-        pill_w = 0.38
-        pill_x = 0.23
+        sub_title = f'15 MIN FROM REAL-TIME OBSERVATION · {region_info["title"]} ({time_range_str})'
+        pill_w = 0.46
+        pill_x = 0.19
 
     sub_pill = FancyBboxPatch((pill_x, 0.892), pill_w, 0.034, boxstyle='round,pad=0.01,rounding_size=0.01',
                              transform=fig.transFigure, facecolor='#0369a1', edgecolor='none', zorder=41)
@@ -679,12 +730,6 @@ def plot_broadcast_nowcast_map(
     cb.outline.set_edgecolor('#ffffff')
     cb.outline.set_linewidth(1.0)
     fig.text(0.805, 0.894, cbar_unit, fontsize=9, fontweight='bold', color='#94a3b8', ha='center', zorder=42)
-
-    # Data Source Attribution Pill at bottom-left
-    source_pill = FancyBboxPatch((0.015, 0.018), 0.24, 0.028, boxstyle='round,pad=0.005,rounding_size=0.006',
-                                transform=fig.transFigure, facecolor='#0b131a', edgecolor='#475569', lw=0.8, alpha=0.85, zorder=45)
-    fig.patches.append(source_pill)
-    fig.text(0.135, 0.032, f'DATA: {product_label} · UC Irvine CHRS', fontsize=8.5, fontweight='bold', color='#94a3b8', ha='center', va='center', zorder=46)
 
     # ── Brand Logo ──────────────────────────────────────────────────────────
     found_logo = next((p for p in LOGO_PATHS if os.path.exists(p)), None)
@@ -711,20 +756,28 @@ def plot_broadcast_nowcast_map(
 # ═══════════════════════════════════════════════════════════════════════════
 
 def main():
-    parser = argparse.ArgumentParser(description="Real-Time PERSIANN Satellite Rainfall Nowcasting for the Philippines.")
-    parser.add_argument("--product", choices=["ccs", "pdir"], default="ccs",
-                        help="PERSIANN product to use: 'ccs' (PERSIANN-CCS, default) or 'pdir' (PDIR-Now)")
+    parser = argparse.ArgumentParser(description="Real-Time PERSIANN PDIR-Now Satellite Rainfall Nowcasting for the Philippines (Unmasked).")
+    parser.add_argument("--product", choices=["pdir", "ccs"], default="pdir",
+                        help="PERSIANN product to use: 'pdir' (PDIR-Now, default) or 'ccs' (PERSIANN-CCS)")
     parser.add_argument("--periods", nargs="+", default=["1h", "3h", "6h", "24h"],
                         help="Periods to generate: 1h, 3h, 6h, 24h (default: all)")
     parser.add_argument("--regions", nargs="+", default=["luzon", "visayas", "mindanao", "national"],
                         help="Regions to plot: luzon, visayas, mindanao, national (default: all)")
+    parser.add_argument("--masked", action="store_true", default=False,
+                        help="Apply strict regional terrestrial land mask (default is False: unmasked continuous ocean + land)")
+    parser.add_argument("--unmasked", action="store_true", default=True,
+                        help="Keep continuous satellite rainfall across ocean and land (default: True)")
     args = parser.parse_args()
 
-    product_label = "PERSIANN-CCS" if args.product == "ccs" else "PERSIANN PDIR-Now"
-    product_full = "PERSIANN-CCS (Cloud Classification System, ~4 km Near Real-Time)" if args.product == "ccs" else "PERSIANN PDIR-Now (0.04° / ~4 km Near Real-Time)"
+    # Unmasked by default unless --masked is explicitly passed
+    apply_mask = args.masked
+
+    product_label = "PDIR-Now" if args.product == "pdir" else "PERSIANN-CCS"
+    product_full = "PERSIANN PDIR-Now (0.04° / ~4 km Near Real-Time Satellite Precipitation)" if args.product == "pdir" else "PERSIANN-CCS (Cloud Classification System, ~4 km Near Real-Time)"
 
     print("=================================================================")
     print(f"   REAL-TIME {product_label.upper()} SATELLITE RAINFALL NOWCASTING PIPELINE    ")
+    print(f"   Mode: {'MASKED TO LAND' if apply_mask else 'UNMASKED (OCEAN + LAND CONTINUOUS)'}")
     print("=================================================================")
 
     session = requests.Session()
@@ -771,7 +824,7 @@ def main():
     geoms_dict, masks = load_ph_regional_geometries()
 
     # 4. Generate products
-    print(f"\n[4/4] Rendering TV-Broadcast {product_label} Maps...")
+    print(f"\n[4/4] Rendering TV-Broadcast {product_label} Maps ({'Masked' if apply_mask else 'Unmasked'})...")
     generated_frames = []
     product_stats = {}
 
@@ -827,16 +880,17 @@ def main():
                 obs_end_utc=end_dt,
                 region_key=reg_key,
                 geoms_dict=geoms_dict,
-                masks=masks,
+                masks=masks if apply_mask else None,
                 product_label=product_label
             )
             generated_frames.append(frame_id)
 
     # Save metadata JSON
     meta = {
-        "title": f"Real-Time {product_label} Satellite Rainfall Nowcast",
+        "title": f"Real-Time {product_label} Satellite Rainfall Nowcast" + (" (Masked)" if apply_mask else " (Unmasked)"),
         "product": product_full,
         "product_code": args.product,
+        "is_unmasked": not apply_mask,
         "source": "Center for Hydrometeorology and Remote Sensing (CHRS) - University of California, Irvine",
         "generated_at_pht": datetime.now(ph_tz).strftime("%Y-%m-%d %I:%M %p PHT"),
         "latest_observation_utc": latest_file_dt.isoformat(),
