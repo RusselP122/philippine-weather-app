@@ -1621,12 +1621,12 @@ def load_all_actual_tracks_for_storm(storm):
             ifs_ctrl = get_ecmwf_control_or_paired_track(storm, fpath)
             if not ifs_ctrl.empty:
                 ensemble_means['ECMWF IFS'] = ifs_ctrl
-                track_inits['ECMWF IFS'] = f"{base_ifs_init} (Control)"
+                track_inits['ECMWF IFS'] = base_ifs_init
             else:
                 ifs_calc = get_actual_ensemble_mean_for_storm(storm, fpath)
                 if not ifs_calc.empty:
                     ensemble_means['ECMWF IFS'] = ifs_calc
-                    track_inits['ECMWF IFS'] = f"{base_ifs_init} (Mean)"
+                    track_inits['ECMWF IFS'] = base_ifs_init
             break
     if 'ECMWF IFS' not in track_inits:
         track_inits['ECMWF IFS'] = fallback_cycle
@@ -1653,12 +1653,12 @@ def load_all_actual_tracks_for_storm(storm):
             aifs_ctrl = get_ecmwf_control_or_paired_track(storm, fpath)
             if not aifs_ctrl.empty:
                 ensemble_means['ECMWF AIFS'] = aifs_ctrl
-                track_inits['ECMWF AIFS'] = f"{base_aifs_init} (Control)"
+                track_inits['ECMWF AIFS'] = base_aifs_init
             else:
                 aifs_calc = get_actual_ensemble_mean_for_storm(storm, fpath)
                 if not aifs_calc.empty:
                     ensemble_means['ECMWF AIFS'] = aifs_calc
-                    track_inits['ECMWF AIFS'] = f"{base_aifs_init} (Mean)"
+                    track_inits['ECMWF AIFS'] = base_aifs_init
             break
     if 'ECMWF AIFS' not in track_inits:
         track_inits['ECMWF AIFS'] = fallback_cycle
@@ -1680,8 +1680,7 @@ def load_all_actual_tracks_for_storm(storm):
     # 4. GFS: Check deterministic control track first, fallback to calculated ensemble mean
     if not gfs_track.empty:
         ensemble_means['GFS'] = gfs_track
-        type_str = f" ({gfs_track_type})" if gfs_track_type else ""
-        track_inits['GFS'] = f"{gfs_init_str or fallback_cycle}{type_str}"
+        track_inits['GFS'] = gfs_init_str or fallback_cycle
     else:
         for f_cand in ['gefs_tc_latest.dat', 'gfs_tc_latest.dat']:
             cand_p = os.path.join(data_dir, f_cand)
@@ -1689,7 +1688,7 @@ def load_all_actual_tracks_for_storm(storm):
                 gfs_calc = get_actual_ensemble_mean_for_storm(storm, cand_p)
                 if not gfs_calc.empty:
                     ensemble_means['GFS'] = gfs_calc
-                    track_inits['GFS'] = f"{fallback_cycle} (Mean)"
+                    track_inits['GFS'] = fallback_cycle
                     break
             
     if 'GFS' not in track_inits:
@@ -1698,15 +1697,14 @@ def load_all_actual_tracks_for_storm(storm):
     # 5. AIGEFS: Check deterministic control track first, fallback to ensemble mean
     if not aigefs_track.empty:
         ensemble_means['AIGEFS'] = aigefs_track
-        type_str = f" ({aigefs_track_type})" if aigefs_track_type else ""
-        track_inits['AIGEFS'] = f"{aigefs_init_str or fallback_cycle}{type_str}"
+        track_inits['AIGEFS'] = aigefs_init_str or fallback_cycle
     else:
         aigefs_cand = os.path.join(data_dir, 'aigefs_tc_latest.dat')
         if os.path.exists(aigefs_cand):
             aigefs_calc = get_actual_ensemble_mean_for_storm(storm, aigefs_cand)
             if not aigefs_calc.empty:
                 ensemble_means['AIGEFS'] = aigefs_calc
-                track_inits['AIGEFS'] = f"{fallback_cycle} (Mean)"
+                track_inits['AIGEFS'] = fallback_cycle
             
     if 'AIGEFS' not in track_inits:
         track_inits['AIGEFS'] = fallback_cycle

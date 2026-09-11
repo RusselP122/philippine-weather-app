@@ -1441,7 +1441,7 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
     if has_control:
         data_type_str = "Control & Ensemble" if has_ensemble_tracks else "Control"
     elif has_ensemble_tracks:
-        data_type_str = "Ensemble (Mean)"
+        data_type_str = "Ensemble"
     else:
         data_type_str = "Deterministic"
     fig.text(0.86, 0.90, f"Data: {model_name} {data_type_str}", fontsize=10, color='#475569', ha='right', va='bottom')
