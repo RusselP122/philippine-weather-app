@@ -114,106 +114,46 @@ def get_signed_headers(api_sig_secret, csrf_token, cookie_header, pathname, base
     }
 
 def get_alerts():
-    base_candidates = ["https://panahon.gov.ph", "https://www.panahon.gov.ph"]
+    garbin_url = "https://data.garbinwx.org/api/cap-alerts.json"
     data = None
     last_error = None
 
-    for base in base_candidates:
-        try:
-            home = requests.get(
-                f"{base}/",
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                },
-                timeout=12
-            )
-            if not home.ok:
-                continue
+    try:
+        res = requests.get(
+            garbin_url,
+            headers={
+                "User-Agent": "PhilippineWeatherApp/2.0 (contact@garbinwx.org)",
+                "Accept": "application/json"
+            },
+            timeout=12
+        )
+        res.raise_for_status()
+        data = res.json()
 
-            cookie_map = extract_cookies(home)
-            csrf_match = re.search(r'<meta name="csrf-token" content="([^"]+)"', home.text)
-            api_sig_match = re.search(r'<meta name="api-sig" content="([^"]+)"', home.text)
-            api_sig_handle_match = re.search(r'<meta name="api-sig-handle" content="([^"]+)"', home.text)
-
-            csrf_token = csrf_match.group(1) if csrf_match else None
-            api_sig_secret = api_sig_match.group(1) if api_sig_match else None
-            api_sig_handle = api_sig_handle_match.group(1) if api_sig_handle_match else None
-
-            if not csrf_token:
-                continue
-
-            # Exchange api-sig-handle if secret is not directly embedded
-            if not api_sig_secret and api_sig_handle:
-                sig_url = f"{base}/api/v1/sig?token={csrf_token}"
-                sig_res = requests.get(
-                    sig_url,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        "Cookie": "; ".join(cookie_map.values()),
-                        "X-Sig-Handle": api_sig_handle,
-                        "Referer": f"{base}/",
-                    },
-                    timeout=12
+        # Sanitize alerts: remove defacement scripts and dummy notes
+        if data and isinstance(data.get("data"), dict) and isinstance(data["data"].get("alert_data"), list):
+            data["data"]["alert_data"] = [
+                a for a in data["data"]["alert_data"]
+                if a and not (
+                    "<script" in str(a.get("headline", "")) or
+                    "<script" in str(a.get("message", "")) or
+                    (a.get("event") == "NOTE" and a.get("subtype") == "NOTE")
                 )
-                if sig_res.ok:
-                    cookie_map = extract_cookies(sig_res, cookie_map)
-                    try:
-                        sig_json = sig_res.json()
-                        api_sig_secret = sig_json.get("secret")
-                    except Exception:
-                        pass
+            ]
 
-            if not api_sig_secret:
-                continue
+        # Cache freshly fetched alerts to public/data/cap_alerts.json
+        try:
+            os.makedirs("public/data", exist_ok=True)
+            with open("public/data/cap_alerts.json", "w", encoding="utf-8") as cf:
+                json.dump(data, cf, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
-            cookie_header = "; ".join(cookie_map.values())
-
-            # Acquire asset-ticket
-            asset_res = requests.get(
-                f"{base}/api/v1/asset-ticket?token={csrf_token}",
-                headers=get_signed_headers(api_sig_secret, csrf_token, cookie_header, "api/v1/asset-ticket", base),
-                timeout=12
-            )
-            if asset_res.ok:
-                cookie_map = extract_cookies(asset_res, cookie_map)
-                cookie_header = "; ".join(cookie_map.values())
-
-            # Fetch live CAP alerts
-            alerts_url = f"{base}/api/v1/cap-alerts?token={csrf_token}"
-            alerts_res = requests.get(
-                alerts_url,
-                headers=get_signed_headers(api_sig_secret, csrf_token, cookie_header, "api/v1/cap-alerts", base),
-                timeout=15
-            )
-            alerts_res.raise_for_status()
-            data = alerts_res.json()
-
-            # Sanitize alerts: remove defacement scripts and dummy notes
-            if data and isinstance(data.get("data"), dict) and isinstance(data["data"].get("alert_data"), list):
-                data["data"]["alert_data"] = [
-                    a for a in data["data"]["alert_data"]
-                    if a and not (
-                        "<script" in str(a.get("headline", "")) or
-                        "<script" in str(a.get("message", "")) or
-                        (a.get("event") == "NOTE" and a.get("subtype") == "NOTE")
-                    )
-                ]
-
-            # Cache freshly fetched alerts to public/data/cap_alerts.json
-            try:
-                os.makedirs("public/data", exist_ok=True)
-                with open("public/data/cap_alerts.json", "w", encoding="utf-8") as cf:
-                    json.dump(data, cf, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
-
-            break
-        except Exception as e:
-            last_error = e
+    except Exception as e:
+        last_error = e
 
     if not data:
-        print(f"Warning: Failed to fetch live alerts ({last_error}). Falling back to cached cap_alerts.json if available.")
+        print(f"Warning: Failed to fetch live alerts from GarbinWx ({last_error}). Falling back to cached cap_alerts.json if available.")
         if os.path.exists("public/data/cap_alerts.json"):
             with open("public/data/cap_alerts.json", "r", encoding="utf-8") as f:
                 data = json.load(f)

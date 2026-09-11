@@ -30,7 +30,8 @@ import StationInspector from "./Radar/StationInspector";
 import RadarWorker from "../workers/radarWorker?worker";
 import { 
   minLon, maxLon, minLat, maxLat, 
-  canvasWidth, canvasHeight, RADAR_STATIONS 
+  canvasWidth, canvasHeight, RADAR_STATIONS,
+  HEX_COLORS_DBZ
 } from "../data/radarConfig";
 
 // High-fidelity dynamic pixel color swapping helper via Web Worker
@@ -538,10 +539,11 @@ const LiveRadar = () => {
     if (theme === "retro") {
       return "linear-gradient(to top, #041f0f 0%, #14532d 20%, #15803d 40%, #22c55e 60%, #4ade80 80%, #86efac 100%)";
     }
-    if (theme === "custom" || theme === "default") {
-      return "linear-gradient(to top, #595959 0%, #aaaaaa 15%, #43e843 23%, #00c900 31%, #1ca500 38%, #eff000 46%, #ffc100 54%, #ff6a00 62%, #f50500 69%, #c20000 77%, #ad0033 85%, #e600cc 92%, #9e07fb 100%)";
+    if (HEX_COLORS_DBZ && HEX_COLORS_DBZ.length > 0) {
+      const stops = HEX_COLORS_DBZ.map((c, i) => `${c} ${(i / (HEX_COLORS_DBZ.length - 1) * 100).toFixed(1)}%`);
+      return `linear-gradient(to top, ${stops.join(", ")})`;
     }
-    return "linear-gradient(to top, #595959 0%, #aaaaaa 15%, #43e843 23%, #00c900 31%, #1ca500 38%, #eff000 46%, #ffc100 54%, #ff6a00 62%, #f50500 69%, #c20000 77%, #ad0033 85%, #e600cc 92%, #9e07fb 100%)";
+    return "linear-gradient(to top, #535353 0%, #aaaaaa 15%, #00ff00 23%, #009600 38%, #ffff00 46%, #ff8700 60%, #ff0000 69%, #960000 84%, #ff00ff 92%, #9600ff 100%)";
   };
 
   useEffect(() => {
@@ -1864,12 +1866,13 @@ const LiveRadar = () => {
         <div className="flex gap-2 items-center justify-between px-0.5">
           {/* Left dBZ numbers */}
           <div className="flex flex-col justify-between h-36 font-mono text-[8px] font-bold text-slate-300 text-right w-5 leading-none">
-            <span>65</span>
+            <span>66+</span>
             <span>60</span>
-            <span>45</span>
+            <span>50</span>
+            <span>40</span>
             <span>30</span>
-            <span>15</span>
-            <span className="text-[7.5px] text-slate-400">0</span>
+            <span>20</span>
+            <span className="text-[7.5px] text-slate-400">1</span>
           </div>
 
           {/* Color gradient bar */}
@@ -1880,13 +1883,13 @@ const LiveRadar = () => {
 
           {/* Right mm/hr & clutter labels */}
           <div className="flex flex-col justify-between h-36 font-mono text-[8px] text-slate-350 text-left leading-none">
-            <span className="font-bold text-[#9e07fb]">65+</span>
-            <span className="text-[#f50500]">45</span>
-            <span className="text-[#ff6a00]">30</span>
-            <span className="text-[#eff000]">15</span>
-            <span className="text-[#00c900]">7</span>
-            <span className="text-[#43e843]">3</span>
-            <span className="text-[7.5px] text-emerald-300 whitespace-nowrap font-medium">1 mm/hr</span>
+            <span className="font-bold text-[#9600ff]">66+</span>
+            <span className="text-[#eb00cd]">60</span>
+            <span className="text-[#d20000]">50</span>
+            <span className="text-[#ff8700]">40</span>
+            <span className="text-[#cdeb00]">30</span>
+            <span className="text-[#00d200]">20</span>
+            <span className="text-[7.5px] text-emerald-300 whitespace-nowrap font-medium">16 dBZ</span>
             <span className="text-[7px] text-slate-400 whitespace-nowrap">Radar Clutter</span>
           </div>
         </div>

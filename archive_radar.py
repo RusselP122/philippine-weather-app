@@ -1,183 +1,157 @@
 import os
-import re
+import sys
 import requests
 import datetime
-import hmac
-import hashlib
-import time
-import secrets
-from supabase import create_client, Client
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://jzbgofsdnniflospoggl.supabase.co")
+# Attempt to load .env variables if python-dotenv is installed
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# Supabase configuration
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://jzbgofsdnniflospoggl.supabase.co").rstrip("/")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6YmdvZnNkbm5pZmxvc3BvZ2dsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDM0NDQzMSwiZXhwIjoyMDk1OTIwNDMxfQ.IQ0covu3g4Oh1M4a1EMcFGi1jfu2jCmh3R88TAKcQWg")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Missing Supabase URL or Service Role Key in environment variables.")
+# GarbinWx Doppler Radar Identity Header
+# Request your ID header at: contact@garbinwx.org
+GARBINWX_RADAR_IDENTITY = os.environ.get("GARBINWX_RADAR_IDENTITY", "IDENTITY-HERE")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+GARBINWX_RAW_BASE = "https://data.garbinwx.org/raw"
 
-BASE_URL = "https://www.panahon.gov.ph"
-
-def get_signed_headers(session, api_sig_secret, csrf_token, pathname):
-    ts = str(int(time.time()))
-    nonce = secrets.token_hex(16)
-    string_to_sign = f"GET\n{pathname}\n{ts}\n{nonce}".encode("utf-8")
-    sig = hmac.new(api_sig_secret.encode("utf-8"), string_to_sign, hashlib.sha256).hexdigest()
-
+def supabase_headers():
     return {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
-        "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9,fil;q=0.8",
-        "X-Requested-With": "XMLHttpRequest",
-        "Referer": f"{BASE_URL}/",
-        "Origin": BASE_URL,
-        "X-CSRF-TOKEN": csrf_token,
-        "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
-        "sec-ch-ua-mobile": "?1",
-        "sec-ch-ua-platform": '"Android"',
-        "X-Ts": ts,
-        "X-Nonce": nonce,
-        "X-Sig": sig,
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
     }
 
-def archive_radar():
-    print(f"[{datetime.datetime.now()}] Starting Radar Archiving Process...")
-    
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,fil;q=0.8",
-        "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
-        "sec-ch-ua-mobile": "?1",
-        "sec-ch-ua-platform": '"Android"',
-    })
+def is_frame_archived(unix_ts):
+    """Check if record already exists in Supabase radar_frames table."""
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/radar_frames?observed_at_unix=eq.{unix_ts}&select=id"
+        res = requests.get(url, headers=supabase_headers(), timeout=10)
+        if res.ok:
+            data = res.json()
+            return len(data) > 0
+    except Exception as e:
+        print(f"Warning: Failed to check DB for timestamp {unix_ts}: {e}")
+    return False
+
+def upload_radar_image(storage_path, image_data):
+    """Upload radar composite image to Supabase Storage Bucket."""
+    upload_url = f"{SUPABASE_URL}/storage/v1/object/radar-archives/{storage_path}"
+    headers = supabase_headers()
+    headers["Content-Type"] = "image/png"
+    headers["x-upsert"] = "true"
+
+    res = requests.post(upload_url, headers=headers, data=image_data, timeout=30)
+    public_url = f"{SUPABASE_URL}/storage/v1/object/public/radar-archives/{storage_path}"
+    if res.ok or res.status_code in [200, 201, 409]:
+        return public_url
+    print(f"Upload failed ({res.status_code}): {res.text}")
+    return None
+
+def save_frame_metadata(observed_at_str, unix_ts, public_url):
+    """Save frame record into Supabase radar_frames table."""
+    insert_url = f"{SUPABASE_URL}/rest/v1/radar_frames"
+    headers = supabase_headers()
+    headers["Content-Type"] = "application/json"
+    headers["Prefer"] = "return=representation"
+
+    payload = {
+        "observed_at": f"{observed_at_str}+08:00",
+        "observed_at_unix": unix_ts,
+        "public_url": public_url
+    }
+    res = requests.post(insert_url, headers=headers, json=payload, timeout=10)
+    return res.ok
+
+def get_recent_utc8_timestamps(hours_back=3, interval_minutes=10):
+    """Generate candidate UTC+8 timestamps (YYYYMMDDHHmm) rounded to interval_minutes."""
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    utc8_tz = datetime.timezone(datetime.timedelta(hours=8))
+    now_utc8 = now_utc.astimezone(utc8_tz)
+
+    minute_rounded = (now_utc8.minute // interval_minutes) * interval_minutes
+    base_dt = now_utc8.replace(minute=minute_rounded, second=0, microsecond=0)
+
+    timestamps = []
+    total_intervals = int((hours_back * 60) / interval_minutes)
+    for i in range(total_intervals):
+        dt = base_dt - datetime.timedelta(minutes=i * interval_minutes)
+        ts_str = dt.strftime("%Y%m%d%H%M")
+        unix_ts = int(dt.timestamp())
+        formatted_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+        timestamps.append((ts_str, unix_ts, formatted_str))
+
+    return timestamps
+
+def archive_frame(timestamp_str, unix_ts, formatted_str, radar_type="DBZ"):
+    url = f"{GARBINWX_RAW_BASE}/{radar_type}-{timestamp_str}.png"
+    headers = {
+        "User-Agent": GARBINWX_RADAR_IDENTITY
+    }
 
     try:
-        # 1. Fetch gateway page to extract session cookies and security tokens
-        home = session.get(f"{BASE_URL}/", timeout=15)
-        csrf_match = re.search(r'<meta name="csrf-token" content="([^"]+)"', home.text)
-        api_sig_match = re.search(r'<meta name="api-sig" content="([^"]+)"', home.text)
-        api_sig_handle_match = re.search(r'<meta name="api-sig-handle" content="([^"]+)"', home.text)
+        res = requests.get(url, headers=headers, stream=True, timeout=20)
+        if res.status_code == 403:
+            print(f"[{timestamp_str}] HTTP 403 Forbidden: Identity header required to access GarbinWx radar.")
+            return "FORBIDDEN"
+        if res.status_code != 200:
+            return False
 
-        csrf_token = csrf_match.group(1) if csrf_match else None
-        api_sig_secret = api_sig_match.group(1) if api_sig_match else None
-        api_sig_handle = api_sig_handle_match.group(1) if api_sig_handle_match else None
+        content = res.content
+        if len(content) < 200:
+            return False
 
-        if not csrf_token:
-            print("Failed to extract csrf-token from PANaHON gateway.")
-            return
+        date_folder = formatted_str.split(" ")[0]
+        storage_path = f"{date_folder}/{unix_ts}.png"
 
-        if not api_sig_secret and api_sig_handle:
-            sig_url = f"{BASE_URL}/api/v1/sig?token={csrf_token}"
-            sig_res = session.get(sig_url, headers={
-                "User-Agent": "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
-                "X-Sig-Handle": api_sig_handle,
-                "Referer": f"{BASE_URL}/",
-                "Origin": BASE_URL,
-                "X-Requested-With": "XMLHttpRequest",
-                "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
-                "sec-ch-ua-mobile": "?1",
-                "sec-ch-ua-platform": '"Android"',
-            }, timeout=15)
-            if sig_res.ok:
-                try:
-                    sig_data = sig_res.json()
-                    api_sig_secret = sig_data.get("secret")
-                except Exception:
-                    pass
+        public_url = upload_radar_image(storage_path, content)
+        if not public_url:
+            return False
 
-        if not api_sig_secret:
-            print("Failed to extract or resolve api-sig secret from PANaHON gateway.")
-            return
-
-        # Acquire asset-ticket to ensure access to protected radar assets
-        session.get(
-            f"{BASE_URL}/api/v1/asset-ticket?token={csrf_token}",
-            headers=get_signed_headers(session, api_sig_secret, csrf_token, "api/v1/asset-ticket"),
-            timeout=15
-        )
-
-        # 2. Fetch active timeline with dynamic HMAC signing
-        timeline_path = "api/v1/radar/timeline"
-        timeline_url = f"{BASE_URL}/api/v1/radar/timeline?token={csrf_token}&sublayer=mosaic-reflectivity"
-        response = session.get(timeline_url, headers=get_signed_headers(session, api_sig_secret, csrf_token, timeline_path), timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        
-        if not data.get("success") or "timeline" not in data.get("data", {}):
-            print("Failed to retrieve a valid timeline from PAGASA.")
-            return
-            
-        timeline = data["data"]["timeline"]
-        tile_version = data.get("data", {}).get("tile_version", 5)
+        if save_frame_metadata(formatted_str, unix_ts, public_url):
+            print(f"[{formatted_str}] Successfully archived GarbinWx {radar_type} frame: {public_url}")
+            return True
     except Exception as e:
-        print(f"Error fetching PAGASA timeline: {e}")
+        print(f"Error archiving {timestamp_str}: {e}")
+    return False
+
+def archive_radar():
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{now_str}] Starting GarbinWx Doppler Radar Archiving Process...")
+    print(f"Identity Header Configured: {'YES' if GARBINWX_RADAR_IDENTITY != 'IDENTITY-HERE' else 'NO (Set GARBINWX_RADAR_IDENTITY in .env)'}")
+
+    if GARBINWX_RADAR_IDENTITY == "IDENTITY-HERE":
+        print("\n[NOTE] GarbinWx requires an identification header to access the Doppler radar endpoint.")
+        print("Please contact GarbinWx at contact@garbinwx.org to get your ID header, then add it to your .env file:")
+        print("GARBINWX_RADAR_IDENTITY=<your-identity-header>\n")
+
+    # Specific timestamp CLI argument: e.g. python archive_radar.py 202609051610
+    if len(sys.argv) > 1 and len(sys.argv[1]) == 12 and sys.argv[1].isdigit():
+        ts_arg = sys.argv[1]
+        dt = datetime.datetime.strptime(ts_arg, "%Y%m%d%H%M").replace(tzinfo=datetime.timezone(datetime.timedelta(hours=8)))
+        archive_frame(ts_arg, int(dt.timestamp()), dt.strftime("%Y-%m-%d %H:%M:%S"))
         return
 
-    # 3. Process frames chronologically
-    for frame in timeline:
-        observed_at_str = frame["observed_at"]  # e.g., "2026-08-30 17:00:00"
-        observed_at_unix = frame["observed_at_unix"]
+    candidates_10 = get_recent_utc8_timestamps(hours_back=2, interval_minutes=10)
+    candidates_15 = get_recent_utc8_timestamps(hours_back=2, interval_minutes=15)
+    candidates = sorted(list({c[0]: c for c in candidates_10 + candidates_15}.values()), key=lambda x: x[1])
 
-        # Check if record already exists in database
-        try:
-            existing = supabase.table("radar_frames").select("id").eq("observed_at_unix", observed_at_unix).execute()
-            if len(existing.data) > 0:
-                continue
-        except Exception as e:
-            print(f"Error checking existing records for {observed_at_str}: {e}")
+    archived_count = 0
+    for ts_str, unix_ts, formatted_str in candidates:
+        if is_frame_archived(unix_ts):
             continue
 
-        print(f"New Frame Detected: {observed_at_str} (Unix: {observed_at_unix}). Archiving...")
+        result = archive_frame(ts_str, unix_ts, formatted_str, radar_type="DBZ")
+        if result == "FORBIDDEN":
+            break
+        elif result:
+            archived_count += 1
 
-        # 4. Download radar image (try size 1536 first, fallback to 2048 and 896)
-        img_path = "api/v1/radar-data-image"
-        img_data = None
-        for size in [1536, 2048, 896]:
-            img_url = f"{BASE_URL}/api/v1/radar-data-image?token={csrf_token}&t={observed_at_unix}&mode=dbz&size={size}&v={tile_version}"
-            try:
-                img_res = session.get(img_url, headers=get_signed_headers(session, api_sig_secret, csrf_token, img_path), timeout=20)
-                if img_res.ok and len(img_res.content) > 100:
-                    img_data = img_res.content
-                    break
-            except Exception:
-                continue
-
-        if not img_data:
-            print(f"Failed to download image for {observed_at_str}")
-            continue
-
-        # 5. Upload image to Supabase Storage Bucket
-        date_folder = observed_at_str.split(" ")[0]
-        storage_path = f"{date_folder}/{observed_at_unix}.png"
-        
-        try:
-            supabase.storage.from_("radar-archives").upload(
-                path=storage_path,
-                file=img_data,
-                file_options={"content-type": "image/png"}
-            )
-            public_url = supabase.storage.from_("radar-archives").get_public_url(storage_path)
-        except Exception as e:
-            err_msg = str(e)
-            if "409" in err_msg or "Duplicate" in err_msg or "already exists" in err_msg:
-                print(f"File already exists in storage: {storage_path}. Proceeding to database registration...")
-                public_url = supabase.storage.from_("radar-archives").get_public_url(storage_path)
-            else:
-                print(f"Failed to upload image to Supabase Storage: {e}")
-                continue
-
-        # 6. Insert record into database with timezone offset explicitly set
-        try:
-            supabase.table("radar_frames").insert({
-                "observed_at": observed_at_str + "+08:00",
-                "observed_at_unix": observed_at_unix,
-                "public_url": public_url
-            }).execute()
-            print(f"Successfully archived: {observed_at_str}")
-        except Exception as e:
-            print(f"Failed to save metadata to Database: {e}")
+    print(f"Archiving complete. {archived_count} new frame(s) archived.")
 
 if __name__ == "__main__":
     archive_radar()

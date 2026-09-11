@@ -316,13 +316,25 @@ const Warning = () => {
           ? `${ALERT_API}&${cacheBust}`
           : `${ALERT_API}?${cacheBust}`;
 
-        const resp = await fetch(url);
         let json = null;
-        if (resp.ok) {
-          try {
+        try {
+          const resp = await fetch(url);
+          if (resp.ok) {
             json = await resp.json();
-          } catch (e) {
-            console.warn("Failed to parse warnings response as JSON:", e);
+          }
+        } catch (e) {
+          console.warn("Proxy warnings fetch failed, falling back to direct GarbinWx:", e);
+        }
+
+        // Direct fallback to GarbinWx open CORS public API if proxy is unavailable
+        if (!json || !json.data || !Array.isArray(json.data.alert_data)) {
+          try {
+            const fbResp = await fetch("https://data.garbinwx.org/api/cap-alerts.json");
+            if (fbResp.ok) {
+              json = await fbResp.json();
+            }
+          } catch (fbErr) {
+            console.warn("Direct GarbinWx warnings fetch failed:", fbErr);
           }
         }
         if (cancelled) return;

@@ -54,28 +54,37 @@ function buildSmoothLUT(theme = "default") {
       [75,  [255, 255, 255, 255]]
     ];
   } else {
-    // Official Doppler Color Scale matching uploaded reference palette
-    // 0: #595959 (Clutter), 15: #43e843 (1 mm/hr), 20: #00c900 (3 mm/hr), 25: #1ca500 (7 mm/hr)
-    // 30: #eff000 (15 mm/hr), 35: #ffc100, 40: #ff6a00 (30 mm/hr), 45: #f50500 (45 mm/hr)
-    // 50: #c20000, 55: #ad0033, 60: #e600cc, 65+: #9e07fb (65+ mm/hr)
+    // Official GarbinWx Nationwide Doppler Reflectivity (DBZ) Scale (1 to 66+ dBZ)
+    const HEX_COLORS_DBZ = [
+      '#535353', '#5b5b5b', '#606060', '#6e6e6e', '#797979', '#828282', '#8a8a8a', '#939393',
+      '#9b9b9b', '#a1a1a1', '#aaaaaa', '#b9b9b9', '#c1c1c1', '#c8c8c8', '#cecece', '#00ff00',
+      '#00f500', '#00e600', '#00dc00', '#00d200', '#00c800', '#00be00', '#00b400', '#00aa00',
+      '#00a000', '#009600', '#32aa00', '#64be00', '#96d200', '#cdeb00', '#ffff00', '#fff500',
+      '#ffe600', '#ffdc00', '#ffd200', '#ffc800', '#ffb900', '#ffaa00', '#ff9600', '#ff8700',
+      '#ff7800', '#ff5f00', '#ff4600', '#ff3200', '#ff1900', '#ff0000', '#ff0000', '#e60000',
+      '#dc0000', '#d20000', '#c80000', '#be0000', '#b40000', '#aa0000', '#a00000', '#960000',
+      '#aa0032', '#be0064', '#d70096', '#eb00cd', '#ff00ff', '#eb00ff', '#d200ff', '#be00ff',
+      '#aa00ff', '#9600ff'
+    ];
+
+    function hexToRgba(hex, alpha = 255) {
+      const h = hex.replace('#', '');
+      return [
+        parseInt(h.substring(0, 2), 16),
+        parseInt(h.substring(2, 4), 16),
+        parseInt(h.substring(4, 6), 16),
+        alpha
+      ];
+    }
+
     stops = [
-      [0,    [0, 0, 0, 0]],              // < 1 dBZ: transparent clear air
-      [1,    [89, 89, 89, 60]],          // #595959 (0 dBZ Radar Clutter)
-      [5,    [128, 128, 128, 90]],       // #808080
-      [10,   [170, 170, 170, 130]],      // #aaaaaa (10 dBZ)
-      [13,   [140, 215, 140, 180]],      // #8cd78c
-      [15,   [67, 232, 67, 220]],        // #43e843 (15 dBZ / 1 mm/hr)
-      [20,   [0, 201, 0, 255]],          // #00c900 (20 dBZ / 3 mm/hr)
-      [25,   [28, 165, 0, 255]],         // #1ca500 (25 dBZ / 7 mm/hr)
-      [30,   [239, 240, 0, 255]],        // #eff000 (30 dBZ / 15 mm/hr)
-      [35,   [255, 193, 0, 255]],        // #ffc100 (35 dBZ)
-      [40,   [255, 106, 0, 255]],        // #ff6a00 (40 dBZ / 30 mm/hr)
-      [45,   [245, 5, 0, 255]],          // #f50500 (45 dBZ / 45 mm/hr)
-      [50,   [194, 0, 0, 255]],          // #c20000 (50 dBZ)
-      [55,   [173, 0, 51, 255]],         // #ad0033 (55 dBZ)
-      [60,   [230, 0, 204, 255]],        // #e600cc (60 dBZ)
-      [65,   [158, 7, 251, 255]],        // #9e07fb (65+ dBZ / 65+ mm/hr)
-      [80,   [158, 7, 251, 255]]
+      [0, [0, 0, 0, 0]],
+      [1, hexToRgba(HEX_COLORS_DBZ[0], 70)],
+      [5, hexToRgba(HEX_COLORS_DBZ[4], 100)],
+      [10, hexToRgba(HEX_COLORS_DBZ[9], 140)],
+      [15, hexToRgba(HEX_COLORS_DBZ[14], 190)],
+      ...HEX_COLORS_DBZ.slice(15).map((hex, idx) => [16 + idx, hexToRgba(hex, 255)]),
+      [80, hexToRgba(HEX_COLORS_DBZ[65], 255)]
     ];
   }
 
