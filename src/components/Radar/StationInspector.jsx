@@ -88,8 +88,8 @@ const StationInspector = ({
           
           <div className="flex flex-col gap-2">
             {[
-              { id: "custom", label: "Custom Doppler", colors: ["#43e843", "#eff000", "#f50500", "#9e07fb"] },
-              { id: "default", label: "Standard Scale", colors: ["#595959", "#00c900", "#ff6a00", "#9e07fb"] },
+              { id: "default", label: "GarbinWx Official", colors: ["#535353", "#00ff00", "#ffff00", "#ff0000", "#9600ff"] },
+              { id: "clean", label: "Clean (No Clutter)", colors: ["#00ff00", "#ffff00", "#ff0000", "#9600ff"] },
               { id: "storm", label: "Storm Core", colors: ["#1e3a8a", "#d97706", "#dc2626"] },
               { id: "vaporwave", label: "Vaporwave Neon", colors: ["#1c1533", "#00f0ff", "#ff007f"] },
               { id: "retro", label: "Retro Phosphor", colors: ["#041f0f", "#15803d", "#86efac"] }

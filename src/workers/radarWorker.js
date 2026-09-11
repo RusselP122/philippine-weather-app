@@ -1,221 +1,163 @@
-// High-Definition Doppler Radar Color LUT Builder
-function buildSmoothLUT(theme = "default") {
-  const lut = new Uint8ClampedArray(256 * 4);
+// GarbinWx Doppler Radar Color Processor & Spectral Theme Worker
 
-  function lerp(a, b, t) {
-    return a + (b - a) * Math.max(0, Math.min(1, t));
-  }
+// Official GarbinWx Reflectivity (DBZ) Scale (1 to 66+ dBZ)
+const HEX_COLORS_DBZ = [
+  '#535353', '#5b5b5b', '#606060', '#6e6e6e', '#797979', '#828282', '#8a8a8a', '#939393',
+  '#9b9b9b', '#a1a1a1', '#aaaaaa', '#b9b9b9', '#c1c1c1', '#c8c8c8', '#cecece', '#00ff00',
+  '#00f500', '#00e600', '#00dc00', '#00d200', '#00c800', '#00be00', '#00b400', '#00aa00',
+  '#00a000', '#009600', '#32aa00', '#64be00', '#96d200', '#cdeb00', '#ffff00', '#fff500',
+  '#ffe600', '#ffdc00', '#ffd200', '#ffc800', '#ffb900', '#ffaa00', '#ff9600', '#ff8700',
+  '#ff7800', '#ff5f00', '#ff4600', '#ff3200', '#ff1900', '#ff0000', '#ff0000', '#e60000',
+  '#dc0000', '#d20000', '#c80000', '#be0000', '#b40000', '#aa0000', '#a00000', '#960000',
+  '#aa0032', '#be0064', '#d70096', '#eb00cd', '#ff00ff', '#eb00ff', '#d200ff', '#be00ff',
+  '#aa00ff', '#9600ff'
+];
 
-  function lerpColor(c1, c2, t) {
-    return [
-      Math.round(lerp(c1[0], c2[0], t)),
-      Math.round(lerp(c1[1], c2[1], t)),
-      Math.round(lerp(c1[2], c2[2], t)),
-      Math.round(lerp(c1[3], c2[3], t))
-    ];
-  }
-
-  let stops = [];
-
-  if (theme === "vaporwave") {
-    stops = [
-      [0,   [0, 0, 0, 0]],
-      [5,   [0, 0, 0, 0]],
-      [8,   [0, 240, 255, 100]],
-      [18,  [0, 240, 255, 180]],
-      [28,  [5, 217, 232, 220]],
-      [38,  [255, 42, 116, 245]],
-      [48,  [255, 0, 127, 255]],
-      [60,  [171, 0, 205, 255]],
-      [75,  [255, 200, 255, 255]]
-    ];
-  } else if (theme === "storm") {
-    stops = [
-      [0,   [0, 0, 0, 0]],
-      [5,   [0, 0, 0, 0]],
-      [8,   [30, 58, 138, 100]],
-      [18,  [30, 58, 138, 180]],
-      [28,  [4, 120, 87, 220]],
-      [38,  [217, 119, 6, 245]],
-      [48,  [220, 38, 38, 255]],
-      [60,  [112, 26, 117, 255]],
-      [75,  [255, 255, 255, 255]]
-    ];
-  } else if (theme === "retro") {
-    stops = [
-      [0,   [0, 0, 0, 0]],
-      [5,   [0, 0, 0, 0]],
-      [8,   [20, 83, 45, 100]],
-      [18,  [21, 128, 61, 180]],
-      [28,  [34, 197, 94, 220]],
-      [38,  [74, 222, 128, 245]],
-      [48,  [134, 239, 172, 255]],
-      [60,  [248, 113, 113, 255]],
-      [75,  [255, 255, 255, 255]]
-    ];
-  } else {
-    // Official GarbinWx Nationwide Doppler Reflectivity (DBZ) Scale (1 to 66+ dBZ)
-    const HEX_COLORS_DBZ = [
-      '#535353', '#5b5b5b', '#606060', '#6e6e6e', '#797979', '#828282', '#8a8a8a', '#939393',
-      '#9b9b9b', '#a1a1a1', '#aaaaaa', '#b9b9b9', '#c1c1c1', '#c8c8c8', '#cecece', '#00ff00',
-      '#00f500', '#00e600', '#00dc00', '#00d200', '#00c800', '#00be00', '#00b400', '#00aa00',
-      '#00a000', '#009600', '#32aa00', '#64be00', '#96d200', '#cdeb00', '#ffff00', '#fff500',
-      '#ffe600', '#ffdc00', '#ffd200', '#ffc800', '#ffb900', '#ffaa00', '#ff9600', '#ff8700',
-      '#ff7800', '#ff5f00', '#ff4600', '#ff3200', '#ff1900', '#ff0000', '#ff0000', '#e60000',
-      '#dc0000', '#d20000', '#c80000', '#be0000', '#b40000', '#aa0000', '#a00000', '#960000',
-      '#aa0032', '#be0064', '#d70096', '#eb00cd', '#ff00ff', '#eb00ff', '#d200ff', '#be00ff',
-      '#aa00ff', '#9600ff'
-    ];
-
-    function hexToRgba(hex, alpha = 255) {
-      const h = hex.replace('#', '');
-      return [
-        parseInt(h.substring(0, 2), 16),
-        parseInt(h.substring(2, 4), 16),
-        parseInt(h.substring(4, 6), 16),
-        alpha
-      ];
-    }
-
-    stops = [
-      [0, [0, 0, 0, 0]],
-      [1, hexToRgba(HEX_COLORS_DBZ[0], 70)],
-      [5, hexToRgba(HEX_COLORS_DBZ[4], 100)],
-      [10, hexToRgba(HEX_COLORS_DBZ[9], 140)],
-      [15, hexToRgba(HEX_COLORS_DBZ[14], 190)],
-      ...HEX_COLORS_DBZ.slice(15).map((hex, idx) => [16 + idx, hexToRgba(hex, 255)]),
-      [80, hexToRgba(HEX_COLORS_DBZ[65], 255)]
-    ];
-  }
-
-  for (let val = 0; val < 256; val++) {
-    const dbz = (val / 255.0) * 80.0;
-    const offset = val * 4;
-
-    if (dbz <= stops[0][0]) {
-      lut[offset] = stops[0][1][0];
-      lut[offset + 1] = stops[0][1][1];
-      lut[offset + 2] = stops[0][1][2];
-      lut[offset + 3] = stops[0][1][3];
-      continue;
-    }
-
-    if (dbz >= stops[stops.length - 1][0]) {
-      const last = stops[stops.length - 1][1];
-      lut[offset] = last[0];
-      lut[offset + 1] = last[1];
-      lut[offset + 2] = last[2];
-      lut[offset + 3] = last[3];
-      continue;
-    }
-
-    for (let s = 0; s < stops.length - 1; s++) {
-      const s0 = stops[s];
-      const s1 = stops[s + 1];
-      if (dbz >= s0[0] && dbz <= s1[0]) {
-        const t = (dbz - s0[0]) / (s1[0] - s0[0]);
-        const col = lerpColor(s0[1], s1[1], t);
-        lut[offset] = col[0];
-        lut[offset + 1] = col[1];
-        lut[offset + 2] = col[2];
-        lut[offset + 3] = col[3];
-        break;
-      }
-    }
-  }
-
-  return lut;
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.substring(0, 2), 16),
+    parseInt(h.substring(2, 4), 16),
+    parseInt(h.substring(4, 6), 16)
+  ];
 }
 
-const lutCache = {};
+const DBZ_RGB = HEX_COLORS_DBZ.map(hexToRgb);
+
+// Map a pixel to approximate dBZ (1 to 66) based on closest GarbinWx color
+function estimateDbz(r, g, b) {
+  // Grayscale clutter (1 to 15 dBZ)
+  if (Math.abs(r - g) <= 5 && Math.abs(g - b) <= 5) {
+    // 1 dBZ is #535353 (83, 83, 83), 15 dBZ is #cecece (206, 206, 206)
+    if (r < 75) return 1;
+    if (r > 215) return 15;
+    return Math.round(1 + ((r - 83) / (206 - 83)) * 14);
+  }
+
+  // Purples / Pinks (57 to 66+ dBZ)
+  if (b > 150 && r > 120) {
+    if (b > 240 && r < 180) return 66; // #9600ff
+    if (b > 240 && r > 240) return 61; // #ff00ff
+    return 60;
+  }
+
+  // Reds / Crimsons (46 to 56 dBZ)
+  if (r > 140 && g < 40 && b < 40) {
+    if (r > 230) return 46; // #ff0000
+    if (r < 170) return 56; // #960000
+    return 50;
+  }
+
+  // Oranges (40 to 45 dBZ)
+  if (r > 220 && g > 30 && g < 150 && b < 50) {
+    return Math.round(45 - (g / 150) * 5);
+  }
+
+  // Yellows / Lime (30 to 39 dBZ)
+  if (r > 190 && g > 190 && b < 50) {
+    if (r > 240 && g > 240) return 31; // #ffff00
+    return 36;
+  }
+
+  // Greens (16 to 29 dBZ)
+  if (g > 140 && r < 160 && b < 50) {
+    if (r > 120) return 29; // yellow-green
+    if (g > 230) return 16; // bright green
+    return 22;
+  }
+
+  return 0;
+}
+
+// Alternative theme color mapper by dBZ
+function getThemeRgb(dbz, theme) {
+  if (theme === "vaporwave") {
+    if (dbz <= 15) return [28, 21, 51];       // #1c1533
+    if (dbz <= 30) return [0, 240, 255];      // #00f0ff
+    if (dbz <= 40) return [5, 217, 232];      // #05d9e8
+    if (dbz <= 50) return [255, 42, 116];     // #ff2a74
+    if (dbz <= 60) return [255, 0, 127];      // #ff007f
+    return [171, 0, 205];                     // #ab00cd
+  }
+
+  if (theme === "storm") {
+    if (dbz <= 15) return [32, 24, 27];       // #20181b
+    if (dbz <= 30) return [30, 58, 138];      // #1e3a8a
+    if (dbz <= 40) return [4, 120, 87];       // #047857
+    if (dbz <= 50) return [217, 119, 6];      // #d97706
+    if (dbz <= 60) return [220, 38, 38];      // #dc2626
+    return [112, 26, 117];                    // #701a75
+  }
+
+  if (theme === "retro") {
+    if (dbz <= 15) return [4, 31, 15];        // #041f0f
+    if (dbz <= 30) return [20, 83, 45];       // #14532d
+    if (dbz <= 40) return [21, 128, 61];      // #15803d
+    if (dbz <= 50) return [34, 197, 94];      // #22c55e
+    if (dbz <= 60) return [74, 222, 128];     // #4ade80
+    return [134, 239, 172];                   // #86efac
+  }
+
+  return null;
+}
 
 self.onmessage = function (e) {
   const { buffer, width, height, theme = "default" } = e.data;
   const data = new Uint8ClampedArray(buffer);
 
-  if (!lutCache[theme]) {
-    lutCache[theme] = buildSmoothLUT(theme);
+  // If theme is "default", the image is already rendered in authentic GarbinWx palette.
+  // Only filter nearly transparent background noise pixels.
+  if (theme === "default") {
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 10) {
+        data[i + 3] = 0;
+      }
+    }
+    self.postMessage({ buffer: data.buffer, width, height }, [data.buffer]);
+    return;
   }
-  const lut = lutCache[theme];
 
+  // If theme is "clean", filter out grayscale radar clutter (1 to 15 dBZ)
+  if (theme === "clean") {
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3];
+      if (a < 10) {
+        data[i + 3] = 0;
+        continue;
+      }
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      // Grayscale clutter detection: r, g, b are almost identical and within 1-15 dBZ range
+      if (Math.abs(r - g) <= 5 && Math.abs(g - b) <= 5 && r >= 70 && r <= 220) {
+        data[i + 3] = 0; // Make clutter transparent
+      }
+    }
+    self.postMessage({ buffer: data.buffer, width, height }, [data.buffer]);
+    return;
+  }
+
+  // For creative themes (storm, vaporwave, retro), remap colors cleanly
   for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
     const a = data[i + 3];
-
     if (a < 10) {
       data[i + 3] = 0;
       continue;
     }
 
-    const maxChannel = Math.max(r, g, b);
-    const minChannel = Math.min(r, g, b);
-    const saturation = maxChannel > 0 ? (maxChannel - minChannel) / maxChannel : 0;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
 
-    // Check if grayscale data texture
-    const isGrayscaleData = saturation < 0.12 || Math.abs(r - g) <= 6 && Math.abs(g - b) <= 6;
-
-    if (isGrayscaleData) {
-      const val = r;
-      const offset = val * 4;
-
-      data[i]     = lut[offset];
-      data[i + 1] = lut[offset + 1];
-      data[i + 2] = lut[offset + 2];
-      data[i + 3] = lut[offset + 3];
-      continue;
-    }
-
-    // Legacy Colored Radar handling
-    if (saturation < 0.22 || (r > 170 && g > 170 && b > 170 && saturation < 0.16)) {
-      continue;
-    }
-
-    let colorType = "green";
-    if (g > 200 && b > 200 && r > 100 && r < 160) colorType = "clutter";
-    else if (r > 150 && b > 150 && g < 135) colorType = "purple";
-    else if (r > 140 && g < 50 && b < 50) colorType = "red";
-    else if (r > 200 && g > 120 && b < 100) colorType = "yellow";
-    else if (b > g && b > r * 0.9) colorType = "blue";
-    else if (g > r && g > b) colorType = "green";
-
-    let targetHex = "";
-    if (theme === "vaporwave") {
-      if (colorType === "clutter") targetHex = "#1c1533";
-      else if (colorType === "blue") targetHex = "#00f0ff";
-      else if (colorType === "green") targetHex = "#05d9e8";
-      else if (colorType === "yellow") targetHex = "#ff2a74";
-      else if (colorType === "red") targetHex = "#ff007f";
-      else if (colorType === "purple") targetHex = "#ab00cd";
-    } else if (theme === "storm") {
-      if (colorType === "clutter") targetHex = "#20181b";
-      else if (colorType === "blue") targetHex = "#1e3a8a";
-      else if (colorType === "green") targetHex = "#047857";
-      else if (colorType === "yellow") targetHex = "#d97706";
-      else if (colorType === "red") targetHex = "#dc2626";
-      else if (colorType === "purple") targetHex = "#701a75";
-    } else if (theme === "retro") {
-      if (colorType === "clutter") targetHex = "#041f0f";
-      else if (colorType === "blue") targetHex = "#14532d";
-      else if (colorType === "green") targetHex = "#15803d";
-      else if (colorType === "yellow") targetHex = "#22c55e";
-      else if (colorType === "red") targetHex = "#4ade80";
-      else if (colorType === "purple") targetHex = "#86efac";
-    } else {
-      if (colorType === "clutter") targetHex = "#075163";
-      else if (colorType === "blue") targetHex = "#0a6f87";
-      else if (colorType === "green") targetHex = "#31ab12";
-      else if (colorType === "yellow") targetHex = "#f0ec00";
-      else if (colorType === "red") targetHex = "#ff0000";
-      else if (colorType === "purple") targetHex = "#dcbae6";
-    }
-
-    if (targetHex) {
-      const hex = targetHex.replace("#", "");
-      data[i] = parseInt(hex.substring(0, 2), 16);
-      data[i + 1] = parseInt(hex.substring(2, 4), 16);
-      data[i + 2] = parseInt(hex.substring(4, 6), 16);
+    const dbz = estimateDbz(r, g, b);
+    if (dbz > 0) {
+      const mappedRgb = getThemeRgb(dbz, theme);
+      if (mappedRgb) {
+        data[i]     = mappedRgb[0];
+        data[i + 1] = mappedRgb[1];
+        data[i + 2] = mappedRgb[2];
+      }
     }
   }
 

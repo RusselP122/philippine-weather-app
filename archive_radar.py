@@ -90,7 +90,9 @@ def get_recent_utc8_timestamps(hours_back=3, interval_minutes=10):
 def archive_frame(timestamp_str, unix_ts, formatted_str, radar_type="DBZ"):
     url = f"{GARBINWX_RAW_BASE}/{radar_type}-{timestamp_str}.png"
     headers = {
-        "User-Agent": GARBINWX_RADAR_IDENTITY
+        "User-Agent": GARBINWX_RADAR_IDENTITY,
+        "Referer": "https://garbinwx.org/",
+        "Origin": "https://garbinwx.org"
     }
 
     try:
@@ -136,9 +138,10 @@ def archive_radar():
         archive_frame(ts_arg, int(dt.timestamp()), dt.strftime("%Y-%m-%d %H:%M:%S"))
         return
 
-    candidates_10 = get_recent_utc8_timestamps(hours_back=2, interval_minutes=10)
-    candidates_15 = get_recent_utc8_timestamps(hours_back=2, interval_minutes=15)
-    candidates = sorted(list({c[0]: c for c in candidates_10 + candidates_15}.values()), key=lambda x: x[1])
+    candidates_10 = get_recent_utc8_timestamps(hours_back=6, interval_minutes=10)
+    candidates_15 = get_recent_utc8_timestamps(hours_back=6, interval_minutes=15)
+    candidates_20 = get_recent_utc8_timestamps(hours_back=6, interval_minutes=20)
+    candidates = sorted(list({c[0]: c for c in candidates_10 + candidates_15 + candidates_20}.values()), key=lambda x: x[1])
 
     archived_count = 0
     for ts_str, unix_ts, formatted_str in candidates:

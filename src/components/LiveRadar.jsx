@@ -37,6 +37,12 @@ import {
 // High-fidelity dynamic pixel color swapping helper via Web Worker
 const recolorRadarImageAsync = (imgElement, theme = "default") => {
   return new Promise((resolve) => {
+    // If theme is "default", preserve the native authentic GarbinWx composite directly
+    if (theme === "default") {
+      resolve(imgElement.src);
+      return;
+    }
+
     const canvas = document.createElement("canvas");
     canvas.width = imgElement.naturalWidth || imgElement.width || canvasWidth;
     canvas.height = imgElement.naturalHeight || imgElement.height || canvasHeight;
@@ -122,7 +128,7 @@ const LiveRadar = () => {
   const [error, setError] = useState(null);
 
   // Custom Radar Color Palette Themes State
-  const [colorTheme, setColorTheme] = useState("custom");
+  const [colorTheme, setColorTheme] = useState("default");
   const [cachedFrameUrls, setCachedFrameUrls] = useState({});
 
   // Radar Interactive Station States
@@ -539,11 +545,11 @@ const LiveRadar = () => {
     if (theme === "retro") {
       return "linear-gradient(to top, #041f0f 0%, #14532d 20%, #15803d 40%, #22c55e 60%, #4ade80 80%, #86efac 100%)";
     }
-    if (HEX_COLORS_DBZ && HEX_COLORS_DBZ.length > 0) {
-      const stops = HEX_COLORS_DBZ.map((c, i) => `${c} ${(i / (HEX_COLORS_DBZ.length - 1) * 100).toFixed(1)}%`);
-      return `linear-gradient(to top, ${stops.join(", ")})`;
+    if (theme === "clean") {
+      return "linear-gradient(to top, transparent 0%, transparent 18.75%, #00ff00 20%, #cdeb00 37.5%, #ffff00 38.75%, #ff8700 50%, #ff0000 57.5%, #a00000 68.75%, #eb00cd 75%, #aa00ff 81.25%, #9600ff 100%)";
     }
-    return "linear-gradient(to top, #535353 0%, #aaaaaa 15%, #00ff00 23%, #009600 38%, #ffff00 46%, #ff8700 60%, #ff0000 69%, #960000 84%, #ff00ff 92%, #9600ff 100%)";
+    // Official GarbinWx DBZ Scale (1 to 66+ dBZ)
+    return "linear-gradient(to top, #535353 0%, #cecece 18.75%, #00ff00 20%, #cdeb00 37.5%, #ffff00 38.75%, #ff8700 50%, #ff0000 57.5%, #a00000 68.75%, #eb00cd 75%, #aa00ff 81.25%, #9600ff 100%)";
   };
 
   useEffect(() => {
@@ -1858,39 +1864,40 @@ const LiveRadar = () => {
       />
 
       {/* Floating Legend Panel */}
-      <div className={`absolute bottom-[195px] md:bottom-28 z-35 bg-slate-900/85 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-2.5 flex-col select-none pointer-events-auto shadow-2xl text-[9px] text-slate-350 min-w-[140px] max-w-[160px] transition-all duration-300 ${showLeftPanel || showRightPanel ? "hidden md:flex" : "flex"} ${showLeftPanel ? "left-4 md:left-[352px]" : "left-4"}`}>
-        <div className="flex justify-between items-center border-b border-slate-800/60 pb-1 mb-1.5 px-0.5">
-          <span className="font-bold tracking-wider font-mono text-[8px] text-slate-400 uppercase">dBZ</span>
-          <span className="font-bold tracking-wider font-mono text-[8px] text-slate-400 uppercase">Rain Rate</span>
+      <div className={`absolute bottom-[195px] md:bottom-28 z-35 bg-slate-900/90 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-3 flex-col select-none pointer-events-auto shadow-2xl min-w-[160px] max-w-[180px] transition-all duration-300 ${showLeftPanel || showRightPanel ? "hidden md:flex" : "flex"} ${showLeftPanel ? "left-4 md:left-[352px]" : "left-4"}`}>
+        <div className="flex justify-between items-center border-b border-slate-800/70 pb-1.5 mb-2 px-0.5">
+          <span className="font-bold tracking-wider font-mono text-[9px] text-slate-300 uppercase">dBZ</span>
+          <span className="font-bold tracking-wider font-mono text-[9px] text-slate-400 uppercase">Intensity</span>
         </div>
-        <div className="flex gap-2 items-center justify-between px-0.5">
-          {/* Left dBZ numbers */}
-          <div className="flex flex-col justify-between h-36 font-mono text-[8px] font-bold text-slate-300 text-right w-5 leading-none">
-            <span>66+</span>
-            <span>60</span>
-            <span>50</span>
-            <span>40</span>
-            <span>30</span>
-            <span>20</span>
-            <span className="text-[7.5px] text-slate-400">1</span>
+        <div className="flex gap-2.5 items-center justify-between px-0.5">
+          {/* Left dBZ values */}
+          <div className="flex flex-col justify-between h-40 font-mono text-[8.5px] font-bold text-slate-300 text-right w-6 leading-none">
+            <span className="text-[#9600ff]">66+</span>
+            <span className="text-[#eb00cd]">60</span>
+            <span className="text-[#dc0000]">50</span>
+            <span className="text-[#ff8700]">40</span>
+            <span className="text-[#cdeb00]">30</span>
+            <span className="text-[#00dc00]">20</span>
+            <span className="text-[#00ff00]">16</span>
+            <span className="text-[#8a8a8a]">1</span>
           </div>
 
           {/* Color gradient bar */}
           <div
-            className="w-2.5 h-36 rounded-full border border-slate-950/80 flex-shrink-0 shadow-inner"
+            className="w-3 h-40 rounded-full border border-slate-950/80 flex-shrink-0 shadow-inner"
             style={{ background: getLegendGradientStyle(colorTheme) }}
           ></div>
 
-          {/* Right mm/hr & clutter labels */}
-          <div className="flex flex-col justify-between h-36 font-mono text-[8px] text-slate-350 text-left leading-none">
-            <span className="font-bold text-[#9600ff]">66+</span>
-            <span className="text-[#eb00cd]">60</span>
-            <span className="text-[#d20000]">50</span>
-            <span className="text-[#ff8700]">40</span>
-            <span className="text-[#cdeb00]">30</span>
-            <span className="text-[#00d200]">20</span>
-            <span className="text-[7.5px] text-emerald-300 whitespace-nowrap font-medium">16 dBZ</span>
-            <span className="text-[7px] text-slate-400 whitespace-nowrap">Radar Clutter</span>
+          {/* Right Intensity & Clutter labels */}
+          <div className="flex flex-col justify-between h-40 font-mono text-[8px] text-left leading-none">
+            <span className="font-bold text-[#b400ff] whitespace-nowrap">Hail / Extreme</span>
+            <span className="text-[#ff00ff] whitespace-nowrap">Violent</span>
+            <span className="text-[#ff3200] whitespace-nowrap">Torrential</span>
+            <span className="text-[#ff9600] whitespace-nowrap">Heavy Rain</span>
+            <span className="text-[#ffff00] whitespace-nowrap">Moderate</span>
+            <span className="text-[#00e600] whitespace-nowrap">Light Rain</span>
+            <span className="text-[#00ff00] whitespace-nowrap">Very Light</span>
+            <span className="text-slate-400 whitespace-nowrap text-[7.5px]">Clutter (1-15)</span>
           </div>
         </div>
       </div>

@@ -89,7 +89,9 @@ export default async function handler(req, res) {
     try {
       const resp = await fetch(radarUrl, {
         headers: {
-          "User-Agent": radarIdentity
+          "User-Agent": radarIdentity,
+          "Referer": "https://garbinwx.org/",
+          "Origin": "https://garbinwx.org"
         }
       });
 
