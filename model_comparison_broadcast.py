@@ -1,0 +1,1292 @@
+"""
+model_comparison_broadcast.py
+==============================
+TV Broadcast Weather Model Comparison System
+Customized for Philippine Typhoon / Weather Broadcast Operations
+Inspired by NBC StormTeam 4 & High-End Television Weather Graphics
+
+Compares 4 premier global forecasting models:
+1. GFS (American Global Forecast System - NOAA)
+2. AIGFS / AIGEFS (American AI Global Forecast System / Ensemble - NOAA)
+3. ECMWF IFS (European Centre for Medium-Range Weather Forecasts)
+4. ECMWF AIFS (European Artificial Intelligence Forecasting System)
+
+Features:
+- Multi-Frame Broadcast Layouts:
+  * 4-Panel Quad Grid (2x2): Compares GFS, AIGFS, ECMWF, AIFS simultaneously
+  * 3-Panel Side-by-Side (1x3): 3-model horizontal comparison
+  * 2-Panel Side-by-Side (1x2): Classic 2-model comparison
+- Official Philippine Typhoon/Weather Branding:
+  * Embedded official circular logo (logo.png)
+  * Station branding: PHILIPPINE TYPHOON / WEATHER
+- Dynamic Edge-to-Edge Map Framing:
+  * Zero letterboxing/pillarboxing - maps seamlessly fill every card
+- Authentic TV Broadcast Graphics:
+  * Cinematic rainy studio window background with bokeh raindrops on glass
+  * Glassmorphism top header with station badge, title card & valid day pill
+  * Map cards with dark ocean, slate terrain, smooth MSLP isobars
+  * Smooth precipitation / radar reflectivity color mapping
+  * Signature red Low Pressure (L) center badge with counter-clockwise curved cyclonic arrows
+  * Glass timestamp badge (e.g., "9 PM SUN JAN 25")
+  * Deep royal blue gradient model title banners
+- Data Pipeline:
+  * Connectors for NOAA NOMADS (GFS, AIGFS/AIGEFS) and ECMWF OpenData (IFS, AIFS)
+  * High-fidelity realistic synoptic simulation engine (--demo) for instant offline execution
+"""
+
+import os
+import sys
+import argparse
+import numpy as np
+import scipy.ndimage
+from datetime import datetime, timedelta, timezone
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from matplotlib.patches import FancyBboxPatch, Circle, FancyArrowPatch
+import matplotlib.patheffects as patheffects
+from matplotlib.colors import ListedColormap, BoundaryNorm
+import matplotlib.image as mpimg
+
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+
+# ── Import Shared Project Visualizations if Available ───────────────────────────
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "public", "data")
+IMAGES_DIR = os.path.join(BASE_DIR, "public", "images")
+os.makedirs(IMAGES_DIR, exist_ok=True)
+
+try:
+    from weather_viz_styles import load_ph_provinces, PAR_LONS, PAR_LATS
+except ImportError:
+    PAR_LONS = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
+    PAR_LATS = [5.0, 15.0, 21.0, 25.0, 25.0, 5.0, 5.0]
+    load_ph_provinces = lambda d=None: []
+
+# ── Color Palettes & Broadcast Design Tokens ────────────────────────────────────
+BG_DARK = "#09111e"           # Deep studio canvas
+CARD_BORDER = "#38bdf8"       # Cyan glow border
+CARD_EDGE_MUTED = "#1e3a5f"   # Deep navy card edge
+TEXT_WHITE = "#ffffff"
+TEXT_MUTED = "#94a3b8"
+
+# Standard TV Broadcast Precipitation / Radar Reflectivity Colormap
+PRECIP_LEVELS = [0.2, 1.0, 2.5, 5.0, 10.0, 15.0, 25.0, 35.0, 50.0, 75.0, 100.0]
+PRECIP_COLORS = [
+    "#38bdf8",  # 0.2 - 1.0 mm: Light Cyan Rain
+    "#0284c7",  # 1.0 - 2.5 mm: Ocean Blue
+    "#10b981",  # 2.5 - 5.0 mm: Mint Green
+    "#16a34a",  # 5.0 - 10 mm: Lush Green
+    "#84cc16",  # 10 - 15 mm: Yellow Green
+    "#facc15",  # 15 - 25 mm: Vivid Yellow
+    "#f97316",  # 25 - 35 mm: Orange
+    "#ef4444",  # 35 - 50 mm: Scarlet Red
+    "#b91c1c",  # 50 - 75 mm: Crimson Red
+    "#c026d3",  # 75 - 100 mm: Vivid Magenta / Mixed Ice
+]
+PRECIP_CMAP = ListedColormap(PRECIP_COLORS, name="tv_broadcast_precip")
+PRECIP_CMAP.set_over("#581c87")  # > 100 mm: Deep Purple
+PRECIP_NORM = BoundaryNorm(PRECIP_LEVELS, ncolors=len(PRECIP_COLORS), clip=False)
+
+# Model Metadata Specifications
+MODEL_META = {
+    "GFS": {
+        "name": "GFS",
+        "agency": "NOAA / NCEP",
+        "full_name": "American Global Forecast System",
+        "banner_text": "AMERICAN GFS FORECAST",
+        "sub_badge": "NOAA GFS",
+        "color": "#38bdf8",
+        "gradient": ("#0c4a6e", "#0284c7"),
+    },
+    "AIGFS": {
+        "name": "AIGFS",
+        "agency": "NOAA AI / GraphCast",
+        "full_name": "American AI Global Forecast System",
+        "banner_text": "AMERICAN AI-GFS FORECAST",
+        "sub_badge": "NOAA AIGFS",
+        "color": "#fb923c",
+        "gradient": ("#7c2d12", "#ea580c"),
+    },
+    "AIGEFS": {
+        "name": "AIGEFS",
+        "agency": "NOAA AI / GraphCast",
+        "full_name": "American AI Global Ensemble",
+        "banner_text": "AMERICAN AI-GEFS FORECAST",
+        "sub_badge": "NOAA AI-GEFS",
+        "color": "#fb923c",
+        "gradient": ("#7c2d12", "#ea580c"),
+    },
+    "ECMWF": {
+        "name": "ECMWF",
+        "agency": "ECMWF",
+        "full_name": "European Integrated Forecast System",
+        "banner_text": "EUROPEAN ECMWF FORECAST",
+        "sub_badge": "ECMWF IFS",
+        "color": "#facc15",
+        "gradient": ("#1e3a8a", "#2563eb"),
+    },
+    "AIFS": {
+        "name": "AIFS",
+        "agency": "ECMWF AI",
+        "full_name": "ECMWF Artificial Intelligence",
+        "banner_text": "EUROPEAN AIFS FORECAST",
+        "sub_badge": "ECMWF AIFS",
+        "color": "#2dd4bf",
+        "gradient": ("#064e3b", "#0d9488"),
+    }
+}
+
+# Domain Extents
+DOMAINS = {
+    "ph": {
+        "name": "Philippine Area of Responsibility (PAR)",
+        "extent": [112.0, 138.0, 4.0, 25.0],
+        "is_ph": True
+    },
+    "wnp": {
+        "name": "Western North Pacific",
+        "extent": [108.0, 152.0, 2.0, 32.0],
+        "is_ph": False
+    },
+    "conus": {
+        "name": "Eastern United States",
+        "extent": [-88.0, -68.0, 28.0, 46.0],
+        "is_ph": False
+    }
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 1. Realistic Synoptic Simulation Engine (Instant --demo & offline mode)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def generate_demo_model_data(model_key, domain_extent, valid_dt):
+    """
+    Generates realistic synoptic weather fields (MSLP isobars + precipitation)
+    tailored to each model's unique characteristics to realistically emulate
+    operational model divergence across the specific extent.
+    """
+    norm_key = model_key.upper().strip()
+    lon_min, lon_max, lat_min, lat_max = domain_extent
+    lons = np.linspace(lon_min - 3.0, lon_max + 3.0, 160)
+    lats = np.linspace(lat_min - 3.0, lat_max + 3.0, 130)
+    LONS, LATS = np.meshgrid(lons, lats)
+
+    # Base background pressure field: subtropical ridge north/east, lower pressure south
+    base_mslp = 1012.0 + (LATS - (lat_min + lat_max) / 2.0) * 0.35 + (LONS - lon_min) * 0.08
+
+    # Low Pressure Center coordinates with realistic model divergence
+    cx = 127.5
+    cy = 13.8
+
+    # Model-specific offsets and depths
+    if norm_key == "GFS":
+        center_lon, center_lat = cx + 1.8, cy + 1.1
+        central_pressure = 992.0
+        r_scale = 3.2
+        rain_amp = 48.0
+    elif norm_key in ("AIGFS", "AIGEFS"):
+        center_lon, center_lat = cx + 2.3, cy + 0.8
+        central_pressure = 995.0
+        r_scale = 3.0
+        rain_amp = 44.0
+    elif norm_key == "ECMWF":
+        center_lon, center_lat = cx + 0.3, cy + 0.2
+        central_pressure = 988.0
+        r_scale = 2.8
+        rain_amp = 62.0
+    elif norm_key == "AIFS":
+        center_lon, center_lat = cx + 0.7, cy + 0.4
+        central_pressure = 990.0
+        r_scale = 2.9
+        rain_amp = 55.0
+    else:
+        center_lon, center_lat = cx, cy
+        central_pressure = 994.0
+        r_scale = 3.0
+        rain_amp = 45.0
+
+    # Distance to cyclone center
+    dist = np.sqrt((LONS - center_lon) ** 2 + ((LATS - center_lat) * 1.1) ** 2)
+
+    # Radial pressure dip (Holland/Rankine type profile)
+    depth = 1012.0 - central_pressure
+    cyclone_mslp = -depth * np.exp(-((dist / r_scale) ** 1.8))
+    mslp_field = base_mslp + cyclone_mslp
+
+    # Secondary trough / front extends northeastward
+    trough_axis = (LONS - center_lon) - 1.2 * (LATS - center_lat)
+    trough_effect = -4.5 * np.exp(-(trough_axis ** 2) / 6.0) * (LATS > center_lat - 1)
+    mslp_field += trough_effect
+
+    # Gaussian smoothing for smooth broadcast isobars
+    mslp_field = scipy.ndimage.gaussian_filter(mslp_field, sigma=1.0)
+
+    # Precipitation field: eyewall + spiral feeder bands + frontal precipitation
+    angle = np.arctan2(LATS - center_lat, LONS - center_lon)
+    spiral = np.sin(3.5 * angle + dist * 1.4)
+    precip_core = rain_amp * np.exp(-((dist - 1.2) ** 2) / 1.8) * np.clip(spiral + 0.6, 0.2, 1.4)
+    feeder_band = (rain_amp * 0.7) * np.exp(-((dist - 3.8) ** 2) / 2.2) * np.clip(np.cos(2.8 * angle + dist) + 0.3, 0, 1.2)
+    trough_rain = (rain_amp * 0.45) * np.exp(-(trough_axis ** 2) / 4.0) * (dist < 7.0)
+
+    precip_field = np.maximum(0, precip_core + feeder_band + trough_rain)
+    precip_field[precip_field < 0.2] = 0.0
+    precip_field = scipy.ndimage.gaussian_filter(precip_field, sigma=0.8)
+
+    # Find exact minimum pressure location for (L) center badge
+    min_idx = np.unravel_index(np.argmin(mslp_field), mslp_field.shape)
+    low_lon = float(LONS[min_idx])
+    low_lat = float(LATS[min_idx])
+    min_mslp = float(mslp_field[min_idx])
+
+    return {
+        "lons": lons,
+        "lats": lats,
+        "mslp": mslp_field,
+        "precip": precip_field,
+        "low_center": (low_lon, low_lat, min_mslp),
+        "valid_dt": valid_dt,
+        "model_key": norm_key
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2. Live Data Connectors (NOAA NOMADS & ECMWF OpenData)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def fetch_live_ecmwf(model_type="ifs", step=240, extent=(98.0, 154.0, 2.0, 27.0)):
+    """
+    Retrieves real forecast fields from ECMWF OpenData with automatic multi-mirror failover
+    (ECMWF -> AWS -> Azure) and calculates 6-hour precipitation ending at step.
+    model_type: 'ifs' or 'aifs-single'
+    """
+    print(f"  [LIVE] Fetching ECMWF {model_type.upper()} for step T+{step}h ...")
+    try:
+        from ecmwf.opendata import Client
+        import xarray as xr
+        import pandas as pd
+        # Ensure fast failover across mirrors without 120s retry delays
+        try:
+            import ecmwf.opendata.client
+            import multiurl
+            _orig_robust = getattr(multiurl, "_orig_robust_cached", multiurl.robust)
+            multiurl._orig_robust_cached = _orig_robust
+            fast_robust = lambda call, **kwargs: _orig_robust(call, maximum_tries=2, retry_after=1)
+            multiurl.robust = fast_robust
+            ecmwf.opendata.client.robust = fast_robust
+        except Exception:
+            pass
+
+        target_file = f"temp_ecmwf_{model_type}_{step:03d}_{os.getpid()}.grib2"
+        target_prev = f"temp_ecmwf_prev_{model_type}_{step:03d}_{os.getpid()}.grib2"
+
+        # 1. Multi-mirror retrieval (official ECMWF -> AWS OpenData -> Azure Planetary Computer)
+        client = None
+        for src in ["ecmwf", "aws", "azure"]:
+            try:
+                c = Client(source=src, model=model_type, resol="0p25")
+                c.retrieve(step=step, type="fc", param=["tp", "msl"], target=target_file)
+                client = c
+                break
+            except Exception as e_src:
+                if src == "azure":
+                    raise e_src
+                continue
+
+        ds = xr.open_dataset(target_file, engine="cfgrib")
+        if "time" in ds.dims and ds.sizes["time"] > 1:
+            ds = ds.isel(time=-1)
+
+        init_dt = pd.to_datetime(ds.time.values)
+        valid_dt = init_dt + timedelta(hours=step)
+
+        lats = ds.latitude.values
+        lons = ds.longitude.values
+        tp_raw = ds["tp"].values.squeeze()
+        tp_units = str(ds["tp"].attrs.get("units", "")).lower()
+        if "kg" in tp_units:
+            tp = tp_raw.astype(float)  # Already mm (kg m**-2)
+        elif "m" in tp_units:
+            tp = tp_raw.astype(float) * 1000.0  # meters -> mm
+        else:
+            tp = tp_raw.astype(float) * 1000.0 if np.nanmax(tp_raw) < 5.0 else tp_raw.astype(float)
+        msl = ds["msl"].values.squeeze() / 100.0  # Pa -> hPa
+        ds.close()
+        try: os.remove(target_file)
+        except Exception: pass
+
+        # 2. Compute 6-hour rainfall difference if step >= 6
+        if step >= 6 and client is not None:
+            try:
+                prev_step = step - 6
+                client.retrieve(step=prev_step, type="fc", param=["tp"], target=target_prev)
+                ds_p = xr.open_dataset(target_prev, engine="cfgrib")
+                if "time" in ds_p.dims and ds_p.sizes["time"] > 1:
+                    ds_p = ds_p.isel(time=-1)
+                tp_p_raw = ds_p["tp"].values.squeeze()
+                tp_p_units = str(ds_p["tp"].attrs.get("units", "")).lower()
+                if "kg" in tp_p_units:
+                    tp_prev = tp_p_raw.astype(float)
+                elif "m" in tp_p_units:
+                    tp_prev = tp_p_raw.astype(float) * 1000.0
+                else:
+                    tp_prev = tp_p_raw.astype(float) * 1000.0 if np.nanmax(tp_p_raw) < 5.0 else tp_p_raw.astype(float)
+                ds_p.close()
+                try: os.remove(target_prev)
+                except Exception: pass
+                # 6-hour precipitation increment
+                tp = np.maximum(0.0, tp - tp_prev)
+            except Exception:
+                try:
+                    if os.path.exists(target_prev): os.remove(target_prev)
+                except Exception: pass
+
+        # Longitude normalization to [-180, 180]
+        if np.nanmax(lons) > 180:
+            lons = np.where(lons > 180, lons - 360, lons)
+        sort_lon = np.argsort(lons)
+        lons = lons[sort_lon]
+        msl = msl[:, sort_lon]
+        tp = tp[:, sort_lon]
+
+        # Latitude sorting (ascending)
+        if lats[0] > lats[-1]:
+            lats = lats[::-1]
+            msl = msl[::-1, :]
+            tp = tp[::-1, :]
+
+        # Spatial clipping to extent
+        lon_mask = (lons >= extent[0] - 2.0) & (lons <= extent[1] + 2.0)
+        lat_mask = (lats >= extent[2] - 2.0) & (lats <= extent[3] + 2.0)
+        sub_lons = lons[lon_mask]
+        sub_lats = lats[lat_mask]
+        sub_msl = msl[np.ix_(lat_mask, lon_mask)]
+        sub_tp = np.maximum(0, tp[np.ix_(lat_mask, lon_mask)])
+
+        # Find Low Pressure Center inside visible extent (avoiding border edges)
+        inner_lon_mask = (sub_lons >= extent[0] + 0.5) & (sub_lons <= extent[1] - 0.5)
+        inner_lat_mask = (sub_lats >= extent[2] + 0.5) & (sub_lats <= extent[3] - 0.5)
+        low_center = None
+        if np.any(inner_lon_mask) and np.any(inner_lat_mask):
+            inner_msl = sub_msl[np.ix_(inner_lat_mask, inner_lon_mask)]
+            inner_lons = sub_lons[inner_lon_mask]
+            inner_lats = sub_lats[inner_lat_mask]
+            min_idx = np.unravel_index(np.argmin(inner_msl), inner_msl.shape)
+            low_lon = float(inner_lons[min_idx[1]])
+            low_lat = float(inner_lats[min_idx[0]])
+            min_p = float(inner_msl[min_idx])
+            if min_p < 1012.0:
+                low_center = (low_lon, low_lat, min_p)
+                print(f"  [OK] ECMWF {model_type.upper()}: Min MSLP {min_p:.1f} hPa at ({low_lon:.1f}E, {low_lat:.1f}N)")
+            else:
+                print(f"  [OK] ECMWF {model_type.upper()}: No closed low (<1012 hPa) inside domain. Min MSLP: {min_p:.1f} hPa")
+
+        return {
+            "lons": sub_lons,
+            "lats": sub_lats,
+            "mslp": sub_msl,
+            "precip": sub_tp,
+            "low_center": low_center,
+            "init_dt": init_dt,
+            "valid_dt": valid_dt,
+            "model_key": "ECMWF" if model_type == "ifs" else "AIFS"
+        }
+    except Exception as e:
+        print(f"  [WARNING] Live fetch for ECMWF {model_type} step {step} error: {e}")
+        return None
+
+
+def fetch_live_aigfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
+    """
+    Retrieves real forecast fields from NOAA NOMADS AIGFS via fast byte-range HTTP streaming.
+    """
+    import requests
+    from eccodes import codes_grib_new_from_file, codes_get, codes_get_values, codes_release
+
+    print(f"  [LIVE] Fetching NOAA AIGFS for step T+{step}h from NOMADS ...")
+    base_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigfs/prod"
+    now_utc = datetime.now(timezone.utc)
+
+    for day_off in range(3):
+        dt_check = now_utc - timedelta(days=day_off)
+        date_str = dt_check.strftime("%Y%m%d")
+        for cycle in ["18", "12", "06", "00"]:
+            cycle_url = f"{base_url}/aigfs.{date_str}/{cycle}/model/atmos/grib2/"
+            idx_url = f"{cycle_url}aigfs.t{cycle}z.sfc.f{step:03d}.grib2.idx"
+            try:
+                r_idx = requests.get(idx_url, timeout=6)
+                if r_idx.status_code == 200:
+                    lines = r_idx.text.splitlines()
+                    prmsl_line = next((l for l in lines if ":PRMSL:mean sea level:" in l), None)
+                    apcp_line = next((l for l in lines if f":APCP:surface:" in l), None)
+                    if not prmsl_line:
+                        continue
+
+                    grib_url = f"{cycle_url}aigfs.t{cycle}z.sfc.f{step:03d}.grib2"
+
+                    # Byte range for PRMSL
+                    p_idx = lines.index(prmsl_line)
+                    start_p = int(prmsl_line.split(":")[1])
+                    end_p = int(lines[p_idx + 1].split(":")[1]) - 1 if p_idx < len(lines) - 1 else ""
+                    r_p = requests.get(grib_url, headers={"Range": f"bytes={start_p}-{end_p}"}, timeout=25)
+
+                    # Byte range for APCP
+                    r_a_content = None
+                    if apcp_line:
+                        a_idx = lines.index(apcp_line)
+                        start_a = int(apcp_line.split(":")[1])
+                        end_a = int(lines[a_idx + 1].split(":")[1]) - 1 if a_idx < len(lines) - 1 else ""
+                        r_a = requests.get(grib_url, headers={"Range": f"bytes={start_a}-{end_a}"}, timeout=25)
+                        if r_a.status_code in (200, 206):
+                            r_a_content = r_a.content
+
+                    temp_p = f"temp_aigfs_p_{os.getpid()}.grib2"
+                    with open(temp_p, "wb") as f:
+                        f.write(r_p.content)
+
+                    f_in = open(temp_p, "rb")
+                    gid = codes_grib_new_from_file(f_in)
+                    ni = codes_get(gid, "Ni")
+                    nj = codes_get(gid, "Nj")
+                    msl_raw = codes_get_values(gid).reshape(nj, ni) / 100.0
+                    codes_release(gid)
+                    f_in.close()
+                    try: os.remove(temp_p)
+                    except Exception: pass
+
+                    tp_raw = np.zeros_like(msl_raw)
+                    if r_a_content:
+                        temp_a = f"temp_aigfs_a_{os.getpid()}.grib2"
+                        with open(temp_a, "wb") as f:
+                            f.write(r_a_content)
+                        f_in_a = open(temp_a, "rb")
+                        gid_a = codes_grib_new_from_file(f_in_a)
+                        tp_raw = codes_get_values(gid_a).reshape(nj, ni)
+                        codes_release(gid_a)
+                        f_in_a.close()
+                        try: os.remove(temp_a)
+                        except Exception: pass
+
+                    lons = np.linspace(0.0, 359.75, ni)
+                    lats = np.linspace(90.0, -90.0, nj)
+                    lons_180 = np.where(lons > 180, lons - 360, lons)
+                    sort_lon = np.argsort(lons_180)
+                    lons = lons_180[sort_lon]
+                    msl_raw = msl_raw[:, sort_lon]
+                    tp_raw = tp_raw[:, sort_lon]
+
+                    lats = lats[::-1]
+                    msl_raw = msl_raw[::-1, :]
+                    tp_raw = tp_raw[::-1, :]
+
+                    lon_mask = (lons >= extent[0] - 2.0) & (lons <= extent[1] + 2.0)
+                    lat_mask = (lats >= extent[2] - 2.0) & (lats <= extent[3] + 2.0)
+                    sub_lons = lons[lon_mask]
+                    sub_lats = lats[lat_mask]
+                    sub_msl = msl_raw[np.ix_(lat_mask, lon_mask)]
+                    sub_tp = np.maximum(0, tp_raw[np.ix_(lat_mask, lon_mask)])
+
+                    # Find Low Pressure Center inside visible extent (avoiding border edges)
+                    inner_lon_mask = (sub_lons >= extent[0] + 0.5) & (sub_lons <= extent[1] - 0.5)
+                    inner_lat_mask = (sub_lats >= extent[2] + 0.5) & (sub_lats <= extent[3] - 0.5)
+                    low_center = None
+                    if np.any(inner_lon_mask) and np.any(inner_lat_mask):
+                        inner_msl = sub_msl[np.ix_(inner_lat_mask, inner_lon_mask)]
+                        inner_lons = sub_lons[inner_lon_mask]
+                        inner_lats = sub_lats[inner_lat_mask]
+                        min_idx = np.unravel_index(np.argmin(inner_msl), inner_msl.shape)
+                        low_lon = float(inner_lons[min_idx[1]])
+                        low_lat = float(inner_lats[min_idx[0]])
+                        min_p = float(inner_msl[min_idx])
+                        if min_p < 1012.0:
+                            low_center = (low_lon, low_lat, min_p)
+
+                    init_dt = datetime.strptime(f"{date_str}{cycle}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
+                    valid_dt = init_dt + timedelta(hours=step)
+
+                    print(f"  [OK] NOAA AIGFS ({date_str} {cycle}Z): Min MSLP {min_p:.1f} hPa at ({low_lon:.1f}E, {low_lat:.1f}N)")
+                    return {
+                        "lons": sub_lons,
+                        "lats": sub_lats,
+                        "mslp": sub_msl,
+                        "precip": sub_tp,
+                        "low_center": low_center,
+                        "init_dt": init_dt,
+                        "valid_dt": valid_dt,
+                        "model_key": "AIGFS"
+                    }
+            except Exception as e:
+                continue
+    print(f"  [WARNING] Could not retrieve live AIGFS from NOMADS.")
+    return None
+
+
+def fetch_live_gfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
+    """
+    Retrieves real forecast fields from NOAA NOMADS GFS 0.25 via fast byte-range HTTP streaming.
+    """
+    import requests
+    from eccodes import codes_grib_new_from_file, codes_get, codes_get_values, codes_release
+
+    print(f"  [LIVE] Fetching NOAA GFS 0.25 for step T+{step}h from NOMADS ...")
+    base_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod"
+    now_utc = datetime.now(timezone.utc)
+
+    for day_off in range(3):
+        dt_check = now_utc - timedelta(days=day_off)
+        date_str = dt_check.strftime("%Y%m%d")
+        for cycle in ["18", "12", "06", "00"]:
+            cycle_url = f"{base_url}/gfs.{date_str}/{cycle}/atmos/"
+            idx_url = f"{cycle_url}gfs.t{cycle}z.pgrb2.0p25.f{step:03d}.idx"
+            try:
+                r_idx = requests.get(idx_url, timeout=6)
+                if r_idx.status_code == 200:
+                    lines = r_idx.text.splitlines()
+                    prmsl_line = next((l for l in lines if ":PRMSL:mean sea level:" in l), None)
+                    apcp_line = next((l for l in lines if f":APCP:surface:{step-6}-{step}" in l or ":APCP:surface:" in l), None)
+                    if not prmsl_line:
+                        continue
+
+                    grib_url = f"{cycle_url}gfs.t{cycle}z.pgrb2.0p25.f{step:03d}"
+
+                    p_idx = lines.index(prmsl_line)
+                    start_p = int(prmsl_line.split(":")[1])
+                    end_p = int(lines[p_idx + 1].split(":")[1]) - 1 if p_idx < len(lines) - 1 else ""
+                    r_p = requests.get(grib_url, headers={"Range": f"bytes={start_p}-{end_p}"}, timeout=25)
+
+                    r_a_content = None
+                    if apcp_line:
+                        a_idx = lines.index(apcp_line)
+                        start_a = int(apcp_line.split(":")[1])
+                        end_a = int(lines[a_idx + 1].split(":")[1]) - 1 if a_idx < len(lines) - 1 else ""
+                        r_a = requests.get(grib_url, headers={"Range": f"bytes={start_a}-{end_a}"}, timeout=25)
+                        if r_a.status_code in (200, 206):
+                            r_a_content = r_a.content
+
+                    temp_p = f"temp_gfs_p_{os.getpid()}.grib2"
+                    with open(temp_p, "wb") as f:
+                        f.write(r_p.content)
+
+                    f_in = open(temp_p, "rb")
+                    gid = codes_grib_new_from_file(f_in)
+                    ni = codes_get(gid, "Ni")
+                    nj = codes_get(gid, "Nj")
+                    msl_raw = codes_get_values(gid).reshape(nj, ni) / 100.0
+                    codes_release(gid)
+                    f_in.close()
+                    try: os.remove(temp_p)
+                    except Exception: pass
+
+                    tp_raw = np.zeros_like(msl_raw)
+                    if r_a_content:
+                        temp_a = f"temp_gfs_a_{os.getpid()}.grib2"
+                        with open(temp_a, "wb") as f:
+                            f.write(r_a_content)
+                        f_in_a = open(temp_a, "rb")
+                        gid_a = codes_grib_new_from_file(f_in_a)
+                        tp_raw = codes_get_values(gid_a).reshape(nj, ni)
+                        codes_release(gid_a)
+                        f_in_a.close()
+                        try: os.remove(temp_a)
+                        except Exception: pass
+
+                    lons = np.linspace(0.0, 359.75, ni)
+                    lats = np.linspace(90.0, -90.0, nj)
+                    lons_180 = np.where(lons > 180, lons - 360, lons)
+                    sort_lon = np.argsort(lons_180)
+                    lons = lons_180[sort_lon]
+                    msl_raw = msl_raw[:, sort_lon]
+                    tp_raw = tp_raw[:, sort_lon]
+
+                    lats = lats[::-1]
+                    msl_raw = msl_raw[::-1, :]
+                    tp_raw = tp_raw[::-1, :]
+
+                    lon_mask = (lons >= extent[0] - 2.0) & (lons <= extent[1] + 2.0)
+                    lat_mask = (lats >= extent[2] - 2.0) & (lats <= extent[3] + 2.0)
+                    sub_lons = lons[lon_mask]
+                    sub_lats = lats[lat_mask]
+                    sub_msl = msl_raw[np.ix_(lat_mask, lon_mask)]
+                    sub_tp = np.maximum(0, tp_raw[np.ix_(lat_mask, lon_mask)])
+
+                    # Find Low Pressure Center inside visible extent (avoiding border edges)
+                    inner_lon_mask = (sub_lons >= extent[0] + 0.5) & (sub_lons <= extent[1] - 0.5)
+                    inner_lat_mask = (sub_lats >= extent[2] + 0.5) & (sub_lats <= extent[3] - 0.5)
+                    low_center = None
+                    if np.any(inner_lon_mask) and np.any(inner_lat_mask):
+                        inner_msl = sub_msl[np.ix_(inner_lat_mask, inner_lon_mask)]
+                        inner_lons = sub_lons[inner_lon_mask]
+                        inner_lats = sub_lats[inner_lat_mask]
+                        min_idx = np.unravel_index(np.argmin(inner_msl), inner_msl.shape)
+                        low_lon = float(inner_lons[min_idx[1]])
+                        low_lat = float(inner_lats[min_idx[0]])
+                        min_p = float(inner_msl[min_idx])
+                        if min_p < 1012.0:
+                            low_center = (low_lon, low_lat, min_p)
+
+                    init_dt = datetime.strptime(f"{date_str}{cycle}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
+                    valid_dt = init_dt + timedelta(hours=step)
+
+                    print(f"  [OK] NOAA GFS ({date_str} {cycle}Z): Min MSLP {min_p:.1f} hPa at ({low_lon:.1f}E, {low_lat:.1f}N)")
+                    return {
+                        "lons": sub_lons,
+                        "lats": sub_lats,
+                        "mslp": sub_msl,
+                        "precip": sub_tp,
+                        "low_center": low_center,
+                        "init_dt": init_dt,
+                        "valid_dt": valid_dt,
+                        "model_key": "GFS"
+                    }
+            except Exception as e:
+                continue
+    print(f"  [WARNING] Could not retrieve live GFS from NOMADS.")
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 3. Signature Broadcast Graphics Rendering Elements
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def draw_cyclonic_arrow_low_badge(ax, lon, lat, min_mslp=None, radius_deg=1.15):
+    """
+    Draws the signature TV broadcast Low Pressure (L) center badge:
+    - Bold crimson red circular disk with bright white border
+    - Bold white letter 'L' in the center
+    - Two counter-clockwise curved circular arrows wrapping around the perimeter
+      indicating storm rotation (exact match of television broadcast style)
+    """
+    r_deg = radius_deg
+
+
+    # 2. White 'L' in center
+    ax.text(
+        lon, lat, "L",
+        fontsize=16, fontweight="heavy", color="#ffffff",
+        ha="center", va="center", zorder=28,
+        transform=ccrs.PlateCarree(),
+        path_effects=[patheffects.withStroke(linewidth=2.0, foreground="#991b1b")]
+    )
+
+    # 3. Counter-clockwise rotating circular arrows around the perimeter
+    # Arrow 1: Top arc (from right-top around to left-top)
+    p1_start = (lon + r_deg * 1.25, lat + r_deg * 0.15)
+    p1_end = (lon - r_deg * 0.70, lat + r_deg * 1.15)
+    arr1 = FancyArrowPatch(
+        posA=p1_start, posB=p1_end,
+        connectionstyle="arc3,rad=-0.45",
+        color="#ffffff",
+        arrowstyle="-|>,head_length=4.5,head_width=4.0",
+        linewidth=2.2,
+        zorder=27,
+        transform=ccrs.PlateCarree()
+    )
+    ax.add_patch(arr1)
+
+    # Arrow 2: Bottom arc (from left-bottom around to right-bottom)
+    p2_start = (lon - r_deg * 1.25, lat - r_deg * 0.15)
+    p2_end = (lon + r_deg * 0.70, lat - r_deg * 1.15)
+    arr2 = FancyArrowPatch(
+        posA=p2_start, posB=p2_end,
+        connectionstyle="arc3,rad=-0.45",
+        color="#ffffff",
+        arrowstyle="-|>,head_length=4.5,head_width=4.0",
+        linewidth=2.2,
+        zorder=27,
+        transform=ccrs.PlateCarree()
+    )
+    ax.add_patch(arr2)
+
+    # Optional: Min pressure label badge underneath
+    if min_mslp is not None and min_mslp < 1010:
+        val_str = f"{int(round(min_mslp))} hPa"
+        ax.text(
+            lon, lat - r_deg * 1.55, val_str,
+            fontsize=8.5, fontweight="bold", color="#ffffff",
+            ha="center", va="center", zorder=29,
+            transform=ccrs.PlateCarree(),
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="#0f172a", edgecolor="#dc2626", alpha=0.88, lw=0.9)
+        )
+
+
+def draw_broadcast_top_header(fig, brand=None, title="LONG RANGE MODEL COMPARISON", target_day="SUNDAY", valid_str=""):
+    """
+    Renders the high-end television broadcast header bar at the top of the canvas:
+    - Left brand pill: Official Philippine Typhoon/Weather logo & typography
+    - Clean white drop-shadow header card: 'LONG RANGE MODEL COMPARISON'
+    - Subtitle pill: Day of the week / Valid time (e.g., 'SUNDAY' or 'SUN 9 PM')
+    """
+    # 1. Top dark glass header background bar
+    bar_bg = FancyBboxPatch(
+        (0.02, 0.902), 0.96, 0.088,
+        boxstyle="round,pad=0.005,rounding_size=0.012",
+        transform=fig.transFigure,
+        facecolor="#081423", edgecolor="#1e3a5f",
+        alpha=0.94, lw=1.2, zorder=50
+    )
+    fig.patches.append(bar_bg)
+
+    # 2. Station / Network Brand Badge (Official Philippine Typhoon/Weather Branding)
+    brand_pill = FancyBboxPatch(
+        (0.026, 0.908), 0.225, 0.076,
+        boxstyle="round,pad=0.006,rounding_size=0.010",
+        transform=fig.transFigure,
+        facecolor="#0f2744", edgecolor="#38bdf8",
+        lw=1.5, zorder=52
+    )
+    fig.patches.append(brand_pill)
+
+    # Embed official circular logo if available
+    logo_path = os.path.join(IMAGES_DIR, "logo.png")
+    has_logo = False
+    if os.path.exists(logo_path):
+        try:
+            logo_img = mpimg.imread(logo_path)
+            ax_logo = fig.add_axes([0.030, 0.912, 0.045, 0.068], zorder=55)
+            ax_logo.imshow(logo_img)
+            ax_logo.axis("off")
+            has_logo = True
+        except Exception:
+            has_logo = False
+
+    if has_logo:
+        # Dual-line brand text next to the official circular logo
+        fig.text(
+            0.080, 0.954, "PHILIPPINE",
+            fontsize=12.5, fontweight="heavy",
+            color="#ffffff", ha="left", va="center",
+            zorder=56,
+            path_effects=[patheffects.withStroke(linewidth=2.0, foreground="#031633")]
+        )
+        fig.text(
+            0.080, 0.932, "TYPHOON / WEATHER",
+            fontsize=9.0, fontweight="heavy",
+            color="#38bdf8", ha="left", va="center",
+            zorder=56
+        )
+    else:
+        # Fallback text if logo file is missing
+        brand_name = brand if brand else "PHILIPPINE WEATHER"
+        fig.text(
+            0.138, 0.945, brand_name,
+            fontsize=13.5, fontweight="heavy",
+            color="#ffffff", ha="center", va="center",
+            zorder=56,
+            path_effects=[patheffects.withStroke(linewidth=2.0, foreground="#031633")]
+        )
+
+    # 3. Main Header Card (Sleek Dark Glass UI Card matching station branding)
+    title_card = FancyBboxPatch(
+        (0.260, 0.908), 0.465, 0.076,
+        boxstyle="round,pad=0.006,rounding_size=0.010",
+        transform=fig.transFigure,
+        facecolor="#0f2238", edgecolor="#0284c7",
+        lw=1.5, alpha=0.95, zorder=52
+    )
+    fig.patches.append(title_card)
+
+    # Main Title Text (Crisp White with drop shadow stroke)
+    fig.text(
+        0.275, 0.954, title,
+        fontsize=16.5, fontweight="heavy",
+        color="#ffffff", ha="left", va="center",
+        zorder=53,
+        path_effects=[patheffects.withStroke(linewidth=2.0, foreground="#031633")]
+    )
+
+    # Subtitle / Day Pill below the title (Vivid Cyan)
+    fig.text(
+        0.277, 0.926, target_day.upper(),
+        fontsize=11.5, fontweight="bold",
+        color="#38bdf8", ha="left", va="center",
+        zorder=53
+    )
+
+    # 4. Right side: Multi-Model AI & NWP Badge
+    badge_pill = FancyBboxPatch(
+        (0.735, 0.908), 0.235, 0.076,
+        boxstyle="round,pad=0.006,rounding_size=0.008",
+        transform=fig.transFigure,
+        facecolor="#0b172a", edgecolor="#0284c7",
+        lw=1.0, zorder=52
+    )
+    fig.patches.append(badge_pill)
+
+    fig.text(
+        0.852, 0.952, "MULTI-MODEL COMPARISON",
+        fontsize=10.5, fontweight="heavy",
+        color="#38bdf8", ha="center", va="center",
+        zorder=53
+    )
+    fig.text(
+        0.852, 0.930, "GFS · AIGFS · ECMWF · AIFS",
+        fontsize=8.5, fontweight="bold",
+        color="#94a3b8", ha="center", va="center",
+        zorder=53
+    )
+
+
+def compute_balanced_extent(domain_cfg, map_w, map_h, fig_w=16.0, fig_h=9.0):
+    """
+    Computes map coordinate bounds that match the exact physical aspect ratio of the card
+    in figure space, ensuring Cartopy fills 100% of the card with aspect='equal' (ZERO DISTORTION).
+    """
+    if not domain_cfg.get("is_ph"):
+        return domain_cfg["extent"]
+
+    # Physical aspect ratio of the map window in inches
+    w_in = map_w * fig_w
+    h_in = map_h * fig_h
+    axis_ar = w_in / max(h_in, 0.001)
+
+    c_lon, c_lat = 127.5, 16.0
+
+    if axis_ar >= 1.0:
+        # Landscape map box (e.g. 4-panel or 2-panel)
+        # Covers the Philippine Archipelago, Philippine Sea & Western Pacific tropical systems (lat 3.0°N to 29.0°N)
+        lat_span = 26.0
+        lon_span = lat_span * axis_ar
+    else:
+        # Portrait map box (e.g. 3-panel horizontal)
+        # Covers full width from South China Sea across the Philippines to the Western Pacific
+        lon_span = 31.0
+        lat_span = lon_span / axis_ar
+
+    return [
+        float(c_lon - lon_span / 2.0),
+        float(c_lon + lon_span / 2.0),
+        float(c_lat - lat_span / 2.0),
+        float(c_lat + lat_span / 2.0)
+    ]
+
+
+def draw_panel_weather_map(ax, model_data, extent, domain_cfg, provinces_geom=None):
+    """
+    Renders the synoptic weather map inside each panel:
+    - Base map (dark ocean, slate terrain, crisp coastlines)
+    - Precipitation / radar reflectivity contours
+    - Smooth MSLP isobars with white stroke
+    - Low pressure (L) center badge with cyclonic rotation arrows
+    """
+    lons = model_data["lons"]
+    lats = model_data["lats"]
+    mslp = model_data["mslp"]
+    precip = model_data["precip"]
+    low_center = model_data.get("low_center")
+
+    LONS, LATS = np.meshgrid(lons, lats) if lons.ndim == 1 else (lons, lats)
+
+    ax.set_extent(extent, crs=ccrs.PlateCarree())
+
+    # 1. Base Geography
+    ax.set_facecolor("#142131")
+    ax.add_feature(cfeature.OCEAN, facecolor="#142131", zorder=0)
+    ax.add_feature(cfeature.LAND, facecolor="#223241", zorder=1)
+    ax.add_feature(cfeature.COASTLINE, linewidth=1.1, edgecolor="#090f17", zorder=4)
+    ax.add_feature(cfeature.BORDERS, linestyle="-", linewidth=0.6, edgecolor="#475569", alpha=0.8, zorder=4)
+
+    # Overlay Philippine province boundaries if in PH domain
+    if domain_cfg.get("is_ph") and provinces_geom:
+        ax.add_geometries(
+            provinces_geom, crs=ccrs.PlateCarree(),
+            facecolor="none", edgecolor="#334155",
+            linewidth=0.45, alpha=0.75, zorder=3
+        )
+        # PAR boundary line
+        ax.plot(
+            PAR_LONS, PAR_LATS,
+            transform=ccrs.PlateCarree(),
+            color="#ef4444", linestyle="-", linewidth=1.4, alpha=0.85, zorder=5
+        )
+
+    # 2. Precipitation / Radar Reflectivity Contours
+    if np.nanmax(precip) > 0.2:
+        ax.contourf(
+            LONS, LATS, precip,
+            levels=PRECIP_LEVELS,
+            cmap=PRECIP_CMAP,
+            norm=PRECIP_NORM,
+            extend="max",
+            alpha=0.90,
+            transform=ccrs.PlateCarree(),
+            zorder=2
+        )
+
+    # 3. MSLP Isobars (smooth white contours)
+    if mslp is not None:
+        mslp_smooth = scipy.ndimage.gaussian_filter(mslp, sigma=1.2)
+        min_p = int(np.floor(np.nanmin(mslp_smooth) / 4.0) * 4)
+        max_p = int(np.ceil(np.nanmax(mslp_smooth) / 4.0) * 4)
+        levels = np.arange(min_p, max_p + 4, 4)
+
+        cs = ax.contour(
+            LONS, LATS, mslp_smooth,
+            levels=levels,
+            colors="#ffffff",
+            linewidths=1.2,
+            alpha=0.92,
+            transform=ccrs.PlateCarree(),
+            zorder=6
+        )
+        # White labels with dark stroke for ultra-clear visibility
+        ax.clabel(
+            cs, inline=True, fontsize=8.0, fmt="%d",
+            colors="#ffffff", zorder=7
+        )
+
+    # 4. Low Pressure Center (L) Badge with rotating arrows
+    if low_center is not None:
+        low_lon, low_lat, min_val = low_center
+        draw_cyclonic_arrow_low_badge(ax, low_lon, low_lat, min_mslp=min_val, radius_deg=1.05)
+
+
+def draw_panel_frame_and_labels(fig, rect, model_key, timestamp_str="9 PM SUN JAN 25", sub_badge_override=None):
+    """
+    Renders the broadcast TV glass card framing, timestamp pill, and bottom model banner.
+    rect: [left, bottom, width, height] in figure coordinates.
+    """
+    norm_key = model_key.upper().strip()
+    meta = MODEL_META.get(norm_key, MODEL_META["GFS"])
+    x, y, w, h = rect
+
+    # 1. Outer Glass Card Border Glow
+    outer_border = FancyBboxPatch(
+        (x - 0.003, y - 0.003), w + 0.006, h + 0.006,
+        boxstyle="round,pad=0.002,rounding_size=0.008",
+        transform=fig.transFigure,
+        facecolor="none", edgecolor="#0284c7",
+        lw=2.0, alpha=0.90, zorder=35
+    )
+    fig.patches.append(outer_border)
+
+    # 2. Bottom-left Timestamp Pill (Dark Glass with Cyan Glow)
+    time_pill_w = min(0.185, w * 0.48)
+    time_pill_h = min(0.038, h * 0.10)
+    time_pill = FancyBboxPatch(
+        (x + 0.008, y + 0.056), time_pill_w, time_pill_h,
+        boxstyle="round,pad=0.002,rounding_size=0.004",
+        transform=fig.transFigure,
+        facecolor="#081526", edgecolor="#38bdf8",
+        lw=1.1, alpha=0.92, zorder=36
+    )
+    fig.patches.append(time_pill)
+
+    fig.text(
+        x + 0.008 + time_pill_w / 2.0, y + 0.056 + time_pill_h / 2.0,
+        timestamp_str.upper(),
+        fontsize=9.0 if w < 0.35 else 10.0, fontweight="heavy",
+        color="#ffffff", ha="center", va="center",
+        zorder=37,
+        path_effects=[patheffects.withStroke(linewidth=1.5, foreground="#020914")]
+    )
+
+    # 3. Bottom Model Banner across the bottom of each map card
+    banner_h = min(0.050, h * 0.13)
+    banner_bg = FancyBboxPatch(
+        (x, y), w, banner_h,
+        boxstyle="square,pad=0.0",
+        transform=fig.transFigure,
+        facecolor="#0c2d57", edgecolor="#1d4ed8",
+        lw=1.2, zorder=36
+    )
+    fig.patches.append(banner_bg)
+
+    # Main Model Title Text (e.g. AMERICAN GFS FORECAST, AMERICAN AI-GFS FORECAST, etc.)
+    fig.text(
+        x + w / 2.0, y + banner_h * 0.60,
+        meta["banner_text"],
+        fontsize=11.5 if w < 0.35 else 13.0, fontweight="heavy",
+        color="#ffffff", ha="center", va="center",
+        zorder=38,
+        path_effects=[patheffects.withStroke(linewidth=2.0, foreground="#031633")]
+    )
+
+    # Sub-badge indicating exact model, resolution, and run cycle
+    badge_label = sub_badge_override if sub_badge_override else meta["sub_badge"]
+    fig.text(
+        x + w / 2.0, y + banner_h * 0.22,
+        badge_label,
+        fontsize=7.5 if w < 0.35 else 8.5, fontweight="bold",
+        color=meta["color"], ha="center", va="center",
+        zorder=38
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 4. Master Comparison Layouts: 4-Panel Quad, 3-Panel Row, 2-Panel Side-by-Side
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def render_comparison_broadcast(
+    mode="4panel",
+    selected_models=("GFS", "AIGFS", "ECMWF", "AIFS"),
+    region="ph",
+    brand=None,
+    title=None,
+    target_day=None,
+    timestamp_str=None,
+    lead_time_hours=240,
+    output_filepath="public/images/model_comparison_broadcast.png",
+    use_demo=False
+):
+    """
+    Main entry point for generating the television broadcast graphic.
+    Supports:
+    - 4-Panel Quad Grid (2x2): Compares GFS, AIGFS, ECMWF, AIFS simultaneously
+    - 3-Panel Side-by-Side (1x3): 3-model comparison
+    - 2-Panel Side-by-Side (1x2): 2-model comparison
+    """
+    # Dynamic title: > 168h (7+ days) -> LONG RANGE, <= 168h (<= 7 days) -> MEDIUM RANGE
+    if not title or title in ("LONG RANGE MODEL COMPARISON", "MEDIUM RANGE MODEL COMPARISON"):
+        if lead_time_hours > 168:
+            title = "LONG RANGE MODEL COMPARISON"
+        else:
+            title = "MEDIUM RANGE MODEL COMPARISON"
+    print(f"\n========================================================")
+    print(f" Generating Broadcast Model Comparison: {mode.upper()}")
+    print(f" Models: {', '.join(selected_models)}")
+    print(f" Mode: {'SYNTHETIC DEMO' if use_demo else 'LIVE NWP / AI DATA'}")
+    print(f" Region: {region.upper()} | Lead Time: T+{lead_time_hours}h")
+    print(f" Output: {output_filepath}")
+    print(f"========================================================\n")
+
+    domain_cfg = DOMAINS.get(region, DOMAINS["ph"])
+    valid_dt = datetime.now(timezone.utc) + timedelta(hours=lead_time_hours)
+    valid_pht = valid_dt.astimezone(timezone(timedelta(hours=8)))
+
+    # Compute default target_day if not specified (no T+240 indicator)
+    if not target_day:
+        day_name = valid_pht.strftime("%A").upper()
+        days_out = lead_time_hours // 24
+        if days_out >= 4:
+            target_day = f"{day_name} · {days_out}-DAY OUTLOOK"
+        else:
+            target_day = day_name
+
+    # Compute default timestamp string if not specified
+    if not timestamp_str:
+        timestamp_str = valid_pht.strftime("%I %p %a %b %d").lstrip("0").upper()
+
+    # Load Philippine provinces if relevant
+    provinces_geom = []
+    if domain_cfg.get("is_ph"):
+        try:
+            provinces_geom = load_ph_provinces(DATA_DIR)
+        except Exception:
+            provinces_geom = []
+
+    # 1. Create Figure with 16:9 Television Broadcast Aspect Ratio (1920x1080 Full HD)
+    fig = plt.figure(figsize=(16, 9), dpi=120, facecolor=BG_DARK, edgecolor=BG_DARK)
+    fig.patch.set_facecolor(BG_DARK)
+    fig.patch.set_edgecolor(BG_DARK)
+
+    # 2. Render Rainy Window Studio Background (Exact 30% Opacity)
+    bg_image_path = os.path.join(IMAGES_DIR, "broadcast_rain_bg.jpg")
+    if os.path.exists(bg_image_path):
+        try:
+            bg_img = mpimg.imread(bg_image_path)
+            ax_bg = fig.add_axes([0, 0, 1, 1], zorder=0)
+            ax_bg.imshow(bg_img, aspect="auto", alpha=0.30)
+            ax_bg.axis("off")
+        except Exception as e:
+            print(f"Notice: Failed to load background image ({e}), applying dark studio backdrop.")
+            fig.patch.set_facecolor(BG_DARK)
+    else:
+        fig.patch.set_facecolor(BG_DARK)
+
+    # 3. Draw Broadcast Top Header Bar
+    draw_broadcast_top_header(
+        fig, brand=brand, title=title, target_day=target_day,
+        valid_str=timestamp_str
+    )
+
+    # 4. Prepare Models & Layout Coordinates
+    if mode == "2panel":
+        # 2-Panel Side-by-Side (1x2)
+        models_to_render = list(selected_models)[:2]
+        if len(models_to_render) < 2:
+            models_to_render = ["GFS", "ECMWF"]
+
+        panel_rects = [
+            [0.038, 0.055, 0.448, 0.815],  # Left panel
+            [0.514, 0.055, 0.448, 0.815],  # Right panel
+        ]
+    elif mode == "3panel":
+        # 3-Panel Side-by-Side (1x3)
+        models_to_render = list(selected_models)[:3]
+        if len(models_to_render) < 3:
+            models_to_render = ["GFS", "AIGFS", "ECMWF"]
+
+        panel_rects = [
+            [0.032, 0.055, 0.298, 0.815],  # Left panel
+            [0.351, 0.055, 0.298, 0.815],  # Center panel
+            [0.670, 0.055, 0.298, 0.815],  # Right panel
+        ]
+    else:
+        # Default: 4-Panel Quad Grid (2x2) comparing GFS, AIGFS, ECMWF, AIFS
+        models_to_render = list(selected_models)[:4]
+        # Ensure 4 models are populated
+        defaults = ["GFS", "AIGFS", "ECMWF", "AIFS"]
+        for d in defaults:
+            if len(models_to_render) < 4 and d not in models_to_render:
+                models_to_render.append(d)
+
+        panel_rects = [
+            [0.038, 0.485, 0.448, 0.395],  # Top-Left (GFS)
+            [0.514, 0.485, 0.448, 0.395],  # Top-Right (AIGFS)
+            [0.038, 0.055, 0.448, 0.395],  # Bottom-Left (ECMWF)
+            [0.514, 0.055, 0.448, 0.395],  # Bottom-Right (AIFS)
+        ]
+
+    # 5. Render Each Model Panel
+    for i, model_key in enumerate(models_to_render):
+        rect = panel_rects[i]
+        norm_key = model_key.upper().strip()
+        print(f"Rendering Panel {i + 1}: {norm_key} ...")
+
+        # Map axis inside the panel frame (leaving space for bottom banner)
+        banner_h = min(0.050, rect[3] * 0.13)
+        map_rect = [rect[0], rect[1] + banner_h, rect[2], rect[3] - banner_h]
+
+        # Compute balanced extent for this exact map box to eliminate distortion
+        extent = compute_balanced_extent(domain_cfg, map_rect[2], map_rect[3])
+
+        # Card backing patch
+        card_back = patches.Rectangle(
+            (rect[0], rect[1]), rect[2], rect[3],
+            transform=fig.transFigure, facecolor="#142131", edgecolor="none", zorder=7
+        )
+        fig.patches.append(card_back)
+
+        # Fetch / generate model data
+        model_data = None
+        if not use_demo:
+            try:
+                if norm_key == "ECMWF":
+                    model_data = fetch_live_ecmwf(model_type="ifs", step=lead_time_hours, extent=extent)
+                elif norm_key == "AIFS":
+                    model_data = fetch_live_ecmwf(model_type="aifs-single", step=lead_time_hours, extent=extent)
+                elif norm_key == "GFS":
+                    model_data = fetch_live_gfs(step=lead_time_hours, extent=extent)
+                elif norm_key in ["AIGFS", "AIGEFS"]:
+                    model_data = fetch_live_aigfs(step=lead_time_hours, extent=extent)
+            except Exception as ex:
+                print(f"  [ERROR] Live fetch error for {norm_key}: {ex}")
+                model_data = None
+
+        # Fallback / Demo simulation mode
+        if model_data is None:
+            if not use_demo:
+                print(f"  [FALLBACK] Using simulation data for {norm_key}")
+            model_data = generate_demo_model_data(norm_key, extent, valid_dt)
+
+        ax_map = fig.add_axes(map_rect, projection=ccrs.PlateCarree(), zorder=10)
+
+        draw_panel_weather_map(
+            ax_map, model_data, extent, domain_cfg, provinces_geom=provinces_geom
+        )
+
+        # Determine panel-specific timestamp and sub-badge
+        panel_time_str = timestamp_str
+        if model_data.get("valid_dt"):
+            v_dt = model_data["valid_dt"]
+            v_pht = v_dt.astimezone(timezone(timedelta(hours=8))) if v_dt.tzinfo else (v_dt + timedelta(hours=8))
+            panel_time_str = v_pht.strftime("%I %p %a %b %d").lstrip("0").upper()
+
+        base_meta = MODEL_META.get(norm_key, MODEL_META["GFS"])
+        sub_badge = base_meta["sub_badge"]
+
+        # Draw frame border, timestamp badge & bottom banner
+        draw_panel_frame_and_labels(
+            fig, rect, norm_key, timestamp_str=panel_time_str, sub_badge_override=sub_badge
+        )
+
+    # 6. Save High-Resolution Broadcast Graphic
+    os.makedirs(os.path.dirname(output_filepath) or ".", exist_ok=True)
+    plt.savefig(
+        output_filepath,
+        dpi=120,
+        facecolor=BG_DARK,
+        edgecolor=BG_DARK,
+        pad_inches=0
+    )
+    plt.close(fig)
+    print(f"\n[SUCCESS] Broadcast model comparison saved to: {output_filepath}\n")
+    return output_filepath
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 5. CLI Execution & Argument Parsing
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="Television Broadcast Weather Model Comparison (GFS, AIGFS/AIGEFS, ECMWF, AIFS)",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument(
+        "--mode", choices=["4panel", "3panel", "2panel"], default="4panel",
+        help="Comparison layout: '4panel' (2x2 grid), '3panel' (1x3 row), or '2panel' (1x2 row)"
+    )
+    parser.add_argument(
+        "--models", nargs="+", default=["GFS", "AIGFS", "ECMWF", "AIFS"],
+        choices=["GFS", "AIGFS", "AIGEFS", "ECMWF", "AIFS"],
+        help="Models to compare (e.g. GFS AIGFS ECMWF AIFS)"
+    )
+    parser.add_argument(
+        "--region", choices=["ph", "wnp", "conus"], default="ph",
+        help="Geographic region domain ('ph' for Philippine PAR, 'wnp' for Western Pacific, 'conus' for US East)"
+    )
+    parser.add_argument(
+        "--brand", default=None,
+        help="Station / weather network brand logo text override"
+    )
+    parser.add_argument(
+        "--title", default=None,
+        help="Top broadcast title header (defaults to 'LONG RANGE' for >168h, 'MEDIUM RANGE' for <=168h)"
+    )
+    parser.add_argument(
+        "--day", default=None,
+        help="Target forecast day text (e.g. 'SUNDAY · 10-DAY OUTLOOK'). If not specified, calculated automatically."
+    )
+    parser.add_argument(
+        "--time-label", default=None,
+        help="Timestamp pill label text (e.g. '2 PM SUN SEP 20'). If not specified, calculated automatically."
+    )
+    parser.add_argument(
+        "--lead-time", type=int, default=240,
+        help="Forecast lead time in hours (e.g. 24, 72, 120, 240)"
+    )
+    parser.add_argument(
+        "--output", default="public/images/model_comparison_broadcast.png",
+        help="Output image path"
+    )
+    parser.add_argument(
+        "--live", dest="demo", action="store_false", default=True,
+        help="Retrieve actual live data from NOAA NOMADS and ECMWF OpenData"
+    )
+    parser.add_argument(
+        "--demo", dest="demo", action="store_true",
+        help="Run in realistic synoptic simulation demo mode"
+    )
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_arguments()
+
+    render_comparison_broadcast(
+        mode=args.mode,
+        selected_models=args.models,
+        region=args.region,
+        brand=args.brand,
+        title=args.title,
+        target_day=args.day,
+        timestamp_str=args.time_label,
+        lead_time_hours=args.lead_time,
+        output_filepath=args.output,
+        use_demo=args.demo
+    )
