@@ -16,7 +16,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "eyJhbGciOiJIUzI1NiIs
 
 # GarbinWx Doppler Radar Identity Header
 # Request your ID header at: contact@garbinwx.org
-GARBINWX_RADAR_IDENTITY = os.environ.get("GARBINWX_RADAR_IDENTITY", "IDENTITY-HERE")
+GARBINWX_RADAR_IDENTITY = os.environ.get("GARBINWX_RADAR_IDENTITY", "sin1::gfszd-1789097236729-efb7a13fc7a0")
 
 GARBINWX_RAW_BASE = "https://data.garbinwx.org/raw"
 
@@ -96,9 +96,9 @@ def archive_frame(timestamp_str, unix_ts, formatted_str, radar_type="DBZ"):
     }
 
     try:
-        res = requests.get(url, headers=headers, stream=True, timeout=20)
+        res = requests.get(url, headers=headers, stream=True, timeout=8)
         if res.status_code == 403:
-            print(f"[{timestamp_str}] HTTP 403 Forbidden: Identity header required to access GarbinWx radar.")
+            print(f"[{timestamp_str}] HTTP 403 Forbidden: Identity header required to access GarbinWx radar.", flush=True)
             return "FORBIDDEN"
         if res.status_code != 200:
             return False
@@ -115,21 +115,21 @@ def archive_frame(timestamp_str, unix_ts, formatted_str, radar_type="DBZ"):
             return False
 
         if save_frame_metadata(formatted_str, unix_ts, public_url):
-            print(f"[{formatted_str}] Successfully archived GarbinWx {radar_type} frame: {public_url}")
+            print(f"[{formatted_str}] Successfully archived GarbinWx {radar_type} frame: {public_url}", flush=True)
             return True
     except Exception as e:
-        print(f"Error archiving {timestamp_str}: {e}")
+        print(f"Error archiving {timestamp_str}: {e}", flush=True)
     return False
 
 def archive_radar():
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{now_str}] Starting GarbinWx Doppler Radar Archiving Process...")
-    print(f"Identity Header Configured: {'YES' if GARBINWX_RADAR_IDENTITY != 'IDENTITY-HERE' else 'NO (Set GARBINWX_RADAR_IDENTITY in .env)'}")
+    print(f"[{now_str}] Starting GarbinWx Doppler Radar Archiving Process...", flush=True)
+    print(f"Identity Header Configured: {'YES' if GARBINWX_RADAR_IDENTITY != 'IDENTITY-HERE' else 'NO (Set GARBINWX_RADAR_IDENTITY in .env)'}", flush=True)
 
     if GARBINWX_RADAR_IDENTITY == "IDENTITY-HERE":
-        print("\n[NOTE] GarbinWx requires an identification header to access the Doppler radar endpoint.")
-        print("Please contact GarbinWx at contact@garbinwx.org to get your ID header, then add it to your .env file:")
-        print("GARBINWX_RADAR_IDENTITY=<your-identity-header>\n")
+        print("\n[NOTE] GarbinWx requires an identification header to access the Doppler radar endpoint.", flush=True)
+        print("Please contact GarbinWx at contact@garbinwx.org to get your ID header, then add it to your .env file:", flush=True)
+        print("GARBINWX_RADAR_IDENTITY=<your-identity-header>\n", flush=True)
 
     # Specific timestamp CLI argument: e.g. python archive_radar.py 202609051610
     if len(sys.argv) > 1 and len(sys.argv[1]) == 12 and sys.argv[1].isdigit():
@@ -138,9 +138,9 @@ def archive_radar():
         archive_frame(ts_arg, int(dt.timestamp()), dt.strftime("%Y-%m-%d %H:%M:%S"))
         return
 
-    candidates_10 = get_recent_utc8_timestamps(hours_back=6, interval_minutes=10)
-    candidates_15 = get_recent_utc8_timestamps(hours_back=6, interval_minutes=15)
-    candidates_20 = get_recent_utc8_timestamps(hours_back=6, interval_minutes=20)
+    candidates_10 = get_recent_utc8_timestamps(hours_back=3, interval_minutes=10)
+    candidates_15 = get_recent_utc8_timestamps(hours_back=3, interval_minutes=15)
+    candidates_20 = get_recent_utc8_timestamps(hours_back=3, interval_minutes=20)
     candidates = sorted(list({c[0]: c for c in candidates_10 + candidates_15 + candidates_20}.values()), key=lambda x: x[1])
 
     archived_count = 0
@@ -154,7 +154,7 @@ def archive_radar():
         elif result:
             archived_count += 1
 
-    print(f"Archiving complete. {archived_count} new frame(s) archived.")
+    print(f"Archiving complete. {archived_count} new frame(s) archived.", flush=True)
 
 if __name__ == "__main__":
     archive_radar()

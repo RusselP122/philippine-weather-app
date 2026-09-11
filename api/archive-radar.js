@@ -11,7 +11,7 @@ export default async function handler(req, res) {
 
   const supabaseUrl = process.env.SUPABASE_URL || "https://jzbgofsdnniflospoggl.supabase.co";
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6YmdvZnNkbm5pZmxvc3BvZ2dsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDM0NDQzMSwiZXhwIjoyMDk1OTIwNDMxfQ.IQ0covu3g4Oh1M4a1EMcFGi1jfu2jCmh3R88TAKcQWg";
-  const radarIdentity = process.env.GARBINWX_RADAR_IDENTITY || "IDENTITY-HERE";
+  const radarIdentity = process.env.GARBINWX_RADAR_IDENTITY || "sin1::gfszd-1789097236729-efb7a13fc7a0";
 
   let supabase;
   try {
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     const phtOffsetMs = 8 * 60 * 60 * 1000;
     const nowPHT = new Date(now.getTime() + phtOffsetMs);
 
-    // Look back up to 120 minutes in 10-minute steps
+    // Look back up to 180 minutes (18 steps x 10 mins) to ensure no missed frames during delays
     const minute = nowPHT.getUTCMinutes();
     const roundedMin = Math.floor(minute / 10) * 10;
     const basePHT = new Date(Date.UTC(
@@ -42,7 +42,7 @@ export default async function handler(req, res) {
       0
     ));
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 18; i++) {
       const dt = new Date(basePHT.getTime() - i * 10 * 60 * 1000);
       const yyyy = dt.getUTCFullYear();
       const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
@@ -124,13 +124,18 @@ export default async function handler(req, res) {
             .getPublicUrl(storagePath);
 
           // Save to database
-          await supabase.table("radar_frames").insert({
+          const { error: insertErr } = await supabase.from("radar_frames").insert({
             observed_at: `${formattedStr}+08:00`,
             observed_at_unix: unixTs,
             public_url: publicUrl
           });
 
-          results.push({ timestamp: ts, status: 200, publicUrl });
+          if (insertErr) {
+            console.error("DB Insert error:", insertErr);
+            results.push({ timestamp: ts, status: 500, error: insertErr.message });
+          } else {
+            results.push({ timestamp: ts, status: 200, publicUrl });
+          }
         }
       }
     } catch (fetchErr) {
