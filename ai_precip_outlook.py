@@ -153,6 +153,95 @@ def regrid_to_master(lats, lons, values):
     return regridded
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Multi-Model Blending (MMB) Algorithm
+# Based on: Journal of Meteorological Research (Springer, 2021)
+# - Dynamic Skill-Weighted Blending (WeatherNext 3, AIFS, AIGFS)
+# - Ensemble Agreement / Probability of Precipitation (PoP) Gate
+# - Convective Peak Preservation (Preserves intense tropical storm cores)
+# - Light-Precipitation Elimination (Removes interpolation drizzle smear)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def multi_model_blend(models_dict, lead_hours=24):
+    """
+    Performs operational Multi-Model Blending (MMB) for quantitative precipitation.
+    
+    Parameters:
+      models_dict: dict of {'model_key': 2D ndarray on master grid}
+                   where keys can include 'wn3', 'aifs', 'aigfs'
+      lead_hours: 24, 72, or 120 (used to tune convective & elimination thresholds)
+    
+    Returns:
+      2D ndarray on master grid representing the blended precipitation consensus.
+    """
+    if not models_dict:
+        return np.zeros_like(M_LATS)
+    
+    # 1. Base skill weights reflecting model spatial resolution & convective skill
+    BASE_WEIGHTS = {
+        "wn3": 0.45,   # Google WeatherNext 3 (0.1° high-res, specialized for tropical precip)
+        "aifs": 0.35,  # ECMWF AIFS (0.25°, world-leading synoptic circulation & moisture)
+        "aigfs": 0.20  # NOAA AIGFS (0.25°, reliable global operational foundation)
+    }
+    
+    avail_keys = list(models_dict.keys())
+    if len(avail_keys) == 1:
+        single_grid = np.nan_to_num(models_dict[avail_keys[0]], nan=0.0)
+        floor = 1.0 if lead_hours <= 24 else (1.5 if lead_hours <= 72 else 2.0)
+        return np.where(single_grid < floor, 0.0, single_grid)
+    
+    # Normalize weights among available models
+    norm_w = {k: BASE_WEIGHTS.get(k, 1.0 / len(avail_keys)) for k in avail_keys}
+    total_w = sum(norm_w.values())
+    norm_w = {k: w / total_w for k, w in norm_w.items()}
+    
+    grids = [np.nan_to_num(models_dict[k], nan=0.0) for k in avail_keys]
+    weights = [norm_w[k] for k in avail_keys]
+    
+    # 2. Compute Weighted Mean and Maximum Member
+    weighted_mean = np.zeros_like(M_LATS)
+    for g, w in zip(grids, weights):
+        weighted_mean += g * w
+        
+    stack = np.stack(grids, axis=0)
+    max_member = np.max(stack, axis=0)
+    
+    # 3. Ensemble Agreement / Probability of Precipitation (PoP) Gate
+    rain_threshold = 1.0
+    agreement_count = np.sum(stack >= rain_threshold, axis=0)
+    
+    # If only 1 model predicts rain while others predict dry (< 1.0 mm):
+    agreement_factor = np.ones_like(M_LATS)
+    single_model_mask = (agreement_count == 1)
+    
+    single_model_cutoff = 12.0 if lead_hours <= 24 else 20.0
+    light_single_rain = single_model_mask & (max_member < single_model_cutoff)
+    moderate_single_rain = single_model_mask & (max_member >= single_model_cutoff)
+    
+    agreement_factor[light_single_rain] = 0.20 * (max_member[light_single_rain] / single_model_cutoff)
+    agreement_factor[moderate_single_rain] = 0.65
+    
+    # 4. Convective Peak Preservation (Preserving intense tropical convective storm cores)
+    heavy_threshold = 25.0 if lead_hours <= 24 else (45.0 if lead_hours <= 72 else 70.0)
+    convective_scale = 100.0
+    alpha = np.clip((weighted_mean - heavy_threshold) / convective_scale, 0.0, 0.35)
+    
+    blended_precip = (1.0 - alpha) * weighted_mean + alpha * max_member
+    blended_precip = blended_precip * agreement_factor
+    
+    # 5. Light-Precipitation Elimination (Trimming Drizzle Smear)
+    elim_floor = 1.0 if lead_hours <= 24 else (1.5 if lead_hours <= 72 else 2.0)
+    
+    taper_range = 1.0
+    transition_mask = (blended_precip >= elim_floor) & (blended_precip < elim_floor + taper_range)
+    t = (blended_precip[transition_mask] - elim_floor) / taper_range
+    smooth_t = 3.0 * (t ** 2) - 2.0 * (t ** 3)
+    blended_precip[transition_mask] = elim_floor + smooth_t * taper_range
+    
+    blended_precip[blended_precip < elim_floor] = 0.0
+    
+    return np.clip(blended_precip, 0, None)
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Fetchers
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -709,20 +798,17 @@ def main():
         except Exception as e:
             print(f"WeatherNext 3 Today extraction error: {e}")
 
-    # Combine Today
-    valid_models_today = []
-    models_used_today = []
+    # Combine Today using Multi-Model Blending (MMB)
+    models_today = {}
     if np.nanmax(wn3_today_master) > 0:
-        valid_models_today.append(wn3_today_master)
-        models_used_today.append("Google WeatherNext 3")
+        models_today["wn3"] = wn3_today_master
     if np.nanmax(aifs_today_master) > 0:
-        valid_models_today.append(aifs_today_master)
-        models_used_today.append("ECMWF AIFS")
+        models_today["aifs"] = aifs_today_master
     if np.nanmax(aigfs_today_master) > 0:
-        valid_models_today.append(aigfs_today_master)
-        models_used_today.append("NOAA AIGFS")
+        models_today["aigfs"] = aigfs_today_master
 
-    consensus_today = np.mean(valid_models_today, axis=0) if valid_models_today else np.zeros_like(M_LATS)
+    print(f"Blending {len(models_today)} models for Today (24h) via MMB...")
+    consensus_today = multi_model_blend(models_today, lead_hours=24)
 
     # Generate Regional Zoom Maps (Today)
     print("Plotting TV Broadcast Regional Zoom Maps (Today)...")
@@ -774,20 +860,17 @@ def main():
         except Exception as e:
             print(f"WeatherNext 3 3-day extraction error: {e}")
 
-    # Combine 3-Day
-    valid_models_3day = []
-    models_used_3day = []
+    # Combine 3-Day using Multi-Model Blending (MMB)
+    models_3day = {}
     if np.nanmax(wn3_3day_master) > 0:
-        valid_models_3day.append(wn3_3day_master)
-        models_used_3day.append("Google WeatherNext 3")
+        models_3day["wn3"] = wn3_3day_master
     if np.nanmax(aifs_3day_master) > 0:
-        valid_models_3day.append(aifs_3day_master)
-        models_used_3day.append("ECMWF AIFS")
+        models_3day["aifs"] = aifs_3day_master
     if np.nanmax(aigfs_3day_master) > 0:
-        valid_models_3day.append(aigfs_3day_master)
-        models_used_3day.append("NOAA AIGFS")
+        models_3day["aigfs"] = aigfs_3day_master
 
-    consensus_3day = np.mean(valid_models_3day, axis=0) if valid_models_3day else np.zeros_like(M_LATS)
+    print(f"Blending {len(models_3day)} models for 3-Day (72h) via MMB...")
+    consensus_3day = multi_model_blend(models_3day, lead_hours=72)
 
     # Generate Regional Zoom Maps (3-Day)
     print("Plotting TV Broadcast Regional Zoom Maps (3-Day)...")
@@ -839,20 +922,17 @@ def main():
         except Exception as e:
             print(f"WeatherNext 3 5-day extraction error: {e}")
 
-    # Combine 5-Day
-    valid_models_5day = []
-    models_used_5day = []
+    # Combine 5-Day using Multi-Model Blending (MMB)
+    models_5day = {}
     if np.nanmax(wn3_5day_master) > 0:
-        valid_models_5day.append(wn3_5day_master)
-        models_used_5day.append("Google WeatherNext 3")
+        models_5day["wn3"] = wn3_5day_master
     if np.nanmax(aifs_5day_master) > 0:
-        valid_models_5day.append(aifs_5day_master)
-        models_used_5day.append("ECMWF AIFS")
+        models_5day["aifs"] = aifs_5day_master
     if np.nanmax(aigfs_5day_master) > 0:
-        valid_models_5day.append(aigfs_5day_master)
-        models_used_5day.append("NOAA AIGFS")
+        models_5day["aigfs"] = aigfs_5day_master
         
-    consensus_5day = np.mean(valid_models_5day, axis=0) if valid_models_5day else np.zeros_like(M_LATS)
+    print(f"Blending {len(models_5day)} models for 5-Day (120h) via MMB...")
+    consensus_5day = multi_model_blend(models_5day, lead_hours=120)
 
     # Generate Regional Zoom Maps (5-Day)
     print("Plotting TV Broadcast Regional Zoom Maps (5-Day)...")
