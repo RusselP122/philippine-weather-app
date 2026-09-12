@@ -7027,5 +7027,115 @@
     "filename": "WP98_20260911_18Z_gdm_wnc.png",
     "alt_filename": "98W_20260911_18Z_gdm_wnc.png",
     "timestamp": "2026-09-12T01:20:27.401279+00:00"
+  },
+  {
+    "storm_id": "WP98",
+    "atcf_id": "98W",
+    "init_date": "20260912",
+    "cycle": "06Z",
+    "model": "ecmwf_aifs",
+    "unique_key": "WP98_20260912T06Z",
+    "filename": "WP98_20260912_06Z_ecmwf_aifs.png",
+    "alt_filename": "98W_20260912_06Z_ecmwf_aifs.png",
+    "timestamp": "2026-09-12T13:26:39.018452+00:00"
+  },
+  {
+    "storm_id": "WP90",
+    "atcf_id": "90W",
+    "init_date": "20260912",
+    "cycle": "06Z",
+    "model": "ecmwf_aifs",
+    "unique_key": "WP90_20260912T06Z",
+    "filename": "WP90_20260912_06Z_ecmwf_aifs.png",
+    "alt_filename": "90W_20260912_06Z_ecmwf_aifs.png",
+    "timestamp": "2026-09-12T13:26:42.861149+00:00"
+  },
+  {
+    "storm_id": "WP99",
+    "atcf_id": "99W",
+    "init_date": "20260912",
+    "cycle": "06Z",
+    "model": "ecmwf_aifs",
+    "unique_key": "WP99_20260912T06Z",
+    "filename": "WP99_20260912_06Z_ecmwf_aifs.png",
+    "alt_filename": "99W_20260912_06Z_ecmwf_aifs.png",
+    "timestamp": "2026-09-12T13:26:43.363731+00:00"
+  },
+  {
+    "storm_id": "WP98",
+    "atcf_id": "98W",
+    "init_date": "20260912",
+    "cycle": "06Z",
+    "model": "ecmwf_ifs",
+    "unique_key": "WP98_20260912T06Z",
+    "filename": "WP98_20260912_06Z_ecmwf_ifs.png",
+    "alt_filename": "98W_20260912_06Z_ecmwf_ifs.png",
+    "timestamp": "2026-09-12T13:26:44.876159+00:00"
+  },
+  {
+    "storm_id": "WP99",
+    "atcf_id": "99W",
+    "init_date": "20260912",
+    "cycle": "06Z",
+    "model": "ecmwf_ifs",
+    "unique_key": "WP99_20260912T06Z",
+    "filename": "WP99_20260912_06Z_ecmwf_ifs.png",
+    "alt_filename": "99W_20260912_06Z_ecmwf_ifs.png",
+    "timestamp": "2026-09-12T13:26:45.474094+00:00"
+  },
+  {
+    "storm_id": "WP90",
+    "atcf_id": "90W",
+    "init_date": "20260912",
+    "cycle": "06Z",
+    "model": "ecmwf_ifs",
+    "unique_key": "WP90_20260912T06Z",
+    "filename": "WP90_20260912_06Z_ecmwf_ifs.png",
+    "alt_filename": "90W_20260912_06Z_ecmwf_ifs.png",
+    "timestamp": "2026-09-12T13:26:46.023912+00:00"
+  },
+  {
+    "storm_id": "WP98",
+    "atcf_id": "98W",
+    "init_date": "20260912",
+    "cycle": "06Z",
+    "model": "gdm_wncv3",
+    "unique_key": "WP98_20260912T06Z",
+    "filename": "WP98_20260912_06Z_gdm_wncv3.png",
+    "alt_filename": "98W_20260912_06Z_gdm_wncv3.png",
+    "timestamp": "2026-09-12T13:26:47.360220+00:00"
+  },
+  {
+    "storm_id": "WP90",
+    "atcf_id": "90W",
+    "init_date": "20260912",
+    "cycle": "06Z",
+    "model": "gdm_wncv3",
+    "unique_key": "WP90_20260912T06Z",
+    "filename": "WP90_20260912_06Z_gdm_wncv3.png",
+    "alt_filename": "90W_20260912_06Z_gdm_wncv3.png",
+    "timestamp": "2026-09-12T13:26:47.922947+00:00"
+  },
+  {
+    "storm_id": "WP98",
+    "atcf_id": "98W",
+    "init_date": "20260912",
+    "cycle": "06Z",
+    "model": "gdm_wnc",
+    "unique_key": "WP98_20260912T06Z",
+    "filename": "WP98_20260912_06Z_gdm_wnc.png",
+    "alt_filename": "98W_20260912_06Z_gdm_wnc.png",
+    "timestamp": "2026-09-12T13:26:49.160936+00:00"
+  },
+  {
+    "storm_id": "WP90",
+    "atcf_id": "90W",
+    "init_date": "20260912",
+    "cycle": "06Z",
+    "model": "gdm_wnc",
+    "unique_key": "WP90_20260912T06Z",
+    "filename": "WP90_20260912_06Z_gdm_wnc.png",
+    "alt_filename": "90W_20260912_06Z_gdm_wnc.png",
+    "timestamp": "2026-09-12T13:26:49.751277+00:00"
   }
 ]
