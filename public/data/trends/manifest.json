@@ -37,74 +37,66 @@
       "wide": "/data/trends/base_15day_dist_20260910_18_4_wide.png"
     }
   ],
-  "large_5day_cycle": "2026-09-11 12:00",
+  "large_5day_cycle": "2026-09-11 18:00",
   "large_5day": [
     {
-      "id": "dist_20260910_12_1",
+      "id": "dist_20260911_06_2",
       "local_id": 1,
       "name": "Disturbance 1",
-      "trackCount": 432,
-      "standard": "/data/trends/large_5day_dist_20260910_12_1_standard.png",
-      "wide": "/data/trends/large_5day_dist_20260910_12_1_wide.png"
-    },
-    {
-      "id": "dist_20260910_12_2",
-      "local_id": 2,
-      "name": "Disturbance 2",
-      "trackCount": 536,
-      "standard": "/data/trends/large_5day_dist_20260910_12_2_standard.png",
-      "wide": "/data/trends/large_5day_dist_20260910_12_2_wide.png"
-    },
-    {
-      "id": "dist_20260911_06_2",
-      "local_id": 3,
-      "name": "Disturbance 2",
-      "trackCount": 484,
+      "trackCount": 529,
       "standard": "/data/trends/large_5day_dist_20260911_06_2_standard.png",
       "wide": "/data/trends/large_5day_dist_20260911_06_2_wide.png"
-    }
-  ],
-  "large_15day_cycle": "2026-09-11 12:00",
-  "large_15day": [
-    {
-      "id": "dist_20260910_12_1",
-      "local_id": 1,
-      "name": "Disturbance 1",
-      "trackCount": 433,
-      "standard": "/data/trends/large_15day_dist_20260910_12_1_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260910_12_1_wide.png"
     },
     {
-      "id": "dist_20260910_12_3",
+      "id": "dist_20260910_18_1",
       "local_id": 2,
       "name": "Disturbance 2",
-      "trackCount": 667,
-      "standard": "/data/trends/large_15day_dist_20260910_12_3_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260910_12_3_wide.png"
+      "trackCount": 402,
+      "standard": "/data/trends/large_5day_dist_20260910_18_1_standard.png",
+      "wide": "/data/trends/large_5day_dist_20260910_18_1_wide.png"
     },
     {
-      "id": "dist_20260910_12_2",
+      "id": "dist_20260910_18_2",
       "local_id": 3,
       "name": "Disturbance 3",
-      "trackCount": 411,
-      "standard": "/data/trends/large_15day_dist_20260910_12_2_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260910_12_2_wide.png"
+      "trackCount": 517,
+      "standard": "/data/trends/large_5day_dist_20260910_18_2_standard.png",
+      "wide": "/data/trends/large_5day_dist_20260910_18_2_wide.png"
+    }
+  ],
+  "large_15day_cycle": "2026-09-11 18:00",
+  "large_15day": [
+    {
+      "id": "dist_20260910_18_2",
+      "local_id": 1,
+      "name": "Disturbance 1",
+      "trackCount": 517,
+      "standard": "/data/trends/large_15day_dist_20260910_18_2_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260910_18_2_wide.png"
     },
     {
-      "id": "dist_20260910_12_3",
+      "id": "dist_20260910_18_1",
+      "local_id": 2,
+      "name": "Disturbance 2",
+      "trackCount": 402,
+      "standard": "/data/trends/large_15day_dist_20260910_18_1_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260910_18_1_wide.png"
+    },
+    {
+      "id": "dist_20260910_18_2",
+      "local_id": 3,
+      "name": "Disturbance 3",
+      "trackCount": 561,
+      "standard": "/data/trends/large_15day_dist_20260910_18_2_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260910_18_2_wide.png"
+    },
+    {
+      "id": "dist_20260910_18_3",
       "local_id": 4,
       "name": "Disturbance 4",
-      "trackCount": 454,
-      "standard": "/data/trends/large_15day_dist_20260910_12_3_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260910_12_3_wide.png"
-    },
-    {
-      "id": "dist_20260910_18_5",
-      "local_id": 5,
-      "name": "Disturbance 5",
-      "trackCount": 231,
-      "standard": "/data/trends/large_15day_dist_20260910_18_5_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260910_18_5_wide.png"
+      "trackCount": 514,
+      "standard": "/data/trends/large_15day_dist_20260910_18_3_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260910_18_3_wide.png"
     }
   ]
 }
