@@ -1,7 +1,26 @@
 {
-  "active": false,
-  "storm_name": null,
-  "track_id": null,
-  "latest": null,
-  "history": []
+  "active": true,
+  "storm_name": "Invest 98W",
+  "track_id": "WP982026",
+  "latest": {
+    "lat": 15.4,
+    "lon": 109.3,
+    "pressure_hpa": 1006.0,
+    "wind_kt": 25.0,
+    "wind_kmh": 46,
+    "movement": "Stationary",
+    "init_time": "2026-09-12 00:00",
+    "category": "Tropical Depression"
+  },
+  "history": [
+    {
+      "cycle": "2026-09-12 00:00",
+      "lat": 15.4,
+      "lon": 109.3,
+      "pressure_hpa": 1006.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    }
+  ]
 }
