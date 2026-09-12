@@ -9,6 +9,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import matplotlib.patches as patches
+import matplotlib.patheffects as pe
 from matplotlib.patches import FancyBboxPatch
 from matplotlib.colors import ListedColormap, BoundaryNorm
 import cartopy.crs as ccrs
@@ -623,6 +624,15 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
             fig.text(0.052, 0.936, 'PHIL\nWX', fontsize=12, fontweight='heavy', color='#38bdf8', ha='center', va='center', zorder=42)
     else:
         fig.text(0.052, 0.936, 'PHIL\nWX', fontsize=12, fontweight='heavy', color='#38bdf8', ha='center', va='center', zorder=42)
+
+    # ── Bottom-Right Forecast Guidance Note (Text Only) ──────────────────────
+    stroke = [pe.withStroke(linewidth=2.2, foreground='#0d1821')]
+    fig.text(0.835, 0.060, "MODELS FORECAST ONLY",
+             fontsize=8.8, fontweight='heavy', color='#38bdf8', ha='center', va='center', zorder=52,
+             path_effects=stroke)
+    fig.text(0.835, 0.038, "Values are models based estimates of total rainfall, subject to change",
+             fontsize=7.3, fontweight='bold', color='#cbd5e1', ha='center', va='center', zorder=52,
+             path_effects=stroke)
 
     out_path = os.path.join(OUTPUT_DIR, f"{filename_id}.png")
     tmp_path = os.path.join(OUTPUT_DIR, f"{filename_id}.tmp.png")

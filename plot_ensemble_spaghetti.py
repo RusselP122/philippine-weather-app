@@ -1439,7 +1439,7 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
     # Top-Right source label
     fig.text(0.86, 0.94, f"Philippine Typhoon/Weather", fontsize=11, weight='bold', color='black', ha='right', va='bottom')
     if has_control:
-        data_type_str = "Control & Ensemble" if has_ensemble_tracks else "Control"
+        data_type_str = "Ensemble" if has_ensemble_tracks else "Control"
     elif has_ensemble_tracks:
         data_type_str = "Ensemble"
     else:
