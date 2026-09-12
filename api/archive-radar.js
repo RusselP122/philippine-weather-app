@@ -11,7 +11,7 @@ export default async function handler(req, res) {
 
   const supabaseUrl = process.env.SUPABASE_URL || "https://jzbgofsdnniflospoggl.supabase.co";
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6YmdvZnNkbm5pZmxvc3BvZ2dsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDM0NDQzMSwiZXhwIjoyMDk1OTIwNDMxfQ.IQ0covu3g4Oh1M4a1EMcFGi1jfu2jCmh3R88TAKcQWg";
-  const radarIdentity = process.env.GARBINWX_RADAR_IDENTITY || "sin1::gfszd-1789097236729-efb7a13fc7a0";
+  const radarIdentity = process.env.GARBINWX_RADAR_IDENTITY || "PHTYW-GWxID0625403800007957";
 
   let supabase;
   try {
@@ -90,6 +90,9 @@ export default async function handler(req, res) {
       const resp = await fetch(radarUrl, {
         headers: {
           "User-Agent": radarIdentity,
+          "X-Garbin-ID": radarIdentity,
+          "X-Identification-Key": radarIdentity,
+          "X-API-Key": radarIdentity,
           "Referer": "https://garbinwx.org/",
           "Origin": "https://garbinwx.org"
         }

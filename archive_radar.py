@@ -16,7 +16,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "eyJhbGciOiJIUzI1NiIs
 
 # GarbinWx Doppler Radar Identity Header
 # Request your ID header at: contact@garbinwx.org
-GARBINWX_RADAR_IDENTITY = os.environ.get("GARBINWX_RADAR_IDENTITY", "sin1::gfszd-1789097236729-efb7a13fc7a0")
+GARBINWX_RADAR_IDENTITY = os.environ.get("GARBINWX_RADAR_IDENTITY", "PHTYW-GWxID0625403800007957")
 
 GARBINWX_RAW_BASE = "https://data.garbinwx.org/raw"
 
@@ -91,6 +91,9 @@ def archive_frame(timestamp_str, unix_ts, formatted_str, radar_type="DBZ"):
     url = f"{GARBINWX_RAW_BASE}/{radar_type}-{timestamp_str}.png"
     headers = {
         "User-Agent": GARBINWX_RADAR_IDENTITY,
+        "X-Garbin-ID": GARBINWX_RADAR_IDENTITY,
+        "X-Identification-Key": GARBINWX_RADAR_IDENTITY,
+        "X-API-Key": GARBINWX_RADAR_IDENTITY,
         "Referer": "https://garbinwx.org/",
         "Origin": "https://garbinwx.org"
     }
