@@ -3076,7 +3076,7 @@ export default function SpaghettiPlot() {
                     <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                     Display Mode
                 </h2>
-                <div className="segmented-control">
+                <div className="segmented-control grid-4">
                     {[{ id: "tracker", label: "Tracker" },
                     { id: "animation", label: "Animation" },
                     { id: "filter", label: "Filter" },
@@ -3112,7 +3112,7 @@ export default function SpaghettiPlot() {
                         <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
                         Plot Style
                     </h2>
-                    <div className="segmented-control">
+                    <div className="segmented-control grid-2">
                         <button
                             onClick={() => setShowPlotPoints(true)}
                             className={`segment-btn ${showPlotPoints ? "active primary" : ""}`}
@@ -3152,7 +3152,7 @@ export default function SpaghettiPlot() {
                     <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
                     Dataset
                 </h2>
-                <div className="segmented-control">
+                <div className="segmented-control grid-dataset">
                     {[{ id: "fnv3p2", label: "WNC Base" },
                     { id: "fnv3p1", label: "WNCP1" },
                     { id: "oper", label: "WNCv3" },
@@ -3199,7 +3199,7 @@ export default function SpaghettiPlot() {
                     <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     Forecast Horizon
                 </h2>
-                <div className="segmented-control">
+                <div className="segmented-control grid-2">
                     {[{ id: "5day", label: "5-Day" },
                     { id: "15day", label: "15-Day" }]
                         .map(opt => (
@@ -3404,14 +3404,6 @@ export default function SpaghettiPlot() {
                     ))}
                 </div>
             </div>
-
-            <div className="spaghetti-footer">
-                <p className="spaghetti-footer-text">
-                    Powered by <strong className="spaghetti-footer-highlight">Philippine Typoon/Weather</strong><br />
-                    Data: {dataset === "ifs" ? "ECMWF IFS Ensemble" : dataset === "aifs" ? "ECMWF AIFS Ensemble" : dataset === "aigefs" ? "AI-GEFS Ensemble" : dataset === "large" ? "WNC Large Ensemble" : dataset === "fnv3p2" ? "GDM WNC Base (WNCP2)" : dataset === "fnv3p1" ? "GDM WNCP1" : (dataset === "oper" || dataset === "wnv3") ? "GDM WNCv3" : "GDM WNC"}<br />
-                    Consult official agencies for guidance.
-                </p>
-            </div>
         </div>
     );
 
@@ -3420,15 +3412,27 @@ export default function SpaghettiPlot() {
             {/* Mobile overlay */}
             <div className={`mobile-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
 
-            {/* Sidebar */}
+            {/* Bottom Sheet on Mobile / Sidebar on Desktop */}
             <aside className={`spaghetti-sidebar-container ${sidebarOpen ? 'open' : ''} ${!desktopSidebarOpen ? 'desktop-collapsed' : ''}`}>
                 <div className="mobile-close-header">
-                    <span className="mobile-close-title">Controls</span>
-                    <button onClick={() => setSidebarOpen(false)} className="mobile-close-btn">
-                        <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
+                    <div className="bottom-sheet-handle" />
+                    <div className="mobile-close-header-content">
+                        <div className="mobile-close-title-wrap">
+                            <span className="mobile-close-title">Controls & Filters</span>
+                            <span className="mobile-close-subtitle">Spaghetti Parameters & Layers</span>
+                        </div>
+                        <button
+                            onClick={() => setSidebarOpen(false)}
+                            className="mobile-close-btn"
+                            aria-label="Close controls sheet"
+                            title="Done"
+                        >
+                            <span>Done</span>
+                            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
                 {sidebarContent}
             </aside>
@@ -3445,57 +3449,36 @@ export default function SpaghettiPlot() {
                     </button>
                 )}
 
-                {/* Mobile top bar */}
-                <div
-                    className="mobile-topbar"
-                    style={{
-                        position: "fixed",
-                        top: "56px",
-                        left: 0,
-                        right: 0,
-                        width: "100%",
-                        minHeight: "48px",
-                        boxSizing: "border-box",
-                        alignItems: "center",
-                        gap: "0.75rem",
-                        padding: "0.5rem 0.75rem",
-                        background: "rgba(13, 24, 42, 0.95)",
-                        backdropFilter: "blur(10px)",
-                        WebkitBackdropFilter: "blur(10px)",
-                        borderBottom: "2px solid #00d4ff",
-                        zIndex: 99999
-                    }}
-                >
+                {/* Mobile Floating Bottom Sheet Trigger Button */}
+                {!sidebarOpen && viewMode !== "animation" && (
                     <button
+                        className="mobile-bottom-sheet-trigger"
                         onClick={() => setSidebarOpen(true)}
-                        className="mobile-menu-btn"
-                        style={{
-                            padding: "0.5rem",
-                            borderRadius: "8px",
-                            backgroundColor: "rgba(30, 41, 59, 0.8)",
-                            color: "#f8fafc",
-                            border: "1px solid rgba(255, 255, 255, 0.1)",
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center"
-                        }}
+                        title="Open Controls & Layers"
                     >
-                        <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: "14px", height: "14px" }}>
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                        </svg>
+                        <span>Controls & Layers</span>
+                    </button>
+                )}
+
+                {/* Mobile top bar */}
+                <div className="mobile-topbar" onClick={() => setSidebarOpen(true)} style={{ cursor: "pointer" }}>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setSidebarOpen(true);
+                        }}
+                        className="mobile-menu-btn"
+                        aria-label="Open controls"
+                        title="Open controls"
+                    >
+                        <svg className="spaghetti-section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: "16px", height: "16px" }}>
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                         </svg>
                     </button>
-                    <span
-                        className="mobile-title"
-                        style={{
-                            fontSize: "0.75rem",
-                            fontWeight: "600",
-                            color: "#f8fafc",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis"
-                        }}
-                    >
+                    <span className="mobile-title">
                         {dataset === "ifs" ? "ECMWF IFS" : dataset === "aifs" ? "ECMWF AIFS" : dataset === "aigefs" ? "NOAA AI-GEFS" : dataset === "large" ? "GDM WNC Large" : dataset === "fnv3p2" ? "GDM WNC Base" : dataset === "fnv3p1" ? "GDM WNCP1" : (dataset === "oper" || dataset === "wnv3") ? "GDM WNCv3" : "GDM WNC"} · {horizon === "5day" ? "5-Day" : "15-Day"} Spaghetti
                     </span>
                 </div>
@@ -3945,27 +3928,9 @@ export default function SpaghettiPlot() {
                     {/* Screenshot Button */}
                     {(viewMode === "tracker" || viewMode === "filter") && (
                         <button
-                            className="no-export"
+                            className="no-export spaghetti-screenshot-btn"
                             onClick={exportScreenshot}
                             disabled={isExporting}
-                            style={{
-                                position: 'absolute',
-                                bottom: '24px',
-                                left: '24px',
-                                zIndex: 1000,
-                                backgroundColor: 'rgba(15, 23, 42, 0.85)',
-                                backdropFilter: 'blur(4px)',
-                                border: '1px solid rgba(0, 212, 255, 0.4)',
-                                color: '#00d4ff',
-                                padding: '10px',
-                                borderRadius: '8px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                                transition: 'all 0.2s',
-                            }}
                             title="Screenshot Map"
                         >
                             {isExporting ? (

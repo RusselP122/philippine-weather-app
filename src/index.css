@@ -37,6 +37,23 @@ body {
   }
 }
 
+/* Radar Map Interactivity and Custom Glassmorphic Tooltip styling */
+.radar-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.radar-tooltip::before {
+  display: none !important;
+}
+.leaflet-shadow-pane {
+  pointer-events: none !important;
+}
+.leaflet-overlay-pane svg path.pointer-events-none {
+  pointer-events: none !important;
+}
+
 /* ─── Storm Marker – Animated Cyclone Rings ─────────────── */
 .storm-marker {
   opacity: 1 !important;

@@ -953,9 +953,17 @@ def main():
     ph_tz = timezone(timedelta(hours=8))
     init_dt_ph = init_dt.astimezone(ph_tz) if init_dt else None
     
+    MODEL_DISPLAY_NAMES = {
+        "wn3": "Google WeatherNext 3",
+        "aifs": "ECMWF AIFS",
+        "aigfs": "NOAA AIGFS"
+    }
+    all_keys = set(list(models_today.keys()) + list(models_3day.keys()) + list(models_5day.keys()))
+    models_used = [MODEL_DISPLAY_NAMES.get(k, k) for k in sorted(all_keys)] if all_keys else ["AI Models"]
+
     meta = {
         "title": "AI Multi-Model Regional Rainfall Broadcast Maps",
-        "models_used": list(set(models_used_today + models_used_3day + models_used_5day)) if (models_used_today or models_used_3day or models_used_5day) else ["AI Models"],
+        "models_used": models_used,
         "generated_at": datetime.now(ph_tz).strftime("%Y-%m-%d %I:%M %p PHT"),
         "run_time": init_dt_ph.strftime("%Y-%m-%d %I:%M %p PHT") if init_dt_ph else "Unknown",
         "regions": ["luzon", "visayas", "mindanao"],

@@ -25,6 +25,9 @@ import {
 import { supabase } from "../supabaseClient";
 import html2canvas from "html2canvas";
 import GIF from "gif.js";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import { MapContainer, TileLayer, ImageOverlay, Circle, CircleMarker, GeoJSON, Tooltip, useMap } from "react-leaflet";
 import RadarControls from "./Radar/RadarControls";
 import StationInspector from "./Radar/StationInspector";
 import RadarWorker from "../workers/radarWorker?worker";
@@ -33,6 +36,49 @@ import {
   canvasWidth, canvasHeight, RADAR_STATIONS,
   HEX_COLORS_DBZ
 } from "../data/radarConfig";
+
+const RADAR_BOUNDS = [
+  [minLat, minLon],
+  [maxLat, maxLon]
+];
+
+const MAP_STYLES = {
+  broadcast: {
+    id: "broadcast",
+    name: "AI TV Broadcast",
+    desc: "Navy ocean & slate-olive land (ai_precip_outlook)",
+    oceanBg: "#162533",
+    landFill: "#25342a",
+    borderColor: "#475569",
+    borderWeight: 0.8
+  },
+  satellite: {
+    id: "satellite",
+    name: "ESRI Satellite Imagery",
+    desc: "High-resolution orbital satellite photography",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: "Tiles &copy; Esri"
+  },
+  dark: {
+    id: "dark",
+    name: "CartoDB Dark Matter",
+    desc: "Midnight dark cartography with road networks",
+    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
+  }
+};
+
+const MapBridge = ({ setMapInstance, setMapZoom }) => {
+  const map = useMap();
+  useEffect(() => {
+    setMapInstance(map);
+    setMapZoom(map.getZoom());
+    const onZoom = () => setMapZoom(map.getZoom());
+    map.on("zoomend", onZoom);
+    return () => map.off("zoomend", onZoom);
+  }, [map, setMapInstance, setMapZoom]);
+  return null;
+};
 
 // High-fidelity dynamic pixel color swapping helper via Web Worker
 const recolorRadarImageAsync = (imgElement, theme = "default") => {
@@ -131,6 +177,11 @@ const LiveRadar = () => {
   const [colorTheme, setColorTheme] = useState("default");
   const [cachedFrameUrls, setCachedFrameUrls] = useState({});
 
+  // Base Map Layer & Leaflet Map Instance State
+  const [mapStyle, setMapStyle] = useState("broadcast");
+  const [mapInstance, setMapInstance] = useState(null);
+  const [mapZoom, setMapZoom] = useState(6);
+
   // Radar Interactive Station States
   const [hoveredStationId, setHoveredStationId] = useState(null);
   const [selectedStationId, setSelectedStationId] = useState(null);
@@ -138,6 +189,9 @@ const LiveRadar = () => {
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [showStations, setShowStations] = useState(true);
   const [showRangeCircles, setShowRangeCircles] = useState(true);
+
+  // Mobile legend collapsed/expanded state
+  const [showMobileLegend, setShowMobileLegend] = useState(false);
 
   // GIF compilation states
   const [gifProgress, setGifProgress] = useState(0);
@@ -411,57 +465,52 @@ const LiveRadar = () => {
   const prevFrameCountRef = useRef(playbackFramesCount);
   const initialFocusDone = useRef(false);
 
-  // Dynamic Responsive Region Focusing Helper
+  // Dynamic Responsive Region Focusing Helper via Leaflet
   const focusOnRegion = (regionId) => {
-    const container = mapContainerRef.current;
-    if (!container) return;
-
-    // Use unscaled layout dimensions to prevent double-scaling transform errors
-    const W = container.offsetWidth;
-    const H = container.offsetHeight;
-
-    let targetScale = 1.0;
-    let targetX = 0;
-    let targetY = 0;
-
-    if (regionId === "luzon") {
-      targetScale = 1.9;
-      // tx = 425, ty = 480 in 1020x1393 space
-      targetX = ((510 - 425) / 1020) * W * targetScale;
-      targetY = ((696.5 - 480) / 1393) * H * targetScale;
-    } else if (regionId === "visayas") {
-      targetScale = 2.2;
-      // tx = 580, ty = 850
-      targetX = ((510 - 580) / 1020) * W * targetScale;
-      targetY = ((696.5 - 850) / 1393) * H * targetScale;
-    } else if (regionId === "mindanao") {
-      targetScale = 2.1;
-      // tx = 690, ty = 1090
-      targetX = ((510 - 690) / 1020) * W * targetScale;
-      targetY = ((696.5 - 1090) / 1393) * H * targetScale;
-    } else {
-      // Whole PH
-      targetScale = 1.0;
-      targetX = 0;
-      targetY = 0;
-    }
-
     setActiveRegion(regionId);
     setLabelRegion(regionId);
-    setScale(targetScale);
-    setTranslate({ x: targetX, y: targetY });
+    if (!mapInstance) return;
+    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
+    if (regionId === "luzon") {
+      mapInstance.flyTo([16.4, 121.2], isMobile ? 6.2 : 7.2, { duration: 0.8 });
+      setScale(1.9);
+    } else if (regionId === "visayas") {
+      mapInstance.flyTo([10.8, 123.5], isMobile ? 6.7 : 7.6, { duration: 0.8 });
+      setScale(2.2);
+    } else if (regionId === "mindanao") {
+      mapInstance.flyTo([7.8, 124.8], isMobile ? 6.7 : 7.6, { duration: 0.8 });
+      setScale(2.1);
+    } else {
+      mapInstance.flyToBounds(RADAR_BOUNDS, { padding: isMobile ? [10, 10] : [25, 25], duration: 0.8 });
+      setScale(1.0);
+    }
   };
 
-  // Keep Luzon focus dynamic on mounting and timeline load
-  useEffect(() => {
-    if (frames.length > 0 && mapContainerRef.current && !initialFocusDone.current) {
-      initialFocusDone.current = true;
-      const timer = setTimeout(() => {
-        focusOnRegion("luzon");
-      }, 100);
-      return () => clearTimeout(timer);
+  const resetZoom = () => {
+    focusOnRegion("all");
+  };
+
+  const handleZoomIn = () => {
+    if (mapInstance) {
+      mapInstance.zoomIn();
     }
-  }, [frames]);
+  };
+
+  const handleZoomOut = () => {
+    if (mapInstance) {
+      mapInstance.zoomOut();
+    }
+  };
+
+  // Keep region focus dynamic on mounting and timeline load (full archipelago on mobile, Luzon on desktop)
+  useEffect(() => {
+    if (frames.length > 0 && mapInstance && !initialFocusDone.current) {
+      initialFocusDone.current = true;
+      const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+      focusOnRegion(isMobile ? "all" : "luzon");
+    }
+  }, [frames, mapInstance]);
 
   // GIF Compiler Simulation State
   const [isCompiling, setIsCompiling] = useState(false);
@@ -902,10 +951,6 @@ const LiveRadar = () => {
     touchStartDistRef.current = 0;
   };
 
-  const resetZoom = () => {
-    focusOnRegion("all");
-  };
-
   const drawDbgColorLegend = (ctx, x, y, width, height, theme, scale) => {
     // 1. Draw rounded container card
     ctx.shadowColor = "rgba(0, 0, 0, 0.4)";
@@ -1011,14 +1056,34 @@ const LiveRadar = () => {
     ctx.textBaseline = "alphabetic";
   };
 
+  const drawRoundRect = (ctx, x, y, w, h, radius) => {
+    if (ctx.roundRect) {
+      ctx.roundRect(x, y, w, h, radius);
+    } else {
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + w - radius, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+      ctx.lineTo(x + w, y + h - radius);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+      ctx.lineTo(x + radius, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+    }
+  };
+
   const renderFrameToCanvas = async (frame, exportScale = 4, selectedStation = null, cachedLayers = null) => {
     const canvas = document.createElement("canvas");
     canvas.width = 1020 * exportScale;
     canvas.height = 1393 * exportScale;
     const ctx = canvas.getContext("2d");
 
-    // Render solid background
-    ctx.fillStyle = "#000000";
+    // Render ocean background based on mapStyle (Default: AI TV Broadcast Deep Navy)
+    let oceanBg = "#162533";
+    if (mapStyle === "dark") oceanBg = "#020617";
+    else if (mapStyle === "satellite") oceanBg = "#08141e";
+
+    ctx.fillStyle = oceanBg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // SVG loaders helpers
@@ -1049,13 +1114,26 @@ const LiveRadar = () => {
       });
     };
 
-    // 1. Draw Base Map (fill landmass #111625)
-    if (cachedLayers && cachedLayers.baseMapImg) {
-      ctx.drawImage(cachedLayers.baseMapImg, 0, 0);
+    // 1. Draw Base Map (fill landmass and coastlines based on mapStyle)
+    const baseMapKey = `baseMap_${mapStyle}_${exportScale}`;
+    if (cachedLayers && cachedLayers[baseMapKey]) {
+      ctx.drawImage(cachedLayers[baseMapKey], 0, 0);
     } else {
-      const baseMapSvgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 1393" width="${1020 * exportScale}" height="${1393 * exportScale}">${projectedFeatures.map(prov => `<path d="${prov.d}" fill="#111625" stroke="none" />`).join('')}</svg>`;
+      let landFill = "#25342a"; // Dark Slate-Olive from ai_precip_outlook
+      let coastStroke = "#0f172a"; // TV Coastline
+      let coastWidth = "1.2";
+      if (mapStyle === "dark") {
+        landFill = "#0f172a";
+        coastStroke = "#1e293b";
+        coastWidth = "0.8";
+      } else if (mapStyle === "satellite") {
+        landFill = "#182823";
+        coastStroke = "#233d34";
+        coastWidth = "1.0";
+      }
+      const baseMapSvgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 1393" width="${1020 * exportScale}" height="${1393 * exportScale}">${projectedFeatures.map(prov => `<path d="${prov.d}" fill="${landFill}" stroke="${coastStroke}" stroke-width="${coastWidth}" />`).join('')}</svg>`;
       const baseMapImg = await loadSvgAsImage(baseMapSvgString);
-      if (cachedLayers) cachedLayers.baseMapImg = baseMapImg;
+      if (cachedLayers) cachedLayers[baseMapKey] = baseMapImg;
       ctx.drawImage(baseMapImg, 0, 0);
     }
 
@@ -1113,16 +1191,23 @@ const LiveRadar = () => {
       console.warn("Exporter dynamic station status check bypassed:", e);
     }
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(radarImg, -2 * exportScale, -4.5 * exportScale, 1020 * exportScale, 1393 * exportScale);
+    ctx.drawImage(radarImg, 0, 0, 1020 * exportScale, 1393 * exportScale);
     ctx.imageSmoothingEnabled = true;
 
-    // 3. Draw Borders Overlay (stroke #334155, stroke-width 0.4)
-    if (cachedLayers && cachedLayers.bordersImg) {
-      ctx.drawImage(cachedLayers.bordersImg, 0, 0);
+    // 3. Draw Province Borders Overlay (crisp on top of weather cells)
+    const bordersKey = `borders_${mapStyle}_${exportScale}`;
+    if (cachedLayers && cachedLayers[bordersKey]) {
+      ctx.drawImage(cachedLayers[bordersKey], 0, 0);
     } else {
-      const bordersSvgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 1393" width="${1020 * exportScale}" height="${1393 * exportScale}">${projectedFeatures.map(prov => `<path d="${prov.d}" fill="none" stroke="#334155" stroke-width="0.4" />`).join('')}</svg>`;
+      let borderColor = "#475569"; // Slate borders from ai_precip_outlook
+      let borderWidth = "0.8";
+      if (mapStyle === "dark") {
+        borderColor = "#334155";
+        borderWidth = "0.4";
+      }
+      const bordersSvgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 1393" width="${1020 * exportScale}" height="${1393 * exportScale}">${projectedFeatures.map(prov => `<path d="${prov.d}" fill="none" stroke="${borderColor}" stroke-width="${borderWidth}" opacity="0.85" />`).join('')}</svg>`;
       const bordersImg = await loadSvgAsImage(bordersSvgString);
-      if (cachedLayers) cachedLayers.bordersImg = bordersImg;
+      if (cachedLayers) cachedLayers[bordersKey] = bordersImg;
       ctx.drawImage(bordersImg, 0, 0);
     }
 
@@ -1137,7 +1222,7 @@ const LiveRadar = () => {
         // Draw scan coverage dashed circle
         ctx.beginPath();
         ctx.arc(station.x * exportScale, station.y * exportScale, 160 * exportScale, 0, Math.PI * 2);
-        ctx.strokeStyle = station.status === "online" ? "rgba(6, 182, 212, 0.4)" : "rgba(234, 179, 8, 0.4)";
+        ctx.strokeStyle = station.status === "online" ? "rgba(56, 189, 248, 0.7)" : "rgba(234, 179, 8, 0.7)";
         ctx.lineWidth = 1.5 * exportScale;
         ctx.setLineDash([4 * exportScale, 4 * exportScale]);
         ctx.stroke();
@@ -1145,20 +1230,19 @@ const LiveRadar = () => {
       });
     }
 
-    // 4. Draw Stations Points (if enabled in UI)
+    // 4. Draw Stations Points (Sky blue marker with white border like ai_precip_outlook)
     if (showStations) {
       const stationsSvgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 1393" width="${1020 * exportScale}" height="${1393 * exportScale}">${analyzedStations.map(station => {
-        let markerColor = "rgb(148, 163, 184)";
-        if (station.status === "online") markerColor = "rgb(6, 182, 212)";
-        else if (station.status === "maintenance") markerColor = "rgb(239, 68, 68)";
-        else if (station.status === "standby") markerColor = "rgb(234, 179, 8)";
-        return `<circle cx="${station.x}" cy="${station.y}" r="3.8" fill="${markerColor}" stroke="#020617" stroke-width="1.2" />`;
+        let markerColor = "#38bdf8";
+        if (station.status === "online") markerColor = "#38bdf8";
+        else if (station.status === "maintenance") markerColor = "#ef4444";
+        else if (station.status === "standby") markerColor = "#eab308";
+        return `<circle cx="${station.x}" cy="${station.y}" r="4.2" fill="${markerColor}" stroke="#ffffff" stroke-width="1.2" />`;
       }).join('')}</svg>`;
       const stationsImg = await loadSvgAsImage(stationsSvgString);
       ctx.drawImage(stationsImg, 0, 0);
     }
 
-    // Output processing (crop if a station is selected)
     // Output processing (crop if a station is selected)
     if (selectedStation) {
       const cropCanvas = document.createElement("canvas");
@@ -1166,8 +1250,8 @@ const LiveRadar = () => {
       cropCanvas.height = 440 * exportScale;
       const cropCtx = cropCanvas.getContext("2d");
 
-      // Draw solid dark background outside circle
-      cropCtx.fillStyle = "#020617";
+      // Draw solid broadcast dark background outside circle
+      cropCtx.fillStyle = "#0b131a";
       cropCtx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
 
       // Save context state for circular scope clipping
@@ -1178,8 +1262,8 @@ const LiveRadar = () => {
       cropCtx.arc(220 * exportScale, 200 * exportScale, 160 * exportScale, 0, Math.PI * 2);
       cropCtx.clip();
 
-      // Draw pitch black interior background for scope
-      cropCtx.fillStyle = "#000000";
+      // Draw ocean interior background for scope
+      cropCtx.fillStyle = oceanBg;
       cropCtx.fillRect(60 * exportScale, 40 * exportScale, 320 * exportScale, 320 * exportScale);
 
       // Blit region from full national canvas
@@ -1199,51 +1283,59 @@ const LiveRadar = () => {
       cropCtx.restore();
 
       // Draw high-contrast double borders around the circular radar scope
-      cropCtx.strokeStyle = "rgba(71, 85, 105, 0.4)";
-      cropCtx.lineWidth = 3 * exportScale;
+      cropCtx.strokeStyle = "#1e293b";
+      cropCtx.lineWidth = 3.5 * exportScale;
       cropCtx.beginPath();
       cropCtx.arc(220 * exportScale, 200 * exportScale, 161 * exportScale, 0, Math.PI * 2);
       cropCtx.stroke();
 
-      cropCtx.strokeStyle = "rgba(6, 182, 212, 0.8)"; // cyan scope ring
-      cropCtx.lineWidth = 1 * exportScale;
+      cropCtx.strokeStyle = "#38bdf8"; // broadcast cyan ring
+      cropCtx.lineWidth = 1.5 * exportScale;
       cropCtx.beginPath();
       cropCtx.arc(220 * exportScale, 200 * exportScale, 160 * exportScale, 0, Math.PI * 2);
       cropCtx.stroke();
 
       const activeTime = formatFrameTime(frame?.observed_at);
 
-      // 1. Draw Watermark name: Philippine Typhoon/Weather (Top-Left)
-      cropCtx.fillStyle = "#22d3ee"; // cyan-400
+      // 1. Draw Watermark: Philippine Typhoon/Weather (Top-Left)
+      cropCtx.fillStyle = "#38bdf8";
       cropCtx.font = `900 ${7.5 * exportScale}px sans-serif`;
       cropCtx.textAlign = "left";
-      cropCtx.fillText("PHILIPPINE TYPHOON/WEATHER", 24 * exportScale, 21 * exportScale);
+      cropCtx.fillText("PHILIPPINE TYPHOON/WEATHER", 24 * exportScale, 20 * exportScale);
 
-      cropCtx.fillStyle = "#64748b"; // slate-500
+      cropCtx.fillStyle = "#94a3b8";
       cropCtx.font = `bold ${4.5 * exportScale}px monospace`;
-      cropCtx.fillText("DOPPLER RADAR NETWORK", 24 * exportScale, 29 * exportScale);
+      cropCtx.fillText("DOPPLER RADAR NETWORK", 24 * exportScale, 28 * exportScale);
 
-      // 2. Draw Station Telemetry (Top-Center)
+      // 2. Draw Station Telemetry Banner Pill (Top-Center)
+      cropCtx.fillStyle = "#1e293b";
+      cropCtx.strokeStyle = "#38bdf8";
+      cropCtx.lineWidth = 1 * exportScale;
+      cropCtx.beginPath();
+      drawRoundRect(cropCtx, 140 * exportScale, 11 * exportScale, 160 * exportScale, 20 * exportScale, 5 * exportScale);
+      cropCtx.fill();
+      cropCtx.stroke();
+
       cropCtx.fillStyle = "#ffffff";
-      cropCtx.font = `900 ${8 * exportScale}px sans-serif`;
+      cropCtx.font = `900 ${7.5 * exportScale}px sans-serif`;
       cropCtx.textAlign = "center";
-      cropCtx.fillText(selectedStation.name.toUpperCase(), 220 * exportScale, 21 * exportScale);
+      cropCtx.fillText(selectedStation.name.toUpperCase(), 220 * exportScale, 22 * exportScale);
 
-      cropCtx.fillStyle = "#94a3b8"; // slate-400
-      cropCtx.font = `bold ${4.5 * exportScale}px monospace`;
-      cropCtx.fillText("ACTIVE COVERAGE RADIAL", 220 * exportScale, 29 * exportScale);
+      cropCtx.fillStyle = "#38bdf8";
+      cropCtx.font = `bold ${4 * exportScale}px monospace`;
+      cropCtx.fillText("240 KM RADIAL COVERAGE", 220 * exportScale, 28 * exportScale);
 
       // 3. Draw Timestamp & Date (Top-Right)
-      cropCtx.fillStyle = "#fbbf24"; // amber-400
-      cropCtx.font = `900 ${8 * exportScale}px sans-serif`;
+      cropCtx.fillStyle = "#fbbf24";
+      cropCtx.font = `900 ${7.5 * exportScale}px sans-serif`;
       cropCtx.textAlign = "right";
-      cropCtx.fillText(activeTime.time, 416 * exportScale, 21 * exportScale);
+      cropCtx.fillText(activeTime.time, 416 * exportScale, 20 * exportScale);
 
-      cropCtx.fillStyle = "#94a3b8"; // slate-400
+      cropCtx.fillStyle = "#94a3b8";
       cropCtx.font = `bold ${5 * exportScale}px sans-serif`;
-      cropCtx.fillText(activeTime.date, 416 * exportScale, 29 * exportScale);
+      cropCtx.fillText(activeTime.date, 416 * exportScale, 28 * exportScale);
 
-      // 4. Draw dBZ intensity legend on crop canvas (Bottom-Left, completely outside circle)
+      // 4. Draw dBZ intensity legend on crop canvas (Bottom-Left)
       drawDbgColorLegend(
         cropCtx,
         24 * exportScale,
@@ -1254,44 +1346,42 @@ const LiveRadar = () => {
         exportScale * 0.42
       );
 
-      // 5. Draw Station Status Diagnostics (Bottom-Right, completely outside circle)
-      cropCtx.fillStyle = "#1e293b"; // slate-800 background panel
-      cropCtx.strokeStyle = "rgba(51, 65, 85, 0.4)";
+      // 5. Draw Station Status Diagnostics (Bottom-Right)
+      cropCtx.fillStyle = "#1e293b";
+      cropCtx.strokeStyle = "rgba(56, 189, 248, 0.3)";
       cropCtx.lineWidth = 1 * exportScale;
       cropCtx.beginPath();
-      cropCtx.roundRect(100 * exportScale, 372 * exportScale, 316 * exportScale, 56 * exportScale, 8 * exportScale);
+      drawRoundRect(cropCtx, 100 * exportScale, 372 * exportScale, 316 * exportScale, 56 * exportScale, 8 * exportScale);
       cropCtx.fill();
       cropCtx.stroke();
 
-      // Write Diagnostic telemetry inside bottom card
-      cropCtx.fillStyle = "#94a3b8"; // slate-400
+      // Diagnostic telemetry inside bottom card
+      cropCtx.fillStyle = "#94a3b8";
       cropCtx.font = `bold ${4.5 * exportScale}px monospace`;
       cropCtx.textAlign = "left";
       cropCtx.fillText("DIAGNOSTIC TELEMETRY:", 112 * exportScale, 388 * exportScale);
 
-      // Resolve status and details for this specific frame
       const currentStationDetails = analyzedStations.find(s => s.id === selectedStation.id) || selectedStation;
       const statusUpper = String(currentStationDetails.status || "online").toUpperCase();
       
-      let statusColor = "#10b981"; // green for online
+      let statusColor = "#10b981";
       let statusText = "SYS ACTIVE";
       if (statusUpper === "OFFLINE") {
-        statusColor = "#ef4444"; // red
+        statusColor = "#ef4444";
         statusText = "SYS OFFLINE";
       } else if (statusUpper === "MAINTENANCE") {
-        statusColor = "#ef4444"; // red
+        statusColor = "#ef4444";
         statusText = "MAINTENANCE";
       } else if (statusUpper === "STANDBY") {
-        statusColor = "#eab308"; // yellow
+        statusColor = "#eab308";
         statusText = "STANDBY MODE";
       }
 
-      cropCtx.fillStyle = "#38bdf8"; // sky-400
+      cropCtx.fillStyle = "#38bdf8";
       cropCtx.font = `bold ${4.5 * exportScale}px monospace`;
-      cropCtx.fillText(`COORDS: ${selectedStation.lat.toFixed(2)}N, ${selectedStation.lon.toFixed(2)}E`, 112 * exportScale, 400 * exportScale);
+      cropCtx.fillText(`COORDS: ${selectedStation.lat.toFixed(2)}°N, ${selectedStation.lon.toFixed(2)}°E`, 112 * exportScale, 400 * exportScale);
       cropCtx.fillText(`SYSTEM STATUS: ${statusUpper}`, 112 * exportScale, 412 * exportScale);
 
-      // Draw small operational indicator dot
       cropCtx.fillStyle = statusColor;
       cropCtx.beginPath();
       cropCtx.arc(398 * exportScale, 400 * exportScale, 3 * exportScale, 0, Math.PI * 2);
@@ -1304,42 +1394,115 @@ const LiveRadar = () => {
 
       return cropCanvas;
     } else {
-      // Draw Timestamp and Date overlay on full canvas (4080x5572 for exportScale = 4)
       const activeTime = formatFrameTime(frame?.observed_at);
-      ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
-      ctx.shadowBlur = 15;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 6;
 
-      // Draw Time
-      ctx.fillStyle = "#fbbf24"; // amber-400
-      ctx.font = `900 ${35 * exportScale}px sans-serif`;
+      // ── Top Broadcast Header Banner ──────────────────────────────────────────
+      ctx.fillStyle = "rgba(11, 19, 26, 0.96)";
+      ctx.fillRect(0, 0, canvas.width, 108 * exportScale);
+
+      ctx.fillStyle = "#1e293b";
+      ctx.fillRect(0, 106.5 * exportScale, canvas.width, 1.5 * exportScale);
+
+      // Left: Brand Logo / Title
       ctx.textAlign = "left";
-      ctx.fillText(activeTime.time, 40 * exportScale, 60 * exportScale);
+      ctx.fillStyle = "#38bdf8";
+      ctx.font = `900 ${16 * exportScale}px sans-serif`;
+      ctx.fillText("PHILIPPINE TYPHOON/WEATHER", 36 * exportScale, 46 * exportScale);
 
-      // Draw Date
-      ctx.fillStyle = "#e2e8f0"; // slate-200
-      ctx.font = `bold ${18 * exportScale}px sans-serif`;
-      ctx.fillText(activeTime.date, 40 * exportScale, 85 * exportScale);
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = `bold ${9 * exportScale}px monospace`;
+      ctx.fillText("NATIONAL DOPPLER RADAR NETWORK", 36 * exportScale, 68 * exportScale);
 
-      // Draw Watermark name: Philippine Typhoon/Weather (Top-Left under date)
-      ctx.fillStyle = "#22d3ee"; // cyan-400
-      ctx.font = `900 ${15 * exportScale}px sans-serif`;
-      ctx.fillText("PHILIPPINE TYPHOON/WEATHER", 40 * exportScale, 115 * exportScale);
-      
-      // Reset shadow
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetY = 0;
+      ctx.fillStyle = "#64748b";
+      ctx.font = `bold ${7.5 * exportScale}px monospace`;
+      ctx.fillText("HIGH-RESOLUTION 240KM COMPOSITE", 36 * exportScale, 88 * exportScale);
 
-      // Draw dBZ intensity legend on full canvas
+      // Center: Title Pill + Subtitle Pill
+      const pillW = 340 * exportScale;
+      const pillH = 42 * exportScale;
+      const pillX = (canvas.width - pillW) / 2;
+      const pillY = 16 * exportScale;
+
+      ctx.fillStyle = "#1e293b";
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 1.5 * exportScale;
+      ctx.beginPath();
+      drawRoundRect(ctx, pillX, pillY, pillW, pillH, 12 * exportScale);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = `900 ${17 * exportScale}px sans-serif`;
+      ctx.fillText("DOPPLER RADAR COMPOSITE", canvas.width / 2, pillY + 27 * exportScale);
+
+      // Subtitle Blue Bar Pill
+      const subW = 310 * exportScale;
+      const subH = 26 * exportScale;
+      const subX = (canvas.width - subW) / 2;
+      const subY = 66 * exportScale;
+
+      ctx.fillStyle = "#0369a1";
+      ctx.beginPath();
+      drawRoundRect(ctx, subX, subY, subW, subH, 8 * exportScale);
+      ctx.fill();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `bold ${10.5 * exportScale}px sans-serif`;
+      ctx.fillText(`LIVE OBSERVED · ${activeTime.time.replace(" PHT", "")} PHT (${activeTime.date})`, canvas.width / 2, subY + 17.5 * exportScale);
+
+      // Right: Telemetry / Status Box
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#38bdf8";
+      ctx.font = `900 ${12 * exportScale}px monospace`;
+      ctx.fillText("SYSTEM OPERATIONAL", canvas.width - 36 * exportScale, 46 * exportScale);
+
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = `bold ${8.5 * exportScale}px monospace`;
+      ctx.fillText("COMPOSITE ARCHIVE: 16 STATIONS", canvas.width - 36 * exportScale, 68 * exportScale);
+
+      ctx.fillStyle = "#64748b";
+      ctx.font = `bold ${7.5 * exportScale}px monospace`;
+      ctx.fillText("PAGASA / GARBINWX COMPOSITE", canvas.width - 36 * exportScale, 88 * exportScale);
+
+      // ── Bottom Broadcast Footer Bar ──────────────────────────────────────────
+      const footH = 44 * exportScale;
+      const footY = canvas.height - footH;
+      ctx.fillStyle = "rgba(11, 19, 26, 0.94)";
+      ctx.fillRect(0, footY, canvas.width, footH);
+
+      ctx.fillStyle = "#1e293b";
+      ctx.fillRect(0, footY, canvas.width, 1.2 * exportScale);
+
+      // Bottom Left Telemetry
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#38bdf8";
+      ctx.font = `900 ${8.5 * exportScale}px sans-serif`;
+      ctx.fillText("DOPPLER RADAR COMPOSITE MONITORING", 36 * exportScale, footY + 19 * exportScale);
+
+      ctx.fillStyle = "#64748b";
+      ctx.font = `bold ${7 * exportScale}px sans-serif`;
+      ctx.fillText(`Cartography: ${MAP_STYLES[mapStyle]?.name || mapStyle} · Calibration: WGS84 / EPSG:4326`, 36 * exportScale, footY + 33 * exportScale);
+
+      // Bottom Right Notice
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = `bold ${7.5 * exportScale}px monospace`;
+      ctx.fillText(`COLOR THEME: ${colorTheme.toUpperCase()} · RANGE: 1 TO 66+ dBZ`, canvas.width - 36 * exportScale, footY + 19 * exportScale);
+
+      ctx.fillStyle = "#64748b";
+      ctx.font = `bold ${7 * exportScale}px sans-serif`;
+      ctx.fillText("Official Doppler composite archives. Reflectivity values subject to terrain calibration.", canvas.width - 36 * exportScale, footY + 33 * exportScale);
+
+      // ── Draw dBZ Intensity Legend Card ────────────────────────────────────────
       drawDbgColorLegend(
         ctx,
-        40 * exportScale,
-        1230 * exportScale,
-        85 * exportScale,
+        36 * exportScale,
+        canvas.height - 238 * exportScale,
         110 * exportScale,
+        180 * exportScale,
         colorTheme,
-        exportScale * 0.7
+        exportScale * 0.8
       );
 
       return canvas;
@@ -1592,233 +1755,271 @@ const LiveRadar = () => {
         )}
 
         {/* Map Frame Renderer */}
+        {/* Leaflet Map Renderer */}
         {frames.length > 0 && (
-          <div
-            ref={mapContainerRef}
-            className="relative cursor-grab active:cursor-grabbing overflow-hidden bg-black select-none touch-none flex items-center justify-center"
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+          <MapContainer
+            center={[12.8797, 121.7740]}
+            zoom={typeof window !== "undefined" && window.innerWidth < 768 ? 5.5 : 6}
+            minZoom={4}
+            maxZoom={12}
+            zoomControl={false}
+            attributionControl={false}
+            className="w-full h-full z-0 select-none"
             style={{
-              transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
-              transition: activeRegion ? "transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)" : "none",
-              aspectRatio: "1020 / 1393",
-              width: "min(100%, calc((100vh - 64px) * 1020 / 1393))",
-              height: "auto",
-              maxWidth: "100%",
-              maxHeight: "100%"
+              background: mapStyle === "broadcast" ? "#162533" : "#020617",
+              width: "100%",
+              height: "100%"
             }}
           >
-            {/* Layer 1: Base Map of the Philippines */}
-            {svgBaseMap}
+            <MapBridge setMapInstance={setMapInstance} setMapZoom={setMapZoom} />
 
-            {/* Layer 2: Transparent Radar Reflectivity PNG */}
-            <img
-              src={cachedFrameUrls[frames[activeFrameIndex]?.observed_at] || getFrameImageSrc(frames[activeFrameIndex], activeFrameIndex)}
-              alt={`Doppler Radar Composite Frame ${activeFrameIndex}`}
-              draggable="false"
-              className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-10"
-              style={{
-                imageRendering: "auto",
-                transform: "translate(-2px, -4.5px)",
-              }}
+            {/* Layer 1: Base Map - AI TV Broadcast (ai_precip_outlook land) or TileLayer (Satellite / Dark Matter) */}
+            {mapStyle === "broadcast" ? (
+              geoData && (
+                <GeoJSON
+                  key="broadcast-land"
+                  data={geoData}
+                  pane="tilePane"
+                  style={() => ({
+                    fillColor: "#25342a",
+                    fillOpacity: 1,
+                    color: "#0f172a",
+                    weight: 1.2,
+                    opacity: 0.95
+                  })}
+                  interactive={false}
+                />
+              )
+            ) : (
+              MAP_STYLES[mapStyle]?.url && (
+                <TileLayer
+                  key={mapStyle}
+                  url={MAP_STYLES[mapStyle].url}
+                  attribution={MAP_STYLES[mapStyle].attribution}
+                  maxZoom={18}
+                />
+              )
+            )}
+
+            {/* Layer 2: Transparent Doppler Radar Reflectivity ImageOverlay */}
+            <ImageOverlay
+              key={`radar-${activeFrameIndex}-${colorTheme}`}
+              url={cachedFrameUrls[frames[activeFrameIndex]?.observed_at] || getFrameImageSrc(frames[activeFrameIndex], activeFrameIndex)}
+              bounds={RADAR_BOUNDS}
+              opacity={0.88}
+              pane="overlayPane"
+              zIndex={300}
             />
 
-            {/* Layer 3: Foreground Province Borders Overlay */}
-            {svgBordersOverlay}
-
-            {/* Layer 4: Interactive Doppler Radar Stations */}
-            {showStations && (
-              <svg
-                className="absolute inset-0 w-full h-full pointer-events-none select-none z-30"
-                viewBox="0 0 1020 1393"
-              >
-                {/* Station Range Circles */}
-                {showRangeCircles && stations.map((station) => {
-                  const isHovered = hoveredStationId === station.id;
-                  const isSelected = selectedStationId === station.id;
-                  const isActive = isHovered || isSelected;
-                  if (!isActive || station.status === "maintenance") return null;
-
-                  return (
-                    <g key={`circle-${station.id}`}>
-                      <circle
-                        cx={station.x}
-                        cy={station.y}
-                        r="160"
-                        fill="none"
-                        stroke={station.status === "online" ? "rgba(6, 182, 212, 0.3)" : "rgba(234, 179, 8, 0.3)"}
-                        strokeWidth="1.5"
-                        strokeDasharray="4 4"
-                      />
-                      <circle
-                        cx={station.x}
-                        cy={station.y}
-                        r="160"
-                        fill={station.status === "online" ? "rgba(6, 182, 212, 0.03)" : "rgba(234, 179, 8, 0.03)"}
-                      />
-                    </g>
-                  );
+            {/* Layer 3: TV Broadcast Province Borders on top of weather cells (Crisp overlay) */}
+            {mapStyle === "broadcast" && geoData && (
+              <GeoJSON
+                key="broadcast-borders"
+                data={geoData}
+                pane="shadowPane"
+                style={() => ({
+                  fill: false,
+                  fillOpacity: 0,
+                  color: "#475569",
+                  weight: 0.8,
+                  opacity: 0.85
                 })}
-
-                {/* Radar Sweep Line */}
-                {showRangeCircles && stations.map((station) => {
-                  const isHovered = hoveredStationId === station.id;
-                  const isSelected = selectedStationId === station.id;
-                  const isActive = isHovered || isSelected;
-                  if (!isActive || station.status === "maintenance") return null;
-
-                  return (
-                    <g
-                      key={`sweep-${station.id}`}
-                      style={{
-                        transformOrigin: `${station.x}px ${station.y}px`,
-                        animation: "spin 4s linear infinite"
-                      }}
-                    >
-                      <line
-                        x1={station.x}
-                        y1={station.y}
-                        x2={station.x}
-                        y2={station.y - 160}
-                        stroke={station.status === "online" ? "rgba(6, 182, 212, 0.5)" : "rgba(234, 179, 8, 0.5)"}
-                        strokeWidth="1.5"
-                      />
-                      <path
-                        d={`M ${station.x} ${station.y} L ${station.x} ${station.y - 160} A 160 160 0 0 1 ${station.x + 41.4} ${station.y - 154.5} Z`}
-                        fill={station.status === "online" ? "url(#radarSweepGradCyan)" : "url(#radarSweepGradYellow)"}
-                      />
-                    </g>
-                  );
-                })}
-
-                <defs>
-                  <linearGradient id="radarSweepGradCyan" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="rgba(6, 182, 212, 0.25)" />
-                    <stop offset="100%" stopColor="rgba(6, 182, 212, 0)" />
-                  </linearGradient>
-                  <linearGradient id="radarSweepGradYellow" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="rgba(234, 179, 8, 0.25)" />
-                    <stop offset="100%" stopColor="rgba(234, 179, 8, 0)" />
-                  </linearGradient>
-                </defs>
-
-                {/* Station Dots */}
-                {stations.map((station) => {
-                  const isHovered = hoveredStationId === station.id;
-                  const isSelected = selectedStationId === station.id;
-                  const isHighlight = isHovered || isSelected;
-
-                  let markerColor = "rgb(148, 163, 184)"; // standby
-                  if (station.status === "online") markerColor = "rgb(6, 182, 212)";
-                  else if (station.status === "maintenance") markerColor = "rgb(239, 68, 68)";
-                  else if (station.status === "standby") markerColor = "rgb(234, 179, 8)";
-
-                  return (
-                    <g
-                      key={`marker-${station.id}`}
-                      className="cursor-pointer pointer-events-auto"
-                      onMouseEnter={() => setHoveredStationId(station.id)}
-                      onMouseLeave={() => setHoveredStationId(null)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedStationId(selectedStationId === station.id ? null : station.id);
-                      }}
-                    >
-                      {isHighlight && (
-                        <circle
-                          cx={station.x}
-                          cy={station.y}
-                          r={(15 + (scale - 1) * 2) / scale}
-                          fill="none"
-                          stroke={markerColor}
-                          strokeWidth={1.5 / scale}
-                          className="animate-ping"
-                          style={{ transformOrigin: `${station.x}px ${station.y}px` }}
-                        />
-                      )}
-                      <circle
-                        cx={station.x}
-                        cy={station.y}
-                        r={(isHighlight ? (7.0 + (scale - 1) * 1.0) : (4.5 + (scale - 1) * 0.8)) / scale}
-                        fill={markerColor}
-                        stroke="#020617"
-                        strokeWidth={(isHighlight ? 2.5 : 1.5) / scale}
-                        className="transition-all duration-200"
-                      />
-                    </g>
-                  );
-                })}
-              </svg>
+                interactive={false}
+              />
             )}
-          </div>
+
+            {/* Layer 4: Interactive Doppler Radar Stations & 240km Ranges */}
+            {showStations && stations.map((station) => {
+              const isHovered = hoveredStationId === station.id;
+              const isSelected = selectedStationId === station.id;
+              const isHighlight = isHovered || isSelected;
+
+              let markerColor = "#38bdf8";
+              if (station.status === "online") markerColor = "#38bdf8";
+              else if (station.status === "maintenance") markerColor = "#ef4444";
+              else if (station.status === "standby") markerColor = "#eab308";
+
+              return (
+                <React.Fragment key={`stn-${station.id}`}>
+                  {/* 240km Range Circle (strictly non-interactive so it NEVER blocks clicks/hovers to other stations or the map) */}
+                  {showRangeCircles && isHighlight && station.status !== "maintenance" && (
+                    <Circle
+                      key={`range-${station.id}`}
+                      center={[station.lat, station.lon]}
+                      radius={240000}
+                      pane="overlayPane"
+                      interactive={false}
+                      pathOptions={{
+                        interactive: false,
+                        color: station.status === "online" ? "#38bdf8" : "#eab308",
+                        fillColor: station.status === "online" ? "#38bdf8" : "#eab308",
+                        fillOpacity: 0.05,
+                        weight: 1.5,
+                        dashArray: "5 5",
+                        className: "pointer-events-none"
+                      }}
+                    />
+                  )}
+
+                  {/* Station Marker: Placed in markerPane (z-index 600) so it is ALWAYS on top of borders and rain */}
+                  <CircleMarker
+                    key={`marker-${station.id}`}
+                    center={[station.lat, station.lon]}
+                    radius={isHighlight ? 8 : 5.5}
+                    pane="markerPane"
+                    pathOptions={{
+                      color: "#ffffff",
+                      fillColor: markerColor,
+                      fillOpacity: 1,
+                      weight: isHighlight ? 2.5 : 1.5,
+                      className: "cursor-pointer"
+                    }}
+                    eventHandlers={{
+                      mouseover: () => setHoveredStationId(station.id),
+                      mouseout: () => setHoveredStationId(null),
+                      click: (e) => {
+                        L.DomEvent.stopPropagation(e);
+                        const nextId = selectedStationId === station.id ? null : station.id;
+                        setSelectedStationId(nextId);
+                        if (nextId) setShowRightPanel(true);
+                      }
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -10]} opacity={1} className="radar-tooltip">
+                      <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700/80 px-2.5 py-1.5 rounded-xl shadow-2xl font-mono min-w-[150px] pointer-events-none">
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1 mb-1">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="h-2 w-2 rounded-full animate-pulse"
+                              style={{ backgroundColor: markerColor }}
+                            />
+                            <span className="font-bold text-white text-[11px] uppercase tracking-wide">
+                              {station.name}
+                            </span>
+                          </div>
+                          <span
+                            className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase"
+                            style={{
+                              backgroundColor:
+                                markerColor === "#38bdf8"
+                                  ? "rgba(56, 189, 248, 0.15)"
+                                  : markerColor === "#ef4444"
+                                  ? "rgba(239, 68, 68, 0.15)"
+                                  : "rgba(234, 179, 8, 0.15)",
+                              color: markerColor
+                            }}
+                          >
+                            {station.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[9px] text-slate-400">
+                          <span>240 KM RADIAL</span>
+                          <span className="text-slate-300 font-bold">{station.lat.toFixed(2)}°N, {station.lon.toFixed(2)}°E</span>
+                        </div>
+                        <div className="text-[8px] text-cyan-400/80 mt-1 font-sans text-center">
+                          {selectedStationId === station.id ? "Selected · Click to deselect" : "Click to inspect station"}
+                        </div>
+                      </div>
+                    </Tooltip>
+                  </CircleMarker>
+                </React.Fragment>
+              );
+            })}
+          </MapContainer>
         )}
       </div>
 
       {/* 2. Glassmorphic Control Overlay Panels */}
 
       {/* Floating Top Header bar */}
-      <div className="absolute top-4 left-4 right-4 z-50 flex items-center justify-between pointer-events-none">
+      <div className="absolute top-3 left-3 right-3 md:top-4 md:left-4 md:right-4 z-50 flex items-center justify-between pointer-events-none">
         <div className="flex gap-2 pointer-events-auto">
           {/* Collapse Left Sidebar button */}
           <button
-            onClick={() => setShowLeftPanel(!showLeftPanel)}
-            className={`p-3 rounded-2xl border transition-all duration-300 shadow-xl flex items-center justify-center cursor-pointer ${showLeftPanel
+            onClick={() => {
+              const next = !showLeftPanel;
+              setShowLeftPanel(next);
+              if (next && typeof window !== "undefined" && window.innerWidth < 1024) {
+                setShowRightPanel(false);
+              }
+            }}
+            className={`p-2.5 md:p-3 rounded-xl md:rounded-2xl border transition-all duration-300 shadow-xl flex items-center justify-center cursor-pointer ${showLeftPanel
               ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400"
               : "bg-slate-900/80 backdrop-blur-md border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
             }`}
             title="Toggle Left Control Deck"
           >
-            <SlidersHorizontal className="h-5 w-5" />
+            <SlidersHorizontal className="h-4.5 w-4.5 md:h-5 md:w-5" />
           </button>
         </div>
 
-        {/* Dynamic Date-Time Indicator */}
+        {/* Dynamic Date-Time Indicator (Inline on both mobile & desktop) */}
         {frames.length > 0 && (
-          <div className={`bg-slate-900/85 backdrop-blur-xl border border-slate-800/80 rounded-2xl px-3.5 md:px-5 py-1.5 md:py-2.5 gap-2.5 md:gap-4 shadow-2xl pointer-events-auto absolute md:relative top-[68px] md:top-auto left-1/2 md:left-auto -translate-x-1/2 md:translate-x-0 transition-all duration-300 ${showLeftPanel || showRightPanel ? "hidden md:flex" : "flex"}`}>
+          <div className={`bg-slate-900/85 backdrop-blur-xl border border-slate-800/80 rounded-xl md:rounded-2xl px-2.5 sm:px-3.5 md:px-5 py-1 md:py-2.5 gap-2 sm:gap-2.5 md:gap-4 shadow-2xl pointer-events-auto transition-all duration-300 ${showLeftPanel || showRightPanel ? "hidden md:flex" : "flex items-center"}`}>
             <div className="flex flex-col items-center">
-              <span className="text-lg md:text-2xl font-black tracking-tight text-cyan-400 font-mono leading-none">
+              <span className="text-sm sm:text-base md:text-2xl font-black tracking-tight text-cyan-400 font-mono leading-none">
                 {activeTimeFormatted.time.replace(" PHT", "")}
               </span>
-              <span className="text-[8px] md:text-[10px] font-bold text-slate-400 tracking-widest font-mono mt-0.5">PHT (UTC+8)</span>
+              <span className="text-[7px] sm:text-[8px] md:text-[10px] font-bold text-slate-400 tracking-wider font-mono mt-0.5">PHT (UTC+8)</span>
             </div>
-            <div className="h-6 md:h-8 w-[1px] bg-slate-800"></div>
+            <div className="h-5 sm:h-6 md:h-8 w-[1px] bg-slate-800"></div>
             <div className="flex flex-col">
-              <span className="text-[10px] md:text-sm font-black text-slate-100 leading-tight whitespace-nowrap">
+              <span className="text-[9px] sm:text-[10px] md:text-sm font-black text-slate-100 leading-tight whitespace-nowrap">
                 {activeTimeFormatted.date}
               </span>
-              <span className="text-[8px] md:text-[9px] font-semibold text-slate-400 leading-none">DOPPLER COMPOSITE</span>
+              <span className="text-[7px] sm:text-[8px] md:text-[9px] font-semibold text-cyan-400/80 md:text-slate-400 leading-none">DOPPLER COMPOSITE</span>
             </div>
           </div>
         )}
 
-        <div className="flex gap-2 pointer-events-auto">
+        <div className="flex gap-1.5 sm:gap-2 pointer-events-auto">
+          {/* Quick Base Map Style Switcher (Broadcast -> Satellite -> Dark) */}
+          <button
+            onClick={() => {
+              const styles = ["broadcast", "satellite", "dark"];
+              const nextIdx = (styles.indexOf(mapStyle) + 1) % styles.length;
+              setMapStyle(styles[nextIdx]);
+            }}
+            className={`p-2.5 md:p-3 rounded-xl md:rounded-2xl border transition-all duration-300 shadow-xl flex items-center justify-center cursor-pointer ${
+              mapStyle === "broadcast"
+                ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-400"
+                : mapStyle === "satellite"
+                ? "bg-amber-500/15 border-amber-500/40 text-amber-400"
+                : "bg-slate-900/80 backdrop-blur-md border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
+            }`}
+            title={`Base Map: ${MAP_STYLES[mapStyle]?.name || mapStyle} (Tap to cycle)`}
+          >
+            <Layers className="h-4.5 w-4.5 md:h-5 md:w-5" />
+          </button>
+
           {/* Toggle Stations on Map */}
           <button
             onClick={() => setShowStations(!showStations)}
-            className={`p-3 rounded-2xl border transition-all duration-300 shadow-xl flex items-center justify-center cursor-pointer ${showStations
+            className={`p-2.5 md:p-3 rounded-xl md:rounded-2xl border transition-all duration-300 shadow-xl flex items-center justify-center cursor-pointer ${showStations
               ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400"
               : "bg-slate-900/80 backdrop-blur-md border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
             }`}
             title="Toggle Station Markers"
           >
-            {showStations ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
+            {showStations ? <Eye className="h-4.5 w-4.5 md:h-5 md:w-5" /> : <EyeOff className="h-4.5 w-4.5 md:h-5 md:w-5" />}
           </button>
 
           {/* Collapse Right Sidebar button */}
           <button
-            onClick={() => setShowRightPanel(!showRightPanel)}
-            className={`p-3 rounded-2xl border transition-all duration-300 shadow-xl flex items-center justify-center cursor-pointer ${showRightPanel
+            onClick={() => {
+              const next = !showRightPanel;
+              setShowRightPanel(next);
+              if (next && typeof window !== "undefined" && window.innerWidth < 1024) {
+                setShowLeftPanel(false);
+              }
+            }}
+            className={`p-2.5 md:p-3 rounded-xl md:rounded-2xl border transition-all duration-300 shadow-xl flex items-center justify-center cursor-pointer ${showRightPanel
               ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400"
               : "bg-slate-900/80 backdrop-blur-md border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
             }`}
             title="Toggle Right Status Deck"
           >
-            <Activity className="h-5 w-5" />
+            <Activity className="h-4.5 w-4.5 md:h-5 md:w-5" />
           </button>
         </div>
       </div>
@@ -1828,6 +2029,8 @@ const LiveRadar = () => {
         showLeftPanel={showLeftPanel}
         setShowLeftPanel={setShowLeftPanel}
         scale={scale}
+        mapStyle={mapStyle}
+        setMapStyle={setMapStyle}
         frames={frames}
         activeRegion={activeRegion}
         focusOnRegion={focusOnRegion}
@@ -1863,11 +2066,59 @@ const LiveRadar = () => {
         scale={scale}
       />
 
+      {/* Mobile Floating dBZ Legend Toggle Pill */}
+      {!(showLeftPanel || showRightPanel) && !showMobileLegend && (
+        <button
+          onClick={() => setShowMobileLegend(true)}
+          className="md:hidden absolute bottom-[92px] left-2.5 z-35 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-slate-800 text-slate-300 hover:text-white shadow-xl text-[10px] font-mono font-bold active:scale-95 pointer-events-auto cursor-pointer"
+          title="Open dBZ Intensity Legend"
+        >
+          <div className="flex h-3 w-3 rounded-full overflow-hidden border border-slate-700">
+            <div className="w-full h-full" style={{ background: getLegendGradientStyle(colorTheme) }}></div>
+          </div>
+          <span>dBZ Scale</span>
+          <ChevronRight className="h-3 w-3 text-cyan-400 rotate-[-90deg]" />
+        </button>
+      )}
+
+      {/* Mobile Floating Zoom Controls */}
+      {!(showLeftPanel || showRightPanel) && (
+        <div className="md:hidden absolute bottom-[92px] right-2.5 z-35 flex flex-col gap-1.5 pointer-events-auto">
+          <button
+            onClick={handleZoomIn}
+            className="h-8 w-8 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-slate-800 text-slate-300 hover:text-white flex items-center justify-center shadow-xl active:scale-95 transition-all cursor-pointer"
+            title="Zoom In"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+          <button
+            onClick={handleZoomOut}
+            className="h-8 w-8 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-slate-800 text-slate-300 hover:text-white flex items-center justify-center shadow-xl active:scale-95 transition-all cursor-pointer"
+            title="Zoom Out"
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Floating Legend Panel */}
-      <div className={`absolute bottom-[195px] md:bottom-28 z-35 bg-slate-900/90 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-3 flex-col select-none pointer-events-auto shadow-2xl min-w-[160px] max-w-[180px] transition-all duration-300 ${showLeftPanel || showRightPanel ? "hidden md:flex" : "flex"} ${showLeftPanel ? "left-4 md:left-[352px]" : "left-4"}`}>
+      <div className={`absolute bottom-[92px] md:bottom-28 z-35 bg-slate-900/95 md:bg-slate-900/90 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-3 flex-col select-none pointer-events-auto shadow-2xl min-w-[160px] max-w-[180px] transition-all duration-300 ${
+        showLeftPanel || showRightPanel
+          ? "hidden md:flex"
+          : showMobileLegend ? "flex" : "hidden md:flex"
+      } ${showLeftPanel ? "left-2.5 md:left-[352px]" : "left-2.5 md:left-4"}`}>
         <div className="flex justify-between items-center border-b border-slate-800/70 pb-1.5 mb-2 px-0.5">
-          <span className="font-bold tracking-wider font-mono text-[9px] text-slate-300 uppercase">dBZ</span>
-          <span className="font-bold tracking-wider font-mono text-[9px] text-slate-400 uppercase">Intensity</span>
+          <div className="flex gap-1.5 items-center">
+            <span className="font-bold tracking-wider font-mono text-[9px] text-slate-300 uppercase">dBZ</span>
+            <span className="font-bold tracking-wider font-mono text-[9px] text-slate-400 uppercase">Intensity</span>
+          </div>
+          <button
+            onClick={() => setShowMobileLegend(false)}
+            className="md:hidden p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Close Legend"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
         <div className="flex gap-2.5 items-center justify-between px-0.5">
           {/* Left dBZ values */}
@@ -1903,123 +2154,120 @@ const LiveRadar = () => {
       </div>
 
       {/* Bottom Floating Control Scrubber Deck */}
-      <div className={`absolute bottom-4 left-0 right-0 z-40 px-4 md:px-0 justify-center pointer-events-none transition-all duration-300 ${showLeftPanel || showRightPanel ? "hidden md:flex" : "flex"}`}>
-        <div className="w-full max-w-3xl bg-slate-900/80 backdrop-blur-xl border border-slate-800/85 rounded-3xl p-4 shadow-2xl flex flex-col gap-3 pointer-events-auto">
+      <div className={`absolute bottom-2.5 sm:bottom-3 md:bottom-4 left-0 right-0 z-40 px-2.5 sm:px-3 md:px-0 justify-center pointer-events-none transition-all duration-300 ${showLeftPanel || showRightPanel ? "hidden md:flex" : "flex"}`}>
+        <div className="w-full max-w-3xl bg-slate-900/85 backdrop-blur-xl border border-slate-800/85 rounded-2xl md:rounded-3xl p-2.5 sm:p-3 md:p-4 shadow-2xl flex flex-col gap-2 md:gap-3 pointer-events-auto">
           
-          <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 md:gap-4">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-4 w-full">
             
-            {/* Playback Controls & Scrubber Slider Row */}
-            <div className="flex items-center gap-3 w-full flex-grow">
-              {/* Play/Pause controls */}
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  disabled={frames.length === 0}
-                  className={`h-10 w-10 md:h-11 md:w-11 rounded-xl md:rounded-2xl flex items-center justify-center transition-all cursor-pointer border active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${isPlaying
-                    ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
-                    : "bg-slate-950/80 border-slate-800 hover:bg-slate-900 hover:border-slate-700 text-slate-350"
-                  }`}
-                  title={isPlaying ? "Pause Timeline Loop" : "Play Timeline Loop"}
-                >
-                  {isPlaying ? <Pause className="h-4 w-4 md:h-5 md:w-5 fill-current" /> : <Play className="h-4 w-4 md:h-5 md:w-5 fill-current ml-0.5" />}
-                </button>
+            {/* Playback Controls */}
+            <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
+              <button
+                onClick={() => setIsPlaying(!isPlaying)}
+                disabled={frames.length === 0}
+                className={`h-8.5 w-8.5 sm:h-10 sm:w-10 md:h-11 md:w-11 rounded-xl md:rounded-2xl flex items-center justify-center transition-all cursor-pointer border active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${isPlaying
+                  ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                  : "bg-slate-950/80 border-slate-800 hover:bg-slate-900 hover:border-slate-700 text-slate-350"
+                }`}
+                title={isPlaying ? "Pause Timeline Loop" : "Play Timeline Loop"}
+              >
+                {isPlaying ? <Pause className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 fill-current" /> : <Play className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 fill-current ml-0.5" />}
+              </button>
 
-                <button
-                  onClick={() => {
-                    setIsPlaying(false);
-                    setActiveFrameIndex(frames.length - 1);
-                  }}
-                  disabled={frames.length === 0}
-                  className="h-10 w-10 md:h-11 md:w-11 rounded-xl md:rounded-2xl bg-slate-950/80 border border-slate-800 hover:bg-slate-900 hover:border-slate-700 text-slate-400 hover:text-white transition-all flex items-center justify-center cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Stop / Jump to Latest Frame"
-                >
-                  <Square className="h-4 w-4 md:h-4.5 md:w-4.5 fill-current" />
-                </button>
-              </div>
-
-              {/* Scrubber timeline bar */}
-              <div className="flex-grow flex items-center gap-2 md:gap-3">
-                <button
-                  onClick={() => {
-                    setIsPlaying(false);
-                    setActiveFrameIndex((prev) => (prev > 0 ? prev - 1 : frames.length - 1));
-                  }}
-                  disabled={frames.length === 0}
-                  className="h-8 w-8 rounded-lg bg-slate-950/40 border border-slate-850 hover:bg-slate-950 hover:border-slate-800 hover:text-white flex items-center justify-center text-slate-400 transition-colors cursor-pointer"
-                  title="Previous Frame"
-                >
-                  <ChevronLeft className="h-4.5 w-4.5" />
-                </button>
-
-                {/* Advanced timeline slider with load dot diagnostics */}
-                <div className="flex-grow flex flex-col gap-1 relative py-1 justify-center">
-                  <input
-                    id="radar-slider"
-                    type="range"
-                    min="0"
-                    max={frames.length > 0 ? frames.length - 1 : 0}
-                    value={activeFrameIndex}
-                    onChange={(e) => {
-                      setIsPlaying(false);
-                      setActiveFrameIndex(parseInt(e.target.value, 10));
-                    }}
-                    className="w-full h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer focus:outline-none accent-cyan-400"
-                  />
-                  
-                  {/* Visual load indicators showing cached states underneath the slider */}
-                  {frames.length > 0 && (
-                    <div className="w-full flex justify-between px-0.5 pointer-events-none mt-1">
-                      {frames.map((frame, index) => {
-                        const isCached = !!cachedFrameUrls[frame.observed_at];
-                        const isActive = index === activeFrameIndex;
-                        
-                        let dotColorClass = "bg-slate-850";
-                        if (isActive) dotColorClass = "bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.6)] scale-125";
-                        else if (isCached) dotColorClass = "bg-cyan-800";
-                        
-                        return (
-                          <span
-                            key={index}
-                            className={`h-0.5 w-0.5 rounded-full transition-all duration-150 ${dotColorClass}`}
-                            style={{
-                              width: "2.5px",
-                              height: "2.5px"
-                            }}
-                          ></span>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => {
-                    setIsPlaying(false);
-                    setActiveFrameIndex((prev) => (prev + 1) % frames.length);
-                  }}
-                  disabled={frames.length === 0}
-                  className="h-8 w-8 rounded-lg bg-slate-950/40 border border-slate-850 hover:bg-slate-950 hover:border-slate-800 hover:text-white flex items-center justify-center text-slate-400 transition-colors cursor-pointer"
-                  title="Next Frame"
-                >
-                  <ChevronRight className="h-4.5 w-4.5" />
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  setIsPlaying(false);
+                  setActiveFrameIndex(frames.length - 1);
+                }}
+                disabled={frames.length === 0}
+                className="h-8.5 w-8.5 sm:h-10 sm:w-10 md:h-11 md:w-11 rounded-xl md:rounded-2xl bg-slate-950/80 border border-slate-800 hover:bg-slate-900 hover:border-slate-700 text-slate-400 hover:text-white transition-all flex items-center justify-center cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Stop / Jump to Latest Frame"
+              >
+                <Square className="h-3 w-3 sm:h-4 sm:w-4 md:h-4.5 md:w-4.5 fill-current" />
+              </button>
             </div>
 
-            {/* Recenter & Refresh actions row (wraps nicely below on mobile, inline on desktop) */}
-            <div className="flex gap-2 justify-between md:justify-end flex-shrink-0">
+            {/* Scrubber timeline bar */}
+            <div className="flex-grow flex items-center gap-1 sm:gap-2 md:gap-3 min-w-0">
+              <button
+                onClick={() => {
+                  setIsPlaying(false);
+                  setActiveFrameIndex((prev) => (prev > 0 ? prev - 1 : frames.length - 1));
+                }}
+                disabled={frames.length === 0}
+                className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-slate-950/40 border border-slate-850 hover:bg-slate-950 hover:border-slate-800 hover:text-white flex items-center justify-center text-slate-400 transition-colors cursor-pointer flex-shrink-0"
+                title="Previous Frame"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+
+              {/* Advanced timeline slider with load dot diagnostics */}
+              <div className="flex-grow flex flex-col gap-0.5 sm:gap-1 relative py-1 justify-center min-w-0">
+                <input
+                  id="radar-slider"
+                  type="range"
+                  min="0"
+                  max={frames.length > 0 ? frames.length - 1 : 0}
+                  value={activeFrameIndex}
+                  onChange={(e) => {
+                    setIsPlaying(false);
+                    setActiveFrameIndex(parseInt(e.target.value, 10));
+                  }}
+                  className="w-full h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer focus:outline-none accent-cyan-400"
+                />
+                
+                {/* Visual load indicators showing cached states underneath the slider */}
+                {frames.length > 0 && (
+                  <div className="w-full flex justify-between px-0.5 pointer-events-none mt-0.5 sm:mt-1">
+                    {frames.map((frame, index) => {
+                      const isCached = !!cachedFrameUrls[frame.observed_at];
+                      const isActive = index === activeFrameIndex;
+                      
+                      let dotColorClass = "bg-slate-850";
+                      if (isActive) dotColorClass = "bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.6)] scale-125";
+                      else if (isCached) dotColorClass = "bg-cyan-800";
+                      
+                      return (
+                        <span
+                          key={index}
+                          className={`h-0.5 w-0.5 rounded-full transition-all duration-150 ${dotColorClass}`}
+                          style={{
+                            width: "2.5px",
+                            height: "2.5px"
+                          }}
+                        ></span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => {
+                  setIsPlaying(false);
+                  setActiveFrameIndex((prev) => (prev + 1) % frames.length);
+                }}
+                disabled={frames.length === 0}
+                className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-slate-950/40 border border-slate-850 hover:bg-slate-950 hover:border-slate-800 hover:text-white flex items-center justify-center text-slate-400 transition-colors cursor-pointer flex-shrink-0"
+                title="Next Frame"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Recenter & Refresh actions row */}
+            <div className="flex gap-1 sm:gap-2 justify-end flex-shrink-0">
               <button
                 onClick={resetZoom}
-                className="h-10 md:h-11 px-3 md:px-4 rounded-xl md:rounded-2xl bg-slate-950/80 border border-slate-800 hover:bg-slate-900 hover:border-slate-700 text-slate-400 hover:text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer text-[10px] md:text-xs font-semibold active:scale-95 flex-grow md:flex-grow-0"
+                className="h-8.5 sm:h-10 md:h-11 px-2 sm:px-3 md:px-4 rounded-xl md:rounded-2xl bg-slate-950/80 border border-slate-800 hover:bg-slate-900 hover:border-slate-700 text-slate-400 hover:text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer text-[10px] md:text-xs font-semibold active:scale-95"
                 title="Recenter Map View"
               >
                 <Maximize2 className="h-3.5 w-3.5" />
-                <span>Recenter Map</span>
+                <span className="hidden sm:inline">Recenter</span>
               </button>
 
               <button
                 onClick={fetchTimeline}
-                className="h-10 w-10 md:h-11 md:w-11 rounded-xl md:rounded-2xl bg-slate-950/80 border border-slate-800 hover:bg-slate-900 hover:border-slate-700 text-slate-400 hover:text-white transition-all flex items-center justify-center cursor-pointer active:scale-95 flex-shrink-0"
+                className="h-8.5 w-8.5 sm:h-10 sm:w-10 md:h-11 md:w-11 rounded-xl md:rounded-2xl bg-slate-950/80 border border-slate-800 hover:bg-slate-900 hover:border-slate-700 text-slate-400 hover:text-white transition-all flex items-center justify-center cursor-pointer active:scale-95 flex-shrink-0"
                 title="Refresh Radar Feed"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
@@ -2030,19 +2278,20 @@ const LiveRadar = () => {
 
           {/* Timeline diagnostics readout */}
           {frames.length > 0 && (
-            <div className="flex flex-col sm:flex-row gap-1.5 sm:gap-4 justify-between items-start sm:items-center text-[8px] sm:text-[9px] font-mono text-slate-400 px-1 pt-1.5 border-t border-slate-800/40">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between text-[7.5px] sm:text-[8.5px] md:text-[9px] font-mono text-slate-400 px-1 pt-1 border-t border-slate-800/40">
+              <div className="flex items-center gap-1.5">
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500"></span>
                 </span>
                 <span>
-                  PLAYHEAD: <strong className="text-cyan-400">FRAME {activeFrameIndex + 1}</strong> / {frames.length}
+                  <span className="hidden sm:inline">PLAYHEAD: </span>
+                  <strong className="text-cyan-400">FRAME {activeFrameIndex + 1}</strong>/{frames.length}
                 </span>
               </div>
-              <div className="flex justify-between w-full sm:w-auto gap-3">
-                <span>BUFFER: <strong>{loadedFramesProgress.loaded}/{loadedFramesProgress.total}</strong></span>
-                <span>OBSERVED: <strong className="text-amber-400">{frames[activeFrameIndex]?.observed_at}</strong></span>
+              <div className="flex items-center gap-2 sm:gap-4">
+                <span className="hidden xs:inline">BUFFER: <strong>{loadedFramesProgress.loaded}/{loadedFramesProgress.total}</strong></span>
+                <span>OBS: <strong className="text-amber-400">{frames[activeFrameIndex]?.observed_at}</strong></span>
               </div>
             </div>
           )}

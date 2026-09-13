@@ -370,12 +370,11 @@ function AppContent() {
 
   if (path === "/spaghetti") {
     return (
-      <div className="min-h-screen flex flex-col bg-slate-950">
+      <div className="h-[100dvh] h-screen flex flex-col bg-slate-950 overflow-hidden">
         <Navbar />
-        <main className="flex-grow">
+        <main className="flex-grow min-h-0 relative overflow-hidden">
           <SpaghettiPlot />
         </main>
-        <Footer />
       </div>
     );
   }

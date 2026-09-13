@@ -712,6 +712,10 @@ const CycloneMapLogic = ({
                     <span class="text-slate-400 font-medium">${new Date(storm.last_updated).toLocaleString()}</span>
                 </div>
 
+                <div class="mt-2 pt-1.5 border-t border-slate-800/60 text-[7px] sm:text-[8.5px] text-slate-400/80 italic leading-snug">
+                    *Note: Winds converted to km/h (1-min sustained). Differs from official agencies (e.g., PAGASA, JMA) using 10-min sustained winds.
+                </div>
+
             </div>
           `,
           { maxWidth: 350, className: "custom-storm-popup" }

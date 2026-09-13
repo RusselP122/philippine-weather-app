@@ -1446,6 +1446,14 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
         data_type_str = "Deterministic"
     fig.text(0.86, 0.90, f"Data: {model_name} {data_type_str}", fontsize=10, color='#475569', ha='right', va='bottom')
 
+    # Disclaimer note for wind speed conversion and 10-min sustained difference from official agencies
+    if color_by == 'wind':
+        fig.text(
+            0.08, 0.022,
+            "*Note: Winds converted to km/h (1-min sustained). Differs from official agencies (e.g., PAGASA, JMA) using 10-min sustained winds.",
+            fontsize=8, color='#475569', style='italic', ha='left', va='center'
+        )
+
     # Save output publication image
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, dpi=300, facecolor='white', edgecolor='none')

@@ -1,10 +1,12 @@
 import React from 'react';
-import { Settings, X, Loader2, Download, Play } from 'lucide-react';
+import { Settings, X, Loader2, Download, Play, Layers } from 'lucide-react';
 
 const RadarControls = ({
   showLeftPanel,
   setShowLeftPanel,
   scale,
+  mapStyle = "dark",
+  setMapStyle,
   frames,
   activeRegion,
   focusOnRegion,
@@ -26,13 +28,13 @@ const RadarControls = ({
 }) => {
   return (
     <div
-      className={`absolute left-0 md:left-4 top-20 bottom-0 md:bottom-28 w-full md:w-80 z-45 md:z-30 transition-all duration-300 ease-out flex flex-col pointer-events-auto ${
+      className={`absolute left-0 md:left-4 top-16 md:top-20 bottom-0 md:bottom-28 w-full md:w-80 z-45 md:z-30 transition-all duration-300 ease-out flex flex-col pointer-events-auto ${
         showLeftPanel
           ? "translate-x-0 opacity-100"
           : "-translate-x-full md:-translate-x-[110%] opacity-0 pointer-events-none"
       }`}
     >
-      <div className="bg-slate-950/95 md:bg-slate-900/80 backdrop-blur-xl border border-slate-800/85 md:rounded-3xl p-5 shadow-2xl flex-grow overflow-y-auto flex flex-col gap-6 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+      <div className="bg-slate-950/95 md:bg-slate-900/80 backdrop-blur-xl border border-slate-800/85 md:rounded-3xl p-4 sm:p-5 shadow-2xl flex-grow overflow-y-auto flex flex-col gap-4 sm:gap-6 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
         
         <div className="flex justify-between items-center border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
@@ -41,7 +43,8 @@ const RadarControls = ({
           </div>
           <button
             onClick={() => setShowLeftPanel(false)}
-            className="md:hidden text-slate-400 hover:text-white p-1"
+            className="md:hidden text-slate-400 hover:text-white p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Close Console"
           >
             <X className="h-4 w-4" />
           </button>
@@ -60,7 +63,7 @@ const RadarControls = ({
             </div>
             <div className="flex justify-between">
               <span>ZOOM LEVEL:</span>
-              <span className="text-slate-200">{scale.toFixed(1)}x</span>
+              <span className="text-slate-200">{typeof scale === 'number' ? scale.toFixed(1) : scale}x</span>
             </div>
             <div className="flex justify-between">
               <span>FRAMES:</span>
@@ -72,6 +75,35 @@ const RadarControls = ({
             </div>
           </div>
         </div>
+
+        {/* Base Map Style Selector */}
+        {setMapStyle && (
+          <div className="flex flex-col gap-2.5">
+            <div className="flex items-center gap-1.5">
+              <Layers className="h-3.5 w-3.5 text-cyan-400" />
+              <span className="text-slate-400 font-mono text-[10px] font-bold uppercase tracking-widest">Base Map Style</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                { id: "broadcast", label: "AI Broadcast" },
+                { id: "satellite", label: "Satellite" },
+                { id: "dark", label: "Dark Matter" }
+              ].map((style) => (
+                <button
+                  key={style.id}
+                  onClick={() => setMapStyle(style.id)}
+                  className={`py-2 px-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer text-center active:scale-95 ${
+                    mapStyle === style.id
+                      ? "bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-900/30"
+                      : "bg-slate-950/60 border-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-900/80 hover:border-slate-700"
+                  }`}
+                >
+                  {style.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Tactical Region Focus */}
         <div className="flex flex-col gap-2.5">
