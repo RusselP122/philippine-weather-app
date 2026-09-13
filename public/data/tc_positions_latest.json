@@ -1,71 +1,7 @@
 {
-  "active": true,
-  "storm_name": "Invest 98W",
-  "track_id": "WP982026",
-  "latest": {
-    "lat": 17.1,
-    "lon": 107.2,
-    "pressure_hpa": 1005.0,
-    "wind_kt": 19.0,
-    "wind_kmh": 35,
-    "movement": "WNW at 15.2 km/h (8.2 kt)",
-    "init_time": "2026-09-13 06:00",
-    "category": "Low Pressure Area"
-  },
-  "history": [
-    {
-      "cycle": "2026-09-12 00:00",
-      "lat": 15.4,
-      "lon": 109.3,
-      "pressure_hpa": 1006.0,
-      "wind_kt": 25.0,
-      "wind_kmh": 46,
-      "category": "Tropical Depression"
-    },
-    {
-      "cycle": "2026-09-12 06:00",
-      "lat": 16.7,
-      "lon": 110.5,
-      "pressure_hpa": 1006.0,
-      "wind_kt": 19.0,
-      "wind_kmh": 35,
-      "category": "Low Pressure Area"
-    },
-    {
-      "cycle": "2026-09-12 12:00",
-      "lat": 17.0,
-      "lon": 109.7,
-      "pressure_hpa": 1006.0,
-      "wind_kt": 19.0,
-      "wind_kmh": 35,
-      "category": "Low Pressure Area"
-    },
-    {
-      "cycle": "2026-09-12 18:00",
-      "lat": 17.1,
-      "lon": 108.5,
-      "pressure_hpa": 1006.0,
-      "wind_kt": 19.0,
-      "wind_kmh": 35,
-      "category": "Low Pressure Area"
-    },
-    {
-      "cycle": "2026-09-13 00:00",
-      "lat": 16.8,
-      "lon": 108.0,
-      "pressure_hpa": 1005.0,
-      "wind_kt": 19.0,
-      "wind_kmh": 35,
-      "category": "Low Pressure Area"
-    },
-    {
-      "cycle": "2026-09-13 06:00",
-      "lat": 17.1,
-      "lon": 107.2,
-      "pressure_hpa": 1005.0,
-      "wind_kt": 19.0,
-      "wind_kmh": 35,
-      "category": "Low Pressure Area"
-    }
-  ]
+  "active": false,
+  "storm_name": null,
+  "track_id": null,
+  "latest": null,
+  "history": []
 }
