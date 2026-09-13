@@ -1,48 +1,48 @@
 {
-  "base_5day_cycle": "2026-09-13 00:00",
+  "base_5day_cycle": "2026-09-13 06:00",
   "base_5day": [
     {
       "id": "98W",
       "local_id": 1,
       "name": "Invest 98W",
-      "trackCount": 50,
+      "trackCount": 47,
       "standard": "/data/trends/base_5day_98W_standard.png",
       "wide": "/data/trends/base_5day_98W_wide.png"
     },
     {
-      "id": "dist_20260912_00_2",
+      "id": "dist_20260912_06_2",
       "local_id": 2,
       "name": "Disturbance 2",
       "trackCount": 49,
-      "standard": "/data/trends/base_5day_dist_20260912_00_2_standard.png",
-      "wide": "/data/trends/base_5day_dist_20260912_00_2_wide.png"
+      "standard": "/data/trends/base_5day_dist_20260912_06_2_standard.png",
+      "wide": "/data/trends/base_5day_dist_20260912_06_2_wide.png"
     }
   ],
-  "base_15day_cycle": "2026-09-13 00:00",
+  "base_15day_cycle": "2026-09-13 06:00",
   "base_15day": [
     {
       "id": "98W",
       "local_id": 1,
       "name": "Invest 98W",
-      "trackCount": 50,
+      "trackCount": 47,
       "standard": "/data/trends/base_15day_98W_standard.png",
       "wide": "/data/trends/base_15day_98W_wide.png"
     },
     {
-      "id": "dist_20260912_00_2",
+      "id": "dist_20260912_06_2",
       "local_id": 2,
       "name": "Disturbance 2",
       "trackCount": 50,
-      "standard": "/data/trends/base_15day_dist_20260912_00_2_standard.png",
-      "wide": "/data/trends/base_15day_dist_20260912_00_2_wide.png"
+      "standard": "/data/trends/base_15day_dist_20260912_06_2_standard.png",
+      "wide": "/data/trends/base_15day_dist_20260912_06_2_wide.png"
     },
     {
-      "id": "dist_20260912_00_3",
+      "id": "dist_20260913_06_3",
       "local_id": 3,
       "name": "Disturbance 3",
       "trackCount": 33,
-      "standard": "/data/trends/base_15day_dist_20260912_00_3_standard.png",
-      "wide": "/data/trends/base_15day_dist_20260912_00_3_wide.png"
+      "standard": "/data/trends/base_15day_dist_20260913_06_3_standard.png",
+      "wide": "/data/trends/base_15day_dist_20260913_06_3_wide.png"
     }
   ],
   "large_5day_cycle": "2026-09-13 00:00",
