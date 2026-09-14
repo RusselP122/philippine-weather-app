@@ -73,23 +73,66 @@ CARD_EDGE_MUTED = "#1e3a5f"   # Deep navy card edge
 TEXT_WHITE = "#ffffff"
 TEXT_MUTED = "#94a3b8"
 
-# Standard TV Broadcast Precipitation / Radar Reflectivity Colormap
-PRECIP_LEVELS = [0.2, 1.0, 2.5, 5.0, 10.0, 15.0, 25.0, 35.0, 50.0, 75.0, 100.0]
-PRECIP_COLORS = [
-    "#38bdf8",  # 0.2 - 1.0 mm: Light Cyan Rain
-    "#0284c7",  # 1.0 - 2.5 mm: Ocean Blue
-    "#10b981",  # 2.5 - 5.0 mm: Mint Green
-    "#16a34a",  # 5.0 - 10 mm: Lush Green
-    "#84cc16",  # 10 - 15 mm: Yellow Green
-    "#facc15",  # 15 - 25 mm: Vivid Yellow
-    "#f97316",  # 25 - 35 mm: Orange
-    "#ef4444",  # 35 - 50 mm: Scarlet Red
-    "#b91c1c",  # 50 - 75 mm: Crimson Red
-    "#c026d3",  # 75 - 100 mm: Vivid Magenta / Mixed Ice
+# ── 10m Surface Wind Speed Colormap (km/h) ──────────────────────────────────────
+# Exact 41-block Pivotal Weather / Broadcast Television wind speed color scale
+WIND_SPEED_LEVELS = [
+    0, 4, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20,
+    22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42,
+    44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 64,
+    66, 70, 75, 80, 85, 90, 95, 100
 ]
-PRECIP_CMAP = ListedColormap(PRECIP_COLORS, name="tv_broadcast_precip")
-PRECIP_CMAP.set_over("#581c87")  # > 100 mm: Deep Purple
-PRECIP_NORM = BoundaryNorm(PRECIP_LEVELS, ncolors=len(PRECIP_COLORS), clip=False)
+WIND_SPEED_COLORS = [
+    "#101c2a",  # 0 - 4 km/h: Deep Ocean Midnight
+    "#122030",  # 4 - 6 km/h: Dark Marine Navy
+    "#142537",  # 6 - 7 km/h: Deep Slate Navy
+    "#162b3f",  # 7 - 8 km/h: Subtle Ocean Navy
+    "#183147",  # 8 - 9 km/h: Muted Blue-Navy
+    "#1b3851",  # 9 - 10 km/h: Deep Blue Transition
+    "#1463d3",  # 10 - 12 km/h: Deep Cobalt Blue
+    "#2883ef",  # 12 - 14 km/h: Royal Blue
+    "#4fa5f8",  # 14 - 16 km/h: Sky Blue
+    "#9ad0fd",  # 16 - 18 km/h: Light Ice Blue
+    "#b4eefb",  # 18 - 20 km/h: Pale Cyan
+    "#34d33a",  # 20 - 22 km/h: Fresh Green
+    "#51f050",  # 22 - 24 km/h: Bright Lime Green
+    "#77f476",  # 24 - 26 km/h: Light Mint Green
+    "#b7f8ad",  # 26 - 28 km/h: Pale Mint
+    "#c7ffbb",  # 28 - 30 km/h: Soft Pastel Green
+    "#fefaa7",  # 30 - 32 km/h: Light Cream Yellow
+    "#fee87b",  # 32 - 34 km/h: Golden Yellow
+    "#ffbf3c",  # 34 - 36 km/h: Amber Gold
+    "#fca104",  # 36 - 38 km/h: Vivid Orange
+    "#fb6100",  # 38 - 40 km/h: Deep Orange
+    "#fd3204",  # 40 - 42 km/h: Vermilion Red-Orange
+    "#e01304",  # 42 - 44 km/h: Scarlet Red
+    "#c10102",  # 44 - 46 km/h: Crimson Red
+    "#a70101",  # 46 - 48 km/h: Deep Blood Red
+    "#643b30",  # 48 - 50 km/h: Dark Ochre Brown
+    "#795045",  # 50 - 52 km/h: Earth Brown
+    "#8c625a",  # 52 - 54 km/h: Warm Tan Brown
+    "#b48c85",  # 54 - 56 km/h: Pale Tan
+    "#e1bdb6",  # 56 - 58 km/h: Soft Blush Tan
+    "#f1dcd3",  # 58 - 60 km/h: Pale Rose Grey
+    "#fbf0eb",  # 60 - 62 km/h: Off-White Blush
+    "#fce7e6",  # 62 - 64 km/h: Pale Rose Pink
+    "#fec7c9",  # 64 - 66 km/h: Soft Coral Pink
+    "#f59e9f",  # 66 - 70 km/h: Salmon Coral
+    "#e58383",  # 70 - 75 km/h: Light Coral Red
+    "#e16363",  # 75 - 80 km/h: Deep Coral
+    "#d64e52",  # 80 - 85 km/h: Intense Crimson
+    "#c83b3e",  # 85 - 90 km/h: Dark Ruby Red
+    "#b7291f",  # 90 - 95 km/h: Dark Maroon
+    "#a21c18",  # 95 - 100 km/h: Deep Maroon Red
+]
+WIND_SPEED_CMAP = ListedColormap(WIND_SPEED_COLORS, name="pivotal_broadcast_wind")
+WIND_SPEED_CMAP.set_over("#6b0000")  # > 100 km/h: Extreme Dark Maroon
+WIND_SPEED_NORM = BoundaryNorm(WIND_SPEED_LEVELS, ncolors=len(WIND_SPEED_COLORS), clip=False)
+
+# Backward compatibility aliases
+PRECIP_LEVELS = WIND_SPEED_LEVELS
+PRECIP_COLORS = WIND_SPEED_COLORS
+PRECIP_CMAP = WIND_SPEED_CMAP
+PRECIP_NORM = WIND_SPEED_NORM
 
 # Model Metadata Specifications
 MODEL_META = {
@@ -226,16 +269,31 @@ def generate_demo_model_data(model_key, domain_extent, valid_dt):
     # Gaussian smoothing for smooth broadcast isobars
     mslp_field = scipy.ndimage.gaussian_filter(mslp_field, sigma=1.0)
 
-    # Precipitation field: eyewall + spiral feeder bands + frontal precipitation
-    angle = np.arctan2(LATS - center_lat, LONS - center_lon)
-    spiral = np.sin(3.5 * angle + dist * 1.4)
-    precip_core = rain_amp * np.exp(-((dist - 1.2) ** 2) / 1.8) * np.clip(spiral + 0.6, 0.2, 1.4)
-    feeder_band = (rain_amp * 0.7) * np.exp(-((dist - 3.8) ** 2) / 2.2) * np.clip(np.cos(2.8 * angle + dist) + 0.3, 0, 1.2)
-    trough_rain = (rain_amp * 0.45) * np.exp(-(trough_axis ** 2) / 4.0) * (dist < 7.0)
+    # 10m Surface Wind Speed field (km/h): Holland / Modified Rankine Vortex
+    # Peak winds at eyewall (RMW ~ 1.05 deg), calm eye at center, outer decay & ambient easterlies
+    dp = max(8.0, 1012.0 - central_pressure)
+    # Vmax scaling: 938 hPa gives ~205 km/h (STY), 970 hPa gives ~145 km/h (TY), 990 hPa gives ~95 km/h (STS)
+    vmax_kph = 12.8 * np.sqrt(dp) * 1.82
+    rmw = 1.05
 
-    precip_field = np.maximum(0, precip_core + feeder_band + trough_rain)
-    precip_field[precip_field < 0.2] = 0.0
-    precip_field = scipy.ndimage.gaussian_filter(precip_field, sigma=0.8)
+    angle = np.arctan2(LATS - center_lat, LONS - center_lon)
+    r_ratio = dist / max(rmw, 0.05)
+    v_profile = np.where(
+        dist < rmw,
+        vmax_kph * (r_ratio ** 1.35),
+        vmax_kph * ((rmw / np.maximum(dist, rmw)) ** 0.52)
+    )
+
+    # Asymmetry: Storm translation and easterly flow enhances east/northeast quadrant
+    asymmetry = 1.0 + 0.16 * np.cos(angle - 0.45)
+    # Outer spiral wind bands
+    spiral_bands = 1.0 + 0.12 * np.sin(3.2 * angle + dist * 1.3) * np.exp(-dist / 5.5)
+    # Ambient background wind (~15-22 km/h)
+    ambient_wind = 16.0 + 6.0 * np.sin(np.radians(LATS * 3.5))
+
+    wind_field = v_profile * asymmetry * spiral_bands + ambient_wind * np.exp(-dist / 6.0)
+    wind_field = np.maximum(0.0, wind_field)
+    wind_field = scipy.ndimage.gaussian_filter(wind_field, sigma=0.8)
 
     # Find exact minimum pressure location for (L) center badge
     min_idx = np.unravel_index(np.argmin(mslp_field), mslp_field.shape)
@@ -247,7 +305,8 @@ def generate_demo_model_data(model_key, domain_extent, valid_dt):
         "lons": lons,
         "lats": lats,
         "mslp": mslp_field,
-        "precip": precip_field,
+        "wind_speed": wind_field,
+        "precip": wind_field,  # backward compatibility
         "low_center": (low_lon, low_lat, min_mslp),
         "valid_dt": valid_dt,
         "model_key": norm_key
@@ -282,14 +341,13 @@ def fetch_live_ecmwf(model_type="ifs", step=240, extent=(98.0, 154.0, 2.0, 27.0)
             pass
 
         target_file = f"temp_ecmwf_{model_type}_{step:03d}_{os.getpid()}.grib2"
-        target_prev = f"temp_ecmwf_prev_{model_type}_{step:03d}_{os.getpid()}.grib2"
 
         # 1. Multi-mirror retrieval (official ECMWF -> AWS OpenData -> Azure Planetary Computer)
         client = None
         for src in ["ecmwf", "aws", "azure"]:
             try:
                 c = Client(source=src, model=model_type, resol="0p25")
-                c.retrieve(step=step, type="fc", param=["tp", "msl"], target=target_file)
+                c.retrieve(step=step, type="fc", param=["10u", "10v", "msl"], target=target_file)
                 client = c
                 break
             except Exception as e_src:
@@ -306,44 +364,13 @@ def fetch_live_ecmwf(model_type="ifs", step=240, extent=(98.0, 154.0, 2.0, 27.0)
 
         lats = ds.latitude.values
         lons = ds.longitude.values
-        tp_raw = ds["tp"].values.squeeze()
-        tp_units = str(ds["tp"].attrs.get("units", "")).lower()
-        if "kg" in tp_units:
-            tp = tp_raw.astype(float)  # Already mm (kg m**-2)
-        elif "m" in tp_units:
-            tp = tp_raw.astype(float) * 1000.0  # meters -> mm
-        else:
-            tp = tp_raw.astype(float) * 1000.0 if np.nanmax(tp_raw) < 5.0 else tp_raw.astype(float)
+        u10 = ds["u10"].values.squeeze()
+        v10 = ds["v10"].values.squeeze()
+        ws = np.sqrt(u10**2 + v10**2) * 3.6  # m/s -> km/h
         msl = ds["msl"].values.squeeze() / 100.0  # Pa -> hPa
         ds.close()
         try: os.remove(target_file)
         except Exception: pass
-
-        # 2. Compute 6-hour rainfall difference if step >= 6
-        if step >= 6 and client is not None:
-            try:
-                prev_step = step - 6
-                client.retrieve(step=prev_step, type="fc", param=["tp"], target=target_prev)
-                ds_p = xr.open_dataset(target_prev, engine="cfgrib")
-                if "time" in ds_p.dims and ds_p.sizes["time"] > 1:
-                    ds_p = ds_p.isel(time=-1)
-                tp_p_raw = ds_p["tp"].values.squeeze()
-                tp_p_units = str(ds_p["tp"].attrs.get("units", "")).lower()
-                if "kg" in tp_p_units:
-                    tp_prev = tp_p_raw.astype(float)
-                elif "m" in tp_p_units:
-                    tp_prev = tp_p_raw.astype(float) * 1000.0
-                else:
-                    tp_prev = tp_p_raw.astype(float) * 1000.0 if np.nanmax(tp_p_raw) < 5.0 else tp_p_raw.astype(float)
-                ds_p.close()
-                try: os.remove(target_prev)
-                except Exception: pass
-                # 6-hour precipitation increment
-                tp = np.maximum(0.0, tp - tp_prev)
-            except Exception:
-                try:
-                    if os.path.exists(target_prev): os.remove(target_prev)
-                except Exception: pass
 
         # Longitude normalization to [-180, 180]
         if np.nanmax(lons) > 180:
@@ -351,13 +378,13 @@ def fetch_live_ecmwf(model_type="ifs", step=240, extent=(98.0, 154.0, 2.0, 27.0)
         sort_lon = np.argsort(lons)
         lons = lons[sort_lon]
         msl = msl[:, sort_lon]
-        tp = tp[:, sort_lon]
+        ws = ws[:, sort_lon]
 
         # Latitude sorting (ascending)
         if lats[0] > lats[-1]:
             lats = lats[::-1]
             msl = msl[::-1, :]
-            tp = tp[::-1, :]
+            ws = ws[::-1, :]
 
         # Spatial clipping to extent
         lon_mask = (lons >= extent[0] - 2.0) & (lons <= extent[1] + 2.0)
@@ -365,7 +392,7 @@ def fetch_live_ecmwf(model_type="ifs", step=240, extent=(98.0, 154.0, 2.0, 27.0)
         sub_lons = lons[lon_mask]
         sub_lats = lats[lat_mask]
         sub_msl = msl[np.ix_(lat_mask, lon_mask)]
-        sub_tp = np.maximum(0, tp[np.ix_(lat_mask, lon_mask)])
+        sub_ws = np.maximum(0, ws[np.ix_(lat_mask, lon_mask)])
 
         # Find Low Pressure Center inside visible extent (avoiding border edges)
         inner_lon_mask = (sub_lons >= extent[0] + 0.5) & (sub_lons <= extent[1] - 0.5)
@@ -389,7 +416,8 @@ def fetch_live_ecmwf(model_type="ifs", step=240, extent=(98.0, 154.0, 2.0, 27.0)
             "lons": sub_lons,
             "lats": sub_lats,
             "mslp": sub_msl,
-            "precip": sub_tp,
+            "wind_speed": sub_ws,
+            "precip": sub_ws,  # backward compatibility
             "low_center": low_center,
             "init_dt": init_dt,
             "valid_dt": valid_dt,
@@ -400,12 +428,33 @@ def fetch_live_ecmwf(model_type="ifs", step=240, extent=(98.0, 154.0, 2.0, 27.0)
         return None
 
 
+def _read_grib_content(content):
+    """Helper to decode GRIB2 byte content into a NumPy 2D array using eccodes."""
+    import tempfile
+    from eccodes import codes_grib_new_from_file, codes_get, codes_get_values, codes_release
+    with tempfile.NamedTemporaryFile(suffix=".grib2", delete=False) as tf:
+        tf.write(content)
+        tmp_path = tf.name
+    with open(tmp_path, "rb") as f:
+        gid = codes_grib_new_from_file(f)
+        ni = codes_get(gid, "Ni")
+        nj = codes_get(gid, "Nj")
+        arr = codes_get_values(gid).reshape(nj, ni)
+        codes_release(gid)
+    try:
+        os.remove(tmp_path)
+    except Exception:
+        pass
+    return arr, ni, nj
+
+
 def fetch_live_aigfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
     """
-    Retrieves real forecast fields from NOAA NOMADS AIGFS via fast byte-range HTTP streaming.
+    Retrieves real forecast fields from NOAA NOMADS AIGFS via fast byte-range HTTP streaming:
+    - PRMSL: mean sea level pressure (hPa)
+    - UGRD & VGRD: 10 m above ground wind components (km/h)
     """
     import requests
-    from eccodes import codes_grib_new_from_file, codes_get, codes_get_values, codes_release
 
     print(f"  [LIVE] Fetching NOAA AIGFS for step T+{step}h from NOMADS ...")
     base_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigfs/prod"
@@ -422,54 +471,35 @@ def fetch_live_aigfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
                 if r_idx.status_code == 200:
                     lines = r_idx.text.splitlines()
                     prmsl_line = next((l for l in lines if ":PRMSL:mean sea level:" in l), None)
-                    apcp_line = next((l for l in lines if f":APCP:surface:" in l), None)
-                    if not prmsl_line:
+                    ugrd_line = next((l for l in lines if ":UGRD:10 m above ground:" in l), None)
+                    vgrd_line = next((l for l in lines if ":VGRD:10 m above ground:" in l), None)
+                    if not (prmsl_line and ugrd_line and vgrd_line):
                         continue
 
                     grib_url = f"{cycle_url}aigfs.t{cycle}z.sfc.f{step:03d}.grib2"
 
-                    # Byte range for PRMSL
-                    p_idx = lines.index(prmsl_line)
-                    start_p = int(prmsl_line.split(":")[1])
-                    end_p = int(lines[p_idx + 1].split(":")[1]) - 1 if p_idx < len(lines) - 1 else ""
-                    r_p = requests.get(grib_url, headers={"Range": f"bytes={start_p}-{end_p}"}, timeout=25)
+                    def get_range(target_line):
+                        idx = lines.index(target_line)
+                        start = int(target_line.split(":")[1])
+                        end = int(lines[idx + 1].split(":")[1]) - 1 if idx < len(lines) - 1 else ""
+                        return start, end
 
-                    # Byte range for APCP
-                    r_a_content = None
-                    if apcp_line:
-                        a_idx = lines.index(apcp_line)
-                        start_a = int(apcp_line.split(":")[1])
-                        end_a = int(lines[a_idx + 1].split(":")[1]) - 1 if a_idx < len(lines) - 1 else ""
-                        r_a = requests.get(grib_url, headers={"Range": f"bytes={start_a}-{end_a}"}, timeout=25)
-                        if r_a.status_code in (200, 206):
-                            r_a_content = r_a.content
+                    sp, ep = get_range(prmsl_line)
+                    su, eu = get_range(ugrd_line)
+                    sv, ev = get_range(vgrd_line)
 
-                    temp_p = f"temp_aigfs_p_{os.getpid()}.grib2"
-                    with open(temp_p, "wb") as f:
-                        f.write(r_p.content)
+                    r_p = requests.get(grib_url, headers={"Range": f"bytes={sp}-{ep}"}, timeout=25)
+                    r_u = requests.get(grib_url, headers={"Range": f"bytes={su}-{eu}"}, timeout=25)
+                    r_v = requests.get(grib_url, headers={"Range": f"bytes={sv}-{ev}"}, timeout=25)
 
-                    f_in = open(temp_p, "rb")
-                    gid = codes_grib_new_from_file(f_in)
-                    ni = codes_get(gid, "Ni")
-                    nj = codes_get(gid, "Nj")
-                    msl_raw = codes_get_values(gid).reshape(nj, ni) / 100.0
-                    codes_release(gid)
-                    f_in.close()
-                    try: os.remove(temp_p)
-                    except Exception: pass
+                    if not (r_p.status_code in (200, 206) and r_u.status_code in (200, 206) and r_v.status_code in (200, 206)):
+                        continue
 
-                    tp_raw = np.zeros_like(msl_raw)
-                    if r_a_content:
-                        temp_a = f"temp_aigfs_a_{os.getpid()}.grib2"
-                        with open(temp_a, "wb") as f:
-                            f.write(r_a_content)
-                        f_in_a = open(temp_a, "rb")
-                        gid_a = codes_grib_new_from_file(f_in_a)
-                        tp_raw = codes_get_values(gid_a).reshape(nj, ni)
-                        codes_release(gid_a)
-                        f_in_a.close()
-                        try: os.remove(temp_a)
-                        except Exception: pass
+                    msl_raw, ni, nj = _read_grib_content(r_p.content)
+                    msl_raw = msl_raw / 100.0  # Pa -> hPa
+                    u_raw, _, _ = _read_grib_content(r_u.content)
+                    v_raw, _, _ = _read_grib_content(r_v.content)
+                    ws_raw = np.sqrt(u_raw**2 + v_raw**2) * 3.6  # m/s -> km/h
 
                     lons = np.linspace(0.0, 359.75, ni)
                     lats = np.linspace(90.0, -90.0, nj)
@@ -477,18 +507,18 @@ def fetch_live_aigfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
                     sort_lon = np.argsort(lons_180)
                     lons = lons_180[sort_lon]
                     msl_raw = msl_raw[:, sort_lon]
-                    tp_raw = tp_raw[:, sort_lon]
+                    ws_raw = ws_raw[:, sort_lon]
 
                     lats = lats[::-1]
                     msl_raw = msl_raw[::-1, :]
-                    tp_raw = tp_raw[::-1, :]
+                    ws_raw = ws_raw[::-1, :]
 
                     lon_mask = (lons >= extent[0] - 2.0) & (lons <= extent[1] + 2.0)
                     lat_mask = (lats >= extent[2] - 2.0) & (lats <= extent[3] + 2.0)
                     sub_lons = lons[lon_mask]
                     sub_lats = lats[lat_mask]
                     sub_msl = msl_raw[np.ix_(lat_mask, lon_mask)]
-                    sub_tp = np.maximum(0, tp_raw[np.ix_(lat_mask, lon_mask)])
+                    sub_ws = np.maximum(0, ws_raw[np.ix_(lat_mask, lon_mask)])
 
                     # Find Low Pressure Center inside visible extent (avoiding border edges)
                     inner_lon_mask = (sub_lons >= extent[0] + 0.5) & (sub_lons <= extent[1] - 0.5)
@@ -513,7 +543,8 @@ def fetch_live_aigfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
                         "lons": sub_lons,
                         "lats": sub_lats,
                         "mslp": sub_msl,
-                        "precip": sub_tp,
+                        "wind_speed": sub_ws,
+                        "precip": sub_ws,  # backward compatibility
                         "low_center": low_center,
                         "init_dt": init_dt,
                         "valid_dt": valid_dt,
@@ -527,10 +558,11 @@ def fetch_live_aigfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
 
 def fetch_live_gfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
     """
-    Retrieves real forecast fields from NOAA NOMADS GFS 0.25 via fast byte-range HTTP streaming.
+    Retrieves real forecast fields from NOAA NOMADS GFS 0.25 via fast byte-range HTTP streaming:
+    - PRMSL: mean sea level pressure (hPa)
+    - UGRD & VGRD: 10 m above ground wind components (km/h)
     """
     import requests
-    from eccodes import codes_grib_new_from_file, codes_get, codes_get_values, codes_release
 
     print(f"  [LIVE] Fetching NOAA GFS 0.25 for step T+{step}h from NOMADS ...")
     base_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod"
@@ -547,52 +579,35 @@ def fetch_live_gfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
                 if r_idx.status_code == 200:
                     lines = r_idx.text.splitlines()
                     prmsl_line = next((l for l in lines if ":PRMSL:mean sea level:" in l), None)
-                    apcp_line = next((l for l in lines if f":APCP:surface:{step-6}-{step}" in l or ":APCP:surface:" in l), None)
-                    if not prmsl_line:
+                    ugrd_line = next((l for l in lines if ":UGRD:10 m above ground:" in l), None)
+                    vgrd_line = next((l for l in lines if ":VGRD:10 m above ground:" in l), None)
+                    if not (prmsl_line and ugrd_line and vgrd_line):
                         continue
 
                     grib_url = f"{cycle_url}gfs.t{cycle}z.pgrb2.0p25.f{step:03d}"
 
-                    p_idx = lines.index(prmsl_line)
-                    start_p = int(prmsl_line.split(":")[1])
-                    end_p = int(lines[p_idx + 1].split(":")[1]) - 1 if p_idx < len(lines) - 1 else ""
-                    r_p = requests.get(grib_url, headers={"Range": f"bytes={start_p}-{end_p}"}, timeout=25)
+                    def get_range(target_line):
+                        idx = lines.index(target_line)
+                        start = int(target_line.split(":")[1])
+                        end = int(lines[idx + 1].split(":")[1]) - 1 if idx < len(lines) - 1 else ""
+                        return start, end
 
-                    r_a_content = None
-                    if apcp_line:
-                        a_idx = lines.index(apcp_line)
-                        start_a = int(apcp_line.split(":")[1])
-                        end_a = int(lines[a_idx + 1].split(":")[1]) - 1 if a_idx < len(lines) - 1 else ""
-                        r_a = requests.get(grib_url, headers={"Range": f"bytes={start_a}-{end_a}"}, timeout=25)
-                        if r_a.status_code in (200, 206):
-                            r_a_content = r_a.content
+                    sp, ep = get_range(prmsl_line)
+                    su, eu = get_range(ugrd_line)
+                    sv, ev = get_range(vgrd_line)
 
-                    temp_p = f"temp_gfs_p_{os.getpid()}.grib2"
-                    with open(temp_p, "wb") as f:
-                        f.write(r_p.content)
+                    r_p = requests.get(grib_url, headers={"Range": f"bytes={sp}-{ep}"}, timeout=25)
+                    r_u = requests.get(grib_url, headers={"Range": f"bytes={su}-{eu}"}, timeout=25)
+                    r_v = requests.get(grib_url, headers={"Range": f"bytes={sv}-{ev}"}, timeout=25)
 
-                    f_in = open(temp_p, "rb")
-                    gid = codes_grib_new_from_file(f_in)
-                    ni = codes_get(gid, "Ni")
-                    nj = codes_get(gid, "Nj")
-                    msl_raw = codes_get_values(gid).reshape(nj, ni) / 100.0
-                    codes_release(gid)
-                    f_in.close()
-                    try: os.remove(temp_p)
-                    except Exception: pass
+                    if not (r_p.status_code in (200, 206) and r_u.status_code in (200, 206) and r_v.status_code in (200, 206)):
+                        continue
 
-                    tp_raw = np.zeros_like(msl_raw)
-                    if r_a_content:
-                        temp_a = f"temp_gfs_a_{os.getpid()}.grib2"
-                        with open(temp_a, "wb") as f:
-                            f.write(r_a_content)
-                        f_in_a = open(temp_a, "rb")
-                        gid_a = codes_grib_new_from_file(f_in_a)
-                        tp_raw = codes_get_values(gid_a).reshape(nj, ni)
-                        codes_release(gid_a)
-                        f_in_a.close()
-                        try: os.remove(temp_a)
-                        except Exception: pass
+                    msl_raw, ni, nj = _read_grib_content(r_p.content)
+                    msl_raw = msl_raw / 100.0  # Pa -> hPa
+                    u_raw, _, _ = _read_grib_content(r_u.content)
+                    v_raw, _, _ = _read_grib_content(r_v.content)
+                    ws_raw = np.sqrt(u_raw**2 + v_raw**2) * 3.6  # m/s -> km/h
 
                     lons = np.linspace(0.0, 359.75, ni)
                     lats = np.linspace(90.0, -90.0, nj)
@@ -600,18 +615,18 @@ def fetch_live_gfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
                     sort_lon = np.argsort(lons_180)
                     lons = lons_180[sort_lon]
                     msl_raw = msl_raw[:, sort_lon]
-                    tp_raw = tp_raw[:, sort_lon]
+                    ws_raw = ws_raw[:, sort_lon]
 
                     lats = lats[::-1]
                     msl_raw = msl_raw[::-1, :]
-                    tp_raw = tp_raw[::-1, :]
+                    ws_raw = ws_raw[::-1, :]
 
                     lon_mask = (lons >= extent[0] - 2.0) & (lons <= extent[1] + 2.0)
                     lat_mask = (lats >= extent[2] - 2.0) & (lats <= extent[3] + 2.0)
                     sub_lons = lons[lon_mask]
                     sub_lats = lats[lat_mask]
                     sub_msl = msl_raw[np.ix_(lat_mask, lon_mask)]
-                    sub_tp = np.maximum(0, tp_raw[np.ix_(lat_mask, lon_mask)])
+                    sub_ws = np.maximum(0, ws_raw[np.ix_(lat_mask, lon_mask)])
 
                     # Find Low Pressure Center inside visible extent (avoiding border edges)
                     inner_lon_mask = (sub_lons >= extent[0] + 0.5) & (sub_lons <= extent[1] - 0.5)
@@ -636,7 +651,8 @@ def fetch_live_gfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
                         "lons": sub_lons,
                         "lats": sub_lats,
                         "mslp": sub_msl,
-                        "precip": sub_tp,
+                        "wind_speed": sub_ws,
+                        "precip": sub_ws,  # backward compatibility
                         "low_center": low_center,
                         "init_dt": init_dt,
                         "valid_dt": valid_dt,
@@ -823,7 +839,7 @@ def draw_broadcast_top_header(fig, brand=None, title="LONG RANGE MODEL COMPARISO
         zorder=53
     )
     fig.text(
-        0.852, 0.930, "GFS · AIGFS · ECMWF · AIFS",
+        0.852, 0.930, "MSLP ISOBARS + 10M WIND SPEED",
         fontsize=8.5, fontweight="bold",
         color="#94a3b8", ha="center", va="center",
         zorder=53
@@ -868,14 +884,14 @@ def draw_panel_weather_map(ax, model_data, extent, domain_cfg, provinces_geom=No
     """
     Renders the synoptic weather map inside each panel:
     - Base map (dark ocean, slate terrain, crisp coastlines)
-    - Precipitation / radar reflectivity contours
-    - Smooth MSLP isobars with white stroke
+    - 10m Surface Wind Speed contours (km/h)
+    - Smooth MSLP isobars with white stroke & labels
     - Low pressure (L) center badge with cyclonic rotation arrows
     """
     lons = model_data["lons"]
     lats = model_data["lats"]
     mslp = model_data["mslp"]
-    precip = model_data["precip"]
+    wind_speed = model_data.get("wind_speed", model_data.get("precip"))
     low_center = model_data.get("low_center")
 
     LONS, LATS = np.meshgrid(lons, lats) if lons.ndim == 1 else (lons, lats)
@@ -886,34 +902,39 @@ def draw_panel_weather_map(ax, model_data, extent, domain_cfg, provinces_geom=No
     ax.set_facecolor("#142131")
     ax.add_feature(cfeature.OCEAN, facecolor="#142131", zorder=0)
     ax.add_feature(cfeature.LAND, facecolor="#223241", zorder=1)
-    ax.add_feature(cfeature.COASTLINE, linewidth=1.1, edgecolor="#090f17", zorder=4)
-    ax.add_feature(cfeature.BORDERS, linestyle="-", linewidth=0.6, edgecolor="#475569", alpha=0.8, zorder=4)
+
+    # 2. 10m Surface Wind Speed Contours (km/h)
+    if wind_speed is not None:
+        ax.contourf(
+            LONS, LATS, wind_speed,
+            levels=WIND_SPEED_LEVELS,
+            cmap=WIND_SPEED_CMAP,
+            norm=WIND_SPEED_NORM,
+            extend="max",
+            alpha=0.88,
+            transform=ccrs.PlateCarree(),
+            zorder=2
+        )
+
+    # 3. Country & Landmass Visibility (Overlay above wind field)
+    # Distinct slate landmass fill so the country silhouette (Philippines, Taiwan, Vietnam, China)
+    # is instantly recognizable against the dark ocean, while still showing wind colors over land
+    ax.add_feature(cfeature.LAND, facecolor="#2c3e50", alpha=0.52, zorder=3)
+    ax.add_feature(cfeature.COASTLINE, linewidth=1.3, edgecolor="#f8fafc", zorder=4)
+    ax.add_feature(cfeature.BORDERS, linestyle="-", linewidth=0.75, edgecolor="#94a3b8", alpha=0.85, zorder=4)
 
     # Overlay Philippine province boundaries if in PH domain
     if domain_cfg.get("is_ph") and provinces_geom:
         ax.add_geometries(
             provinces_geom, crs=ccrs.PlateCarree(),
-            facecolor="none", edgecolor="#334155",
-            linewidth=0.45, alpha=0.75, zorder=3
+            facecolor="none", edgecolor="#cbd5e1",
+            linewidth=0.55, alpha=0.85, zorder=4
         )
         # PAR boundary line
         ax.plot(
             PAR_LONS, PAR_LATS,
             transform=ccrs.PlateCarree(),
-            color="#ef4444", linestyle="-", linewidth=1.4, alpha=0.85, zorder=5
-        )
-
-    # 2. Precipitation / Radar Reflectivity Contours
-    if np.nanmax(precip) > 0.2:
-        ax.contourf(
-            LONS, LATS, precip,
-            levels=PRECIP_LEVELS,
-            cmap=PRECIP_CMAP,
-            norm=PRECIP_NORM,
-            extend="max",
-            alpha=0.90,
-            transform=ccrs.PlateCarree(),
-            zorder=2
+            color="#ef4444", linestyle="-", linewidth=1.4, alpha=0.90, zorder=5
         )
 
     # 3. MSLP Isobars (smooth white contours)
@@ -928,20 +949,90 @@ def draw_panel_weather_map(ax, model_data, extent, domain_cfg, provinces_geom=No
             levels=levels,
             colors="#ffffff",
             linewidths=1.2,
-            alpha=0.92,
+            alpha=0.95,
             transform=ccrs.PlateCarree(),
             zorder=6
         )
+        try:
+            cs.set_path_effects([patheffects.withStroke(linewidth=2.4, foreground="#09111e", alpha=0.85)])
+        except Exception:
+            pass
         # White labels with dark stroke for ultra-clear visibility
-        ax.clabel(
+        labels = ax.clabel(
             cs, inline=True, fontsize=8.0, fmt="%d",
             colors="#ffffff", zorder=7
         )
+        for lbl in labels:
+            lbl.set_path_effects([patheffects.withStroke(linewidth=2.2, foreground="#09111e")])
 
     # 4. Low Pressure Center (L) Badge with rotating arrows
     if low_center is not None:
         low_lon, low_lat, min_val = low_center
-        draw_cyclonic_arrow_low_badge(ax, low_lon, low_lat, min_mslp=min_val, radius_deg=1.05)
+        draw_cyclonic_arrow_low_badge(ax, low_lon, low_lat, min_mslp=min_val, radius_deg=1.15)
+
+
+def draw_broadcast_wind_legend(fig):
+    """
+    Renders the Pivotal Weather / TV broadcast 10m wind speed colorbar pill at the bottom of the canvas.
+    Calibrated in km/h with 41 discrete color blocks matching official meteorological palettes.
+    """
+    from matplotlib.colorbar import ColorbarBase
+
+    # Bottom dark glass container pill
+    pill_w = 0.880
+    pill_h = 0.040
+    pill_x = (1.0 - pill_w) / 2.0
+    pill_y = 0.006
+    pill = FancyBboxPatch(
+        (pill_x, pill_y), pill_w, pill_h,
+        boxstyle="round,pad=0.003,rounding_size=0.006",
+        transform=fig.transFigure,
+        facecolor="#071322", edgecolor="#0284c7",
+        lw=1.1, alpha=0.94, zorder=50
+    )
+    fig.patches.append(pill)
+
+    # Left text label
+    fig.text(
+        pill_x + 0.012, pill_y + pill_h * 0.68,
+        "10M SURFACE WIND",
+        fontsize=8.5, fontweight="heavy",
+        color="#38bdf8", ha="left", va="center",
+        zorder=52
+    )
+    fig.text(
+        pill_x + 0.012, pill_y + pill_h * 0.28,
+        "SPEED (km/h)",
+        fontsize=6.8, fontweight="bold",
+        color="#94a3b8", ha="left", va="center",
+        zorder=52
+    )
+
+    # Colorbar axis
+    cbar_w = 0.730
+    cbar_h = 0.012
+    cbar_x = pill_x + 0.125
+    cbar_y = pill_y + (pill_h - cbar_h) / 2.0 - 0.003
+    cbar_ax = fig.add_axes([cbar_x, cbar_y, cbar_w, cbar_h], zorder=52)
+
+    cbar = ColorbarBase(
+        cbar_ax,
+        cmap=WIND_SPEED_CMAP,
+        norm=WIND_SPEED_NORM,
+        orientation="horizontal",
+        spacing="uniform",
+        extend="neither"
+    )
+    cbar.set_ticks(WIND_SPEED_LEVELS)
+    cbar.ax.set_xticklabels(
+        [str(x) for x in WIND_SPEED_LEVELS],
+        fontsize=6.0, color="#ffffff", fontweight="bold"
+    )
+    cbar.ax.xaxis.set_ticks_position("top")
+    cbar.ax.tick_params(size=2.5, color="#ffffff", pad=1.2, labelsize=6.0)
+    for spine in cbar.ax.spines.values():
+        spine.set_edgecolor("#000000")
+        spine.set_linewidth(1.0)
 
 
 def draw_panel_frame_and_labels(fig, rect, model_key, timestamp_str="9 PM SUN JAN 25", sub_badge_override=None):
@@ -1204,7 +1295,10 @@ def render_comparison_broadcast(
             fig, rect, norm_key, timestamp_str=panel_time_str, sub_badge_override=sub_badge
         )
 
-    # 6. Save High-Resolution Broadcast Graphic
+    # 6. Render 10m Wind Speed Broadcast Colorbar Legend
+    draw_broadcast_wind_legend(fig)
+
+    # 7. Save High-Resolution Broadcast Graphic
     os.makedirs(os.path.dirname(output_filepath) or ".", exist_ok=True)
     plt.savefig(
         output_filepath,
