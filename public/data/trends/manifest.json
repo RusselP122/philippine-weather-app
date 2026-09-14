@@ -1,15 +1,23 @@
 {
-  "base_5day_cycle": "2026-09-13 18:00",
+  "base_5day_cycle": "2026-09-14 00:00",
   "base_5day": [],
-  "base_15day_cycle": "2026-09-13 18:00",
+  "base_15day_cycle": "2026-09-14 00:00",
   "base_15day": [
     {
-      "id": "dist_20260912_18_3",
+      "id": "90W",
       "local_id": 1,
-      "name": "Disturbance 1",
+      "name": "Invest 90W",
       "trackCount": 50,
-      "standard": "/data/trends/base_15day_dist_20260912_18_3_standard.png",
-      "wide": "/data/trends/base_15day_dist_20260912_18_3_wide.png"
+      "standard": "/data/trends/base_15day_90W_standard.png",
+      "wide": "/data/trends/base_15day_90W_wide.png"
+    },
+    {
+      "id": "dist_20260914_00_2",
+      "local_id": 2,
+      "name": "Disturbance 2",
+      "trackCount": 39,
+      "standard": "/data/trends/base_15day_dist_20260914_00_2_standard.png",
+      "wide": "/data/trends/base_15day_dist_20260914_00_2_wide.png"
     }
   ],
   "large_5day_cycle": "2026-09-13 18:00",

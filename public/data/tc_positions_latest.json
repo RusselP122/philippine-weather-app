@@ -1,7 +1,26 @@
 {
-  "active": false,
-  "storm_name": null,
-  "track_id": null,
-  "latest": null,
-  "history": []
+  "active": true,
+  "storm_name": "Invest 90W",
+  "track_id": "WP902026",
+  "latest": {
+    "lat": 12.8,
+    "lon": 153.6,
+    "pressure_hpa": 1006.0,
+    "wind_kt": 19.0,
+    "wind_kmh": 35,
+    "movement": "Stationary",
+    "init_time": "2026-09-14 00:00",
+    "category": "Low Pressure Area"
+  },
+  "history": [
+    {
+      "cycle": "2026-09-14 00:00",
+      "lat": 12.8,
+      "lon": 153.6,
+      "pressure_hpa": 1006.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    }
+  ]
 }
