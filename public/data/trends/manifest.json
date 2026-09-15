@@ -1,7 +1,7 @@
 {
-  "base_5day_cycle": "2026-09-14 12:00",
+  "base_5day_cycle": "2026-09-14 18:00",
   "base_5day": [],
-  "base_15day_cycle": "2026-09-14 12:00",
+  "base_15day_cycle": "2026-09-14 18:00",
   "base_15day": [
     {
       "id": "90W",
@@ -15,7 +15,7 @@
       "id": "dist_20260914_12_2",
       "local_id": 2,
       "name": "Disturbance 2",
-      "trackCount": 30,
+      "trackCount": 35,
       "standard": "/data/trends/base_15day_dist_20260914_12_2_standard.png",
       "wide": "/data/trends/base_15day_dist_20260914_12_2_wide.png"
     }
