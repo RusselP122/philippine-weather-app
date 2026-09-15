@@ -20,13 +20,13 @@
       "wide": "/data/trends/base_15day_dist_20260914_12_2_wide.png"
     }
   ],
-  "large_5day_cycle": "2026-09-14 12:00",
+  "large_5day_cycle": "2026-09-14 18:00",
   "large_5day": [
     {
       "id": "90W",
       "local_id": 1,
       "name": "Invest 90W",
-      "trackCount": 710,
+      "trackCount": 546,
       "standard": "/data/trends/large_5day_90W_standard.png",
       "wide": "/data/trends/large_5day_90W_wide.png"
     },
@@ -34,36 +34,36 @@
       "id": "dist_20260914_06_2",
       "local_id": 2,
       "name": "Disturbance 2",
-      "trackCount": 294,
+      "trackCount": 456,
       "standard": "/data/trends/large_5day_dist_20260914_06_2_standard.png",
       "wide": "/data/trends/large_5day_dist_20260914_06_2_wide.png"
     }
   ],
-  "large_15day_cycle": "2026-09-14 12:00",
+  "large_15day_cycle": "2026-09-14 18:00",
   "large_15day": [
     {
       "id": "90W",
       "local_id": 1,
       "name": "Invest 90W",
-      "trackCount": 907,
+      "trackCount": 988,
       "standard": "/data/trends/large_15day_90W_standard.png",
       "wide": "/data/trends/large_15day_90W_wide.png"
     },
     {
-      "id": "dist_20260914_12_3",
+      "id": "dist_20260914_18_3",
       "local_id": 3,
       "name": "Disturbance 3",
-      "trackCount": 342,
-      "standard": "/data/trends/large_15day_dist_20260914_12_3_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260914_12_3_wide.png"
+      "trackCount": 631,
+      "standard": "/data/trends/large_15day_dist_20260914_18_3_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260914_18_3_wide.png"
     },
     {
-      "id": "dist_20260913_12_4",
+      "id": "dist_20260913_18_4",
       "local_id": 4,
       "name": "Disturbance 4",
-      "trackCount": 210,
-      "standard": "/data/trends/large_15day_dist_20260913_12_4_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260913_12_4_wide.png"
+      "trackCount": 204,
+      "standard": "/data/trends/large_15day_dist_20260913_18_4_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260913_18_4_wide.png"
     }
   ]
 }
