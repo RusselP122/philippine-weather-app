@@ -3,13 +3,13 @@
   "storm_name": "Invest 90W",
   "track_id": "WP902026",
   "latest": {
-    "lat": 13.8,
-    "lon": 151.2,
+    "lat": 15.1,
+    "lon": 150.9,
     "pressure_hpa": 1002.0,
     "wind_kt": 25.0,
     "wind_kmh": 46,
-    "movement": "NNW at 18.2 km/h (9.8 kt)",
-    "init_time": "2026-09-14 18:00",
+    "movement": "NNW at 24.7 km/h (13.3 kt)",
+    "init_time": "2026-09-15 00:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -44,6 +44,15 @@
       "cycle": "2026-09-14 18:00",
       "lat": 13.8,
       "lon": 151.2,
+      "pressure_hpa": 1002.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-09-15 00:00",
+      "lat": 15.1,
+      "lon": 150.9,
       "pressure_hpa": 1002.0,
       "wind_kt": 25.0,
       "wind_kmh": 46,
