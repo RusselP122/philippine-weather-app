@@ -1,7 +1,16 @@
 {
-  "base_5day_cycle": "2026-09-15 00:00",
-  "base_5day": [],
-  "base_15day_cycle": "2026-09-15 00:00",
+  "base_5day_cycle": "2026-09-15 06:00",
+  "base_5day": [
+    {
+      "id": "90W",
+      "local_id": 1,
+      "name": "Invest 90W",
+      "trackCount": 50,
+      "standard": "/data/trends/base_5day_90W_standard.png",
+      "wide": "/data/trends/base_5day_90W_wide.png"
+    }
+  ],
+  "base_15day_cycle": "2026-09-15 06:00",
   "base_15day": [
     {
       "id": "90W",
@@ -12,12 +21,12 @@
       "wide": "/data/trends/base_15day_90W_wide.png"
     },
     {
-      "id": "dist_20260915_00_2",
+      "id": "dist_20260915_06_2",
       "local_id": 2,
       "name": "Disturbance 2",
-      "trackCount": 40,
-      "standard": "/data/trends/base_15day_dist_20260915_00_2_standard.png",
-      "wide": "/data/trends/base_15day_dist_20260915_00_2_wide.png"
+      "trackCount": 36,
+      "standard": "/data/trends/base_15day_dist_20260915_06_2_standard.png",
+      "wide": "/data/trends/base_15day_dist_20260915_06_2_wide.png"
     }
   ],
   "large_5day_cycle": "2026-09-15 00:00",
