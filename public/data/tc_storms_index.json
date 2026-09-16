@@ -1,12 +1,12 @@
 [
   {
     "track_id": "WP242026",
-    "storm_name": "TC 24W (Invest 90W)",
+    "storm_name": "TC 24W",
     "active": true,
-    "last_updated": "2026-09-16 06:00",
-    "latest_lat": 15.4,
-    "latest_lon": 148.9,
-    "category": "Tropical Depression"
+    "last_updated": "2026-09-16 12:00",
+    "latest_lat": 16.5,
+    "latest_lon": 149.5,
+    "category": "Tropical Storm"
   },
   {
     "track_id": "WP902026",
