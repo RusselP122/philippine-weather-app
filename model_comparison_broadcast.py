@@ -16,6 +16,7 @@ Features:
   * 4-Panel Quad Grid (2x2): Compares GFS, AIGFS, ECMWF, AIFS simultaneously
   * 3-Panel Side-by-Side (1x3): 3-model horizontal comparison
   * 2-Panel Side-by-Side (1x2): Classic 2-model comparison
+  * 1-Panel Single Model (1x1): Full widescreen broadcast view for a single model
 - Official Philippine Typhoon/Weather Branding:
   * Embedded official circular logo (logo.png)
   * Station branding: PHILIPPINE TYPHOON / WEATHER
@@ -671,15 +672,12 @@ def fetch_live_gfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
 def draw_cyclonic_arrow_low_badge(ax, lon, lat, min_mslp=None, radius_deg=1.15):
     """
     Draws the signature TV broadcast Low Pressure (L) center badge:
-    - Bold crimson red circular disk with bright white border
-    - Bold white letter 'L' in the center
-    - Two counter-clockwise curved circular arrows wrapping around the perimeter
-      indicating storm rotation (exact match of television broadcast style)
+    - Bold white letter 'L' in the center with red drop stroke
+    - Optional min pressure label badge underneath
     """
     r_deg = radius_deg
 
-
-    # 2. White 'L' in center
+    # White 'L' in center
     ax.text(
         lon, lat, "L",
         fontsize=16, fontweight="heavy", color="#ffffff",
@@ -687,35 +685,6 @@ def draw_cyclonic_arrow_low_badge(ax, lon, lat, min_mslp=None, radius_deg=1.15):
         transform=ccrs.PlateCarree(),
         path_effects=[patheffects.withStroke(linewidth=2.0, foreground="#991b1b")]
     )
-
-    # 3. Counter-clockwise rotating circular arrows around the perimeter
-    # Arrow 1: Top arc (from right-top around to left-top)
-    p1_start = (lon + r_deg * 1.25, lat + r_deg * 0.15)
-    p1_end = (lon - r_deg * 0.70, lat + r_deg * 1.15)
-    arr1 = FancyArrowPatch(
-        posA=p1_start, posB=p1_end,
-        connectionstyle="arc3,rad=-0.45",
-        color="#ffffff",
-        arrowstyle="-|>,head_length=4.5,head_width=4.0",
-        linewidth=2.2,
-        zorder=27,
-        transform=ccrs.PlateCarree()
-    )
-    ax.add_patch(arr1)
-
-    # Arrow 2: Bottom arc (from left-bottom around to right-bottom)
-    p2_start = (lon - r_deg * 1.25, lat - r_deg * 0.15)
-    p2_end = (lon + r_deg * 0.70, lat - r_deg * 1.15)
-    arr2 = FancyArrowPatch(
-        posA=p2_start, posB=p2_end,
-        connectionstyle="arc3,rad=-0.45",
-        color="#ffffff",
-        arrowstyle="-|>,head_length=4.5,head_width=4.0",
-        linewidth=2.2,
-        zorder=27,
-        transform=ccrs.PlateCarree()
-    )
-    ax.add_patch(arr2)
 
     # Optional: Min pressure label badge underneath
     if min_mslp is not None and min_mslp < 1010:
@@ -729,7 +698,10 @@ def draw_cyclonic_arrow_low_badge(ax, lon, lat, min_mslp=None, radius_deg=1.15):
         )
 
 
-def draw_broadcast_top_header(fig, brand=None, title="LONG RANGE MODEL COMPARISON", target_day="SUNDAY", valid_str=""):
+def draw_broadcast_top_header(
+    fig, brand=None, title="LONG RANGE MODEL COMPARISON",
+    target_day="SUNDAY", valid_str="", mode="4panel", model_name=None
+):
     """
     Renders the high-end television broadcast header bar at the top of the canvas:
     - Left brand pill: Official Philippine Typhoon/Weather logo & typography
@@ -832,8 +804,13 @@ def draw_broadcast_top_header(fig, brand=None, title="LONG RANGE MODEL COMPARISO
     )
     fig.patches.append(badge_pill)
 
+    if mode == "1panel":
+        badge_header = f"{model_name} MODEL FORECAST" if model_name else "OPERATIONAL FORECAST"
+    else:
+        badge_header = "MULTI-MODEL COMPARISON"
+
     fig.text(
-        0.852, 0.952, "MULTI-MODEL COMPARISON",
+        0.852, 0.952, badge_header,
         fontsize=10.5, fontweight="heavy",
         color="#38bdf8", ha="center", va="center",
         zorder=53
@@ -1069,7 +1046,7 @@ def draw_panel_frame_and_labels(fig, rect, model_key, timestamp_str="9 PM SUN JA
     fig.text(
         x + 0.008 + time_pill_w / 2.0, y + 0.056 + time_pill_h / 2.0,
         timestamp_str.upper(),
-        fontsize=9.0 if w < 0.35 else 10.0, fontweight="heavy",
+        fontsize=9.0 if w < 0.35 else (10.5 if w > 0.60 else 10.0), fontweight="heavy",
         color="#ffffff", ha="center", va="center",
         zorder=37,
         path_effects=[patheffects.withStroke(linewidth=1.5, foreground="#020914")]
@@ -1090,7 +1067,7 @@ def draw_panel_frame_and_labels(fig, rect, model_key, timestamp_str="9 PM SUN JA
     fig.text(
         x + w / 2.0, y + banner_h * 0.60,
         meta["banner_text"],
-        fontsize=11.5 if w < 0.35 else 13.0, fontweight="heavy",
+        fontsize=11.5 if w < 0.35 else (14.5 if w > 0.60 else 13.0), fontweight="heavy",
         color="#ffffff", ha="center", va="center",
         zorder=38,
         path_effects=[patheffects.withStroke(linewidth=2.0, foreground="#031633")]
@@ -1101,7 +1078,7 @@ def draw_panel_frame_and_labels(fig, rect, model_key, timestamp_str="9 PM SUN JA
     fig.text(
         x + w / 2.0, y + banner_h * 0.22,
         badge_label,
-        fontsize=7.5 if w < 0.35 else 8.5, fontweight="bold",
+        fontsize=7.5 if w < 0.35 else (9.5 if w > 0.60 else 8.5), fontweight="bold",
         color=meta["color"], ha="center", va="center",
         zorder=38
     )
@@ -1129,16 +1106,23 @@ def render_comparison_broadcast(
     - 4-Panel Quad Grid (2x2): Compares GFS, AIGFS, ECMWF, AIFS simultaneously
     - 3-Panel Side-by-Side (1x3): 3-model comparison
     - 2-Panel Side-by-Side (1x2): 2-model comparison
+    - 1-Panel Single Model (1x1): Full widescreen broadcast view
     """
+    models_list = [selected_models] if isinstance(selected_models, str) else list(selected_models)
+    if not models_list:
+        models_list = ["GFS"]
+
     # Dynamic title: > 168h (7+ days) -> LONG RANGE, <= 168h (<= 7 days) -> MEDIUM RANGE
     if not title or title in ("LONG RANGE MODEL COMPARISON", "MEDIUM RANGE MODEL COMPARISON"):
-        if lead_time_hours > 168:
-            title = "LONG RANGE MODEL COMPARISON"
+        if mode == "1panel":
+            primary_name = models_list[0].upper().strip()
+            title = f"LONG RANGE {primary_name} FORECAST" if lead_time_hours > 168 else f"MEDIUM RANGE {primary_name} FORECAST"
         else:
-            title = "MEDIUM RANGE MODEL COMPARISON"
+            title = "LONG RANGE MODEL COMPARISON" if lead_time_hours > 168 else "MEDIUM RANGE MODEL COMPARISON"
+
     print(f"\n========================================================")
     print(f" Generating Broadcast Model Comparison: {mode.upper()}")
-    print(f" Models: {', '.join(selected_models)}")
+    print(f" Models: {', '.join(models_list)}")
     print(f" Mode: {'SYNTHETIC DEMO' if use_demo else 'LIVE NWP / AI DATA'}")
     print(f" Region: {region.upper()} | Lead Time: T+{lead_time_hours}h")
     print(f" Output: {output_filepath}")
@@ -1189,15 +1173,22 @@ def render_comparison_broadcast(
         fig.patch.set_facecolor(BG_DARK)
 
     # 3. Draw Broadcast Top Header Bar
+    first_model = models_list[0].upper().strip() if models_list else "GFS"
     draw_broadcast_top_header(
         fig, brand=brand, title=title, target_day=target_day,
-        valid_str=timestamp_str
+        valid_str=timestamp_str, mode=mode, model_name=first_model
     )
 
     # 4. Prepare Models & Layout Coordinates
-    if mode == "2panel":
+    if mode == "1panel":
+        # 1-Panel Single Model Full Broadcast Card (1x1 widescreen)
+        models_to_render = models_list[:1]
+        panel_rects = [
+            [0.038, 0.055, 0.924, 0.815],
+        ]
+    elif mode == "2panel":
         # 2-Panel Side-by-Side (1x2)
-        models_to_render = list(selected_models)[:2]
+        models_to_render = models_list[:2]
         if len(models_to_render) < 2:
             models_to_render = ["GFS", "ECMWF"]
 
@@ -1207,7 +1198,7 @@ def render_comparison_broadcast(
         ]
     elif mode == "3panel":
         # 3-Panel Side-by-Side (1x3)
-        models_to_render = list(selected_models)[:3]
+        models_to_render = models_list[:3]
         if len(models_to_render) < 3:
             models_to_render = ["GFS", "AIGFS", "ECMWF"]
 
@@ -1322,13 +1313,17 @@ def parse_arguments():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument(
-        "--mode", choices=["4panel", "3panel", "2panel"], default="4panel",
-        help="Comparison layout: '4panel' (2x2 grid), '3panel' (1x3 row), or '2panel' (1x2 row)"
+        "--mode", choices=["4panel", "3panel", "2panel", "1panel"], default="4panel",
+        help="Comparison layout: '4panel' (2x2 grid), '3panel' (1x3 row), '2panel' (1x2 row), or '1panel' (single model view)"
     )
     parser.add_argument(
         "--models", nargs="+", default=["GFS", "AIGFS", "ECMWF", "AIFS"],
         choices=["GFS", "AIGFS", "AIGEFS", "ECMWF", "AIFS"],
         help="Models to compare (e.g. GFS AIGFS ECMWF AIFS)"
+    )
+    parser.add_argument(
+        "--model", dest="single_model", choices=["GFS", "AIGFS", "AIGEFS", "ECMWF", "AIFS"], default=None,
+        help="Single model to display when using 1panel mode (e.g. --model ECMWF)"
     )
     parser.add_argument(
         "--region", choices=["ph", "wnp", "conus"], default="ph",
@@ -1372,9 +1367,10 @@ def parse_arguments():
 if __name__ == "__main__":
     args = parse_arguments()
 
+    selected = [args.single_model] if args.single_model else args.models
     render_comparison_broadcast(
         mode=args.mode,
-        selected_models=args.models,
+        selected_models=selected,
         region=args.region,
         brand=args.brand,
         title=args.title,

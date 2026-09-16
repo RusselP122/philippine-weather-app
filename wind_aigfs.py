@@ -56,53 +56,84 @@ LON_MIN, LON_MAX = 112.0, 140.0
 
 def get_latest_aigfs_run(session):
     import re
-    base_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigfs/prod"
+    import xml.etree.ElementTree as ET
     now = datetime.now(timezone.utc)
+    latest_run = None
 
-    candidate_dates = []
+    # 1. Try NOAA Open Data Dissemination (AWS S3) - Primary for Cloud/GitHub Actions (avoids Azure IP blocks)
     try:
-        r_root = session.get(base_url, timeout=12)
+        s3_base = "https://noaa-nws-graphcastgfs-pds.s3.amazonaws.com"
+        for days_back in range(4):
+            t_date = now - timedelta(days=days_back)
+            date_str = t_date.strftime("%Y%m%d")
+            prefix = f"aigfs.{date_str}/"
+            list_url = f"{s3_base}/?list-type=2&delimiter=/&prefix={prefix}"
+            r_s3 = session.get(list_url, timeout=10)
+            if r_s3.status_code != 200:
+                continue
+            root = ET.fromstring(r_s3.text)
+            ns = {'s3': 'http://s3.amazonaws.com/doc/2006-03-01/'}
+            cycles = []
+            for p in root.findall('s3:CommonPrefixes', ns):
+                pref_el = p.find('s3:Prefix', ns)
+                if pref_el is not None and pref_el.text:
+                    m = re.search(r'/(\d{2})/', pref_el.text)
+                    if m:
+                        cycles.append(m.group(1))
+            for cycle in sorted(cycles, reverse=True):
+                cycle_url = f"{s3_base}/{prefix}{cycle}/model/atmos/grib2/"
+                test_idx_url = f"{cycle_url}aigfs.t{cycle}z.sfc.f024.grib2.idx"
+                try:
+                    idx_r = session.get(test_idx_url, timeout=8, headers={"Range": "bytes=0-100"})
+                    if idx_r.status_code in (200, 206):
+                        run_dt = datetime.strptime(f"{date_str}{cycle}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
+                        latest_run = (cycle_url, run_dt, date_str, cycle)
+                        print(f"Found AIGFS on AWS S3 NODD: {date_str} {cycle}Z")
+                        break
+                except Exception:
+                    continue
+            if latest_run:
+                break
+    except Exception as e:
+        print(f"  [Notice] AWS S3 NODD check notice: {e}")
+
+    # 2. Also check NOAA NOMADS (may have a newer run if not blocked by cloud WAF)
+    try:
+        nomads_base = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigfs/prod"
+        r_root = session.get(nomads_base, timeout=8)
         if r_root.status_code == 200:
             candidate_dates = sorted(
                 re.findall(r'href=[\'"]aigfs\.(\d{8})/?[\'"]', r_root.text),
                 reverse=True
             )
-    except Exception as e:
-        print(f"  [Notice] NOMADS root list error ({e}), falling back to calendar dates.")
-
-    if not candidate_dates:
-        candidate_dates = [(now - timedelta(days=d)).strftime("%Y%m%d") for d in range(4)]
-
-    for date_str in candidate_dates[:4]:
-        date_url = f"{base_url}/aigfs.{date_str}/"
-        try:
-            r_date = session.get(date_url, timeout=12)
-            if r_date.status_code != 200:
-                continue
-
-            cycles = sorted(re.findall(r'href=[\'"](\d{2})/?[\'"]', r_date.text), reverse=True)
-            if not cycles:
-                cycles = ["18", "12", "06", "00"]
-
-            for cycle in cycles:
-                cycle_url = f"{date_url}{cycle}/model/atmos/grib2/"
-                test_idx_url = f"{cycle_url}aigfs.t{cycle}z.sfc.f024.grib2.idx"
-                try:
-                    idx_resp = session.get(test_idx_url, timeout=10, headers={"Range": "bytes=0-100"})
-                    if idx_resp.status_code in (200, 206):
-                        run_dt = datetime.strptime(f"{date_str}{cycle}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
-                        print(f"Found latest AIGFS run: {date_str} {cycle}Z")
-                        return cycle_url, run_dt, date_str, cycle
-                    else:
-                        print(f"  Checking {date_str} {cycle}Z: f024.idx status {idx_resp.status_code}")
-                except Exception as e:
-                    print(f"  Checking {date_str} {cycle}Z: idx request failed ({e})")
+            for date_str in candidate_dates[:3]:
+                date_url = f"{nomads_base}/aigfs.{date_str}/"
+                r_date = session.get(date_url, timeout=8)
+                if r_date.status_code != 200:
                     continue
-        except Exception as e:
-            print(f"  Failed checking date {date_str}: {e}")
-            continue
+                cycles = sorted(re.findall(r'href=[\'"](\d{2})/?[\'"]', r_date.text), reverse=True)
+                for cycle in cycles:
+                    cycle_url = f"{date_url}{cycle}/model/atmos/grib2/"
+                    test_idx_url = f"{cycle_url}aigfs.t{cycle}z.sfc.f024.grib2.idx"
+                    idx_r = session.get(test_idx_url, timeout=8, headers={"Range": "bytes=0-100"})
+                    if idx_r.status_code in (200, 206):
+                        run_dt = datetime.strptime(f"{date_str}{cycle}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
+                        if not latest_run or run_dt > latest_run[1]:
+                            latest_run = (cycle_url, run_dt, date_str, cycle)
+                            print(f"Found newer AIGFS on NOAA NOMADS: {date_str} {cycle}Z")
+                        break
+                if latest_run and latest_run[1] >= datetime.strptime(f"{date_str}{cycles[0] if cycles else '00'}", "%Y%m%d%H").replace(tzinfo=timezone.utc):
+                    break
+        else:
+            print(f"  [Notice] NOMADS root returned HTTP {r_root.status_code} (blocked or throttled; using cloud mirror)")
+    except Exception as e:
+        print(f"  [Notice] NOMADS check notice: {e}")
 
-    raise RuntimeError("Critical: No recent AIGFS cycle found on NOAA NOMADS.")
+    if latest_run:
+        print(f"Selected latest AIGFS run: {latest_run[2]} {latest_run[3]}Z ({latest_run[0]})")
+        return latest_run[0], latest_run[1], latest_run[2], latest_run[3]
+
+    raise RuntimeError("Critical: No recent AIGFS cycle found on NOAA NOMADS or AWS S3 NODD.")
 
 
 def download_byte_ranges(grib_url, idx_url, session):
