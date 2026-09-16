@@ -3,13 +3,13 @@
   "storm_name": "TC 24W (Invest 90W)",
   "track_id": "WP242026",
   "latest": {
-    "lat": 14.8,
-    "lon": 148.8,
-    "pressure_hpa": 1000.0,
+    "lat": 15.0,
+    "lon": 148.7,
+    "pressure_hpa": 999.0,
     "wind_kt": 29.0,
     "wind_kmh": 54,
-    "movement": "SW at 2.6 km/h (1.4 kt)",
-    "init_time": "2026-09-15 18:00",
+    "movement": "NNW at 4.1 km/h (2.2 kt)",
+    "init_time": "2026-09-16 00:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -81,6 +81,15 @@
       "lat": 14.8,
       "lon": 148.8,
       "pressure_hpa": 1000.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-09-16 00:00",
+      "lat": 15.0,
+      "lon": 148.7,
+      "pressure_hpa": 999.0,
       "wind_kt": 29.0,
       "wind_kmh": 54,
       "category": "Tropical Depression"
