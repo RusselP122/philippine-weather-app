@@ -2,9 +2,10 @@ name: Update NOAA AIGFS Maps
 
 on:
   schedule:
-    # Runs at 03:30, 09:30, 15:30, 21:30 UTC
-    # AIGFS 00z ready ~3.5h after init
-    - cron: '30 3,9,15,21 * * *'
+    # AIGFS cycles become available on NOMADS ~3h45m-3h50m after init:
+    # 00z ready ~03:45-03:50 UTC | 06z ready ~09:45-09:50 UTC
+    # 12z ready ~15:45-15:50 UTC | 18z ready ~21:45-21:50 UTC
+    - cron: '50 3,9,15,21 * * *'
   workflow_dispatch:
 
 jobs:

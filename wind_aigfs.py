@@ -55,31 +55,51 @@ LON_MIN, LON_MAX = 112.0, 140.0
 
 
 def get_latest_aigfs_run(session):
+    import re
     base_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigfs/prod"
     now = datetime.now(timezone.utc)
 
-    for days_back in range(0, 3):
-        t_date = now - timedelta(days=days_back)
-        date_str = t_date.strftime("%Y%m%d")
-        date_url = f"{base_url}/aigfs.{date_str}/"
+    candidate_dates = []
+    try:
+        r_root = session.get(base_url, timeout=12)
+        if r_root.status_code == 200:
+            candidate_dates = sorted(
+                re.findall(r'href=[\'"]aigfs\.(\d{8})/?[\'"]', r_root.text),
+                reverse=True
+            )
+    except Exception as e:
+        print(f"  [Notice] NOMADS root list error ({e}), falling back to calendar dates.")
 
+    if not candidate_dates:
+        candidate_dates = [(now - timedelta(days=d)).strftime("%Y%m%d") for d in range(4)]
+
+    for date_str in candidate_dates[:4]:
+        date_url = f"{base_url}/aigfs.{date_str}/"
         try:
-            r = session.get(date_url, timeout=6)
-            if r.status_code != 200:
+            r_date = session.get(date_url, timeout=12)
+            if r_date.status_code != 200:
                 continue
 
-            for cycle in ["18", "12", "06", "00"]:
+            cycles = sorted(re.findall(r'href=[\'"](\d{2})/?[\'"]', r_date.text), reverse=True)
+            if not cycles:
+                cycles = ["18", "12", "06", "00"]
+
+            for cycle in cycles:
                 cycle_url = f"{date_url}{cycle}/model/atmos/grib2/"
-                test_idx_url = f"{cycle_url}aigfs.t{cycle}z.sfc.f006.grib2.idx"
+                test_idx_url = f"{cycle_url}aigfs.t{cycle}z.sfc.f024.grib2.idx"
                 try:
-                    head_res = session.head(test_idx_url, timeout=5)
-                    if head_res.status_code == 200:
+                    idx_resp = session.get(test_idx_url, timeout=10, headers={"Range": "bytes=0-100"})
+                    if idx_resp.status_code in (200, 206):
                         run_dt = datetime.strptime(f"{date_str}{cycle}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
                         print(f"Found latest AIGFS run: {date_str} {cycle}Z")
                         return cycle_url, run_dt, date_str, cycle
-                except Exception:
+                    else:
+                        print(f"  Checking {date_str} {cycle}Z: f024.idx status {idx_resp.status_code}")
+                except Exception as e:
+                    print(f"  Checking {date_str} {cycle}Z: idx request failed ({e})")
                     continue
-        except Exception:
+        except Exception as e:
+            print(f"  Failed checking date {date_str}: {e}")
             continue
 
     raise RuntimeError("Critical: No recent AIGFS cycle found on NOAA NOMADS.")
