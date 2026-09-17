@@ -1,5 +1,5 @@
 {
-  "base_5day_cycle": "2026-09-17 06:00",
+  "base_5day_cycle": "2026-09-17 12:00",
   "base_5day": [
     {
       "id": "24W",
@@ -10,7 +10,7 @@
       "wide": "/data/trends/base_5day_24W_wide.png"
     }
   ],
-  "base_15day_cycle": "2026-09-17 06:00",
+  "base_15day_cycle": "2026-09-17 12:00",
   "base_15day": [
     {
       "id": "24W",
@@ -24,7 +24,7 @@
       "id": "dist_20260916_18_5",
       "local_id": 2,
       "name": "Disturbance 2",
-      "trackCount": 44,
+      "trackCount": 39,
       "standard": "/data/trends/base_15day_dist_20260916_18_5_standard.png",
       "wide": "/data/trends/base_15day_dist_20260916_18_5_wide.png"
     }
