@@ -45,82 +45,66 @@
       "wide": "/data/trends/base_15day_dist_20260916_18_5_wide.png"
     }
   ],
-  "large_5day_cycle": "2026-09-16 12:00",
+  "large_5day_cycle": "2026-09-16 18:00",
   "large_5day": [
     {
       "id": "24W",
       "local_id": 1,
       "name": "TC 24W",
-      "trackCount": 835,
+      "trackCount": 975,
       "standard": "/data/trends/large_5day_24W_standard.png",
       "wide": "/data/trends/large_5day_24W_wide.png"
     },
     {
-      "id": "dist_20260916_00_1",
+      "id": "dist_20260915_18_2",
       "local_id": 2,
       "name": "Disturbance 2",
-      "trackCount": 168,
-      "standard": "/data/trends/large_5day_dist_20260916_00_1_standard.png",
-      "wide": "/data/trends/large_5day_dist_20260916_00_1_wide.png"
-    },
-    {
-      "id": "dist_20260915_18_2",
-      "local_id": 4,
-      "name": "Disturbance 4",
-      "trackCount": 465,
+      "trackCount": 109,
       "standard": "/data/trends/large_5day_dist_20260915_18_2_standard.png",
       "wide": "/data/trends/large_5day_dist_20260915_18_2_wide.png"
     }
   ],
-  "large_15day_cycle": "2026-09-16 12:00",
+  "large_15day_cycle": "2026-09-16 18:00",
   "large_15day": [
     {
       "id": "24W",
       "local_id": 1,
       "name": "TC 24W",
-      "trackCount": 834,
+      "trackCount": 975,
       "standard": "/data/trends/large_15day_24W_standard.png",
       "wide": "/data/trends/large_15day_24W_wide.png"
     },
     {
-      "id": "dist_20260915_18_3",
+      "id": "dist_20260915_18_2",
       "local_id": 2,
       "name": "Disturbance 2",
-      "trackCount": 168,
-      "standard": "/data/trends/large_15day_dist_20260915_18_3_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260915_18_3_wide.png"
-    },
-    {
-      "id": "dist_20260915_12_2",
-      "local_id": 4,
-      "name": "Disturbance 4",
-      "trackCount": 466,
-      "standard": "/data/trends/large_15day_dist_20260915_12_2_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260915_12_2_wide.png"
-    },
-    {
-      "id": "dist_20260916_00_5",
-      "local_id": 5,
-      "name": "Disturbance 5",
-      "trackCount": 722,
-      "standard": "/data/trends/large_15day_dist_20260916_00_5_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260916_00_5_wide.png"
+      "trackCount": 109,
+      "standard": "/data/trends/large_15day_dist_20260915_18_2_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260915_18_2_wide.png"
     },
     {
       "id": "dist_20260916_00_4",
-      "local_id": 6,
-      "name": "Disturbance 6",
-      "trackCount": 435,
+      "local_id": 3,
+      "name": "Disturbance 3",
+      "trackCount": 395,
       "standard": "/data/trends/large_15day_dist_20260916_00_4_standard.png",
       "wide": "/data/trends/large_15day_dist_20260916_00_4_wide.png"
     },
     {
-      "id": "dist_20260915_12_5",
-      "local_id": 7,
-      "name": "Disturbance 7",
-      "trackCount": 189,
-      "standard": "/data/trends/large_15day_dist_20260915_12_5_standard.png",
-      "wide": "/data/trends/large_15day_dist_20260915_12_5_wide.png"
+      "id": "dist_20260916_00_5",
+      "local_id": 4,
+      "name": "Disturbance 4",
+      "trackCount": 759,
+      "standard": "/data/trends/large_15day_dist_20260916_00_5_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260916_00_5_wide.png"
+    },
+    {
+      "id": "dist_20260915_18_4",
+      "local_id": 5,
+      "name": "Disturbance 5",
+      "trackCount": 174,
+      "standard": "/data/trends/large_15day_dist_20260915_18_4_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260915_18_4_wide.png"
     }
   ]
 }
