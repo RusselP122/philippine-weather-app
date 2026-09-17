@@ -46,9 +46,9 @@ RADII_NM      = [12,  28,  42,  56,  72,   88,  105,  155,  210,  260]
 BG_DARK       = "#0b131e"   # Deep broadcast backdrop canvas
 OCEAN_COLOR   = "#162533"   # Deep Navy TV ocean
 LAND_COLOR    = "#23313d"   # Sleek Slate-Dark terrain (from forcast5.py)
-LAND_EDGE     = "#0f172a"   # Crisp dark coastline
-BORDER_EDGE   = "#475569"   # International borders
-PROVINCE_EDGE = "#475569"   # Clean steel slate Philippine provinces
+LAND_EDGE     = "#cbd5e1"   # Crisp luminous coastline (Slate-300, visible over ocean & clouds)
+BORDER_EDGE   = "#94a3b8"   # High-contrast international borders (Slate-400)
+PROVINCE_EDGE = "#64748b"   # Clean steel slate Philippine provinces (Slate-500)
 PAR_COLOR     = "#7c2d12"   # Solid 7c2d12 PAR boundary
 GRID_COLOR    = "#475569"   # Subtle coordinate gridlines
 GRID_TEXT     = "#64748b"   # Lat/Lon grid labels
@@ -2519,13 +2519,13 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             with open(found_geojson, 'r', encoding='utf-8') as gf:
                 geojson_data = json.load(gf)
             prov_geoms = [shape(feature['geometry']) for feature in geojson_data['features']]
-            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor=PROVINCE_EDGE, linewidth=0.65, alpha=0.85, zorder=2)
+            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor=PROVINCE_EDGE, linewidth=0.70, alpha=0.85, zorder=4.0)
     except Exception:
         pass
 
-    # Coastlines & International Borders (Matching forcast5.py)
-    ax.add_feature(cfeature.COASTLINE, linewidth=1.3, edgecolor=LAND_EDGE, zorder=3)
-    ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.8, edgecolor=BORDER_EDGE, zorder=3)
+    # Coastlines & International Borders (Rendered above satellite imagery at zorder=4.1)
+    ax.add_feature(cfeature.COASTLINE, linewidth=1.2, edgecolor=LAND_EDGE, zorder=4.1)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.85, edgecolor=BORDER_EDGE, zorder=4.1)
         
     # PAR Boundary Polygon (Matching forcast5.py solid PAR with dark warm halo)
     par_vertices = [
@@ -2793,13 +2793,13 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             with open(found_geojson, 'r', encoding='utf-8') as gf:
                 geojson_data = json.load(gf)
             prov_geoms = [shape(feature['geometry']) for feature in geojson_data['features']]
-            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor=PROVINCE_EDGE, linewidth=0.65, alpha=0.85, zorder=2)
+            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor=PROVINCE_EDGE, linewidth=0.70, alpha=0.85, zorder=4.0)
     except Exception:
         pass
 
-    # Coastlines & International Borders (Matching forcast5.py)
-    ax.add_feature(cfeature.COASTLINE, linewidth=1.3, edgecolor=LAND_EDGE, zorder=3)
-    ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.8, edgecolor=BORDER_EDGE, zorder=3)
+    # Coastlines & International Borders (Rendered above satellite imagery at zorder=4.1)
+    ax.add_feature(cfeature.COASTLINE, linewidth=1.2, edgecolor=LAND_EDGE, zorder=4.1)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=0.85, edgecolor=BORDER_EDGE, zorder=4.1)
     
     # PAR Boundary Polygon (Matching forcast5.py solid PAR with dark warm halo)
     par_vertices = [

@@ -181,6 +181,33 @@ MODEL_META = {
         "sub_badge": "ECMWF AIFS",
         "color": "#2dd4bf",
         "gradient": ("#064e3b", "#0d9488"),
+    },
+    "WEATHERNEXT": {
+        "name": "WEATHERNEXT",
+        "agency": "Google DeepMind",
+        "full_name": "Google WeatherNext 3 Model",
+        "banner_text": "GOOGLE WEATHERNEXT 3 FORECAST",
+        "sub_badge": "GOOGLE WN3 (10 KM)",
+        "color": "#c084fc",
+        "gradient": ("#581c87", "#7e22ce"),
+    },
+    "WEATHERNEXT3": {
+        "name": "WEATHERNEXT3",
+        "agency": "Google DeepMind",
+        "full_name": "Google WeatherNext 3 Model",
+        "banner_text": "GOOGLE WEATHERNEXT 3 FORECAST",
+        "sub_badge": "GOOGLE WN3 (10 KM)",
+        "color": "#c084fc",
+        "gradient": ("#581c87", "#7e22ce"),
+    },
+    "WN3": {
+        "name": "WN3",
+        "agency": "Google DeepMind",
+        "full_name": "Google WeatherNext 3 Model",
+        "banner_text": "GOOGLE WEATHERNEXT 3 FORECAST",
+        "sub_badge": "GOOGLE WN3 (10 KM)",
+        "color": "#c084fc",
+        "gradient": ("#581c87", "#7e22ce"),
     }
 }
 
@@ -248,6 +275,11 @@ def generate_demo_model_data(model_key, domain_extent, valid_dt):
         central_pressure = 990.0
         r_scale = 2.9
         rain_amp = 55.0
+    elif norm_key in ("WEATHERNEXT", "WEATHERNEXT3", "WN3"):
+        center_lon, center_lat = cx + 0.9, cy + 0.6
+        central_pressure = 989.0
+        r_scale = 2.7
+        rain_amp = 68.0
     else:
         center_lon, center_lat = cx, cy
         central_pressure = 994.0
@@ -663,6 +695,107 @@ def fetch_live_gfs(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
                 continue
     print(f"  [WARNING] Could not retrieve live GFS from NOMADS.")
     return None
+
+
+def fetch_live_weathernext(step=240, extent=(98.0, 154.0, 2.0, 27.0)):
+    """
+    Retrieves real forecast fields from Google WeatherNext 3 (Zarr v3 on GCS):
+    - wind_speed_10m_mean (converted from m/s to km/h)
+    - mean_sea_level_pressure_mean (converted from Pa to hPa)
+    Spatial resolution: 0.1° (~10 km) native global grid.
+    """
+    print(f"  [LIVE] Fetching Google WeatherNext 3 for step T+{step}h from GCS ...")
+    try:
+        from google.cloud import storage
+        import gcsfs
+        import numcodecs
+        from weather_viz_styles import find_latest_weathernext_run
+
+        project_id = "affable-ring-442402-j2"
+        client = storage.Client(project=project_id)
+        fs = gcsfs.GCSFileSystem(project=project_id, token=getattr(client, '_credentials', None))
+
+        # Always prioritize synoptic 360-hour runs (00, 06, 12, 18 UTC)
+        req_min_hours = max(step, 240) if step > 48 else 240
+        latest_run, avail_hours = find_latest_weathernext_run(
+            client, fs, project_id=project_id, min_hours=req_min_hours,
+            var_check="mean_sea_level_pressure_mean"
+        )
+
+        target_step = min(step, avail_hours)
+        base = f"weathernext3_statistics_spatial/{latest_run}predictions.zarr"
+        codec = numcodecs.Zstd()
+
+        # Load 0.1 deg coordinates
+        lat = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lat_0p1/c/0')), dtype='<f4')
+        lon = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lon_0p1/c/0')), dtype='<f4')
+
+        # Spatial slice
+        lat_mask = (lat >= extent[2] - 2.0) & (lat <= extent[3] + 2.0)
+        lon_mask = (lon >= extent[0] - 2.0) & (lon <= extent[1] + 2.0)
+        lat_idx = np.where(lat_mask)[0]
+        lon_idx = np.where(lon_mask)[0]
+        lat_slice = slice(lat_idx.min(), lat_idx.max() + 1)
+        lon_slice = slice(lon_idx.min(), lon_idx.max() + 1)
+
+        sub_lats = lat[lat_slice]
+        sub_lons = lon[lon_slice]
+
+        # Fetch requested forecast step chunks
+        ws_path = f'{base}/wind_speed_10m_mean/c/{target_step}/0/0'
+        mslp_path = f'{base}/mean_sea_level_pressure_mean/c/{target_step}/0/0'
+
+        cat_dict = fs.cat([ws_path, mslp_path], on_error='raise')
+        ws_raw = np.frombuffer(codec.decode(cat_dict[ws_path]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+        mslp_raw = np.frombuffer(codec.decode(cat_dict[mslp_path]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+
+        sub_ws = ws_raw * 3.6  # m/s -> km/h
+        sub_msl = mslp_raw / 100.0  # Pa -> hPa
+
+        # Find Low Pressure Center inside visible extent (avoiding border edges)
+        inner_lon_mask = (sub_lons >= extent[0] + 0.5) & (sub_lons <= extent[1] - 0.5)
+        inner_lat_mask = (sub_lats >= extent[2] + 0.5) & (sub_lats <= extent[3] - 0.5)
+        low_center = None
+        if np.any(inner_lon_mask) and np.any(inner_lat_mask):
+            inner_msl = sub_msl[np.ix_(inner_lat_mask, inner_lon_mask)]
+            inner_lons = sub_lons[inner_lon_mask]
+            inner_lats = sub_lats[inner_lat_mask]
+            min_idx = np.unravel_index(np.argmin(inner_msl), inner_msl.shape)
+            low_lon = float(inner_lons[min_idx[1]])
+            low_lat = float(inner_lats[min_idx[0]])
+            min_p = float(inner_msl[min_idx])
+            if min_p < 1012.0:
+                low_center = (low_lon, low_lat, min_p)
+
+        # Parse initialization timestamp from folder name (e.g. 20260917_00hr_01_preds)
+        folder_clean = latest_run.strip('/').split('/')[-1]
+        try:
+            date_part = folder_clean.split('_')[0]
+            hour_part = folder_clean.split('_')[1].replace('hr', '')
+            init_dt = datetime.strptime(f"{date_part}{hour_part}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
+        except Exception:
+            init_dt = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+
+        valid_dt = init_dt + timedelta(hours=target_step)
+        if low_center is not None:
+            print(f"  [OK] Google WeatherNext 3 ({init_dt.strftime('%Y%m%d %HZ')}): Min MSLP {min_p:.1f} hPa at ({low_lon:.1f}E, {low_lat:.1f}N)")
+        else:
+            print(f"  [OK] Google WeatherNext 3 ({init_dt.strftime('%Y%m%d %HZ')}): loaded for step T+{target_step}h")
+
+        return {
+            "lons": sub_lons,
+            "lats": sub_lats,
+            "mslp": sub_msl,
+            "wind_speed": sub_ws,
+            "precip": sub_ws,
+            "low_center": low_center,
+            "init_dt": init_dt,
+            "valid_dt": valid_dt,
+            "model_key": "WEATHERNEXT"
+        }
+    except Exception as e:
+        print(f"  [ERROR] Live fetch error for WeatherNext 3: {e}")
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1255,6 +1388,8 @@ def render_comparison_broadcast(
                     model_data = fetch_live_gfs(step=lead_time_hours, extent=extent)
                 elif norm_key in ["AIGFS", "AIGEFS"]:
                     model_data = fetch_live_aigfs(step=lead_time_hours, extent=extent)
+                elif norm_key in ["WEATHERNEXT", "WEATHERNEXT3", "WN3"]:
+                    model_data = fetch_live_weathernext(step=lead_time_hours, extent=extent)
             except Exception as ex:
                 print(f"  [ERROR] Live fetch error for {norm_key}: {ex}")
                 model_data = None
@@ -1309,21 +1444,31 @@ def render_comparison_broadcast(
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="Television Broadcast Weather Model Comparison (GFS, AIGFS/AIGEFS, ECMWF, AIFS)",
+        description="Television Broadcast Weather Model Comparison (GFS, AIGFS/AIGEFS, ECMWF, AIFS, WEATHERNEXT 3)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
+    model_choices = [
+        "GFS", "gfs",
+        "AIGFS", "aigfs",
+        "AIGEFS", "aigefs",
+        "ECMWF", "ecmwf",
+        "AIFS", "aifs",
+        "WEATHERNEXT", "weathernext",
+        "WEATHERNEXT3", "weathernext3",
+        "WN3", "wn3"
+    ]
     parser.add_argument(
         "--mode", choices=["4panel", "3panel", "2panel", "1panel"], default="4panel",
         help="Comparison layout: '4panel' (2x2 grid), '3panel' (1x3 row), '2panel' (1x2 row), or '1panel' (single model view)"
     )
     parser.add_argument(
         "--models", nargs="+", default=["GFS", "AIGFS", "ECMWF", "AIFS"],
-        choices=["GFS", "AIGFS", "AIGEFS", "ECMWF", "AIFS"],
-        help="Models to compare (e.g. GFS AIGFS ECMWF AIFS)"
+        choices=model_choices,
+        help="Models to compare (e.g. GFS AIGFS ECMWF AIFS WEATHERNEXT3)"
     )
     parser.add_argument(
-        "--model", dest="single_model", choices=["GFS", "AIGFS", "AIGEFS", "ECMWF", "AIFS"], default=None,
-        help="Single model to display when using 1panel mode (e.g. --model ECMWF)"
+        "--model", dest="single_model", choices=model_choices, default=None,
+        help="Single model to display when using 1panel mode (e.g. --model WEATHERNEXT3)"
     )
     parser.add_argument(
         "--region", choices=["ph", "wnp", "conus"], default="ph",
@@ -1355,7 +1500,7 @@ def parse_arguments():
     )
     parser.add_argument(
         "--live", dest="demo", action="store_false", default=True,
-        help="Retrieve actual live data from NOAA NOMADS and ECMWF OpenData"
+        help="Retrieve actual live data from NOAA NOMADS, ECMWF OpenData, and Google Cloud Storage"
     )
     parser.add_argument(
         "--demo", dest="demo", action="store_true",
@@ -1367,7 +1512,14 @@ def parse_arguments():
 if __name__ == "__main__":
     args = parse_arguments()
 
-    selected = [args.single_model] if args.single_model else args.models
+    raw_selected = [args.single_model] if args.single_model else args.models
+    selected = []
+    for m in raw_selected:
+        k = m.upper().replace(" ", "").replace("-", "")
+        if k in ("WEATHERNEXT3", "WN3"):
+            k = "WEATHERNEXT"
+        selected.append(k)
+
     render_comparison_broadcast(
         mode=args.mode,
         selected_models=selected,
