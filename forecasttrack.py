@@ -18,6 +18,9 @@ import matplotlib.patheffects as path_effects
 from matplotlib.patches import FancyBboxPatch
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import cartopy.io.img_tiles as cimgt
+from PIL import Image
+import requests
 from shapely.geometry import shape, Polygon
 from shapely.ops import unary_union
 import urllib.request
@@ -103,6 +106,231 @@ def wind_color(kmh):
     if kmh >= 62:  return "#facc15"
     if kmh >= 45:  return "#34d399"
     return "#38bdf8"
+
+
+# ── Himawari Satellite Cloud Isolation Provider ─────────────────────────────
+_SAT_SESSION = requests.Session()
+_SAT_ADAPTER = requests.adapters.HTTPAdapter(pool_connections=25, pool_maxsize=25, max_retries=2)
+_SAT_SESSION.mount('https://', _SAT_ADAPTER)
+_SAT_SESSION.mount('http://', _SAT_ADAPTER)
+
+_LATEST_SAT_TIME_CACHE = None
+_SAT_TIME_MAP_CACHE = {}
+
+def parse_storm_init_time(init_time_val):
+    """
+    Parses a storm init/analysis time value into a UTC datetime.
+    Handles datetime/Timestamp objects, and string formats like:
+    'YYYY-MM-DD HH:MM:SS', 'YYYY-MM-DDTHH:MM:SS', 'YYYYMMDDHH', etc.
+    """
+    if not init_time_val:
+        return None
+    
+    if isinstance(init_time_val, datetime):
+        if init_time_val.tzinfo is None:
+            return init_time_val.replace(tzinfo=timezone.utc)
+        return init_time_val.astimezone(timezone.utc)
+        
+    try:
+        if hasattr(init_time_val, 'to_pydatetime'):
+            dt = init_time_val.to_pydatetime()
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+    except Exception:
+        pass
+
+    s = str(init_time_val).strip().replace('Z', '')
+    s_clean = s.split('.')[0]
+    
+    formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y%m%d%H%M",
+        "%Y%m%d%H",
+        "%Y-%m-%d"
+    ]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(s_clean, fmt)
+            return dt.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            continue
+            
+    try:
+        pdt = pd.to_datetime(s_clean)
+        dt = pdt.to_pydatetime()
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        pass
+        
+    return None
+
+def get_latest_satellite_time():
+    """
+    Dynamically discovers the latest available Himawari satellite scan timestamp
+    (typically 15-25 minutes behind real time) and caches it for the execution run.
+    """
+    global _LATEST_SAT_TIME_CACHE
+    if _LATEST_SAT_TIME_CACHE is not None:
+        return _LATEST_SAT_TIME_CACHE
+
+    now = datetime.now(timezone.utc)
+    for offset_mins in [15, 20, 25, 30, 40, 50, 60]:
+        t = now - timedelta(minutes=offset_mins)
+        mins = (t.minute // 10) * 10
+        t_aligned = t.replace(minute=mins, second=0, microsecond=0)
+        d_str = t_aligned.strftime('%Y-%m-%d')
+        tm_str = f'{t_aligned.hour:02d}{t_aligned.minute:02d}'
+        url = f'https://tiles.zoom.earth/geocolor/himawari/{d_str}/{tm_str}/6/28/53.jpg'
+        try:
+            r = _SAT_SESSION.get(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'Referer': 'https://zoom.earth/',
+                'Origin': 'https://zoom.earth'
+            }, timeout=3.5)
+            if r.status_code == 200 and len(r.content) > 1000:
+                _LATEST_SAT_TIME_CACHE = t_aligned
+                return _LATEST_SAT_TIME_CACHE
+        except Exception:
+            pass
+
+    t = now - timedelta(minutes=40)
+    mins = (t.minute // 10) * 10
+    _LATEST_SAT_TIME_CACHE = t.replace(minute=mins, second=0, microsecond=0)
+    return _LATEST_SAT_TIME_CACHE
+
+def get_satellite_scan_time(target_dt=None):
+    """
+    Finds the optimal available Himawari satellite scan timestamp.
+    If target_dt is provided (e.g. from Knack API storm init_time), it finds the closest
+    available 10-minute scan near that datetime so cloud features align with the storm's
+    analyzed position. If target_dt is None or unavailable, it falls back to the latest scan.
+    """
+    parsed_dt = parse_storm_init_time(target_dt) if target_dt else None
+    
+    if parsed_dt is not None:
+        cache_key = parsed_dt.strftime('%Y-%m-%d %H:%M')
+        if cache_key in _SAT_TIME_MAP_CACHE:
+            return _SAT_TIME_MAP_CACHE[cache_key]
+        
+        # Check offsets near target time: [0, -10, 10, -20, 20, -30, 30]
+        offsets = [0, -10, 10, -20, 20, -30, 30]
+        for off in offsets:
+            t = parsed_dt + timedelta(minutes=off)
+            mins = (t.minute // 10) * 10
+            t_aligned = t.replace(minute=mins, second=0, microsecond=0)
+            d_str = t_aligned.strftime('%Y-%m-%d')
+            tm_str = f'{t_aligned.hour:02d}{t_aligned.minute:02d}'
+            url = f'https://tiles.zoom.earth/geocolor/himawari/{d_str}/{tm_str}/6/28/53.jpg'
+            try:
+                r = _SAT_SESSION.get(url, headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                    'Referer': 'https://zoom.earth/',
+                    'Origin': 'https://zoom.earth'
+                }, timeout=3.0)
+                if r.status_code == 200 and len(r.content) > 1000:
+                    _SAT_TIME_MAP_CACHE[cache_key] = t_aligned
+                    return t_aligned
+            except Exception:
+                pass
+                
+        mins = (parsed_dt.minute // 10) * 10
+        fallback_aligned = parsed_dt.replace(minute=mins, second=0, microsecond=0)
+        _SAT_TIME_MAP_CACHE[cache_key] = fallback_aligned
+        return fallback_aligned
+        
+    return get_latest_satellite_time()
+
+def isolate_clouds_geocolor(pil_img):
+    """
+    Preserves 100% of the original Himawari satellite RGB pixels (photographic
+    texture, natural cloud shadows, and true color), while smoothly transitioning
+    the dark ocean and clear terrain to transparent.
+    """
+    raw_rgb = pil_img.convert('RGB')
+    rgb_arr = np.array(raw_rgb)
+    r = rgb_arr[:, :, 0].astype(np.float32)
+    g = rgb_arr[:, :, 1].astype(np.float32)
+    b = rgb_arr[:, :, 2].astype(np.float32)
+
+    # Perceptual luminance of the satellite pixels
+    lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+
+    # Natural alpha feathering:
+    # Ocean / dark clear ground (lum < 0.20) -> 100% transparent
+    # Cirrus and cloud edges (0.20 to 0.42) -> smoothly blended
+    # Solid cloud deck & eyewall (lum > 0.42) -> solid original satellite photo
+    alpha = np.clip((lum - 0.20) / (0.42 - 0.20), 0.0, 1.0)
+    alpha = np.power(alpha, 1.3) * 255.0
+    alpha_u8 = alpha.astype(np.uint8)
+
+    # PRESERVE 100% OF THE ORIGINAL SATELLITE RGB CHANNELS UNTOUCHED
+    out_arr = np.dstack([rgb_arr, alpha_u8])
+    return Image.fromarray(out_arr, 'RGBA')
+
+class TransparentCloudTiles(cimgt.GoogleTiles):
+    """
+    Cartopy tile provider that fetches Himawari satellite tiles and dynamically
+    isolates the clouds with transparent ocean and terrain.
+    """
+    def __init__(self, dt_satellite=None, **kwargs):
+        super().__init__(**kwargs)
+        if dt_satellite is None:
+            dt_satellite = get_latest_satellite_time()
+        self.date_str = dt_satellite.strftime('%Y-%m-%d')
+        self.time_str = f"{dt_satellite.hour:02d}{dt_satellite.minute:02d}"
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://zoom.earth/',
+            'Origin': 'https://zoom.earth'
+        }
+
+    def _image_url(self, tile):
+        x, y, z = tile
+        return f"https://tiles.zoom.earth/geocolor/himawari/{self.date_str}/{self.time_str}/{z}/{y}/{x}.jpg"
+
+    def get_image(self, tile):
+        url = self._image_url(tile)
+        try:
+            r = _SAT_SESSION.get(url, headers=self.headers, timeout=4.5)
+            if r.status_code == 200 and len(r.content) > 1000:
+                raw_img = Image.open(io.BytesIO(r.content)).convert('RGB')
+                return isolate_clouds_geocolor(raw_img), self.tileextent(tile), 'lower'
+        except Exception:
+            pass
+
+        empty = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
+        return empty, self.tileextent(tile), 'lower'
+
+def overlay_isolated_satellite_clouds(ax, extent, target_time=None, alpha=0.90):
+    """
+    Safely overlays transparent Himawari satellite clouds onto the map axes.
+    When target_time is provided (from Knack API storm init_time), satellite clouds
+    are aligned to that exact analysis time rather than latest real-time.
+    """
+    try:
+        min_lon, max_lon, min_lat, max_lat = extent
+        span_lon = max_lon - min_lon
+        if span_lon > 35:
+            zoom_level = 5
+        elif span_lon > 15:
+            zoom_level = 6
+        else:
+            zoom_level = 7
+
+        sat_dt = get_satellite_scan_time(target_time)
+        tiler = TransparentCloudTiles(sat_dt)
+        ax.add_image(tiler, zoom_level, alpha=alpha, zorder=3.5)
+        print(f"Overlayed Himawari transparent clouds (Scan: {sat_dt.strftime('%Y-%m-%d %H:%MZ')}, Zoom: {zoom_level}, Aligned with storm time: {target_time})")
+        return True
+    except Exception as e:
+        print(f"Notice: Failed to overlay satellite clouds: {e}")
+        return False
 
 
 
@@ -2046,52 +2274,52 @@ def render_sea_labels(ax, extent):
     their designated official bounding coordinates:
       - West Philippine Sea: 116°40'E to 126°34'E (116.67°E - 126.57°E) and 4°40'N to 21°10'N (4.67°N - 21.17°N)
       - Philippine Sea: 120°06'E to 146°03'E (120.10°E - 146.05°E) and 2°30'N to 35°15'N (2.50°N - 35.25°N)
-    Dynamically adjusts font size based on zoom extent and ensures label placement stays strictly in open water,
-    rendered at zorder=1 (underneath land and PAR boundary) to guarantee zero overlay on land or borders.
+    Dynamically and adaptively places the labels in visible open ocean water, with generous
+    legible font sizes and zorder=4.2 so they are clearly displayed on top of satellite imagery
+    while remaining beneath tracks (zorder=8-10) and PAR borders (zorder=5).
     """
     min_lon, max_lon, min_lat, max_lat = extent
     span_lon = max_lon - min_lon
     
-    # 1. West Philippine Sea (116°40'E - 126°34'E, 4°40'N - 21°10'N)
-    # Open water channel west of Luzon/Mindoro:
+    # ── 1. West Philippine Sea (116°40'E - 126°34'E, 4°40'N - 21°10'N) ──────────
+    # Actual open water channel location west of Luzon/Mindoro:
     wps_lon = 117.5
     wps_lat = 13.8
     wps_in_official_bounds = (116.667 <= wps_lon <= 126.567) and (4.667 <= wps_lat <= 21.167)
     
+    # Only render West Philippine Sea when its actual location is inside the visible map area
     if wps_in_official_bounds and (min_lon + 1.0) <= wps_lon <= (max_lon - 1.0) and (min_lat + 1.0) <= wps_lat <= (max_lat - 1.0):
         if span_lon > 32.0:
-            # Zoomed out: compact 3-line stack with small footprint to fit within open water corridor
             wps_txt = 'West\nPhilippine\nSea'
-            fs_wps = 4.8
-            alpha_wps = 0.55
+            fs_wps = 5.2
+            alpha_wps = 0.70
         else:
-            # Zoomed in: 2-line layout
             wps_txt = 'West Philippine\nSea'
-            fs_wps = max(6.2, min(8.8, 9.8 - (span_lon * 0.10)))
-            alpha_wps = 0.68
+            fs_wps = max(6.5, min(9.0, 10.0 - (span_lon * 0.09)))
+            alpha_wps = 0.80
             
         ax.text(
             wps_lon, wps_lat, wps_txt,
-            fontsize=fs_wps, color='#527196', weight='bold',
+            fontsize=fs_wps, color='#93c5fd', weight='bold',
             transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=alpha_wps,
-            zorder=1, clip_on=True,
-            path_effects=[path_effects.withStroke(linewidth=1.8, foreground=OCEAN_COLOR)]
+            zorder=4.2, clip_on=True,
+            path_effects=[path_effects.withStroke(linewidth=2.4, foreground='#070e1a')]
         )
         
-    # 2. Philippine Sea (120°06'E - 146°03'E, 2°30'N - 35°15'N)
-    # Open water placement east of the archipelago inside official domain:
+    # ── 2. Philippine Sea (120°06'E - 146°03'E, 2°30'N - 35°15'N) ───────────────
+    # Open oceanic basin east of the archipelago
     ps_lon = 130.5
-    ps_lat = 14.0
+    ps_lat = 14.0 if (min_lat <= 13.0) else max(min_lat + 1.5, min(max_lat - 1.5, 18.5))
     ps_in_official_bounds = (120.10 <= ps_lon <= 146.05) and (2.50 <= ps_lat <= 35.25)
     
     if ps_in_official_bounds and (min_lon + 1.5) <= ps_lon <= (max_lon - 1.5) and (min_lat + 1.2) <= ps_lat <= (max_lat - 1.2):
-        fs_ps = max(6.0, min(10.0, 11.2 - (span_lon * 0.095)))
+        fs_ps = max(7.5, min(10.8, 11.8 - (span_lon * 0.075)))
         ax.text(
-            ps_lon, ps_lat, 'Philippine Sea',
-            fontsize=fs_ps, color='#527196', weight='bold',
-            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.68,
-            zorder=1, clip_on=True,
-            path_effects=[path_effects.withStroke(linewidth=2.2, foreground=OCEAN_COLOR)]
+            ps_lon, ps_lat, "Philippine Sea",
+            fontsize=fs_ps, color='#93c5fd', weight='bold',
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.88,
+            zorder=4.2, clip_on=True,
+            path_effects=[path_effects.withStroke(linewidth=2.8, foreground='#070e1a')]
         )
 
 
@@ -2211,7 +2439,7 @@ def prepare_anchored_track(df, curr_lat, curr_lon, max_lead_time=120.0):
     return sub_df
 
 
-def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepath, init_time_str="Latest", track_inits=None):
+def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepath, init_time_str="Latest", track_inits=None, show_satellite=True):
     """
     Renders a broadcast-grade multi-agency & ensemble comparison forecast track map
     styled in Option A (Deep Slate Dark Theme).
@@ -2344,6 +2572,11 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     extent = get_adaptive_viewport(all_lats, all_lons, target_aspect=1.75)
     ax.set_extent(extent, crs=ccrs.PlateCarree())
     
+    # Overlay Isolated Himawari Satellite Clouds (Transparent Ocean & Land)
+    if show_satellite:
+        storm_target_time = storm.get('init_time') or init_time_str
+        overlay_isolated_satellite_clouds(ax, extent, target_time=storm_target_time)
+
     # Sea Text Labels (strictly bounded and zoom-scaled)
     render_sea_labels(ax, extent)
     
@@ -2481,7 +2714,7 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     print(f"Successfully generated publication-quality forecast track plot: {out_abs}")
 
 
-def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepath, init_time_str="Latest", track_inits=None):
+def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepath, init_time_str="Latest", track_inits=None, show_satellite=True):
     """
     Renders a broadcast-grade consensus mean forecast track map with Cone of Uncertainty
     and an overhaul of the bottom Forecast Summary & Intensity Dashboard.
@@ -2601,6 +2834,11 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
     span_lon = max_lon - min_lon
     ax.set_extent(extent, crs=ccrs.PlateCarree())
     
+    # Overlay Isolated Himawari Satellite Clouds (Transparent Ocean & Land)
+    if show_satellite:
+        storm_target_time = storm.get('init_time') or init_time_str
+        overlay_isolated_satellite_clouds(ax, extent, target_time=storm_target_time)
+
     # Sea Text Labels (strictly bounded and zoom-scaled)
     render_sea_labels(ax, extent)
     
@@ -2833,7 +3071,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
 
 
 
-def process_and_generate_tracks(storm_id_filter=None, output_dir='public/assets'):
+def process_and_generate_tracks(storm_id_filter=None, output_dir='public/assets', show_satellite=True):
     """
     Processes active storm systems, computes ensemble means & agency tracks from real workspace files,
     and saves separate image files for each storm.
@@ -2874,7 +3112,8 @@ def process_and_generate_tracks(storm_id_filter=None, output_dir='public/assets'
             ensemble_means=ensemble_means,
             output_filepath=out_filepath,
             init_time_str=storm.get('init_time', 'Latest'),
-            track_inits=track_inits
+            track_inits=track_inits,
+            show_satellite=show_satellite
         )
         plotted_files.append(out_filepath)
 
@@ -2888,7 +3127,8 @@ def process_and_generate_tracks(storm_id_filter=None, output_dir='public/assets'
             ensemble_means=ensemble_means,
             output_filepath=unofficial_filepath,
             init_time_str=storm.get('init_time', 'Latest'),
-            track_inits=track_inits
+            track_inits=track_inits,
+            show_satellite=show_satellite
         )
         plotted_files.append(unofficial_filepath)
         
@@ -2899,9 +3139,14 @@ def main():
     parser = argparse.ArgumentParser(description="Forecast Track Visualization Script")
     parser.add_argument('--storm-id', type=str, help="Specific storm ATCF ID to plot (e.g. 90W or WP01)")
     parser.add_argument('--output-dir', type=str, default='public/assets', help="Directory to save generated plot images")
+    parser.add_argument('--no-satellite', action='store_true', help="Disable Himawari satellite cloud overlay")
     args = parser.parse_args()
     
-    process_and_generate_tracks(storm_id_filter=args.storm_id, output_dir=args.output_dir)
+    process_and_generate_tracks(
+        storm_id_filter=args.storm_id,
+        output_dir=args.output_dir,
+        show_satellite=not args.no_satellite
+    )
 
 
 if __name__ == '__main__':
