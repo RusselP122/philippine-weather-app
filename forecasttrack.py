@@ -2273,10 +2273,12 @@ def render_sea_labels(ax, extent):
     Renders official 'West Philippine Sea' and 'Philippine Sea' labels strictly within
     their designated official bounding coordinates:
       - West Philippine Sea: 116°40'E to 126°34'E (116.67°E - 126.57°E) and 4°40'N to 21°10'N (4.67°N - 21.17°N)
-      - Philippine Sea: 120°06'E to 146°03'E (120.10°E - 146.05°E) and 2°30'N to 35°15'N (2.50°N - 35.25°N)
-    Dynamically and adaptively places the labels in visible open ocean water, with generous
-    legible font sizes and zorder=4.2 so they are clearly displayed on top of satellite imagery
-    while remaining beneath tracks (zorder=8-10) and PAR borders (zorder=5).
+    Places the labels at their exact official geographic coordinates:
+      - West Philippine Sea: (117.5°E, 13.8°N)
+      - Philippine Sea: (130.5°E, 14.0°N)
+    Labels are only rendered when their exact geographic location falls within the active map viewport
+    with safety margin padding. When the actual location is outside the map area (such as for recurving
+    storms tracked near Japan/Korea), the labels will not display.
     """
     min_lon, max_lon, min_lat, max_lat = extent
     span_lon = max_lon - min_lon
@@ -2292,32 +2294,31 @@ def render_sea_labels(ax, extent):
         if span_lon > 32.0:
             wps_txt = 'West\nPhilippine\nSea'
             fs_wps = 5.2
-            alpha_wps = 0.70
         else:
             wps_txt = 'West Philippine\nSea'
             fs_wps = max(6.5, min(9.0, 10.0 - (span_lon * 0.09)))
-            alpha_wps = 0.80
             
         ax.text(
             wps_lon, wps_lat, wps_txt,
             fontsize=fs_wps, color='#93c5fd', weight='bold',
-            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=alpha_wps,
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.40,
             zorder=4.2, clip_on=True,
             path_effects=[path_effects.withStroke(linewidth=2.4, foreground='#070e1a')]
         )
         
     # ── 2. Philippine Sea (120°06'E - 146°03'E, 2°30'N - 35°15'N) ───────────────
-    # Open oceanic basin east of the archipelago
+    # Actual open water location east of the archipelago:
     ps_lon = 130.5
-    ps_lat = 14.0 if (min_lat <= 13.0) else max(min_lat + 1.5, min(max_lat - 1.5, 18.5))
+    ps_lat = 14.0
     ps_in_official_bounds = (120.10 <= ps_lon <= 146.05) and (2.50 <= ps_lat <= 35.25)
     
+    # Only render Philippine Sea when its actual location is inside the visible map area
     if ps_in_official_bounds and (min_lon + 1.5) <= ps_lon <= (max_lon - 1.5) and (min_lat + 1.2) <= ps_lat <= (max_lat - 1.2):
-        fs_ps = max(7.5, min(10.8, 11.8 - (span_lon * 0.075)))
+        fs_ps = max(6.5, min(10.0, 11.2 - (span_lon * 0.095)))
         ax.text(
             ps_lon, ps_lat, "Philippine Sea",
             fontsize=fs_ps, color='#93c5fd', weight='bold',
-            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.88,
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.40,
             zorder=4.2, clip_on=True,
             path_effects=[path_effects.withStroke(linewidth=2.8, foreground='#070e1a')]
         )

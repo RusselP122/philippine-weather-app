@@ -187,7 +187,7 @@ MODEL_META = {
         "agency": "Google DeepMind",
         "full_name": "Google WeatherNext 3 Model",
         "banner_text": "GOOGLE WEATHERNEXT 3 FORECAST",
-        "sub_badge": "GOOGLE WN3 (10 KM)",
+        "sub_badge": "GOOGLE WNC3",
         "color": "#c084fc",
         "gradient": ("#581c87", "#7e22ce"),
     },
