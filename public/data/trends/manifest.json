@@ -1,5 +1,5 @@
 {
-  "base_5day_cycle": "2026-09-20 00:00",
+  "base_5day_cycle": "2026-09-20 06:00",
   "base_5day": [
     {
       "id": "24W",
@@ -10,15 +10,15 @@
       "wide": "/data/trends/base_5day_24W_wide.png"
     },
     {
-      "id": "dist_20260919_00_4",
+      "id": "dist_20260919_06_2",
       "local_id": 2,
       "name": "Disturbance 2",
-      "trackCount": 40,
-      "standard": "/data/trends/base_5day_dist_20260919_00_4_standard.png",
-      "wide": "/data/trends/base_5day_dist_20260919_00_4_wide.png"
+      "trackCount": 46,
+      "standard": "/data/trends/base_5day_dist_20260919_06_2_standard.png",
+      "wide": "/data/trends/base_5day_dist_20260919_06_2_wide.png"
     }
   ],
-  "base_15day_cycle": "2026-09-20 00:00",
+  "base_15day_cycle": "2026-09-20 06:00",
   "base_15day": [
     {
       "id": "24W",
@@ -29,18 +29,26 @@
       "wide": "/data/trends/base_15day_24W_wide.png"
     },
     {
-      "id": "dist_20260919_00_2",
-      "local_id": 2,
-      "name": "Disturbance 2",
-      "trackCount": 45,
-      "standard": "/data/trends/base_15day_dist_20260919_00_2_standard.png",
-      "wide": "/data/trends/base_15day_dist_20260919_00_2_wide.png"
+      "id": "dist_20260919_06_2",
+      "local_id": 3,
+      "name": "Disturbance 3",
+      "trackCount": 40,
+      "standard": "/data/trends/base_15day_dist_20260919_06_2_standard.png",
+      "wide": "/data/trends/base_15day_dist_20260919_06_2_wide.png"
+    },
+    {
+      "id": "dist_20260920_00_4",
+      "local_id": 5,
+      "name": "Disturbance 5",
+      "trackCount": 27,
+      "standard": "/data/trends/base_15day_dist_20260920_00_4_standard.png",
+      "wide": "/data/trends/base_15day_dist_20260920_00_4_wide.png"
     },
     {
       "id": "dist_20260920_00_5",
-      "local_id": 5,
+      "local_id": 6,
       "name": "Disturbance 5",
-      "trackCount": 39,
+      "trackCount": 30,
       "standard": "/data/trends/base_15day_dist_20260920_00_5_standard.png",
       "wide": "/data/trends/base_15day_dist_20260920_00_5_wide.png"
     }
