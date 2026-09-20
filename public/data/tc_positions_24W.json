@@ -3,13 +3,13 @@
   "storm_name": "TC 24W",
   "track_id": "WP242026",
   "latest": {
-    "lat": 27.8,
-    "lon": 138.2,
-    "pressure_hpa": 980.0,
+    "lat": 28.5,
+    "lon": 137.7,
+    "pressure_hpa": 977.0,
     "wind_kt": 64.0,
     "wind_kmh": 119,
-    "movement": "NW at 21.0 km/h (11.3 kt)",
-    "init_time": "2026-09-19 12:00",
+    "movement": "NNW at 15.3 km/h (8.3 kt)",
+    "init_time": "2026-09-19 18:00",
     "category": "Typhoon"
   },
   "history": [
@@ -216,6 +216,15 @@
       "lat": 27.8,
       "lon": 138.2,
       "pressure_hpa": 980.0,
+      "wind_kt": 64.0,
+      "wind_kmh": 119,
+      "category": "Typhoon"
+    },
+    {
+      "cycle": "2026-09-19 18:00",
+      "lat": 28.5,
+      "lon": 137.7,
+      "pressure_hpa": 977.0,
       "wind_kt": 64.0,
       "wind_kmh": 119,
       "category": "Typhoon"
