@@ -75,12 +75,13 @@ TEXT_WHITE = "#ffffff"
 TEXT_MUTED = "#94a3b8"
 
 # ── 10m Surface Wind Speed Colormap (km/h) ──────────────────────────────────────
-# Exact 41-block Pivotal Weather / Broadcast Television wind speed color scale
+# Full Synoptic & Typhoon Pivotal Weather / Broadcast Television wind speed scale (0 to 240+ km/h)
 WIND_SPEED_LEVELS = [
     0, 4, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20,
     22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42,
     44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 64,
-    66, 70, 75, 80, 85, 90, 95, 100
+    66, 70, 75, 80, 85, 90, 95, 100,
+    110, 120, 135, 150, 165, 185, 210, 240
 ]
 WIND_SPEED_COLORS = [
     "#101c2a",  # 0 - 4 km/h: Deep Ocean Midnight
@@ -123,10 +124,19 @@ WIND_SPEED_COLORS = [
     "#d64e52",  # 80 - 85 km/h: Intense Crimson
     "#c83b3e",  # 85 - 90 km/h: Dark Ruby Red
     "#b7291f",  # 90 - 95 km/h: Dark Maroon
-    "#a21c18",  # 95 - 100 km/h: Deep Maroon Red
+    "#991b1b",  # 95 - 100 km/h: Deep Blood Crimson
+    # --- Tropical Cyclone & Typhoon Eyewall Tiers (> 100 km/h) ---
+    "#831843",  # 100 - 110 km/h: Deep Plum / Severe Tropical Storm Peak
+    "#9d174d",  # 110 - 120 km/h: Rich Berry / Typhoon Cat 1 Threshold (118 km/h)
+    "#be185d",  # 120 - 135 km/h: Vivid Magenta-Red / Cat 1 Typhoon
+    "#c026d3",  # 135 - 150 km/h: Bright Magenta / Cat 2 Typhoon
+    "#d946ef",  # 150 - 165 km/h: Electric Fuchsia / Cat 2-3 Typhoon
+    "#9333ea",  # 165 - 185 km/h: Vibrant Purple / Cat 3-4 Typhoon
+    "#6b21a8",  # 185 - 210 km/h: Deep Royal Purple / Super Typhoon (> 185 km/h)
+    "#3b0764",  # 210 - 240 km/h: Extreme Midnight Purple / Violent Super Typhoon
 ]
 WIND_SPEED_CMAP = ListedColormap(WIND_SPEED_COLORS, name="pivotal_broadcast_wind")
-WIND_SPEED_CMAP.set_over("#6b0000")  # > 100 km/h: Extreme Dark Maroon
+WIND_SPEED_CMAP.set_over("#fdf4ff")  # > 240 km/h: Blinding Neon White Eyewall Core
 WIND_SPEED_NORM = BoundaryNorm(WIND_SPEED_LEVELS, ncolors=len(WIND_SPEED_COLORS), clip=False)
 
 # Backward compatibility aliases
@@ -1136,10 +1146,10 @@ def draw_broadcast_wind_legend(fig):
     cbar.set_ticks(WIND_SPEED_LEVELS)
     cbar.ax.set_xticklabels(
         [str(x) for x in WIND_SPEED_LEVELS],
-        fontsize=6.0, color="#ffffff", fontweight="bold"
+        fontsize=5.5, color="#ffffff", fontweight="bold"
     )
     cbar.ax.xaxis.set_ticks_position("top")
-    cbar.ax.tick_params(size=2.5, color="#ffffff", pad=1.2, labelsize=6.0)
+    cbar.ax.tick_params(size=2.5, color="#ffffff", pad=1.2, labelsize=5.5)
     for spine in cbar.ax.spines.values():
         spine.set_edgecolor("#000000")
         spine.set_linewidth(1.0)
