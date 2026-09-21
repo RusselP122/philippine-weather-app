@@ -3,13 +3,13 @@
   "storm_name": "TC 24W",
   "track_id": "WP242026",
   "latest": {
-    "lat": 30.4,
-    "lon": 137.6,
-    "pressure_hpa": 978.0,
+    "lat": 31.3,
+    "lon": 137.9,
+    "pressure_hpa": 976.0,
     "wind_kt": 60.0,
     "wind_kmh": 111,
-    "movement": "N at 11.2 km/h (6.1 kt)",
-    "init_time": "2026-09-20 12:00",
+    "movement": "NNE at 17.3 km/h (9.4 kt)",
+    "init_time": "2026-09-20 18:00",
     "category": "Severe Tropical Storm"
   },
   "history": [
@@ -252,6 +252,15 @@
       "lat": 30.4,
       "lon": 137.6,
       "pressure_hpa": 978.0,
+      "wind_kt": 60.0,
+      "wind_kmh": 111,
+      "category": "Severe Tropical Storm"
+    },
+    {
+      "cycle": "2026-09-20 18:00",
+      "lat": 31.3,
+      "lon": 137.9,
+      "pressure_hpa": 976.0,
       "wind_kt": 60.0,
       "wind_kmh": 111,
       "category": "Severe Tropical Storm"
