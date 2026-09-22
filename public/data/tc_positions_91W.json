@@ -3,13 +3,13 @@
   "storm_name": "Invest 91W",
   "track_id": "WP912026",
   "latest": {
-    "lat": 13.0,
-    "lon": 141.5,
+    "lat": 14.5,
+    "lon": 140.7,
     "pressure_hpa": 1006.0,
     "wind_kt": 19.0,
     "wind_kmh": 35,
-    "movement": "NW at 15.7 km/h (8.5 kt)",
-    "init_time": "2026-09-22 06:00",
+    "movement": "NNW at 31.3 km/h (16.9 kt)",
+    "init_time": "2026-09-22 12:00",
     "category": "Low Pressure Area"
   },
   "history": [
@@ -26,6 +26,15 @@
       "cycle": "2026-09-22 06:00",
       "lat": 13.0,
       "lon": 141.5,
+      "pressure_hpa": 1006.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-09-22 12:00",
+      "lat": 14.5,
+      "lon": 140.7,
       "pressure_hpa": 1006.0,
       "wind_kt": 19.0,
       "wind_kmh": 35,
