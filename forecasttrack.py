@@ -170,6 +170,22 @@ def parse_storm_init_time(init_time_val):
         
     return None
 
+def format_to_ph_time_str(init_time_val):
+    """
+    Converts a storm initialization timestamp (UTC) to Philippine Standard Time (PST/PHT, UTC+8).
+    Returns a clean formatted string e.g. 'Sep 23, 2026, 2:00 PM' or 'Latest'.
+    """
+    if not init_time_val or str(init_time_val).strip().lower() in ('latest', 'none', ''):
+        return "Latest"
+    dt_utc = parse_storm_init_time(init_time_val)
+    if dt_utc is not None:
+        ph_tz = timezone(timedelta(hours=8))
+        dt_ph = dt_utc.astimezone(ph_tz)
+        hour_str = dt_ph.strftime("%I").lstrip("0")
+        min_ampm = dt_ph.strftime("%M %p")
+        return f"{dt_ph.strftime('%b %d, %Y')}, {hour_str}:{min_ampm}"
+    return str(init_time_val)
+
 def get_latest_satellite_time():
     """
     Dynamically discovers the latest available Himawari satellite scan timestamp
@@ -2485,8 +2501,9 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
         title_x, 0.68, f"{full_storm_title} — Forecast Track Comparison",
         fontsize=13.5, fontweight='bold', color=TEXT_PRI, transform=ax_head.transAxes, va='center'
     )
+    ph_time_str = format_to_ph_time_str(init_time_str)
     ax_head.text(
-        title_x, 0.28, f"Latest Center Fix: {curr_lat:.1f}°N, {curr_lon:.1f}°E  |  Initialized: {init_time_str}",
+        title_x, 0.28, f"Latest Center Fix: {curr_lat:.1f}°N, {curr_lon:.1f}°E  |  PH Time: {ph_time_str}",
         fontsize=9.5, color=TEXT_SEC, transform=ax_head.transAxes, va='center'
     )
     
@@ -2760,8 +2777,9 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
         title_x, 0.68, f"{full_storm_title} — Consensus Mean Track & Cone of Uncertainty",
         fontsize=13.5, fontweight='bold', color=TEXT_PRI, transform=ax_head.transAxes, va='center'
     )
+    ph_time_str = format_to_ph_time_str(init_time_str)
     ax_head.text(
-        title_x, 0.28, f"Compiled Multi-Model & Agency Ensemble Consensus  |  Initialized: {init_time_str}",
+        title_x, 0.28, f"Compiled Multi-Model & Agency Ensemble Consensus  |  PH Time: {ph_time_str}",
         fontsize=9.5, color=TEXT_SEC, transform=ax_head.transAxes, va='center'
     )
     
