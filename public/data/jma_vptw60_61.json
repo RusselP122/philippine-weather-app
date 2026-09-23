@@ -1,0 +1,302 @@
+{
+    "reportDateTime": "2026/09/23 10:05",
+    "targetDateTime": "2026/09/23 09:00",
+    "targetDuration": "PT120H",
+    "name": "",
+    "number": "",
+    "remark": "台風発生予想",
+    "meteorologicalInfos": [
+        {
+            "dateTime": "2026/09/23 09:00",
+            "classPart": {
+                "typhoonClass": "TD",
+                "typhoonClassName": "Tropical Depression",
+                "areaClass": "",
+                "intensityAndTyphoonClass": "Tropical Depression"
+            },
+            "centerPart": {
+                "coordinateLat": "15.9N",
+                "coordinateLon": "138.7E",
+                "probabilityCircle": null,
+                "direction": "NW",
+                "speedKnot": "13",
+                "speedKmH": "25",
+                "pressure": "1008"
+            },
+            "windPart": {
+                "windSpeedKnot": "30",
+                "windSpeedKnotCondition": "中心付近",
+                "windSpeedMS": "15",
+                "windSpeedMSCondition": "中心付近",
+                "windGustSpeedKnot": "45",
+                "windGustSpeedMS": "23"
+            },
+            "warningAreaPart50": [
+                {
+                    "direction": "ALL",
+                    "radiusNm": "",
+                    "radiusKm": ""
+                }
+            ],
+            "warningAreaPart30": [
+                {
+                    "direction": "ALL",
+                    "radiusNm": "",
+                    "radiusKm": ""
+                }
+            ]
+        },
+        {
+            "dateTime": "2026/09/23 21:00",
+            "classPart": {
+                "typhoonClass": "TD",
+                "typhoonClassName": "Tropical Depression",
+                "areaClass": null,
+                "intensityAndTyphoonClass": "Tropical Depression"
+            },
+            "centerPart": {
+                "coordinateLat": null,
+                "coordinateLon": null,
+                "probabilityCircle": {
+                    "basePointLat": "16.3N",
+                    "basePointLon": "136.8E",
+                    "axis": {
+                        "direction": "ALL",
+                        "radiusNm": "55",
+                        "radiusKm": "100"
+                    }
+                },
+                "direction": "W",
+                "speedKnot": "9",
+                "speedKmH": "15",
+                "pressure": "1004"
+            },
+            "windPart": {
+                "windSpeedKnot": "30",
+                "windSpeedKnotCondition": "中心付近",
+                "windSpeedMS": "15",
+                "windSpeedMSCondition": "中心付近",
+                "windGustSpeedKnot": "45",
+                "windGustSpeedMS": "23"
+            },
+            "warningAreaPart50": [
+                {
+                    "direction": "ALL",
+                    "radiusNm": "",
+                    "radiusKm": ""
+                }
+            ],
+            "warningAreaPart30": null
+        },
+        {
+            "dateTime": "2026/09/24 09:00",
+            "classPart": {
+                "typhoonClass": "TS",
+                "typhoonClassName": "Tropical Storm",
+                "areaClass": null,
+                "intensityAndTyphoonClass": "Tropical Storm"
+            },
+            "centerPart": {
+                "coordinateLat": null,
+                "coordinateLon": null,
+                "probabilityCircle": {
+                    "basePointLat": "16.8N",
+                    "basePointLon": "134.8E",
+                    "axis": {
+                        "direction": "ALL",
+                        "radiusNm": "70",
+                        "radiusKm": "130"
+                    }
+                },
+                "direction": "W",
+                "speedKnot": "10",
+                "speedKmH": "20",
+                "pressure": "1002"
+            },
+            "windPart": {
+                "windSpeedKnot": "35",
+                "windSpeedKnotCondition": "中心付近",
+                "windSpeedMS": "18",
+                "windSpeedMSCondition": "中心付近",
+                "windGustSpeedKnot": "50",
+                "windGustSpeedMS": "25"
+            },
+            "warningAreaPart50": [
+                {
+                    "direction": "ALL",
+                    "radiusNm": "",
+                    "radiusKm": ""
+                }
+            ],
+            "warningAreaPart30": null
+        },
+        {
+            "dateTime": "2026/09/25 09:00",
+            "classPart": {
+                "typhoonClass": "TS",
+                "typhoonClassName": "Tropical Storm",
+                "areaClass": null,
+                "intensityAndTyphoonClass": "Tropical Storm"
+            },
+            "centerPart": {
+                "coordinateLat": null,
+                "coordinateLon": null,
+                "probabilityCircle": {
+                    "basePointLat": "17.8N",
+                    "basePointLon": "130.8E",
+                    "axis": {
+                        "direction": "ALL",
+                        "radiusNm": "110",
+                        "radiusKm": "200"
+                    }
+                },
+                "direction": "WNW",
+                "speedKnot": "10",
+                "speedKmH": "20",
+                "pressure": "998"
+            },
+            "windPart": {
+                "windSpeedKnot": "40",
+                "windSpeedKnotCondition": "中心付近",
+                "windSpeedMS": "20",
+                "windSpeedMSCondition": "中心付近",
+                "windGustSpeedKnot": "60",
+                "windGustSpeedMS": "30"
+            },
+            "warningAreaPart50": [
+                {
+                    "direction": "ALL",
+                    "radiusNm": "",
+                    "radiusKm": ""
+                }
+            ],
+            "warningAreaPart30": null
+        },
+        {
+            "dateTime": "2026/09/26 09:00",
+            "classPart": {
+                "typhoonClass": "STS",
+                "typhoonClassName": "Severe Tropical Storm",
+                "areaClass": null,
+                "intensityAndTyphoonClass": "Severe Tropical Storm"
+            },
+            "centerPart": {
+                "coordinateLat": null,
+                "coordinateLon": null,
+                "probabilityCircle": {
+                    "basePointLat": "19.3N",
+                    "basePointLon": "127.4E",
+                    "axis": {
+                        "direction": "ALL",
+                        "radiusNm": "140",
+                        "radiusKm": "260"
+                    }
+                },
+                "direction": "WNW",
+                "speedKnot": "9",
+                "speedKmH": "15",
+                "pressure": "990"
+            },
+            "windPart": {
+                "windSpeedKnot": "50",
+                "windSpeedKnotCondition": "中心付近",
+                "windSpeedMS": "25",
+                "windSpeedMSCondition": "中心付近",
+                "windGustSpeedKnot": "70",
+                "windGustSpeedMS": "35"
+            },
+            "warningAreaPart50": [
+                {
+                    "direction": "ALL",
+                    "radiusNm": "",
+                    "radiusKm": ""
+                }
+            ],
+            " ": null
+        },
+        {
+            "dateTime": "2026/09/27 09:00",
+            "classPart": {
+                "typhoonClass": "STS",
+                "typhoonClassName": "Severe Tropical Storm",
+                "areaClass": null,
+                "intensityAndTyphoonClass": "Severe Tropical Storm"
+            },
+            "centerPart": {
+                "coordinateLat": null,
+                "coordinateLon": null,
+                "probabilityCircle": {
+                    "basePointLat": "20.6N",
+                    "basePointLon": "125.8E",
+                    "axis": {
+                        "direction": "ALL",
+                        "radiusNm": "180",
+                        "radiusKm": "330"
+                    }
+                },
+                "direction": "NW",
+                "speedKnot": "Slow",
+                "speedKmH": "Slow",
+                "pressure": "980"
+            },
+            "windPart": {
+                "windSpeedKnot": "60",
+                "windSpeedKnotCondition": "中心付近",
+                "windSpeedMS": "30",
+                "windSpeedMSCondition": "中心付近",
+                "windGustSpeedKnot": "85",
+                "windGustSpeedMS": "45"
+            },
+            "warningAreaPart50": [
+                {
+                    "direction": "ALL",
+                    "radiusNm": "220",
+                    "radiusKm": "410"
+                }
+            ],
+            "warningAreaPart30": null
+        },
+        {
+            "dateTime": "2026/09/28 09:00",
+            "classPart": {
+                "typhoonClass": "TY",
+                "typhoonClassName": "Typhoon",
+                "areaClass": null,
+                "intensityAndTyphoonClass": "Typhoon"
+            },
+            "centerPart": {
+                "coordinateLat": null,
+                "coordinateLon": null,
+                "probabilityCircle": {
+                    "basePointLat": "22.0N",
+                    "basePointLon": "124.7E",
+                    "axis": {
+                        "direction": "ALL",
+                        "radiusNm": "240",
+                        "radiusKm": "440"
+                    }
+                },
+                "direction": "NW",
+                "speedKnot": "Slow",
+                "speedKmH": "Slow",
+                "pressure": "970"
+            },
+            "windPart": {
+                "windSpeedKnot": "70",
+                "windSpeedKnotCondition": "中心付近",
+                "windSpeedMS": "35",
+                "windSpeedMSCondition": "中心付近",
+                "windGustSpeedKnot": "100",
+                "windGustSpeedMS": "50"
+            },
+            "warningAreaPart50": [
+                {
+                    "direction": "ALL",
+                    "radiusNm": "290",
+                    "radiusKm": "540"
+                }
+            ],
+            "warningAreaPart30": null
+        }
+    ]
+}
