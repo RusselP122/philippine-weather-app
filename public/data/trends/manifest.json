@@ -29,7 +29,7 @@
       "wide": "/data/trends/base_15day_dist_20260922_12_6_wide.png"
     }
   ],
-  "large_5day_cycle": "2026-09-22 18:00",
+  "large_5day_cycle": "2026-09-23 00:00",
   "large_5day": [
     {
       "id": "91W",
@@ -38,25 +38,57 @@
       "trackCount": 1000,
       "standard": "/data/trends/large_5day_91W_standard.png",
       "wide": "/data/trends/large_5day_91W_wide.png"
+    },
+    {
+      "id": "dist_20260922_00_3",
+      "local_id": 2,
+      "name": "Disturbance 2",
+      "trackCount": 106,
+      "standard": "/data/trends/large_5day_dist_20260922_00_3_standard.png",
+      "wide": "/data/trends/large_5day_dist_20260922_00_3_wide.png"
     }
   ],
-  "large_15day_cycle": "2026-09-22 18:00",
+  "large_15day_cycle": "2026-09-23 00:00",
   "large_15day": [
     {
       "id": "91W",
       "local_id": 1,
       "name": "Invest 91W",
-      "trackCount": 997,
+      "trackCount": 1000,
       "standard": "/data/trends/large_15day_91W_standard.png",
       "wide": "/data/trends/large_15day_91W_wide.png"
+    },
+    {
+      "id": "dist_20260922_00_4",
+      "local_id": 2,
+      "name": "Disturbance 2",
+      "trackCount": 106,
+      "standard": "/data/trends/large_15day_dist_20260922_00_4_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260922_00_4_wide.png"
     },
     {
       "id": "dist_20260922_06_5",
       "local_id": 3,
       "name": "Disturbance 3",
-      "trackCount": 239,
+      "trackCount": 864,
       "standard": "/data/trends/large_15day_dist_20260922_06_5_standard.png",
       "wide": "/data/trends/large_15day_dist_20260922_06_5_wide.png"
+    },
+    {
+      "id": "dist_20260923_00_4",
+      "local_id": 4,
+      "name": "Disturbance 4",
+      "trackCount": 314,
+      "standard": "/data/trends/large_15day_dist_20260923_00_4_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260923_00_4_wide.png"
+    },
+    {
+      "id": "dist_20260923_00_5",
+      "local_id": 5,
+      "name": "Disturbance 5",
+      "trackCount": 259,
+      "standard": "/data/trends/large_15day_dist_20260923_00_5_standard.png",
+      "wide": "/data/trends/large_15day_dist_20260923_00_5_wide.png"
     }
   ]
 }
