@@ -1,27 +1,18 @@
 {
   "active": true,
-  "storm_name": "Invest 91W",
-  "track_id": "WP912026",
+  "storm_name": "TC 25W (Invest 91W)",
+  "track_id": "WP252026",
   "latest": {
-    "lat": 15.1,
-    "lon": 139.0,
-    "pressure_hpa": 1008.0,
-    "wind_kt": 19.0,
-    "wind_kmh": 35,
-    "movement": "NW at 16.8 km/h (9.1 kt)",
-    "init_time": "2026-09-23 00:00",
-    "category": "Low Pressure Area"
+    "lat": 16.0,
+    "lon": 138.4,
+    "pressure_hpa": 1005.0,
+    "wind_kt": 25.0,
+    "wind_kmh": 46,
+    "movement": "NNW at 19.8 km/h (10.7 kt)",
+    "init_time": "2026-09-23 06:00",
+    "category": "Tropical Depression"
   },
   "history": [
-    {
-      "cycle": "2026-09-22 00:00",
-      "lat": 12.5,
-      "lon": 142.2,
-      "pressure_hpa": 1006.0,
-      "wind_kt": 19.0,
-      "wind_kmh": 35,
-      "category": "Low Pressure Area"
-    },
     {
       "cycle": "2026-09-22 06:00",
       "lat": 13.0,
@@ -57,6 +48,15 @@
       "wind_kt": 19.0,
       "wind_kmh": 35,
       "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-09-23 06:00",
+      "lat": 16.0,
+      "lon": 138.4,
+      "pressure_hpa": 1005.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
     }
   ]
 }
