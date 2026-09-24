@@ -1,11 +1,11 @@
 [
   {
     "track_id": "WP252026",
-    "storm_name": "TC 25W (Invest 91W)",
+    "storm_name": "TC 25W",
     "active": true,
-    "last_updated": "2026-09-24 00:00",
-    "latest_lat": 18.2,
-    "latest_lon": 134.3,
+    "last_updated": "2026-09-24 06:00",
+    "latest_lat": 18.9,
+    "latest_lon": 133.1,
     "category": "Tropical Storm"
   },
   {
