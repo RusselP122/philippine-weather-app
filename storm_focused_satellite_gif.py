@@ -64,6 +64,13 @@ PAGASA_NAMES_2026 = [
     "UMBERTO", "VENUS", "WALDO", "YAYANG", "ZENY"
 ]
 
+PAGASA_STORM_MAP_2026 = {
+    '25W': 'QUEENIE',
+    'WP25': 'QUEENIE',
+    'WP252026': 'QUEENIE',
+    'SURIGAE': 'QUEENIE',
+}
+
 def is_point_inside_par(lat, lon):
     """
     Checks if a geographic point (lat, lon) is within the Philippine Area of Responsibility (PAR).
@@ -141,11 +148,13 @@ def format_system_display_name(storm_data):
     ]
     intl_name = raw_name.title() if (raw_name and raw_name not in ignored_names) else None
 
-    # Check for assigned PAGASA name when inside PAR
+    # Check for assigned PAGASA name
     pagasa_name = storm_data.get("pagasa_name")
-    if not pagasa_name and inside_par and not is_invest:
-        if 1 <= num_val <= len(PAGASA_NAMES_2026):
-            pagasa_name = PAGASA_NAMES_2026[num_val - 1]
+    if not pagasa_name and not is_invest:
+        pagasa_name = (
+            PAGASA_STORM_MAP_2026.get(short_id.upper()) or 
+            PAGASA_STORM_MAP_2026.get(raw_name.upper())
+        )
 
     classification = get_storm_classification_label(wind_kt, is_invest=is_invest)
 

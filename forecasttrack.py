@@ -2348,6 +2348,14 @@ PAGASA_NAMES_2026 = [
     "UMBERTO", "VENUS", "WALDO", "YAYANG", "ZENY"
 ]
 
+# Official mapping of 2026 Western Pacific systems to PAGASA local names
+PAGASA_STORM_MAP_2026 = {
+    '25W': 'QUEENIE',
+    'WP25': 'QUEENIE',
+    'WP252026': 'QUEENIE',
+    'SURIGAE': 'QUEENIE',
+}
+
 
 def is_point_inside_par(lat, lon):
     """
@@ -2373,10 +2381,10 @@ def is_point_inside_par(lat, lon):
 def format_storm_title(storm):
     """
     Standardizes storm titles across all charts:
-    - Inside PAR with international name: 'Neneng (Saudel)'
-    - Inside PAR without international name: 'Neneng (17W)' or 'Neneng (94W)'
-    - Outside PAR with international name: 'Saudel (17W)'
-    - Outside PAR without international name: '94W', '95W', '17W'
+    - Inside PAR with international name: 'Queenie (Surigae)'
+    - Inside PAR without international name: 'Queenie (25W)'
+    - Outside PAR with international name: 'Surigae (25W)'
+    - Outside PAR without international name: '25W'
     """
     raw_id = storm.get('atcf_id', '')
     short_id = get_short_atcf_id(raw_id)
@@ -2385,12 +2393,15 @@ def format_storm_title(storm):
     curr_lon = float(storm.get('lon', 0))
     inside_par = is_point_inside_par(curr_lat, curr_lon)
     
-    # Valid named storms (e.g. SAUDEL, NENENG, YAGI, etc.)
+    # Valid named storms (e.g. SURIGAE, QUEENIE, DUJUAN, YAGI, etc.)
     ignored_names = [
         "INVEST", "NONAME", "UNKNOWN", "STORM", "NULL", "NONE", "LPA", "LOW PRESSURE AREA", "",
         "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN",
         "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN", "FIFTEEN", "SIXTEEN", "SEVENTEEN",
-        "EIGHTEEN", "NINETEEN", "TWENTY", "TWENTY-ONE", "TWENTY-TWO"
+        "EIGHTEEN", "NINETEEN", "TWENTY", "TWENTY-ONE", "TWENTY-TWO", "TWENTY-THREE",
+        "TWENTY-FOUR", "TWENTY-FIVE", "TWENTYFIVE", "TWENTY-SIX", "TWENTYSIX",
+        "TWENTY-SEVEN", "TWENTYSEVEN", "TWENTY-EIGHT", "TWENTYEIGHT", "TWENTY-NINE",
+        "TWENTYNINE", "THIRTY", "THIRTY-ONE", "THIRTYONE"
     ]
     
     intl_name = None
@@ -2398,19 +2409,23 @@ def format_storm_title(storm):
         intl_name = raw_name.title()
         
     p_name = storm.get('pagasa_name')
-    if not p_name and inside_par:
-        # Check if mapped to a 2026 PAGASA name
-        nums = ''.join(filter(str.isdigit, short_id))
-        if nums:
-            n_val = int(nums)
-            if 1 <= n_val <= len(PAGASA_NAMES_2026):
-                p_name = PAGASA_NAMES_2026[n_val - 1]
+    if not p_name:
+        p_name = (
+            PAGASA_STORM_MAP_2026.get(short_id.upper()) or
+            PAGASA_STORM_MAP_2026.get(str(storm.get('atcf_id', '')).upper()) or
+            PAGASA_STORM_MAP_2026.get(str(storm.get('name', '')).upper())
+        )
                 
-    if p_name:
-        p_name_fmt = p_name.strip().title()
-        if inside_par:
+    if p_name and str(p_name).strip().upper() not in ignored_names:
+        p_name_fmt = str(p_name).strip().title()
+        if inside_par or short_id.upper() in PAGASA_STORM_MAP_2026:
             if intl_name:
                 return f"{p_name_fmt} ({intl_name})"
+            else:
+                return f"{p_name_fmt} ({short_id})"
+        else:
+            if intl_name:
+                return f"{intl_name} ({short_id})"
             else:
                 return f"{p_name_fmt} ({short_id})"
                 

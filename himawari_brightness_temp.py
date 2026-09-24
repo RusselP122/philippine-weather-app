@@ -58,6 +58,13 @@ PAGASA_NAMES_2026 = [
     "UMBERTO", "VENUS", "WALDO", "YAYANG", "ZENY"
 ]
 
+PAGASA_STORM_MAP_2026 = {
+    '25W': 'QUEENIE',
+    'WP25': 'QUEENIE',
+    'WP252026': 'QUEENIE',
+    'SURIGAE': 'QUEENIE',
+}
+
 def is_point_inside_par(lat, lon):
     poly = [(115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0), (135.0, 25.0), (135.0, 5.0)]
     n = len(poly)
@@ -119,9 +126,11 @@ def format_system_title(storm_data):
     intl_name = raw_name.title() if (raw_name and raw_name not in ignored_names) else None
 
     pagasa_name = storm_data.get("pagasa_name")
-    if not pagasa_name and inside_par and not is_invest:
-        if 1 <= num_val <= len(PAGASA_NAMES_2026):
-            pagasa_name = PAGASA_NAMES_2026[num_val - 1]
+    if not pagasa_name and not is_invest:
+        pagasa_name = (
+            PAGASA_STORM_MAP_2026.get(short_id.upper()) or 
+            PAGASA_STORM_MAP_2026.get(raw_name.upper())
+        )
 
     classification = get_storm_classification_label(wind_kt, is_invest=is_invest)
 
