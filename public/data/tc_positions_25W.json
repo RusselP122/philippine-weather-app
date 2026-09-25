@@ -3,14 +3,14 @@
   "storm_name": "TC 25W",
   "track_id": "WP252026",
   "latest": {
-    "lat": 20.7,
-    "lon": 129.3,
-    "pressure_hpa": 1003.0,
-    "wind_kt": 45.0,
-    "wind_kmh": 83,
-    "movement": "WNW at 28.5 km/h (15.4 kt)",
-    "init_time": "2026-09-25 06:00",
-    "category": "Tropical Storm"
+    "lat": 21.4,
+    "lon": 128.2,
+    "pressure_hpa": 998.0,
+    "wind_kt": 51.0,
+    "wind_kmh": 94,
+    "movement": "NW at 23.0 km/h (12.4 kt)",
+    "init_time": "2026-09-25 12:00",
+    "category": "Severe Tropical Storm"
   },
   "history": [
     {
@@ -129,6 +129,15 @@
       "wind_kt": 45.0,
       "wind_kmh": 83,
       "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-09-25 12:00",
+      "lat": 21.4,
+      "lon": 128.2,
+      "pressure_hpa": 998.0,
+      "wind_kt": 51.0,
+      "wind_kmh": 94,
+      "category": "Severe Tropical Storm"
     }
   ]
 }
