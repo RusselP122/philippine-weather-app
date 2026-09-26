@@ -467,11 +467,271 @@ def fetch_knack_atcf_storms():
 
     return storms
 
-# ── Storm Focus Extent Calculator ───────────────────────────────────────────
-def calculate_storm_focus_extent(c_lat, c_lon, lon_span=26.0, target_aspect=0.72):
+# ── Load Storm from Local Positions Dataset ──────────────────────────────────
+def load_storm_from_local_positions(target_str):
+    """
+    Attempts to load storm metadata from local public/data/tc_positions_{target_str}.json
+    or matching WP{num}2026.json if live ATCF feed does not contain it.
+    """
+    t_clean = re.sub(r'[^a-zA-Z0-9]', '', str(target_str).upper())
+    m = re.search(r'(\d{2})', t_clean)
+    num_str = m.group(1) if m else ''
+    now_year = datetime.datetime.now(datetime.timezone.utc).year
+    candidates = [
+        f"public/data/tc_positions_{t_clean}.json",
+        f"public/data/tc_positions_{t_clean}W.json",
+        f"public/data/tc_positions_WP{num_str}{now_year}.json" if num_str else None,
+        f"public/data/tc_positions_{num_str}W.json" if num_str else None,
+    ]
+    for c in filter(None, candidates):
+        if os.path.exists(c):
+            try:
+                with open(c, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                latest = data.get("latest", {})
+                return {
+                    "atcf_id": data.get("track_id", t_clean),
+                    "long_atcf_id": data.get("track_id", t_clean).lower(),
+                    "storm_name": data.get("storm_name", t_clean),
+                    "lat": float(latest.get("lat", 15.0)),
+                    "lon": float(latest.get("lon", 130.0)),
+                    "wind_kt": float(latest.get("wind_kt", 35.0)),
+                    "pressure_hpa": float(latest.get("pressure_hpa", 1000.0)),
+                    "nature": "TS",
+                    "basin": "WPAC",
+                    "analysis_time": latest.get("init_time", "Latest"),
+                }
+            except Exception:
+                pass
+    return None
+
+# ── Storm Track Timeline Extraction & Frame-by-Frame Interpolation ───────────
+def get_storm_track_timeline(storm_data):
+    """
+    Builds a unified chronological timeline combining:
+    1. Historical best-track fixes from local tc_positions_*.json (or GitHub remote)
+    2. Current operational fix from storm_data
+    3. Official JTWC forecast track points from public/data/jtwc_wp*.tcw
+    Each timeline entry: {'time': datetime, 'lat': float, 'lon': float, 'wind_kt': float, 'pressure_hpa': float, 'type': str}
+    """
+    if not storm_data:
+        return []
+
+    atcf_id = str(storm_data.get('atcf_id', '')).strip().upper()
+    m = re.search(r'(\d{2}[A-Z]?)', atcf_id)
+    short_id = m.group(1) if m else atcf_id
+    if short_id and not (short_id.endswith('W') or short_id.endswith('E') or short_id.endswith('C')):
+        short_id += 'W'
+    num_match = re.search(r'(\d{2})', short_id)
+    num_str = num_match.group(1) if num_match else ''
+
+    timeline = []
+    seen_times = set()
+
+    # 1. Check local tc_positions_{short_id}.json / WP{num}2026.json
+    now_year = datetime.datetime.now(datetime.timezone.utc).year
+    candidates = [
+        os.path.join('public', 'data', f'tc_positions_{short_id}.json'),
+        os.path.join('public', 'data', f'tc_positions_WP{num_str}{now_year}.json') if num_str else None,
+        os.path.join('public', 'data', f'tc_positions_{atcf_id}.json'),
+    ]
+    loaded = False
+    for c in filter(None, candidates):
+        if os.path.exists(c):
+            try:
+                with open(c, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    for item in data.get('history', []):
+                        cyc_str = item.get('cycle')
+                        if not cyc_str:
+                            continue
+                        t = datetime.datetime.strptime(cyc_str, '%Y-%m-%d %H:%M').replace(tzinfo=datetime.timezone.utc)
+                        timeline.append({
+                            'time': t,
+                            'lat': float(item['lat']),
+                            'lon': float(item['lon']),
+                            'wind_kt': float(item.get('wind_kt', 0)),
+                            'pressure_hpa': float(item.get('pressure_hpa', 1008)),
+                            'type': 'history'
+                        })
+                        seen_times.add(t)
+                    loaded = True
+                    break
+            except Exception:
+                pass
+
+    # Remote GitHub fallback if local not found
+    if not loaded and short_id:
+        remote_url = f"https://raw.githubusercontent.com/RusselP122/philippine-weather-app/main/public/data/tc_positions_{short_id}.json"
+        try:
+            r = _HTTP_SESSION.get(remote_url, timeout=4)
+            if r.status_code == 200:
+                data = r.json()
+                for item in data.get('history', []):
+                    cyc_str = item.get('cycle')
+                    if not cyc_str:
+                        continue
+                    t = datetime.datetime.strptime(cyc_str, '%Y-%m-%d %H:%M').replace(tzinfo=datetime.timezone.utc)
+                    timeline.append({
+                        'time': t,
+                        'lat': float(item['lat']),
+                        'lon': float(item['lon']),
+                        'wind_kt': float(item.get('wind_kt', 0)),
+                        'pressure_hpa': float(item.get('pressure_hpa', 1008)),
+                        'type': 'history'
+                    })
+                    seen_times.add(t)
+        except Exception:
+            pass
+
+    # 2. Add current storm analysis fix if available
+    cur_lat = storm_data.get('lat')
+    cur_lon = storm_data.get('lon')
+    if cur_lat is not None and cur_lon is not None:
+        analysis_time = storm_data.get('analysis_time')
+        cur_t = None
+        if analysis_time:
+            clean_time_str = str(analysis_time).strip()
+            for fmt in ['%Y-%m-%d %H:%M', '%Y%m%d%H%M', '%Y%m%d%H']:
+                try:
+                    cur_t = datetime.datetime.strptime(clean_time_str, fmt).replace(tzinfo=datetime.timezone.utc)
+                    break
+                except Exception:
+                    pass
+            if not cur_t:
+                try:
+                    cur_t = datetime.datetime.fromisoformat(clean_time_str.replace('Z', '+00:00'))
+                except Exception:
+                    pass
+
+        if not cur_t:
+            cur_t = datetime.datetime.now(datetime.timezone.utc).replace(minute=0, second=0, microsecond=0)
+
+        if cur_t not in seen_times:
+            timeline.append({
+                'time': cur_t,
+                'lat': float(cur_lat),
+                'lon': float(cur_lon),
+                'wind_kt': float(storm_data.get('wind_kt', 0)),
+                'pressure_hpa': float(storm_data.get('pressure_hpa', 1008)),
+                'type': 'analysis'
+            })
+            seen_times.add(cur_t)
+
+    # 3. Add JTWC forecast points from .tcw if available
+    year_short = str(now_year)[-2:]
+    tcw_file = os.path.join('public', 'data', f'jtwc_wp{num_str}{year_short}.tcw')
+    if os.path.exists(tcw_file):
+        try:
+            with open(tcw_file, 'r', encoding='utf-8', errors='ignore') as f:
+                tcw_text = f.read()
+            base_m = re.search(r'(\d{10})\s+\d{2}[A-Z]\s+[A-Z]+', tcw_text)
+            if base_m:
+                base_dt = datetime.datetime.strptime(base_m.group(1), '%Y%m%d%H').replace(tzinfo=datetime.timezone.utc)
+                matches = re.findall(r'T(\d{3})\s+(\d{3}[NS])\s+(\d{4}[EW])\s+(\d{3})', tcw_text)
+                for tau, lat_s, lon_s, w_s in matches:
+                    tau_h = int(tau)
+                    pt_time = base_dt + datetime.timedelta(hours=tau_h)
+                    if pt_time not in seen_times:
+                        lat_val = float(lat_s[:-1]) / 10.0 * (-1 if lat_s[-1] == 'S' else 1)
+                        lon_val = float(lon_s[:-1]) / 10.0 * (-1 if lon_s[-1] == 'W' else 1)
+                        wind_kt = float(w_s)
+                        timeline.append({
+                            'time': pt_time,
+                            'lat': lat_val,
+                            'lon': lon_val,
+                            'wind_kt': wind_kt,
+                            'pressure_hpa': max(890.0, 1010.0 - (wind_kt * 0.8)),
+                            'type': 'forecast'
+                        })
+                        seen_times.add(pt_time)
+        except Exception:
+            pass
+
+    timeline.sort(key=lambda x: x['time'])
+    return timeline
+
+def interpolate_storm_state(timeline, target_time, fallback_storm_data):
+    """
+    Interpolates storm coordinates and intensity (lat, lon, wind_kt, pressure_hpa)
+    at the given target_time based on the timeline.
+    """
+    if not timeline:
+        return fallback_storm_data
+
+    # Target earlier than earliest point: clamp to earliest point
+    if target_time <= timeline[0]['time']:
+        pt = timeline[0]
+        res = dict(fallback_storm_data)
+        res['lat'] = pt['lat']
+        res['lon'] = pt['lon']
+        res['wind_kt'] = pt['wind_kt']
+        res['pressure_hpa'] = pt['pressure_hpa']
+        return res
+
+    # Target later than latest point: clamp to latest point
+    if target_time >= timeline[-1]['time']:
+        pt = timeline[-1]
+        res = dict(fallback_storm_data)
+        res['lat'] = pt['lat']
+        res['lon'] = pt['lon']
+        res['wind_kt'] = pt['wind_kt']
+        res['pressure_hpa'] = pt['pressure_hpa']
+        return res
+
+    # Between two track points: linear interpolation
+    for i in range(len(timeline) - 1):
+        t1 = timeline[i]['time']
+        t2 = timeline[i+1]['time']
+        if t1 <= target_time <= t2:
+            dt_total = (t2 - t1).total_seconds()
+            alpha = (target_time - t1).total_seconds() / dt_total if dt_total > 0 else 0.0
+            
+            p1 = timeline[i]
+            p2 = timeline[i+1]
+            interp_lat = p1['lat'] + alpha * (p2['lat'] - p1['lat'])
+            interp_lon = p1['lon'] + alpha * (p2['lon'] - p1['lon'])
+            interp_wind = p1['wind_kt'] + alpha * (p2['wind_kt'] - p1['wind_kt'])
+            interp_press = p1['pressure_hpa'] + alpha * (p2['pressure_hpa'] - p1['pressure_hpa'])
+
+            res = dict(fallback_storm_data)
+            res['lat'] = round(interp_lat, 2)
+            res['lon'] = round(interp_lon, 2)
+            res['wind_kt'] = round(interp_wind, 1)
+            res['pressure_hpa'] = round(interp_press, 1)
+            return res
+
+    return fallback_storm_data
+
+# ── Storm Focus Extent Calculator with Full-Bleed Aspect Ratio Fitting ──────
+def fit_extent_to_aspect(extent, aspect_ratio=10.0/7.5):
+    """
+    Ensures [min_lon, max_lon, min_lat, max_lat] strictly matches the canvas
+    aspect ratio (lon_span / lat_span == aspect_ratio) so Cartopy renders 100%
+    edge-to-edge full-bleed with zero black borders/bars on any side.
+    """
+    min_lon, max_lon, min_lat, max_lat = extent
+    c_lon = (min_lon + max_lon) / 2.0
+    c_lat = (min_lat + max_lat) / 2.0
+    lon_span = max_lon - min_lon
+    lat_span = max_lat - min_lat
+
+    current_aspect = lon_span / lat_span
+    if current_aspect < aspect_ratio:
+        target_lon_span = lat_span * aspect_ratio
+        min_lon = c_lon - target_lon_span / 2.0
+        max_lon = c_lon + target_lon_span / 2.0
+    elif current_aspect > aspect_ratio:
+        target_lat_span = lon_span / aspect_ratio
+        min_lat = c_lat - target_lat_span / 2.0
+        max_lat = c_lat + target_lat_span / 2.0
+
+    return [min_lon, max_lon, min_lat, max_lat]
+
+def calculate_storm_focus_extent(c_lat, c_lon, lon_span=26.0, target_aspect=0.75):
     """
     Calculates dynamic extent focused on given center coordinates (c_lat, c_lon).
-    Default lon_span is ~26 degrees with ~18.7 degrees lat span (4:3 aspect ratio).
+    Default lon_span is ~26 degrees with ~19.5 degrees lat span (4:3 aspect ratio).
     """
     min_lon = c_lon - lon_span / 2.0
     max_lon = c_lon + lon_span / 2.0
@@ -484,12 +744,7 @@ def calculate_storm_focus_extent(c_lat, c_lon, lon_span=26.0, target_aspect=0.72
         min_lat += shift
         max_lat += shift
 
-    min_lon = max(80.0, min_lon)
-    max_lon = min(180.0, max_lon)
-    min_lat = max(0.0, min_lat)
-    max_lat = min(60.0, max_lat)
-
-    return [min_lon, max_lon, min_lat, max_lat]
+    return fit_extent_to_aspect([max(80.0, min_lon), min(180.0, max_lon), max(0.0, min_lat), min(60.0, max_lat)], 1.0 / target_aspect)
 
 # ── Render a Single Storm-Focused Frame ──────────────────────────────────────
 def render_storm_frame(
@@ -578,10 +833,14 @@ def generate_single_storm_gif(
     fps=8,
     dpi=120,
     zoom_level=6,
-    last_frame_pause_sec=1.5
+    last_frame_pause_sec=1.5,
+    lon_span=26.0,
+    track_storm=True
 ):
     """
     Renders an animated GIF loop for a given storm extent with the Fox Weather broadcast header.
+    When track_storm is True, dynamically centers the camera window frame-by-frame on the
+    interpolated storm center coordinates across the entire loop timeframe.
     """
     print(f"\n--- Generating GIF for: {storm_label} ---")
     print(f"Timeframe: Past {timeframe_hours:.1f} hours | Interval: {interval_mins} mins | FPS: {fps}")
@@ -589,6 +848,13 @@ def generate_single_storm_gif(
     now_utc = get_latest_available_satellite_time()
     end_utc = now_utc
     start_utc = end_utc - datetime.timedelta(hours=timeframe_hours)
+
+    timeline = get_storm_track_timeline(storm_data) if (storm_data and track_storm) else []
+    if timeline and len(timeline) > 1 and track_storm:
+        print(f"Dynamic Storm Tracking: Active ({len(timeline)} track points from {timeline[0]['time'].strftime('%Y-%m-%d %H:%MZ')} to {timeline[-1]['time'].strftime('%Y-%m-%d %H:%MZ')})")
+        print("Camera window will track storm center frame-by-frame across the loop.")
+    elif track_storm and storm_data:
+        print("Dynamic Storm Tracking: Static coordinates (insufficient historical track points).")
 
     current_t = start_utc
     timestamps = []
@@ -603,12 +869,21 @@ def generate_single_storm_gif(
 
     frames = []
     for idx, t_utc in enumerate(timestamps):
-        print(f"[{idx + 1}/{total_frames}] Rendering frame: {t_utc.strftime('%Y-%m-%d %H:%MZ')}...", end="\r", flush=True)
+        if timeline and track_storm:
+            cur_storm_data = interpolate_storm_state(timeline, t_utc, storm_data)
+            cur_extent = calculate_storm_focus_extent(cur_storm_data["lat"], cur_storm_data["lon"], lon_span=lon_span)
+            pos_info = f"({cur_storm_data['lat']:.1f}N, {cur_storm_data['lon']:.1f}E)"
+        else:
+            cur_storm_data = storm_data
+            cur_extent = extent
+            pos_info = ""
+
+        print(f"[{idx + 1}/{total_frames}] Rendering frame: {t_utc.strftime('%Y-%m-%d %H:%MZ')} {pos_info}...", end="\r", flush=True)
 
         frame_img = render_storm_frame(
             dt_utc=t_utc,
-            extent=extent,
-            storm_data=storm_data,
+            extent=cur_extent,
+            storm_data=cur_storm_data,
             figsize=(10.0, 7.5),
             dpi=dpi,
             zoom_level=zoom_level
@@ -681,11 +956,13 @@ def process_storms(
     dpi=120,
     generate_gif=True,
     generate_both=True,
-    output_custom=None
+    output_custom=None,
+    track_storm=True
 ):
     print("=" * 70)
     mode_str = "GIF Loop + Static PNG" if generate_both else ("GIF Loop" if generate_gif else "Static PNG")
-    print(f"Storm-Focused Satellite Generator ({mode_str}) [Fox Weather Broadcast Theme]")
+    track_str = "Frame-by-Frame Camera Tracking: ENABLED" if track_storm else "Camera: FIXED"
+    print(f"Storm-Focused Satellite Generator ({mode_str}) [{track_str}]")
     print("=" * 70)
 
     # 1. Check if user specified custom coordinates
@@ -703,22 +980,15 @@ def process_storms(
             out_gif = output_custom.replace(".png", ".gif") if output_custom else f"storm_focused_{label}.gif"
             generate_single_storm_gif(
                 out_gif, extent, storm_data=custom_storm, storm_label=label,
-                timeframe_hours=timeframe_hours, interval_mins=interval_mins, fps=fps, dpi=dpi
+                timeframe_hours=timeframe_hours, interval_mins=interval_mins, fps=fps, dpi=dpi,
+                lon_span=lon_span, track_storm=False
             )
         return
 
     # 2. Fetch active storms from Knack ATCF API
     storms = fetch_knack_atcf_storms()
     if not storms:
-        print("Notice: No active storms detected. Using default Philippine Sea focus.")
-        storms = [{
-            "atcf_id": "WPAC",
-            "storm_name": "WESTERN PACIFIC",
-            "lat": 14.0,
-            "lon": 135.0,
-            "wind_kt": 30.0,
-            "pressure_hpa": 1004.0
-        }]
+        print("Notice: No active storms detected in live ATCF feed.")
 
     # 3. Filter target storm if user passed --storm
     if target_storm:
@@ -731,10 +1001,34 @@ def process_storms(
             storms_to_process = matched
             print(f"Targeting specified storm: {matched[0]['storm_name']} ({matched[0]['atcf_id']})")
         else:
-            print(f"Warning: Storm '{target_storm}' not found in active list. Processing all active storms.")
-            storms_to_process = storms
+            local_storm = load_storm_from_local_positions(target_str)
+            if local_storm:
+                storms_to_process = [local_storm]
+                print(f"Targeting storm from local dataset: {local_storm['storm_name']} ({local_storm['atcf_id']})")
+            else:
+                if storms:
+                    print(f"Warning: Storm '{target_storm}' not found in active list or local datasets. Processing all active storms.")
+                    storms_to_process = storms
+                else:
+                    print(f"Notice: Using default Philippine Sea focus for '{target_storm}'.")
+                    storms_to_process = [{
+                        "atcf_id": target_str,
+                        "storm_name": target_str,
+                        "lat": 15.0,
+                        "lon": 130.0,
+                        "wind_kt": 30.0,
+                        "pressure_hpa": 1004.0
+                    }]
     else:
-        # Default: Process ALL active storms!
+        if not storms:
+            storms = [{
+                "atcf_id": "WPAC",
+                "storm_name": "WESTERN PACIFIC",
+                "lat": 14.0,
+                "lon": 135.0,
+                "wind_kt": 30.0,
+                "pressure_hpa": 1004.0
+            }]
         storms_to_process = storms
         print(f"\nProcessing all {len(storms_to_process)} active storms:")
         for i, st in enumerate(storms_to_process):
@@ -789,7 +1083,9 @@ def process_storms(
                 timeframe_hours=timeframe_hours,
                 interval_mins=interval_mins,
                 fps=fps,
-                dpi=dpi
+                dpi=dpi,
+                lon_span=lon_span,
+                track_storm=track_storm
             )
             generated_gifs.append(gif_file)
 
@@ -828,6 +1124,7 @@ def main():
     parser.add_argument("--fps", type=int, default=8, help="Frames per second for GIF (default: 8)")
     parser.add_argument("--dpi", type=int, default=120, help="DPI resolution for GIF frames (default: 120)")
     parser.add_argument("--output", type=str, default=None, help="Custom output filepath (when single storm)")
+    parser.add_argument("--fixed-camera", "--no-track", dest="fixed_camera", action="store_true", help="Keep camera fixed at current position instead of dynamically tracking storm center")
     args = parser.parse_args()
 
     if args.png_only:
@@ -851,7 +1148,8 @@ def main():
         dpi=args.dpi,
         generate_gif=gen_gif,
         generate_both=gen_both,
-        output_custom=args.output
+        output_custom=args.output,
+        track_storm=(not args.fixed_camera)
     )
 
 if __name__ == "__main__":

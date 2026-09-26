@@ -1,0 +1,38 @@
+{
+    "reportDateTime": "2026/08/31 09:50",
+    "targetDateTime": "2026/08/31 09:00",
+    "targetDuration": "PT120H",
+    "name": "BANG-LANG",
+    "number": "2623",
+    "remark": "台風消滅（温帯低気圧化）",
+    "meteorologicalInfos": [
+        {
+            "dateTime": "2026/08/31 09:00",
+            "classPart": {
+                "typhoonClass": "LOW",
+                "typhoonClassName": "Extratropical Low",
+                "areaClass": "",
+                "intensityAndTyphoonClass": "Extratropical Low"
+            },
+            "centerPart": {
+                "coordinateLat": "37.0N",
+                "coordinateLon": "166.0E",
+                "probabilityCircle": null,
+                "direction": "N",
+                "speedKnot": "10",
+                "speedKmH": "20",
+                "pressure": "1002"
+            },
+            "windPart": {
+                "windSpeedKnot": null,
+                "windSpeedKnotCondition": null,
+                "windSpeedMS": null,
+                "windSpeedMSCondition": null,
+                "windGustSpeedKnot": null,
+                "windGustSpeedMS": null
+            },
+            "warningAreaPart50": [],
+            "warningAreaPart30": []
+        }
+    ]
+}
