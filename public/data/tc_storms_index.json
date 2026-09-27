@@ -3,10 +3,19 @@
     "track_id": "WP252026",
     "storm_name": "TC 25W",
     "active": true,
-    "last_updated": "2026-09-27 06:00",
-    "latest_lat": 25.4,
-    "latest_lon": 128.3,
+    "last_updated": "2026-09-27 12:00",
+    "latest_lat": 25.9,
+    "latest_lon": 129.1,
     "category": "Super Typhoon"
+  },
+  {
+    "track_id": "WP922026",
+    "storm_name": "Invest 92W",
+    "active": true,
+    "last_updated": "2026-09-27 12:00",
+    "latest_lat": 14.3,
+    "latest_lon": 97.8,
+    "category": "Tropical Depression"
   },
   {
     "track_id": "WP912026",
@@ -151,15 +160,6 @@
     "latest_lat": 19.8,
     "latest_lon": 109.2,
     "category": "Tropical Depression"
-  },
-  {
-    "track_id": "WP922026",
-    "storm_name": "Invest 92W",
-    "active": false,
-    "last_updated": "2026-08-18 06:00",
-    "latest_lat": 7.9,
-    "latest_lon": 154.9,
-    "category": "Low Pressure Area"
   },
   {
     "track_id": "WP162026",
