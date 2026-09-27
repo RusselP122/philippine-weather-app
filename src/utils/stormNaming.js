@@ -197,18 +197,14 @@ export const getStormDisplayName = (rawName, classificationCode, insidePar, stor
         }
     }
 
-    // Check if explicitly mapped storm (e.g. 25W = QUEENIE)
-    const isExplicit = Boolean(
-        EXPLICIT_STORM_MAP[cleanId] ||
-        EXPLICIT_STORM_MAP[cleanNoTc] ||
-        EXPLICIT_STORM_MAP[upperRaw] ||
-        (cleanId && cleanId.includes("25")) ||
-        (upperRaw && upperRaw.includes("25W"))
-    );
-
-    // CASE A: Outside PAR -> Only storms that enter PAR have a PAGASA name (unless explicitly mapped 25W)
-    if (!insidePar && !isExplicit) {
-        return { displayName: rawName || cleanId || "Tropical Cyclone", intlName: rawName, pagasaName: null };
+    // CASE A: Outside PAR -> When outside the PAR, the PAGASA name is gone!
+    if (!insidePar) {
+        let outsideName = rawName || cleanNoTc || cleanId || "Tropical Cyclone";
+        const hasKnownIntl = Boolean(KNOWN_INTL_NAMES[cleanId] || KNOWN_INTL_NAMES[cleanNoTc] || KNOWN_INTL_NAMES[upperRaw]);
+        if (formattedIntl && (!isGeneric && !isJustTcCode || hasKnownIntl)) {
+            outsideName = formattedIntl;
+        }
+        return { displayName: outsideName, intlName: formattedIntl || rawName, pagasaName: null };
     }
 
     // CASE B: Inside PAR or Explicitly Mapped 25W -> Storm receives assigned PAGASA name

@@ -2416,19 +2416,13 @@ def format_storm_title(storm):
             PAGASA_STORM_MAP_2026.get(str(storm.get('name', '')).upper())
         )
                 
-    if p_name and str(p_name).strip().upper() not in ignored_names:
+    if inside_par and p_name and str(p_name).strip().upper() not in ignored_names:
         p_name_fmt = str(p_name).strip().title()
-        if inside_par or short_id.upper() in PAGASA_STORM_MAP_2026:
-            if intl_name:
-                return f"{p_name_fmt} ({intl_name})"
-            else:
-                return f"{p_name_fmt} ({short_id})"
+        if intl_name:
+            return f"{p_name_fmt} ({intl_name})"
         else:
-            if intl_name:
-                return f"{intl_name} ({short_id})"
-            else:
-                return f"{p_name_fmt} ({short_id})"
-                
+            return f"{p_name_fmt} ({short_id})"
+            
     if intl_name:
         return f"{intl_name} ({short_id})"
         

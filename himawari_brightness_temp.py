@@ -136,7 +136,7 @@ def format_system_title(storm_data):
 
     if is_invest:
         system_title = f"{short_id} INVEST"
-    elif pagasa_name:
+    elif inside_par and pagasa_name:
         p_name = pagasa_name.upper()
         if intl_name:
             system_title = f"{classification} {p_name} ({intl_name.upper()})"
