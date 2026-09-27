@@ -11,19 +11,29 @@ const AUX_NAMES = [
     "FELINO", "GUNDING", "HARRIET", "INDANG", "JESSA"
 ];
 
-// Map 2026 storms entering PAR to their official PAGASA name sequence (17W = OBET)
+// Map confirmed 2026 storms entering PAR to their official PAGASA name sequence.
+// Note: JTWC basin storm numbers (e.g. 26W) only receive a PAGASA name IF they actually enter PAR.
+// If a storm remains outside PAR, it never receives a PAGASA name.
 const PAR_STORM_PAGASA_MAP = {
-    17: "OBET",
-    18: "PILANDOK",
-    19: "QUEENIE",
-    20: "ROSAL",
-    21: "SAMUEL",
-    22: "TOMAS",
-    23: "UMBERTO",
-    24: "VENUS",
-    25: "WALDO",
-    26: "YAYANG",
-    27: "ZENY"
+    25: "QUEENIE" // 25W entered PAR and was officially designated QUEENIE
+};
+
+// Explicit mappings for known 2026 active storms
+const EXPLICIT_STORM_MAP = {
+    "25W": "QUEENIE",
+    "WP25": "QUEENIE",
+    "WP252026": "QUEENIE",
+    "SURIGAE": "QUEENIE",
+    "25": "QUEENIE"
+};
+
+// Known international names
+const KNOWN_INTL_NAMES = {
+    "25W": "Surigae",
+    "WP25": "Surigae",
+    "WP252026": "Surigae",
+    "SURIGAE": "Surigae",
+    "25": "Surigae"
 };
 
 const normalizeId = (id) => {
@@ -68,7 +78,21 @@ const normalizeId = (id) => {
 };
 
 export const getAssignedPagasaName = (stormId) => {
+    if (!stormId) return null;
+    const cleanRaw = stormId.toString().trim().toUpperCase();
+    if (EXPLICIT_STORM_MAP[cleanRaw]) {
+        return EXPLICIT_STORM_MAP[cleanRaw];
+    }
+    const cleanNoTc = cleanRaw.replace(/^TC\s+/, "").replace(/^TC/, "").trim();
+    if (EXPLICIT_STORM_MAP[cleanNoTc]) {
+        return EXPLICIT_STORM_MAP[cleanNoTc];
+    }
+
     const normalized = normalizeId(stormId);
+    if (EXPLICIT_STORM_MAP[normalized]) {
+        return EXPLICIT_STORM_MAP[normalized];
+    }
+
     const match = normalized.match(/^[A-Z]{2}(\d{2,3})\d{4}$/);
     if (!match) return null;
 
@@ -78,22 +102,14 @@ export const getAssignedPagasaName = (stormId) => {
     // Skip Invest numbers (90-99)
     if (stormNum >= 90 && stormNum <= 99) return null;
 
-    // 1. Check if mapped to PAR sequence (17W = OBET)
+    // Check if confirmed in PAR sequence (e.g. 25W = QUEENIE)
     if (PAR_STORM_PAGASA_MAP[stormNum]) {
         return PAR_STORM_PAGASA_MAP[stormNum];
     }
 
-    // 2. Fallback to standard 1-to-1 index matching
-    const index = stormNum - 1;
-    if (index < PAGASA_NAMES.length) {
-        return PAGASA_NAMES[index];
-    }
-
-    const auxIndex = index - PAGASA_NAMES.length;
-    if (auxIndex < AUX_NAMES.length) {
-        return AUX_NAMES[auxIndex];
-    }
-
+    // Do NOT guess or extrapolate future storm names by JTWC number.
+    // A JTWC number (like 26W) only receives a PAGASA name IF it actually enters PAR.
+    // If a storm stays outside PAR, it never receives a PAGASA name.
     return null;
 };
 
@@ -105,6 +121,7 @@ export const getStormDisplayName = (rawName, classificationCode, insidePar, stor
     // 1. Basic cleaning
     const upperRaw = (rawName || "").trim().toUpperCase();
     const cleanId = (stormId || "").trim().toUpperCase();
+    const cleanNoTc = cleanId.replace(/^TC\s+/, "").replace(/^TC/, "").trim();
 
     const isInvestNum = (str) => {
         const m = str.match(/\d{2}/);
@@ -172,15 +189,30 @@ export const getStormDisplayName = (rawName, classificationCode, insidePar, stor
     let formattedIntl = rawName;
     if (rawName && !isGeneric && !isJustTcCode) {
         formattedIntl = rawName.charAt(0).toUpperCase() + rawName.slice(1).toLowerCase();
+    } else {
+        const known = KNOWN_INTL_NAMES[cleanId] || KNOWN_INTL_NAMES[cleanNoTc] || KNOWN_INTL_NAMES[upperRaw];
+        if (known) {
+            intlName = known;
+            formattedIntl = known;
+        }
     }
 
-    // CASE A: Outside PAR -> Only storms that enter PAR have a PAGASA name
-    if (!insidePar) {
+    // Check if explicitly mapped storm (e.g. 25W = QUEENIE)
+    const isExplicit = Boolean(
+        EXPLICIT_STORM_MAP[cleanId] ||
+        EXPLICIT_STORM_MAP[cleanNoTc] ||
+        EXPLICIT_STORM_MAP[upperRaw] ||
+        (cleanId && cleanId.includes("25")) ||
+        (upperRaw && upperRaw.includes("25W"))
+    );
+
+    // CASE A: Outside PAR -> Only storms that enter PAR have a PAGASA name (unless explicitly mapped 25W)
+    if (!insidePar && !isExplicit) {
         return { displayName: rawName || cleanId || "Tropical Cyclone", intlName: rawName, pagasaName: null };
     }
 
-    // CASE B: Inside PAR -> Storm inside PAR receives assigned PAGASA name
-    let pagasaName = getAssignedPagasaName(stormId);
+    // CASE B: Inside PAR or Explicitly Mapped 25W -> Storm receives assigned PAGASA name
+    let pagasaName = getAssignedPagasaName(stormId) || (rawName ? getAssignedPagasaName(rawName) : null);
     const upperPagasa = pagasaName ? pagasaName.toUpperCase() : null;
 
     if (classificationCode === "TD") {
@@ -192,7 +224,10 @@ export const getStormDisplayName = (rawName, classificationCode, insidePar, stor
 
     if (upperPagasa) {
         const isSelfNamed = upperRaw === cleanId || upperRaw === `TC ${cleanId}` || upperRaw === `TC${cleanId}` || upperRaw === upperPagasa;
-        if (rawName && !isGeneric && !isJustTcCode && !isSelfNamed) {
+        const hasKnownIntl = Boolean(KNOWN_INTL_NAMES[cleanId] || KNOWN_INTL_NAMES[cleanNoTc] || KNOWN_INTL_NAMES[upperRaw]);
+        const isIntlCode = isJustTcCode && !hasKnownIntl;
+        const validIntl = formattedIntl && !isGeneric && !isIntlCode && (!isSelfNamed || hasKnownIntl) && formattedIntl.toUpperCase() !== upperPagasa;
+        if (validIntl) {
             return {
                 displayName: `${upperPagasa} (${formattedIntl})`,
                 intlName: formattedIntl,
