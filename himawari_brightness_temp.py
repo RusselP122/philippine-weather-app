@@ -766,15 +766,7 @@ def render_b13_frame(
         alpha=0.95, transform=ccrs.PlateCarree(), zorder=12, label='PAR'
     )
 
-    # 5. Optional Storm Center Marker
-    if storm_data and not is_philippines:
-        c_lat = float(storm_data.get("lat", 0.0))
-        c_lon = float(storm_data.get("lon", 0.0))
-        if c_lat != 0.0 and c_lon != 0.0:
-            ax_map.plot(c_lon, c_lat, marker='+', markersize=14, markeredgewidth=2.2, color='#FFE600', transform=ccrs.PlateCarree(), zorder=15)
-            ax_map.plot(c_lon, c_lat, marker='o', markersize=8, markerfacecolor='none', markeredgecolor='#FFE600', markeredgewidth=1.8, transform=ccrs.PlateCarree(), zorder=15)
-
-    # 6. Lat/Lon Coordinate Gridlines (Subtle over satellite)
+    # 5. Lat/Lon Coordinate Gridlines (Subtle over satellite)
     gl = ax_map.gridlines(draw_labels=False, linewidth=0.5, color='white', alpha=0.20, linestyle='--', zorder=13)
     gl.xlocator = mticker.MultipleLocator(5.0)
     gl.ylocator = mticker.MultipleLocator(5.0)
