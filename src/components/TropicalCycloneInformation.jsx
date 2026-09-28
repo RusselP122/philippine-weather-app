@@ -425,14 +425,13 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
     const altModel = selectedModel === "gdm_wncv3" ? "gdm_wnc" : selectedModel;
     if (urlAttempt === 0) return `/assets/${wpId}_${stormDateStr}_${selectedCycle}_${selectedModel}.png`;
     if (urlAttempt === 1) return `/assets/${numWId}_${stormDateStr}_${selectedCycle}_${selectedModel}.png`;
-    if (urlAttempt === 2) return `/assets/${wpId.toLowerCase()}_${selectedModel}_spaghetti.png`;
-    if (urlAttempt === 3) return `/assets/${wpId}_${stormDateStr}_${selectedCycle}_${altModel}.png`;
-    if (urlAttempt === 4) return `/assets/${numWId}_${stormDateStr}_${selectedCycle}_${altModel}.png`;
+    if (urlAttempt === 2) return `/assets/${wpId}_${stormDateStr}_${selectedCycle}_${altModel}.png`;
+    if (urlAttempt === 3) return `/assets/${numWId}_${stormDateStr}_${selectedCycle}_${altModel}.png`;
     return `/assets/${wpId}_${stormDateStr}_${selectedCycle}_${selectedModel}.png`;
   }, [manifestData, urlAttempt, wpId, numWId, floaterId, stormDateStr, selectedCycle, selectedModel, stormData]);
 
   const handleSpaghettiError = () => {
-    if (urlAttempt < 4) {
+    if (urlAttempt < 3) {
       setUrlAttempt(prev => prev + 1);
     } else {
       setSpaghettiLoading(false);

@@ -522,7 +522,7 @@ def filter_western_pacific(df):
 
 def filter_tracks_near_active_storms(df, knack_storms, max_dist_deg=8.0):
     """
-    Retains only tracks whose early positions (within first 48 hours)
+    Retains only tracks whose early positions (within first 60 hours)
     lie within max_dist_deg of at least one active Knack storm position.
     """
     if df.empty or not knack_storms:
@@ -533,9 +533,7 @@ def filter_tracks_near_active_storms(df, knack_storms, max_dist_deg=8.0):
         track_points = track_points.sort_values('lead_time_hours')
         if track_points.empty:
             continue
-        early_pts = track_points[track_points['lead_time_hours'] <= 48.0].dropna(subset=['lat', 'lon'])
-        if early_pts.empty:
-            early_pts = track_points.dropna(subset=['lat', 'lon']).head(3)
+        early_pts = track_points[track_points['lead_time_hours'] <= 60.0].dropna(subset=['lat', 'lon'])
         if early_pts.empty:
             continue
             
@@ -932,6 +930,126 @@ def find_control_track_for_storm(df_storm, df_model, model_name, storm_name, atc
 
     return pd.DataFrame(columns=['lead_time_hours', 'lat', 'lon', 'pressure', 'wind']), pd.Index([]), False
 
+def clean_storm_ensemble_tracks(df_storm, df_model, model_name, storm_name, atcf_pos=None, df_paired=None, df_mean=None, ctrl_indices=None, has_control=False):
+    """
+    Filters out extraneous tracks that belong to other storms/invests or secondary disturbances
+    in the same batch ensemble dataset, ensuring strictly at most one most-plausible track per ensemble member (sample).
+    """
+    if df_storm.empty:
+        return df_storm
+
+    # Build reference track lookup {lead_time_hours: (lat, lon)}
+    ref_by_h = {}
+    if has_control and df_mean is not None and not df_mean.empty:
+        for _, r in df_mean.iterrows():
+            ref_by_h[r['lead_time_hours']] = (r['lat'], r['lon'])
+    else:
+        # Check paired data for ensemble mean near storm
+        if df_paired is not None and not df_paired.empty and 'sample' in df_paired.columns:
+            paired_ctrl = df_paired[df_paired['sample'] == -1]
+            if not paired_ctrl.empty and atcf_pos:
+                for tid, t_df in paired_ctrl.groupby('track_id'):
+                    t_df = t_df.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
+                    if not t_df.empty:
+                        d = math.sqrt((t_df.iloc[0]['lat'] - atcf_pos[0])**2 + (t_df.iloc[0]['lon'] - atcf_pos[1])**2)
+                        if d < 6.0:
+                            for _, r in t_df.iterrows():
+                                ref_by_h[r['lead_time_hours']] = (r['lat'], r['lon'])
+                            break
+        # If still empty, use median of early tracks (lead <= 36h)
+        if not ref_by_h:
+            early_tracks = []
+            for (tid, sample), pts in df_storm.groupby(['track_id', 'sample']):
+                pts = pts.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
+                if not pts.empty and pts.iloc[0]['lead_time_hours'] <= 36.0:
+                    early_tracks.append(pts)
+            if early_tracks:
+                df_early = pd.concat(early_tracks)
+                med = df_early.groupby('lead_time_hours')[['lat', 'lon']].median()
+                for h, r in med.iterrows():
+                    ref_by_h[h] = (r['lat'], r['lon'])
+
+    candidates = []
+    for (tid, sample), pts in df_storm.groupby(['track_id', 'sample']):
+        # If this is control track, preserve it separately
+        if has_control and ctrl_indices is not None and any(idx in ctrl_indices for idx in pts.index):
+            continue
+
+        pts = pts.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
+        if len(pts) < 2:
+            continue
+
+        first = pts.iloc[0]
+        lead_start = first['lead_time_hours']
+        # Discard tracks that only appear 3+ days into the future (secondary downstream genesis)
+        if lead_start > 72.0:
+            continue
+
+        # Determine reference point for genesis / early position
+        if lead_start in ref_by_h:
+            rlat, rlon = ref_by_h[lead_start]
+        elif ref_by_h:
+            closest_h = min(ref_by_h.keys(), key=lambda h: abs(h - lead_start))
+            rlat, rlon = ref_by_h[closest_h]
+        elif atcf_pos:
+            rlat, rlon = atcf_pos
+        else:
+            rlat, rlon = first['lat'], first['lon']
+
+        dlat = first['lat'] - rlat
+        dlon = (first['lon'] - rlon)
+        if dlon > 180:
+            dlon -= 360
+        elif dlon < -180:
+            dlon += 360
+        init_dist = math.sqrt(dlat**2 + dlon**2)
+
+        # Check that track starts within reasonable proximity to active storm
+        if init_dist > 6.5:
+            continue
+
+        # Check early lead hours (lead <= 60h) to ensure track doesn't diverge to another basin
+        early_dists = []
+        for _, r in pts.iterrows():
+            h = r['lead_time_hours']
+            if h <= 60.0 and h in ref_by_h:
+                clat, clon = ref_by_h[h]
+                dl = (r['lon'] - clon)
+                if dl > 180:
+                    dl -= 360
+                elif dl < -180:
+                    dl += 360
+                d = math.sqrt((r['lat'] - clat)**2 + dl**2)
+                early_dists.append(d)
+
+        if early_dists and max(early_dists) > 7.0:
+            continue
+
+        mean_early = sum(early_dists) / len(early_dists) if early_dists else init_dist
+        candidates.append({
+            'track_id': tid,
+            'sample': sample,
+            'init_dist': init_dist,
+            'score': init_dist + mean_early,
+            'indices': pts.index.tolist()
+        })
+
+    if not candidates:
+        return df_storm
+
+    cand_df = pd.DataFrame(candidates)
+    # Strictly choose at most ONE best track per ensemble member (sample)
+    best_cand = cand_df.sort_values('score').groupby('sample').first().reset_index()
+
+    valid_indices = []
+    for idx_list in best_cand['indices']:
+        valid_indices.extend(idx_list)
+
+    if has_control and ctrl_indices is not None:
+        valid_indices.extend(ctrl_indices.tolist() if hasattr(ctrl_indices, 'tolist') else list(ctrl_indices))
+
+    return df_storm.loc[df_storm.index.intersection(valid_indices)].copy()
+
 def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_name_override=None, color_by='pressure', atcf_pos=None, df_paired=None):
     """
     Generates a publication-quality spaghetti plot for a given model and storm cluster.
@@ -962,6 +1080,13 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
     # Check for official deterministic control track (IFS, AIFS, or other models)
     df_mean, ctrl_indices, has_control = find_control_track_for_storm(
         df_storm, df_model, model_name, storm_name, atcf_pos=atcf_pos, color_by=color_by
+    )
+
+    # Clean extraneous tracks so that only tracks truly matching this storm remain (1 track per sample)
+    df_storm = clean_storm_ensemble_tracks(
+        df_storm, df_model, model_name, storm_name,
+        atcf_pos=atcf_pos, df_paired=df_paired, df_mean=df_mean,
+        ctrl_indices=ctrl_indices, has_control=has_control
     )
 
     if has_control:
@@ -1510,6 +1635,11 @@ def map_hdbscan_clusters_to_knack_storms(df, knack_storms, dist_threshold=4.0):
                 time_diff = k_dt - f_init_dt
                 target_lead_time = time_diff.total_seconds() / 3600.0
                 
+            # If the forecast initialization differs from the active storm time by more than 48 hours,
+            # or is in the future (< -24h), it cannot be mapped to the current active storm.
+            if target_lead_time > 48.0 or target_lead_time < -24.0:
+                continue
+
             if target_lead_time < 0:
                 target_lead_time = 0.0
                 
@@ -1522,8 +1652,10 @@ def map_hdbscan_clusters_to_knack_storms(df, knack_storms, dist_threshold=4.0):
                 if target_pts.empty:
                     target_pts = group_df[diffs == diffs.min()]
             else:
-                # Fall back to the cluster's earliest available lead time
+                # Fall back to the cluster's earliest available lead time if reasonably early
                 closest_lead = group_df['lead_time_hours'].min()
+                if closest_lead > 36.0:
+                    continue
                 target_pts = group_df[group_df['lead_time_hours'] == closest_lead]
                 
             avg_lat = target_pts['lat'].mean()
@@ -1609,17 +1741,22 @@ def main():
     input_files = args.input
     if not input_files:
         search_dir = 'public/data'
-        possible_files = [
-            'aifs_tc_latest.dat', 'aifs_tc_latest.csv',
-            'ifs_tc_latest.dat', 'ifs_tc_latest.csv',
-            'wnv3_latest.dat', 'wnv3_latest.csv',
-            'fnv3p2_latest.dat', 'fnv3p2_latest.csv'
+        # Default operational models to visualize: ECMWF AIFS, ECMWF IFS, and GDM WNCv3
+        # Excludes older GDM WNC (fnv3p2).
+        model_prefixes = [
+            'aifs_tc_latest',
+            'ifs_tc_latest',
+            'wnv3_latest'
         ]
         input_files = []
-        for pf in possible_files:
-            p_path = os.path.join(search_dir, pf)
-            if os.path.exists(p_path):
-                input_files.append(p_path)
+        for prefix in model_prefixes:
+            dat_path = os.path.join(search_dir, f"{prefix}.dat")
+            csv_path = os.path.join(search_dir, f"{prefix}.csv")
+            # Strictly prefer .dat file; only check .csv if .dat is not present
+            if os.path.exists(dat_path):
+                input_files.append(dat_path)
+            elif os.path.exists(csv_path):
+                input_files.append(csv_path)
 
     if not input_files:
         print("No input files specified and no default datasets found in public/data.")
@@ -1650,6 +1787,21 @@ def main():
         if wp_df.empty:
             print(f"No Western Pacific tracks found in: {f_path}")
             continue
+
+        # Validate initialization age: reject runs older than 5 days (120 hours) from current UTC time
+        # to prevent ancient archived files from being mistakenly processed.
+        if 'init_time' in wp_df.columns and not wp_df['init_time'].dropna().empty:
+            latest_run_init = wp_df['init_time'].dropna().max()
+            try:
+                run_dt = pd.to_datetime(latest_run_init)
+                if run_dt.tzinfo is None:
+                    run_dt = run_dt.replace(tzinfo=timezone.utc)
+                age_days = (datetime.now(timezone.utc) - run_dt).total_seconds() / 86400.0
+                if age_days > 5.0:
+                    print(f"Skipping outdated file {f_path}: initialization {latest_run_init} is {age_days:.1f} days old.")
+                    continue
+            except Exception:
+                pass
             
         # Filter tracks to only those near active storms (prevents chaining effect of separate storms)
         if knack_storms:
@@ -1660,17 +1812,13 @@ def main():
                 
         model = detect_model_name(f_path)
         
-        # Load corresponding paired file if available (for GDM FNV3 and WNV3)
+        # Load corresponding paired file if available (for GDM WNV3)
         df_paired = pd.DataFrame()
-        if 'fnv3' in f_path.lower() or 'wnv3' in f_path.lower() or 'oper' in f_path.lower():
+        if 'wnv3' in f_path.lower() or 'oper' in f_path.lower():
             if 'wnv3_latest.dat' in f_path:
                 paired_path = f_path.replace('wnv3_latest.dat', 'wnv3_paired_latest.dat')
             elif 'wnv3_latest.csv' in f_path:
                 paired_path = f_path.replace('wnv3_latest.csv', 'wnv3_paired_latest.csv')
-            elif 'fnv3p2_latest.dat' in f_path:
-                paired_path = f_path.replace('fnv3p2_latest.dat', 'fnv3p2_paired_latest.dat')
-            elif 'fnv3p2_latest.csv' in f_path:
-                paired_path = f_path.replace('fnv3p2_latest.csv', 'fnv3p2_paired_latest.csv')
             elif 'oper_latest.dat' in f_path:
                 paired_path = f_path.replace('oper_latest.dat', 'oper_paired_latest.dat')
             elif 'oper_latest.csv' in f_path:
@@ -1678,7 +1826,7 @@ def main():
             else:
                 base = os.path.basename(f_path)
                 dir_name = os.path.dirname(f_path)
-                paired_base = base.replace('wnv3', 'wnv3_paired').replace('fnv3p2', 'fnv3p2_paired').replace('oper', 'oper_paired')
+                paired_base = base.replace('wnv3', 'wnv3_paired').replace('oper', 'oper_paired')
                 paired_path = os.path.join(dir_name, paired_base)
                 
             if os.path.exists(paired_path):
@@ -1767,14 +1915,11 @@ def main():
             plot_model_tracks(wp_df, model, sg_id, out_file, storm_name_override=args.storm_name, color_by=args.color_by, atcf_pos=atcf_pos, df_paired=df_paired)
             latest_plotted_init[out_file] = current_init_dt
             
-            # Also save copies for 92W format and legacy filename format
+            # Also save copy for 92W format (e.g. 93W_20260927_12Z_gdm_wncv3.png)
             import shutil
             alt_filename = f"{num_w_id}_{ymd}_{cycle_str}_{model_clean}.png"
             if alt_filename != primary_filename:
                 shutil.copyfile(out_file, os.path.join(args.output_dir, alt_filename))
-                
-            legacy_filename = f"{wp_id.lower()}_{model_clean}_spaghetti.png"
-            shutil.copyfile(out_file, os.path.join(args.output_dir, legacy_filename))
             
             # Update manifest JSON
             unique_key = f"{wp_id}_{ymd}T{cycle_str}"
