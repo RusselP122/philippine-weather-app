@@ -3,13 +3,13 @@
   "storm_name": "Invest 92W",
   "track_id": "WP922026",
   "latest": {
-    "lat": 16.4,
-    "lon": 97.6,
+    "lat": 17.2,
+    "lon": 97.4,
     "pressure_hpa": 1001.0,
     "wind_kt": 29.0,
     "wind_kmh": 54,
     "movement": "NNW at 15.2 km/h (8.2 kt)",
-    "init_time": "2026-09-28 06:00",
+    "init_time": "2026-09-28 12:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -44,6 +44,15 @@
       "cycle": "2026-09-28 06:00",
       "lat": 16.4,
       "lon": 97.6,
+      "pressure_hpa": 1001.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-09-28 12:00",
+      "lat": 17.2,
+      "lon": 97.4,
       "pressure_hpa": 1001.0,
       "wind_kt": 29.0,
       "wind_kmh": 54,
