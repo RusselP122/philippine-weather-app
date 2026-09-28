@@ -1915,12 +1915,6 @@ def main():
             plot_model_tracks(wp_df, model, sg_id, out_file, storm_name_override=args.storm_name, color_by=args.color_by, atcf_pos=atcf_pos, df_paired=df_paired)
             latest_plotted_init[out_file] = current_init_dt
             
-            # Also save copy for 92W format (e.g. 93W_20260927_12Z_gdm_wncv3.png)
-            import shutil
-            alt_filename = f"{num_w_id}_{ymd}_{cycle_str}_{model_clean}.png"
-            if alt_filename != primary_filename:
-                shutil.copyfile(out_file, os.path.join(args.output_dir, alt_filename))
-            
             # Update manifest JSON
             unique_key = f"{wp_id}_{ymd}T{cycle_str}"
             manifest_file = os.path.join('public', 'data', 'spaghetti_manifest.json')
@@ -1936,7 +1930,7 @@ def main():
             for entry in manifest_data:
                 if entry.get('unique_key') == unique_key and entry.get('model') == model_clean:
                     entry['filename'] = primary_filename
-                    entry['alt_filename'] = alt_filename
+                    entry['alt_filename'] = primary_filename
                     entry['timestamp'] = datetime.now(timezone.utc).isoformat()
                     entry_exists = True
                     break
@@ -1949,7 +1943,7 @@ def main():
                     'model': model_clean,
                     'unique_key': unique_key,
                     'filename': primary_filename,
-                    'alt_filename': alt_filename,
+                    'alt_filename': primary_filename,
                     'timestamp': datetime.now(timezone.utc).isoformat()
                 })
                 

@@ -1056,13 +1056,6 @@ def main():
             plot_monitoring_tracks(monitoring_df, model, sg_id, out_file, color_by=args.color_by, min_mean_members=args.min_mean_members)
             latest_plotted_init[out_file] = current_init_dt
 
-            alt_filename = f"{num_w_id}_{ymd}_{cycle_str}_{model_clean}.png"
-            if alt_filename != primary_filename:
-                shutil.copyfile(out_file, os.path.join(args.output_dir, alt_filename))
-
-            legacy_filename = f"{wp_id.lower()}_{model_clean}_spaghetti.png"
-            shutil.copyfile(out_file, os.path.join(args.output_dir, legacy_filename))
-
             unique_key = f"{wp_id}_{ymd}T{cycle_str}"
             manifest_file = os.path.join('public', 'data', 'spaghetti_manifest.json')
             manifest_data = []
@@ -1077,7 +1070,7 @@ def main():
             for entry in manifest_data:
                 if entry.get('unique_key') == unique_key and entry.get('model') == model_clean:
                     entry['filename'] = primary_filename
-                    entry['alt_filename'] = alt_filename
+                    entry['alt_filename'] = primary_filename
                     entry['is_monitoring'] = True
                     entry['timestamp'] = datetime.now(timezone.utc).isoformat()
                     entry_exists = True
@@ -1091,7 +1084,7 @@ def main():
                     'model': model_clean,
                     'unique_key': unique_key,
                     'filename': primary_filename,
-                    'alt_filename': alt_filename,
+                    'alt_filename': primary_filename,
                     'is_monitoring': True,
                     'timestamp': datetime.now(timezone.utc).isoformat()
                 })
