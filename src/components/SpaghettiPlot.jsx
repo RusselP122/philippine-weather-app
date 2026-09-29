@@ -293,18 +293,56 @@ function stitchMemberTracks(memberRows) {
 }
 
 // ── Pairwise Track Distance (Mean Great-Circle Separation) ──────────────────
-function getTrackDistance(trackA, trackB) {
-    const pointsA = {};
-    for (const p of trackA) pointsA[p.h] = p;
+function getTrackDistance(trackA, trackB, lookupA = null, lookupB = null) {
+    const pointsA = lookupA || {};
+    if (!lookupA) {
+        for (const p of trackA) pointsA[p.h] = p;
+    }
+    const pointsB = lookupB || {};
+    if (!lookupB) {
+        for (const p of trackB) pointsB[p.h] = p;
+    }
+
     let sumDist = 0, count = 0;
-    for (const pB of trackB) {
+    for (const hStr in pointsB) {
+        const pB = pointsB[hStr];
         const pA = pointsA[pB.h];
         if (pA) {
             sumDist += haversineKm(pA, pB);
             count++;
         }
     }
-    return count === 0 ? 5000 : sumDist / count;
+
+    if (count > 0) {
+        const meanDist = sumDist / count;
+        const minLen = Math.min(trackA.length, trackB.length);
+        if (count === 1 && minLen >= 4) {
+            return meanDist + 500;
+        }
+        return meanDist;
+    }
+
+    // Check temporal continuity between non-overlapping tracks (e.g. early-forming vs delayed tracks)
+    const startA = trackA[0], endA = trackA[trackA.length - 1];
+    const startB = trackB[0], endB = trackB[trackB.length - 1];
+
+    if (startB.h >= endA.h) {
+        const dt = startB.h - endA.h;
+        if (dt <= 24) {
+            const dGap = haversineKm(endA, startB);
+            const penaltyDist = dGap + 25 * dt;
+            if (penaltyDist < 1200) return penaltyDist;
+        }
+    } else if (startA.h >= endB.h) {
+        const dt = startA.h - endB.h;
+        if (dt <= 24) {
+            const dGap = haversineKm(endB, startA);
+            const penaltyDist = dGap + 25 * dt;
+            if (penaltyDist < 1200) return penaltyDist;
+        }
+    }
+
+    return 5000;
 }
 
 // ── HDBSCAN Clustering Algorithm ──────────────────────────────────────────
@@ -353,6 +391,8 @@ function runHDBSCAN(distanceMatrix, minClusterSize) {
 
     let nextNodeId = n;
     const ufParent = Array.from({ length: n * 2 }, (_, i) => i);
+    // Explicit dendrogram tree parent pointers to prevent infinite loops from path compression
+    const treeParent = new Array(n * 2).fill(-1);
     const nodes = Array.from({ length: n * 2 }, (_, i) => ({
         id: i, left: null, right: null, weight: 0, birth: 0, death: Infinity,
         points: i < n ? [i] : []
@@ -377,6 +417,8 @@ function runHDBSCAN(distanceMatrix, minClusterSize) {
             const newId = nextNodeId++;
             ufParent[rootU] = newId;
             ufParent[rootV] = newId;
+            treeParent[rootU] = newId;
+            treeParent[rootV] = newId;
             nodes[newId].left = nodes[rootU];
             nodes[newId].right = nodes[rootV];
             nodes[newId].weight = edge.weight;
@@ -435,7 +477,9 @@ function runHDBSCAN(distanceMatrix, minClusterSize) {
             let curr = nodes[pt];
             while (curr && curr.death < cnode.death) {
                 deathWeight = curr.death;
-                curr = nodes[ufParent[curr.id]];
+                const pId = treeParent[curr.id];
+                if (pId === -1 || pId === curr.id) break;
+                curr = nodes[pId];
             }
             const lambdaDeath = 1 / (deathWeight || 0.0001);
             sumStability += Math.max(0, lambdaDeath - lambdaBirth);
@@ -589,22 +633,34 @@ function splitClusterKMedoids(trackIndices, distanceMatrix, limit) {
 function groupAndClusterTracks(basinFiltered, numMembers, datasetName) {
     if (basinFiltered.length === 0) return { clusters: [], trackLabels: [] };
     const n = basinFiltered.length;
+    const trackLookups = basinFiltered.map(t => {
+        const map = {};
+        for (const p of t) map[p.h] = p;
+        return map;
+    });
+
     const distanceMatrix = Array.from({ length: n }, () => new Array(n).fill(0));
     for (let i = 0; i < n; i++) {
-        for (let j = i; j < n; j++) {
-            if (i === j) {
-                distanceMatrix[i][j] = 0;
-            } else {
-                const dist = getTrackDistance(basinFiltered[i], basinFiltered[j]);
-                distanceMatrix[i][j] = dist;
-                distanceMatrix[j][i] = dist;
-            }
+        const tA = basinFiltered[i];
+        const lA = trackLookups[i];
+        for (let j = i + 1; j < n; j++) {
+            const dist = getTrackDistance(tA, basinFiltered[j], lA, trackLookups[j]);
+            distanceMatrix[i][j] = dist;
+            distanceMatrix[j][i] = dist;
         }
     }
 
     // Allow smaller but physically meaningful splits (e.g., 3% for large ensembles, 8% for base ensembles, min size of 4 tracks)
     const minClusterSize = Math.max(4, Math.round(numMembers * (numMembers > 100 ? 0.03 : 0.08)));
-    const labels = runHDBSCAN(distanceMatrix, minClusterSize);
+    let labels = runHDBSCAN(distanceMatrix, minClusterSize);
+
+    // Adaptive fallback if all tracks are noise but sufficient candidates exist
+    if (labels.every(l => l === -1) && n >= 4) {
+        const fallbackMin = Math.max(3, Math.floor(minClusterSize / 2));
+        if (fallbackMin < minClusterSize) {
+            labels = runHDBSCAN(distanceMatrix, fallbackMin);
+        }
+    }
 
     const clustersByLabel = {};
     for (let i = 0; i < n; i++) {

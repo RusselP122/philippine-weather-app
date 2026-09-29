@@ -817,9 +817,9 @@ def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, st
 
     # Sea labels - bounds-checked
     if lon_min + 1 <= 118 <= lon_max - 1 and lat_min + 1 <= 13 <= lat_max - 1:
-        ax.text(118, 13, 'West Philippine\nSea', fontsize=6, color='navy', weight='bold', transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3)
+        ax.text(118, 13, 'West Philippine\nSea', fontsize=6, color='navy', weight='bold', transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3, clip_on=True)
     if lon_min + 1 <= 130 <= lon_max - 1 and lat_min + 1 <= 20 <= lat_max - 1:
-        ax.text(130, 20, 'Philippine\nSea', fontsize=7, color='navy', weight='bold', transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3)
+        ax.text(130, 20, 'Philippine\nSea', fontsize=7, color='navy', weight='bold', transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3, clip_on=True)
 
     par_vertices = [
         (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
@@ -945,7 +945,7 @@ def plot_monitoring_tracks(df_model, model_name, storm_group_id, output_path, st
     fig.text(0.86, 0.90, f"Data: {model_name} Ensemble", fontsize=10, color='#475569', ha='right', va='bottom')
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    plt.savefig(output_path, dpi=300, facecolor='white', edgecolor='none')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', pad_inches=0.15, facecolor='white', edgecolor='none')
     plt.close()
     
     print(f"Publication-quality under-monitoring plot saved to: {output_path}")

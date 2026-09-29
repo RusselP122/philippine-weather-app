@@ -1269,8 +1269,8 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
         min_lon, max_lon = min(lons_to_fit), max(lons_to_fit)
         min_lat, max_lat = min(lats_to_fit), max(lats_to_fit)
         
-        lon_pad = max(8.0, (max_lon - min_lon) * 0.3)
-        lat_pad = max(6.0, (max_lat - min_lat) * 0.3)
+        lon_pad = max(3.5, (max_lon - min_lon) * 0.18)
+        lat_pad = max(2.5, (max_lat - min_lat) * 0.18)
         
         lon_min = max(100.0, min_lon - lon_pad)
         lon_max = min(180.0, max_lon + lon_pad)
@@ -1281,20 +1281,43 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
 
     lon_span = lon_max - lon_min
     lat_span = lat_max - lat_min
-    aspect = lon_span / lat_span
+    aspect = lon_span / max(0.1, lat_span)
 
-    # Calculate dynamic figure height based on width of 12 inches
-    fig_width = 12
-    fig_height = (fig_width - 2.5) / aspect + 1.8
-    fig_height = max(5.0, min(10.0, fig_height))
+    # Calculate dynamic figure dimensions to tightly fit the map aspect ratio
+    fig_width = 12.0
+    map_w_in = 9.36
+    map_h_in = map_w_in / aspect
+    map_h_in = max(4.0, min(7.5, map_h_in))
+    
+    # Match map coordinates aspect ratio exactly to the axes box so no dead space appears inside
+    actual_aspect = map_w_in / map_h_in
+    if aspect < actual_aspect:
+        needed_lon_span = lat_span * actual_aspect
+        diff = needed_lon_span - lon_span
+        lon_min -= diff / 2.0
+        lon_max += diff / 2.0
+    elif aspect > actual_aspect:
+        needed_lat_span = lon_span / actual_aspect
+        diff = needed_lat_span - lat_span
+        lat_min -= diff / 2.0
+        lat_max += diff / 2.0
+
+    lon_span = lon_max - lon_min
+    lat_span = lat_max - lat_min
+
+    fig_height = map_h_in + 1.5
     
     print(f"Generating spaghetti track plot for {model_name} storm {storm_name} (Group: {storm_group_id}, Color by: {color_by}) ...")
 
     # Setup the plot canvas
     fig = plt.figure(figsize=(fig_width, fig_height), facecolor='white')
     
-    # Custom axes configuration to save margins for annotations and colorbar
-    ax = fig.add_axes([0.08, 0.08, 0.78, 0.80], projection=ccrs.PlateCarree())
+    map_y0 = 0.08
+    map_h_frac = map_h_in / fig_height
+    map_w_frac = map_w_in / fig_width
+    
+    # Custom axes configuration to tightly fit the map area
+    ax = fig.add_axes([0.08, map_y0, map_w_frac, map_h_frac], projection=ccrs.PlateCarree())
     
     # 1. Base Map Setup (ocean background, land features)
     ax.set_facecolor('#87CEEB')  # Sky blue ocean background
@@ -1325,15 +1348,22 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
     except Exception as e:
         print(f"Warning: Province boundary overlay skipped: {e}")
 
-    # Add Sea Text Labels from Forcast.py
-    ax.text(
-        118, 13, 'West Philippine\nSea', fontsize=5, color='navy', weight='bold',
-        transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3
-    )
-    ax.text(
-        130, 20, 'Philippine\nSea', fontsize=7, color='navy', weight='bold',
-        transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3
-    )
+    # Add Sea Text Labels (only render if within visible map viewport)
+    wps_lon, wps_lat = 117.5, 13.8
+    if (lon_min + 1.0) <= wps_lon <= (lon_max - 1.0) and (lat_min + 1.0) <= wps_lat <= (lat_max - 1.0):
+        ax.text(
+            wps_lon, wps_lat, 'West Philippine\nSea', fontsize=5.5, color='navy', weight='bold',
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3,
+            clip_on=True
+        )
+
+    ps_lon, ps_lat = 130.0, 18.0
+    if (lon_min + 1.5) <= ps_lon <= (lon_max - 1.5) and (lat_min + 1.2) <= ps_lat <= (lat_max - 1.2):
+        ax.text(
+            ps_lon, ps_lat, 'Philippine\nSea', fontsize=7, color='navy', weight='bold',
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3,
+            clip_on=True
+        )
 
     # PAR Boundary Overlay styled like Forcast.py
     par_vertices = [
@@ -1545,7 +1575,10 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
     # Add Colorbar for Scale
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
-    cax = fig.add_axes([0.88, 0.15, 0.025, 0.66]) # Placed on the right margin
+    cbar_x = 0.08 + map_w_frac + 0.02
+    cbar_h = map_h_frac * 0.90
+    cbar_y0 = map_y0 + (map_h_frac - cbar_h) / 2.0
+    cax = fig.add_axes([cbar_x, cbar_y0, 0.022, cbar_h])
     cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
     if color_by == 'pressure':
         cbar.set_label('Min. MSLP (hPa)', fontsize=11, weight='bold', color='#1e293b', labelpad=8)
@@ -1554,22 +1587,25 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
     cbar.ax.tick_params(labelsize=9, colors='#1e293b')
 
     # Add Plot Headers
+    header_top = map_y0 + map_h_frac + 0.040
+    header_sub = map_y0 + map_h_frac + 0.012
     # Top-Left lines
     if color_by == 'pressure':
-        fig.text(0.08, 0.94, f"{storm_name} – {model_name} Tracks and Min. MSLP (hPa)", fontsize=13, weight='bold', color='black', ha='left', va='bottom')
+        fig.text(0.08, header_top, f"{storm_name} – {model_name} Tracks and Min. MSLP (hPa)", fontsize=13, weight='bold', color='black', ha='left', va='bottom')
     else:
-        fig.text(0.08, 0.94, f"{storm_name} – {model_name} Tracks and Wind Speed (km/h)", fontsize=13, weight='bold', color='black', ha='left', va='bottom')
-    fig.text(0.08, 0.90, f"Initialized at {init_time_str}", fontsize=11, color='#475569', ha='left', va='bottom')
+        fig.text(0.08, header_top, f"{storm_name} – {model_name} Tracks and Wind Speed (km/h)", fontsize=13, weight='bold', color='black', ha='left', va='bottom')
+    fig.text(0.08, header_sub, f"Initialized at {init_time_str}", fontsize=11, color='#475569', ha='left', va='bottom')
     
     # Top-Right source label
-    fig.text(0.86, 0.94, f"Philippine Typhoon/Weather", fontsize=11, weight='bold', color='black', ha='right', va='bottom')
+    right_x = 0.08 + map_w_frac
+    fig.text(right_x, header_top, f"Philippine Typhoon/Weather", fontsize=11, weight='bold', color='black', ha='right', va='bottom')
     if has_control:
         data_type_str = "Ensemble" if has_ensemble_tracks else "Control"
     elif has_ensemble_tracks:
         data_type_str = "Ensemble"
     else:
         data_type_str = "Deterministic"
-    fig.text(0.86, 0.90, f"Data: {model_name} {data_type_str}", fontsize=10, color='#475569', ha='right', va='bottom')
+    fig.text(right_x, header_sub, f"Data: {model_name} {data_type_str}", fontsize=10, color='#475569', ha='right', va='bottom')
 
     # Disclaimer note for wind speed conversion and 10-min sustained difference from official agencies
     if color_by == 'wind':
@@ -1581,7 +1617,7 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
 
     # Save output publication image
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    plt.savefig(output_path, dpi=300, facecolor='white', edgecolor='none')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', pad_inches=0.15, facecolor='white', edgecolor='none')
     plt.close()
     
     print(f"Publication-quality spaghetti plot saved to: {output_path}")

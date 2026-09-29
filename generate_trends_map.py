@@ -191,57 +191,92 @@ def stitch_member_tracks(member_rows):
         
     return [t for t in closed_tracks if len(t) >= 2]
 
-def get_track_distance(track_a, track_b):
-    points_a = {p['h']: p for p in track_a}
+def get_track_distance(track_a, track_b, lookup_a=None, lookup_b=None):
+    if lookup_a is None:
+        lookup_a = {p['h']: p for p in track_a}
+    if lookup_b is None:
+        lookup_b = {p['h']: p for p in track_b}
+
     sum_dist = 0.0
     count = 0
-    for p_b in track_b:
-        p_a = points_a.get(p_b['h'])
+    for h, p_b in lookup_b.items():
+        p_a = lookup_a.get(h)
         if p_a:
             sum_dist += haversine_km(p_a['lat'], p_a['lon'], p_b['lat'], p_b['lon'])
             count += 1
-    return 5000.0 if count == 0 else sum_dist / count
+
+    if count > 0:
+        mean_dist = sum_dist / count
+        # If tracks only overlap at 1 timestep out of long trajectories (isolated crossing),
+        # apply a separation penalty to prevent distinct systems from collapsing into one
+        len_a = len(track_a)
+        len_b = len(track_b)
+        min_len = min(len_a, len_b)
+        if count == 1 and min_len >= 4:
+            return mean_dist + 500.0
+        return mean_dist
+
+    # Zero overlapping forecast hours: check temporal continuity between endpoints
+    # e.g., early-forming vs delayed-genesis tracks of the same continuous system
+    start_a, end_a = track_a[0], track_a[-1]
+    start_b, end_b = track_b[0], track_b[-1]
+    
+    if start_b['h'] >= end_a['h']:
+        dt = start_b['h'] - end_a['h']
+        if dt <= 24:
+            d_gap = haversine_km(end_a['lat'], end_a['lon'], start_b['lat'], start_b['lon'])
+            penalty_dist = d_gap + 25.0 * dt  # ~25 km/h typical TC translation speed
+            if penalty_dist < 1200.0:
+                return penalty_dist
+    elif start_a['h'] >= end_b['h']:
+        dt = start_a['h'] - end_b['h']
+        if dt <= 24:
+            d_gap = haversine_km(end_b['lat'], end_b['lon'], start_a['lat'], start_a['lon'])
+            penalty_dist = d_gap + 25.0 * dt
+            if penalty_dist < 1200.0:
+                return penalty_dist
+
+    return 5000.0
 
 def run_hdbscan(distance_matrix, min_cluster_size):
     n = len(distance_matrix)
     if n == 0:
         return []
+    if n == 1:
+        return [0]
         
+    dist_mat = np.asarray(distance_matrix, dtype=np.float64)
     k = min(n - 1, max(1, min_cluster_size - 1))
-    core_dist = [0.0] * n
-    for i in range(n):
-        sorted_dists = sorted(distance_matrix[i])
-        core_dist[i] = sorted_dists[k]
+    core_dist = np.partition(dist_mat, k, axis=1)[:, k] if n > 1 else np.zeros(n)
         
-    in_mst = [False] * n
-    min_dist = [float('inf')] * n
-    parent = [-1] * n
+    # Prim's Algorithm for Minimum Spanning Tree (MST) on Mutual Reachability Graph
+    in_mst = np.zeros(n, dtype=bool)
+    min_dist = np.full(n, np.inf)
+    parent = np.full(n, -1, dtype=int)
     min_dist[0] = 0.0
     edges = []
     
-    for step in range(n):
-        u = -1
-        best = float('inf')
-        for i in range(n):
-            if not in_mst[i] and min_dist[i] < best:
-                best = min_dist[i]
-                u = i
-        if u == -1:
+    for _ in range(n):
+        min_dist_masked = np.where(in_mst, np.inf, min_dist)
+        u = int(np.argmin(min_dist_masked))
+        if min_dist_masked[u] == np.inf:
             break
         in_mst[u] = True
         if parent[u] != -1:
-            edges.append({'u': parent[u], 'v': u, 'weight': best})
-        for v in range(n):
-            if not in_mst[v]:
-                weight = max(core_dist[u], core_dist[v], distance_matrix[u][v])
-                if weight < min_dist[v]:
-                    min_dist[v] = weight
-                    parent[v] = u
+            edges.append({'u': int(parent[u]), 'v': u, 'weight': float(min_dist[u])})
+            
+        not_in_mst = ~in_mst
+        mreach_weights = np.maximum(np.maximum(core_dist[u], core_dist), dist_mat[u])
+        closer = not_in_mst & (mreach_weights < min_dist)
+        min_dist[closer] = mreach_weights[closer]
+        parent[closer] = u
                     
     edges.sort(key=lambda x: x['weight'])
     
     next_node_id = n
     uf_parent = list(range(n * 2))
+    # Explicit dendrogram tree parent pointers to prevent infinite loops from path compression
+    tree_parent = [-1] * (n * 2)
     
     nodes = []
     for i in range(n * 2):
@@ -274,6 +309,8 @@ def run_hdbscan(distance_matrix, min_cluster_size):
             next_node_id += 1
             uf_parent[root_u] = new_id
             uf_parent[root_v] = new_id
+            tree_parent[root_u] = new_id
+            tree_parent[root_v] = new_id
             nodes[new_id]['left'] = nodes[root_u]
             nodes[new_id]['right'] = nodes[root_v]
             nodes[new_id]['weight'] = edge['weight']
@@ -349,7 +386,10 @@ def run_hdbscan(distance_matrix, min_cluster_size):
             curr = nodes[pt]
             while curr and curr['death'] < cnode['death']:
                 death_weight = curr['death']
-                curr = nodes[uf_parent[curr['id']]]
+                p_id = tree_parent[curr['id']]
+                if p_id == -1 or p_id == curr['id']:
+                    break
+                curr = nodes[p_id]
             lambda_death = 1.0 / (death_weight if death_weight > 0.0001 else 0.0001)
             sum_stability += max(0.0, lambda_death - lambda_birth)
         cnode['stability'] = sum_stability
@@ -455,19 +495,26 @@ def group_and_cluster_tracks(basin_filtered, num_members, dataset_name):
         return {'clusters': [], 'track_labels': []}
         
     n = len(basin_filtered)
-    distance_matrix = [[0.0] * n for _ in range(n)]
+    track_lookups = [{p['h']: p for p in t} for t in basin_filtered]
+    distance_matrix = np.zeros((n, n), dtype=np.float64)
     for i in range(n):
-        for j in range(i, n):
-            if i == j:
-                distance_matrix[i][j] = 0.0
-            else:
-                dist = get_track_distance(basin_filtered[i], basin_filtered[j])
-                distance_matrix[i][j] = dist
-                distance_matrix[j][i] = dist
+        t_a = basin_filtered[i]
+        l_a = track_lookups[i]
+        for j in range(i + 1, n):
+            dist = get_track_distance(t_a, basin_filtered[j], l_a, track_lookups[j])
+            distance_matrix[i, j] = dist
+            distance_matrix[j, i] = dist
                 
     min_cluster_size = max(4, int(round(num_members * (0.03 if num_members > 100 else 0.08))))
     labels = run_hdbscan(distance_matrix, min_cluster_size)
     
+    # Adaptive fallback: if all tracks are labelled as noise (-1) but sufficient candidate tracks exist,
+    # retry with a slightly more lenient min_cluster_size to recover valid disturbances
+    if all(l == -1 for l in labels) and n >= 4:
+        fallback_min = max(3, min_cluster_size // 2)
+        if fallback_min < min_cluster_size:
+            labels = run_hdbscan(distance_matrix, fallback_min)
+            
     clusters_by_label = {}
     for i in range(n):
         label = labels[i]
@@ -915,7 +962,11 @@ def main():
         if data_source_url:
             tracks_url = f"{data_source_url.rstrip('/')}/data/{c['tracks']}"
             paired_url = f"{data_source_url.rstrip('/')}/data/{c['paired']}" if c.get('paired') else None
-            csv_text = decode_obfuscated_url(tracks_url)
+            try:
+                csv_text = decode_obfuscated_url(tracks_url)
+            except Exception as e:
+                print(f"Warning: Could not fetch cycle {c['cycle']} from {tracks_url}: {e}, skipping...")
+                continue
             paired_csv_text = None
             if paired_url:
                 try:
@@ -924,6 +975,9 @@ def main():
                     paired_csv_text = None
         else:
             tracks_path = os.path.join(data_dir, c['tracks'])
+            if not os.path.exists(tracks_path):
+                print(f"Warning: Cycle file not found on disk: {c['tracks']}, skipping cycle {c['cycle']}...")
+                continue
             paired_path = os.path.join(data_dir, c['paired']) if c.get('paired') else None
             csv_text = decode_obfuscated_data(tracks_path)
             paired_csv_text = decode_obfuscated_data(paired_path) if paired_path and os.path.exists(paired_path) else None
@@ -937,6 +991,9 @@ def main():
         })
         # Explicitly run garbage collection to free memory from large strings/dataframes/arrays
         gc.collect()
+
+    if not parsed_cycles:
+        raise ValueError(f"No active cycles found or loaded for dataset {dataset}")
         
     # Load previous manifest context to propagate IDs and maintain persistence
     prev_manifest = {}
