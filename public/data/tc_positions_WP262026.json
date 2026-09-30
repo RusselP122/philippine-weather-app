@@ -1,0 +1,62 @@
+{
+  "active": true,
+  "storm_name": "TC 26W (Invest 93W)",
+  "track_id": "WP262026",
+  "latest": {
+    "lat": 15.6,
+    "lon": 151.9,
+    "pressure_hpa": 1005.0,
+    "wind_kt": 25.0,
+    "wind_kmh": 46,
+    "movement": "SW at 11.6 km/h (6.3 kt)",
+    "init_time": "2026-09-30 00:00",
+    "category": "Tropical Depression"
+  },
+  "history": [
+    {
+      "cycle": "2026-09-29 00:00",
+      "lat": 15.5,
+      "lon": 155.0,
+      "pressure_hpa": 1008.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-09-29 06:00",
+      "lat": 15.9,
+      "lon": 154.5,
+      "pressure_hpa": 1006.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-09-29 12:00",
+      "lat": 15.9,
+      "lon": 153.0,
+      "pressure_hpa": 1007.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-09-29 18:00",
+      "lat": 16.0,
+      "lon": 152.4,
+      "pressure_hpa": 1005.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-09-30 00:00",
+      "lat": 15.6,
+      "lon": 151.9,
+      "pressure_hpa": 1005.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    }
+  ]
+}
