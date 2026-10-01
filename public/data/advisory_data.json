@@ -3,7 +3,7 @@
   "validity": "02:00 PM, 01 October 2026 to 02:00 PM, 02 October 2026",
   "system": "AI Multi-Model Ensemble (WeatherNext 3, AIFS, AIGFS)",
   "init_time": "2026-10-01 02:00 PM (PHT)",
-  "generated_at": "2026-10-01 04:42 PM (PHT)",
+  "generated_at": "2026-10-01 05:28 PM (PHT)",
   "provinces": {
     "Abra": {
       "rainfall_mm": 7.7,
@@ -1730,7 +1730,7 @@
   },
   "metadata": {
     "title": "AI Multi-Model Consensus Rainfall Advisory",
-    "generated": "2026-10-01 04:42 PM (PHT)",
+    "generated": "2026-10-01 05:28 PM (PHT)",
     "run": "2026-10-01 02:00 PM (PHT)",
     "storm": "None",
     "models": [
