@@ -48,7 +48,7 @@ DEFAULT_CSV_PATHS = [
     os.path.join(os.getcwd(), "ibtracs.WP.list.v04r01.csv"),
 ]
 DEFAULT_JSON_OUTPUT = os.path.join(WORKSPACE_ROOT, "public", "data", "historical_tracks.json")
-DEFAULT_IMG_OUTPUT = os.path.join(WORKSPACE_ROOT, "public", "images", "tropical_cyclone_outlook_september_2026.png")
+DEFAULT_IMG_OUTPUT = os.path.join(WORKSPACE_ROOT, "public", "images", "tropical_cyclone_outlook_october_2026.png")
 GEOJSON_PATH = os.path.join(WORKSPACE_ROOT, "public", "data", "ph_provinces.json")
 USER_LOGO_PATHS = [
     os.path.join(WORKSPACE_ROOT, "public", "images", "logo.png"),
@@ -75,6 +75,12 @@ MONTH_NAMES = {
     9: "SEPTEMBER", 10: "OCTOBER", 11: "NOVEMBER", 12: "DECEMBER"
 }
 
+MONTH_NAMES_TL = {
+    1: "ENERO", 2: "PEBRERO", 3: "MARSO", 4: "ABRIL",
+    5: "MAYO", 6: "HUNYO", 7: "HULYO", 8: "AGOSTO",
+    9: "SETYEMBRE", 10: "OKTUBRE", 11: "NOBYEMBRE", 12: "DISYEMBRE"
+}
+
 # ── PAGASA Intensity Scale (Subtle, desaturated background texture) ─────────
 PAGASA_COLORS = {
     'TD':  {'color': '#38bdf8', 'label': 'Tropical Depression',       'speed': '≤ 61 km/h',    'min_w': 0,   'max_w': 34,   'lw': 0.65, 'alpha': 0.13, 'zorder': 3},
@@ -84,50 +90,105 @@ PAGASA_COLORS = {
     'STY': {'color': '#c084fc', 'label': 'Super Typhoon',             'speed': '≥ 185 km/h',   'min_w': 100, 'max_w': 9999, 'lw': 1.30, 'alpha': 0.25, 'zorder': 7},
 }
 
-# ── 3 Distinct, Quintessential Climatological Tracks for September ───────────
+# ── 3 Distinct Climatological Tracks for September ───────────────────────────
 CLIM_TRACKS_SEPTEMBER = [
-    # Track 1: Pacific Recurver (Open ocean recurving away toward NE)
     {
-        'pts': np.array([
-            [134.5, 13.5],
-            [132.5, 15.8],
-            [130.5, 18.0],
-            [128.8, 20.0],
-            [127.5, 21.6]
-        ]),
-        'start_w': 0.18,
-        'end_w': 0.26,
-        'head_len': 1.05,
-        'head_w': 0.75
+        'pts': np.array([[134.5, 13.5], [132.5, 15.8], [130.5, 18.0], [128.8, 20.0], [127.5, 21.6]]),
+        'start_w': 0.18, 'end_w': 0.26, 'head_len': 1.05, 'head_w': 0.75, 'num': None
     },
-    # Track 2: Northern Luzon & Bashi Channel (Crossing north of Luzon into WPS)
     {
-        'pts': np.array([
-            [134.0, 12.8],
-            [129.5, 14.8],
-            [125.0, 16.8],
-            [121.5, 18.2],
-            [118.5, 18.8]
-        ]),
-        'start_w': 0.20,
-        'end_w': 0.28,
-        'head_len': 1.15,
-        'head_w': 0.82
+        'pts': np.array([[134.0, 12.8], [129.5, 14.8], [125.0, 16.8], [121.5, 18.2], [118.5, 18.8]]),
+        'start_w': 0.20, 'end_w': 0.28, 'head_len': 1.15, 'head_w': 0.82, 'num': None
     },
-    # Track 3: Central Luzon & Metro Manila Corridor (Crossing Southern/Central Luzon into WPS)
     {
-        'pts': np.array([
-            [133.5, 8.5],
-            [128.5, 10.5],
-            [124.5, 12.5],
-            [121.5, 14.0],
-            [118.5, 14.6]
-        ]),
-        'start_w': 0.20,
-        'end_w': 0.28,
-        'head_len': 1.15,
-        'head_w': 0.82
+        'pts': np.array([[133.5, 8.5], [128.5, 10.5], [124.5, 12.5], [121.5, 14.0], [118.5, 14.6]]),
+        'start_w': 0.20, 'end_w': 0.28, 'head_len': 1.15, 'head_w': 0.82, 'num': None
     }
+]
+
+# ── October Climatological Trajectories (Matching PAGASA Climatology Chart) ──
+# ── October Climatological Trajectories (Matching PAGASA Climatology Chart) ──
+CLIM_TRACKS_OCTOBER = [
+    # Track 1 - Branch A: Outer Pacific Recurver (Part of Track ①)
+    {
+        'pts': np.array([
+            [135.3, 18.4],
+            [133.5, 18.4],
+            [131.8, 18.6],
+            [130.6, 19.4],
+            [130.4, 20.8],
+            [131.2, 22.4],
+            [132.5, 23.8],
+            [133.8, 24.8],
+            [134.8, 25.6]
+        ]),
+        'start_w': 0.18, 'end_w': 0.26, 'head_len': 0.95, 'head_w': 0.72, 'num': None
+    },
+    # Track 1 - Branch B: Inner Pacific Recurver (Part of Track ①)
+    {
+        'pts': np.array([
+            [135.2, 15.6],
+            [132.5, 15.6],
+            [129.5, 16.0],
+            [127.0, 16.8],
+            [125.2, 18.2],
+            [124.4, 20.2],
+            [124.8, 21.8],
+            [125.8, 23.2],
+            [127.2, 24.5],
+            [128.6, 25.7]
+        ]),
+        'start_w': 0.18, 'end_w': 0.26, 'head_len': 0.95, 'head_w': 0.72, 'num': None
+    },
+    # Track 2: Northern / Central Luzon Landfall Corridor (Originates at Badge ②)
+    {
+        'pts': np.array([
+            [136.5, 13.4],
+            [133.0, 13.6],
+            [129.5, 14.4],
+            [126.0, 15.6],
+            [122.5, 16.8],
+            [119.5, 17.5],
+            [116.5, 18.3],
+            [114.0, 19.2]
+        ]),
+        'start_w': 0.18, 'end_w': 0.26, 'head_len': 0.95, 'head_w': 0.72, 'num': None
+    },
+    # Track 3: Central & Southern Luzon / Metro Manila Corridor (Originates at Badge ③)
+    {
+        'pts': np.array([
+            [136.5, 9.3],
+            [133.0, 10.2],
+            [129.5, 11.5],
+            [126.0, 12.8],
+            [122.5, 14.0],
+            [119.0, 14.6],
+            [116.0, 14.7],
+            [113.8, 14.7]
+        ]),
+        'start_w': 0.18, 'end_w': 0.26, 'head_len': 0.95, 'head_w': 0.72, 'num': None
+    },
+    # Track 4: Visayas & Palawan Corridor (Originates at Badge ④)
+    {
+        'pts': np.array([
+            [132.2, 7.4],
+            [129.0, 8.6],
+            [126.0, 9.9],
+            [123.0, 11.0],
+            [120.0, 11.7],
+            [117.0, 11.9],
+            [113.8, 11.9]
+        ]),
+        'start_w': 0.18, 'end_w': 0.26, 'head_len': 0.95, 'head_w': 0.72, 'num': None
+    }
+]
+
+# The 4 official PAGASA October Badges
+PAGASA_OCTOBER_BADGES = [
+    (1, 136.2, 17.0),  # Centered between Track 1's two recurving arrows
+    (2, 137.2, 13.4),  # Directly at the origin of Track 2 (Northern Luzon)
+    (3, 137.2, 9.3),   # Directly at the origin of Track 3 (Central/Southern Luzon)
+    (4, 133.0, 7.4),   # Directly at the origin of Track 4 (Visayas)
 ]
 
 # Major Philippine Geographic & City Callout Labels
@@ -141,7 +202,7 @@ MAP_CITIES = [
     ("Iloilo", 122.56, 10.72, (-0.22, 0), "right"),
     ("Cebu", 123.89, 10.31, (0.24, 0), "left"),
     ("Tacloban", 125.00, 11.24, (0.24, 0.12), "left"),
-    ("Puerto Princesa", 118.73, 9.74, (-0.22, -0.22), "center"),
+    ("Puerto Princesa", 118.73, 9.74, (0.26, 0.08), "left"),
     ("Cagayan de Oro", 124.63, 8.48, (-0.22, 0.15), "right"),
     ("Butuan", 125.54, 8.95, (0.24, 0), "left"),
     ("Davao", 125.60, 7.19, (0.24, 0), "left"),
@@ -215,14 +276,22 @@ def draw_sleek_data_arrow(ax, pts, start_w=0.18, end_w=0.26, head_len=1.10, head
     neck_nx, neck_ny = nx[cutoff_idx], ny[cutoff_idx]
     
     hw = head_w / 2.0
-    sweep_back = 0.18
-    tang_x = -neck_ny
-    tang_y = neck_nx
+    sweep_back = 0.22
     
-    wing_left_x = neck_x + neck_nx * hw - tang_x * sweep_back
-    wing_left_y = neck_y + neck_ny * hw - tang_y * sweep_back
-    wing_right_x = neck_x - neck_nx * hw - tang_x * sweep_back
-    wing_right_y = neck_y - neck_ny * hw - tang_y * sweep_back
+    dir_x = head_tip_x - neck_x
+    dir_y = head_tip_y - neck_y
+    d_len = np.sqrt(dir_x**2 + dir_y**2)
+    if d_len > 0:
+        dir_x /= d_len
+        dir_y /= d_len
+        
+    norm_x = -dir_y
+    norm_y = dir_x
+    
+    wing_left_x = neck_x + norm_x * hw - dir_x * sweep_back
+    wing_left_y = neck_y + norm_y * hw - dir_y * sweep_back
+    wing_right_x = neck_x - norm_x * hw - dir_x * sweep_back
+    wing_right_y = neck_y - norm_y * hw - dir_y * sweep_back
     
     head_poly_x = [head_tip_x, wing_left_x, neck_x, wing_right_x]
     head_poly_y = [head_tip_y, wing_left_y, neck_y, wing_right_y]
@@ -251,15 +320,17 @@ def draw_sleek_data_arrow(ax, pts, start_w=0.18, end_w=0.26, head_len=1.10, head
             color='#ffffff', alpha=0.95, lw=1.0, transform=ccrs.PlateCarree(), zorder=19)
 
 
-def generate_outlook_poster(df_wp, target_month=9, target_year=2026,
-                            expected_range="2-3",
-                            upcoming_names=("QUEENIE", "ROSAL", "SAMUEL"),
+def generate_outlook_poster(df_wp, target_month=10, target_year=2026,
+                            expected_range="1–2",
+                            upcoming_names=("ROSAL", "SAMUEL"),
                             output_image_path=DEFAULT_IMG_OUTPUT):
     """
     Renders an original, zoomed-in, broadcast-grade Philippine Tropical Cyclone Outlook poster
     with unified grid alignment, subtle background texture, and sleek vector flow arrows.
+    Updated with October Climatological tracks and comprehensive Tagalog outlook cards.
     """
-    print(f"\n[Poster] Generating Zoomed Philippine TC Outlook for {MONTH_NAMES[target_month]} {target_year}...")
+    month_name_display = MONTH_NAMES_TL.get(target_month, MONTH_NAMES[target_month])
+    print(f"\n[Poster] Generating Zoomed Philippine TC Outlook for {month_name_display} {target_year}...")
     
     # Select full tracks for all storms active in target month (1960-2024)
     target_sids = df_wp[(df_wp['YEAR'] >= 1960) & (df_wp['YEAR'] <= 2024) & (df_wp['MONTH'] == target_month)]['SID'].unique()
@@ -270,9 +341,9 @@ def generate_outlook_poster(df_wp, target_month=9, target_year=2026,
     fig = plt.figure(figsize=(13, 13), dpi=160, facecolor='#020617')
     ax = fig.add_axes([0, 0, 1, 1], projection=ccrs.PlateCarree())
     
-    # TIGHTLY FOCUSED EXTENT: Clean proportions, no dead margins
-    # Longitude: 114.0°E to 134.8°E | Latitude: 4.2°N to 22.2°N
-    map_extent = [114.0, 134.8, 4.2, 22.2]
+    # BROADENED EXTENT: Entire Philippine archipelago + PAR + Western WPS arrowheads fully visible and unobstructed
+    # Longitude: 104.0°E to 140.5°E | Latitude: 3.5°N to 26.5°N
+    map_extent = [104.0, 140.5, 3.5, 26.5]
     ax.set_extent(map_extent, crs=ccrs.PlateCarree())
     
     # Dark Ocean & Neighboring Land
@@ -283,17 +354,28 @@ def generate_outlook_poster(df_wp, target_month=9, target_year=2026,
     gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=False,
                       linewidth=0.45, color='#1e293b', alpha=0.40, linestyle='--', zorder=1)
     
-    # Philippine Provinces (Detailed, Clean Slate Fill with Crisp Outlines)
+    # Philippine Provinces (Detailed, Clean Slate Fill with Luminous Province Outlines)
     if os.path.exists(GEOJSON_PATH):
         try:
             gdf_ph = gpd.read_file(GEOJSON_PATH)
             ax.add_geometries(gdf_ph.geometry, crs=ccrs.PlateCarree(),
-                              facecolor='#15213b', edgecolor='#334155', linewidth=0.60, alpha=0.98, zorder=2)
+                              facecolor='#162544', edgecolor='#38bdf8', linewidth=0.60, alpha=0.98, zorder=3)
             print("[Poster] Loaded detailed Philippine province boundaries.")
         except Exception as e:
             print(f"[Poster] Warning loading province geometries: {e}")
             
     ax.add_feature(cfeature.COASTLINE, edgecolor='#475569', linewidth=0.75, zorder=2)
+
+    # ── Philippine Area of Responsibility (PAR) Boundary (Solid Line) ───
+    par_lons = [p[0] for p in PAR_COORDS]
+    par_lats = [p[1] for p in PAR_COORDS]
+    ax.plot(par_lons, par_lats, color='#f59e0b', lw=1.8, linestyle='-',
+            alpha=0.92, transform=ccrs.PlateCarree(), zorder=12,
+            path_effects=[patheffects.withStroke(linewidth=3.2, foreground='#000000', alpha=0.95)])
+    ax.text(128.5, 5.35, "Philippine Area of Responsibility (PAR)",
+            color='#fbbf24', fontsize=7.8, fontweight='bold', fontstyle='italic',
+            path_effects=[patheffects.withStroke(linewidth=2.5, foreground='#020617', alpha=0.95)],
+            transform=ccrs.PlateCarree(), zorder=13)
     
     # ── Historical Tracks Background (Rendered as Elegant Data Texture) ─────
     segments_by_cat = {k: [] for k in PAGASA_COLORS}
@@ -334,9 +416,10 @@ def generate_outlook_poster(df_wp, target_month=9, target_year=2026,
                                 transform=ccrs.PlateCarree(), zorder=cat_info['zorder'])
             ax.add_collection(lc)
             
-    # ── Draw 3 Sleek Climatological Trajectory Flow Arrows ───────────────────
-    print("[Poster] Drawing 3 sleek climatological track flow arrows...")
-    for t_info in CLIM_TRACKS_SEPTEMBER:
+    # ── Draw Climatological Trajectory Flow Arrows ───────────────────────────
+    print(f"[Poster] Drawing climatological track flow arrows for {MONTH_NAMES[target_month]}...")
+    clim_tracks = CLIM_TRACKS_OCTOBER if target_month == 10 else CLIM_TRACKS_SEPTEMBER
+    for t_info in clim_tracks:
         draw_sleek_data_arrow(
             ax,
             t_info['pts'],
@@ -345,6 +428,28 @@ def generate_outlook_poster(df_wp, target_month=9, target_year=2026,
             head_len=t_info['head_len'],
             head_w=t_info['head_w']
         )
+        if t_info.get('num'):
+            p0 = t_info['pts'][0]
+            ax.plot(p0[0], p0[1], marker='o', markersize=14, color='#dc2626',
+                    markeredgecolor='#ffffff', markeredgewidth=1.4,
+                    transform=ccrs.PlateCarree(), zorder=48)
+            ax.text(p0[0], p0[1], str(t_info['num']), color='#ffffff', fontsize=9.5,
+                    fontweight='black', ha='center', va='center',
+                    transform=ccrs.PlateCarree(), zorder=49)
+
+    # ── Draw the 4 Official PAGASA Red Badges ①, ②, ③, ④ ───────────────────
+    if target_month == 10:
+        for b_num, b_lon, b_lat in PAGASA_OCTOBER_BADGES:
+            # Outer ambient glow
+            ax.plot(b_lon, b_lat, marker='o', markersize=18, color='#dc2626', alpha=0.35,
+                    transform=ccrs.PlateCarree(), zorder=47)
+            # Main circular badge
+            ax.plot(b_lon, b_lat, marker='o', markersize=14, color='#dc2626',
+                    markeredgecolor='#ffffff', markeredgewidth=1.6,
+                    transform=ccrs.PlateCarree(), zorder=48)
+            ax.text(b_lon, b_lat, str(b_num), color='#ffffff', fontsize=9.2,
+                    fontweight='black', ha='center', va='center',
+                    transform=ccrs.PlateCarree(), zorder=49)
         
     # ── Map City / Regional Labels (Protected Top Layer with Deep Halo) ─────
     dark_halo = [patheffects.withStroke(linewidth=3.6, foreground='#020617', alpha=0.98)]
@@ -356,169 +461,279 @@ def generate_outlook_poster(df_wp, target_month=9, target_year=2026,
                 color='#f8fafc', fontsize=9.2, fontweight='bold', ha=ha, va='center',
                 path_effects=dark_halo, transform=ccrs.PlateCarree(), zorder=46)
     
-    # ── UNIFIED GRID SYSTEM & MARGINS (2.5% Consistent Padding) ─────────────
-    # Top Margin: y = 0.975 | Bottom Margin: y = 0.025 | Left: x = 0.025 | Right: x = 0.975
-    GRID_MARGIN = 0.025
-    TOP_GRID_Y = 0.975
+    # ── UNIFIED GRID SYSTEM & MARGINS (2.0% Margin, Protected Archipelagic Space) ──
+    GRID_MARGIN = 0.020
+    TOP_GRID_Y = 0.980
     
-    # 1. Top-Left Header Banner Card
+    # 1. Top-Left Header Banner Card (Restricted width: stays strictly west of Batanes & Luzon)
     header_x = GRID_MARGIN
-    header_w = 0.490
-    header_h = 0.088
-    header_y = TOP_GRID_Y - header_h  # y = 0.887
+    header_w = 0.280
+    header_h = 0.076
+    header_y = TOP_GRID_Y - header_h
+    
+    header_shadow = FancyBboxPatch(
+        (header_x + 0.003, header_y - 0.003), header_w, header_h,
+        boxstyle="round,pad=0.005,rounding_size=0.014",
+        facecolor='#01040a', edgecolor='none', alpha=0.55,
+        transform=fig.transFigure, zorder=29
+    )
+    fig.patches.append(header_shadow)
     
     header_bg = FancyBboxPatch(
         (header_x, header_y), header_w, header_h,
-        boxstyle="round,pad=0.012,rounding_size=0.018",
+        boxstyle="round,pad=0.005,rounding_size=0.014",
         facecolor='#030b1e', edgecolor='#1e3a8a', linewidth=1.4,
         alpha=0.94, transform=fig.transFigure, zorder=30
     )
     fig.patches.append(header_bg)
     
     tag_patch = FancyBboxPatch(
-        (header_x + 0.015, header_y + header_h - 0.026), 0.165, 0.018,
-        boxstyle="round,pad=0.004,rounding_size=0.006",
+        (header_x + 0.010, header_y + header_h - 0.022), 0.165, 0.015,
+        boxstyle="round,pad=0.002,rounding_size=0.004",
         facecolor='#0284c7', edgecolor='none',
         transform=fig.transFigure, zorder=31
     )
     fig.patches.append(tag_patch)
-    fig.text(header_x + 0.015 + 0.0825, header_y + header_h - 0.017, "CLIMATE OUTLOOK",
-             color='#ffffff', fontsize=8.5, fontweight='black', ha='center', va='center', zorder=32)
+    fig.text(header_x + 0.010 + 0.082, header_y + header_h - 0.0145, "PAGTAYA SA KLIMA AT MGA BAGYO",
+             color='#ffffff', fontsize=6.8, fontweight='black', ha='center', va='center', zorder=32)
     
-    title_str = f"{MONTH_NAMES[target_month]} {target_year} TROPICAL CYCLONE OUTLOOK"
-    fig.text(header_x + 0.015, header_y + 0.036, title_str,
-             color='#ffffff', fontsize=14.0, fontweight='black', va='center', zorder=32)
+    title_str = f"PAGTAYA SA BUWAN NG {month_name_display} {target_year}"
+    fig.text(header_x + 0.010, header_y + 0.031, title_str,
+             color='#ffffff', fontsize=9.8, fontweight='black', va='center', zorder=32)
     
-    fig.text(header_x + 0.015, header_y + 0.016, "Historical Tracks (1960–2024) & PAGASA Climatological Trajectories",
-             color='#94a3b8', fontsize=8.2, fontweight='semibold', va='center', zorder=32)
+    fig.text(header_x + 0.010, header_y + 0.013, "Mga Historikal na Track (1960–2024) at Trajectories ng PAGASA",
+             color='#94a3b8', fontsize=6.6, fontweight='semibold', va='center', zorder=32)
     
-    # 2. Top-Right Legend Card (Aligned exactly to TOP_GRID_Y and RIGHT MARGIN)
-    leg_w = 0.250
+    # 2. Top-Right Legend Card (Tucked into far top-right ocean corner east of 135.5°E)
+    leg_w = 0.132
     leg_h = 0.235
-    leg_x = 1.0 - GRID_MARGIN - leg_w  # x = 0.725
-    leg_y = TOP_GRID_Y - leg_h         # y = 0.740
+    leg_x = 1.0 - GRID_MARGIN - leg_w
+    leg_y = TOP_GRID_Y - leg_h
     
     leg_bg = FancyBboxPatch(
         (leg_x, leg_y), leg_w, leg_h,
-        boxstyle="round,pad=0.012,rounding_size=0.018",
-        facecolor='#030b1e', edgecolor='#1e3a8a', linewidth=1.4,
+        boxstyle="round,pad=0.005,rounding_size=0.014",
+        facecolor='#030b1e', edgecolor='#1e3a8a', linewidth=1.2,
         alpha=0.94, transform=fig.transFigure, zorder=30
     )
     fig.patches.append(leg_bg)
     
-    fig.text(leg_x + 0.014, leg_y + leg_h - 0.024, "PAGASA INTENSITY SCALE",
-             color='#38bdf8', fontsize=10.0, fontweight='black', zorder=32)
-    fig.text(leg_x + 0.014, leg_y + leg_h - 0.040, "1960–2024 Historical Cyclone Tracks",
-             color='#94a3b8', fontsize=7.8, zorder=32)
+    fig.text(leg_x + 0.008, leg_y + leg_h - 0.018, "PAGASA INTENSITY SCALE",
+             color='#38bdf8', fontsize=7.6, fontweight='black', zorder=32)
+    fig.text(leg_x + 0.008, leg_y + leg_h - 0.032, "1960–2024 Historical Tracks",
+             color='#94a3b8', fontsize=6.2, zorder=32)
     
     cat_items = [
         ('STY', 'Super Typhoon', '#c084fc', '≥ 185 km/h'),
-        ('TY',  'Typhoon', '#ef4444', '118–184 km/h'),
-        ('STS', 'Severe Tropical Storm', '#fb923c', '89–117 km/h'),
-        ('TS',  'Tropical Storm', '#facc15', '62–88 km/h'),
-        ('TD',  'Tropical Depression', '#38bdf8', '≤ 61 km/h'),
+        ('TY',  'Typhoon',       '#ef4444', '118–184'),
+        ('STS', 'Severe TS',     '#fb923c', '89–117'),
+        ('TS',  'Tropical Storm','#facc15', '62–88'),
+        ('TD',  'Tropical Depr.', '#38bdf8', '≤ 61 km/h'),
     ]
     
-    line_start_y = leg_y + leg_h - 0.065
+    line_start_y = leg_y + leg_h - 0.052
     for idx, (code, label, c, speed) in enumerate(cat_items):
-        ly = line_start_y - idx * 0.019
+        ly = line_start_y - idx * 0.017
         fig.lines.append(plt.Line2D(
-            [leg_x + 0.014, leg_x + 0.042], [ly, ly],
-            color=c, lw=3.2, transform=fig.transFigure, zorder=32
+            [leg_x + 0.008, leg_x + 0.024], [ly, ly],
+            color=c, lw=2.6, transform=fig.transFigure, zorder=32
         ))
-        fig.text(leg_x + 0.048, ly, label, color='#ffffff', fontsize=8.2, fontweight='bold', va='center', zorder=32)
-        fig.text(leg_x + leg_w - 0.014, ly, speed, color='#94a3b8', fontsize=7.5, ha='right', va='center', zorder=32)
+        fig.text(leg_x + 0.028, ly, label, color='#ffffff', fontsize=6.8, fontweight='bold', va='center', zorder=32)
+        fig.text(leg_x + leg_w - 0.008, ly, speed, color='#94a3b8', fontsize=6.0, ha='right', va='center', zorder=32)
         
-    div_y = leg_y + 0.060
-    fig.lines.append(plt.Line2D([leg_x + 0.014, leg_x + leg_w - 0.014],
+    div_y = leg_y + 0.055
+    fig.lines.append(plt.Line2D([leg_x + 0.008, leg_x + leg_w - 0.008],
                                 [div_y, div_y],
-                                color='#1e293b', lw=1.0, transform=fig.transFigure, zorder=32))
+                                color='#1e293b', lw=0.8, transform=fig.transFigure, zorder=32))
     
-    fig.text(leg_x + 0.014, div_y - 0.018, "Average Tracks for the Month",
-             color='#ffffff', fontsize=8.8, fontweight='bold', zorder=32)
-    fig.text(leg_x + 0.014, div_y - 0.032, "Climatological Paths (PAGASA)",
-             color='#64748b', fontsize=7.6, zorder=32)
+    # Karaniwang Track header & subtitle
+    fig.text(leg_x + 0.008, div_y - 0.014, f"Karaniwang Track ({month_name_display})",
+             color='#ffffff', fontsize=6.8, fontweight='bold', zorder=32)
+    fig.text(leg_x + 0.008, div_y - 0.027, "PAGASA Climatology (Tracks 1, 2, 3, 4)",
+             color='#64748b', fontsize=5.8, zorder=32)
     
+    # Dedicated row for sample flow arrow (completely free of text overlap)
+    arrow_y = div_y - 0.041
+    fig.lines.append(plt.Line2D(
+        [leg_x + 0.012, leg_x + leg_w - 0.012], [arrow_y, arrow_y],
+        color='#38bdf8', lw=3.0, alpha=0.45, transform=fig.transFigure, zorder=32
+    ))
     arrow_icon = FancyArrowPatch(
-        (leg_x + leg_w - 0.018, div_y - 0.022), (leg_x + leg_w - 0.068, div_y - 0.022),
-        arrowstyle='simple,head_width=8,head_length=10,tail_width=3.0',
-        facecolor='#e2e8f0', edgecolor='#38bdf8', alpha=0.95,
-        transform=fig.transFigure, zorder=32
+        (leg_x + leg_w - 0.012, arrow_y), (leg_x + 0.012, arrow_y),
+        arrowstyle='simple,head_width=6,head_length=8,tail_width=2.2',
+        facecolor='#f8fafc', edgecolor='#38bdf8', linewidth=0.8, alpha=0.95,
+        transform=fig.transFigure, zorder=33
     )
     fig.patches.append(arrow_icon)
     
-    # 3. Left Forecast & Names Card (MOVED DOWN for generous breathing room)
+    # 3. Left Card A: Forecast & Names & Landfall Alert (Snug & Cohesive)
     card_x = GRID_MARGIN
-    card_y = 0.285       # Moved down from 0.365 to 0.285
-    card_w = 0.230
-    card_h = 0.490       # Top sits at y = 0.775, giving a clean 0.112 margin below Header!
+    card_w = 0.202
+    card_y = 0.536
+    card_h = 0.354
     
-    # Soft drop shadow behind card to cleanly separate it from the basemap
     card_shadow = FancyBboxPatch(
-        (card_x + 0.005, card_y - 0.005), card_w, card_h,
-        boxstyle="round,pad=0.014,rounding_size=0.020",
-        facecolor='#01040a', edgecolor='none', alpha=0.60,
+        (card_x + 0.003, card_y - 0.003), card_w, card_h,
+        boxstyle="round,pad=0.005,rounding_size=0.014",
+        facecolor='#01040a', edgecolor='none', alpha=0.55,
         transform=fig.transFigure, zorder=29
     )
     fig.patches.append(card_shadow)
     
     card_bg = FancyBboxPatch(
         (card_x, card_y), card_w, card_h,
-        boxstyle="round,pad=0.014,rounding_size=0.020",
+        boxstyle="round,pad=0.005,rounding_size=0.014",
         facecolor='#030b1e', edgecolor='#1e3a8a', linewidth=1.4,
         alpha=0.92, transform=fig.transFigure, zorder=30
     )
     fig.patches.append(card_bg)
     
     # Section 1: Expected PAR Count
-    fig.text(card_x + card_w / 2.0, card_y + card_h - 0.032, "EXPECTED INSIDE PAR",
-             color='#38bdf8', fontsize=10.5, fontweight='black', ha='center', va='center', zorder=32)
+    fig.text(card_x + card_w / 2.0, card_y + card_h - 0.024, "INAASAHAN SA LOOB NG PAR",
+             color='#38bdf8', fontsize=8.0, fontweight='black', ha='center', va='center', zorder=32)
     
-    fig.text(card_x + card_w / 2.0, card_y + card_h - 0.096, expected_range,
-             color='#ffffff', fontsize=48, fontweight='black', ha='center', va='center',
+    fig.text(card_x + card_w / 2.0, card_y + card_h - 0.070, expected_range,
+             color='#ffffff', fontsize=33, fontweight='black', ha='center', va='center',
              path_effects=[patheffects.withStroke(linewidth=3, foreground='#0284c7', alpha=0.45)],
              zorder=32)
     
-    fig.text(card_x + card_w / 2.0, card_y + card_h - 0.148, "Tropical Cyclones",
-             color='#cbd5e1', fontsize=9.5, fontweight='bold', ha='center', va='center', zorder=32)
-    fig.text(card_x + card_w / 2.0, card_y + card_h - 0.166, "PAGASA Climatological Average: 3.5",
-             color='#64748b', fontsize=8.0, ha='center', va='center', zorder=32)
+    fig.text(card_x + card_w / 2.0, card_y + card_h - 0.112, "Mga Bagyo (Tropical Cyclones)",
+             color='#cbd5e1', fontsize=7.6, fontweight='bold', ha='center', va='center', zorder=32)
+    fig.text(card_x + card_w / 2.0, card_y + card_h - 0.128, "PAGASA Climatological Average: 2.1",
+             color='#64748b', fontsize=6.6, ha='center', va='center', zorder=32)
     
-    fig.lines.append(plt.Line2D([card_x + 0.020, card_x + card_w - 0.020],
-                                [card_y + card_h - 0.188, card_y + card_h - 0.188],
-                                color='#1e293b', lw=1.2, transform=fig.transFigure, zorder=32))
+    fig.lines.append(plt.Line2D([card_x + 0.010, card_x + card_w - 0.010],
+                                [card_y + card_h - 0.144, card_y + card_h - 0.144],
+                                color='#1e293b', lw=1.0, transform=fig.transFigure, zorder=32))
     
     # Section 2: Next In Line Storm Names
-    fig.text(card_x + card_w / 2.0, card_y + card_h - 0.214, "SUSUNOD NA LOKAL NA PANGALAN",
-             color='#38bdf8', fontsize=10.0, fontweight='black', ha='center', va='center', zorder=32)
+    fig.text(card_x + card_w / 2.0, card_y + card_h - 0.163, "SUSUNOD NA MGA PANGALAN",
+             color='#38bdf8', fontsize=7.8, fontweight='black', ha='center', va='center', zorder=32)
     
-    badge_w = card_w - 0.036
-    badge_h = 0.048
-    badge_x = card_x + 0.018
-    start_badge_y = card_y + card_h - 0.288
+    badge_w = card_w - 0.020
+    badge_h = 0.033
+    badge_x = card_x + 0.010
+    start_badge_y = card_y + card_h - 0.208
     
     for idx, sname in enumerate(upcoming_names):
-        by = start_badge_y - idx * (badge_h + 0.015)
-        
+        by = start_badge_y - idx * (badge_h + 0.007)
         b_patch = FancyBboxPatch(
             (badge_x, by), badge_w, badge_h,
-            boxstyle="round,pad=0.008,rounding_size=0.012",
+            boxstyle="round,pad=0.003,rounding_size=0.006",
             facecolor='#0b1d3a', edgecolor='#0284c7', linewidth=1.2,
             transform=fig.transFigure, zorder=32
         )
         fig.patches.append(b_patch)
         
         num_str = f"#{idx+1}"
-        fig.text(badge_x + 0.015, by + badge_h / 2.0, num_str,
-                 color='#38bdf8', fontsize=10.5, fontweight='black', va='center', zorder=33)
+        fig.text(badge_x + 0.008, by + badge_h / 2.0, num_str,
+                 color='#38bdf8', fontsize=8.2, fontweight='black', va='center', zorder=33)
+        fig.text(badge_x + badge_w / 2.0 + 0.006, by + badge_h / 2.0, sname,
+                 color='#fef08a', fontsize=11.0, fontweight='black', ha='center', va='center', zorder=33)
         
-        fig.text(badge_x + badge_w / 2.0 + 0.010, by + badge_h / 2.0, sname,
-                 color='#ffffff', fontsize=15.5, fontweight='black', ha='center', va='center', zorder=33)
-        
-    fig.text(card_x + card_w / 2.0, card_y + 0.024, "Sources: DOST-PAGASA & NOAA IBTrACS",
-             color='#64748b', fontsize=7.5, fontweight='semibold', ha='center', va='center', zorder=32)
+    # Section 3: Landfall Alert Box (Snug below Samuel with no dead space)
+    lbox_y = card_y + 0.012
+    lbox_h = 0.080
+    lbox = FancyBboxPatch(
+        (badge_x, lbox_y), badge_w, lbox_h,
+        boxstyle="round,pad=0.003,rounding_size=0.006",
+        facecolor='#450a0a', edgecolor='#ef4444', linewidth=1.2,
+        transform=fig.transFigure, zorder=32
+    )
+    fig.patches.append(lbox)
+    fig.text(card_x + card_w / 2.0, lbox_y + lbox_h - 0.016, "⚠️ BABALA SA LANDFALL",
+             color='#fca5a5', fontsize=7.2, fontweight='black', ha='center', va='center', zorder=33)
+    fig.text(card_x + card_w / 2.0, lbox_y + lbox_h - 0.034, "MAS MATAAS ANG TSANSA NG LANDFALL",
+             color='#ffffff', fontsize=6.6, fontweight='black', ha='center', va='center', zorder=33)
+    fig.text(card_x + card_w / 2.0, lbox_y + lbox_h - 0.051, "SA LUZON O VISAYAS (Tracks 2, 3, 4)",
+             color='#fef08a', fontsize=6.6, fontweight='bold', ha='center', va='center', zorder=33)
+    fig.text(card_x + card_w / 2.0, lbox_y + 0.012, "May posibilidad ng pagtawid bago lumabas sa WPS.",
+             color='#fca5a5', fontsize=5.8, ha='center', va='center', zorder=33)
+
+    # 4. Left Card B: Monsoon Transition & Weather Systems (Clean, Wrapped & Snug)
+    card_b_top = card_y - 0.016
+    syn_h = 0.352
+    syn_y = card_b_top - syn_h
     
-    # 4. User's App Logo (Bottom Right - Aligned to GRID_MARGIN)
+    syn_shadow = FancyBboxPatch(
+        (card_x + 0.003, syn_y - 0.003), card_w, syn_h,
+        boxstyle="round,pad=0.005,rounding_size=0.014",
+        facecolor='#01040a', edgecolor='none', alpha=0.55,
+        transform=fig.transFigure, zorder=29
+    )
+    fig.patches.append(syn_shadow)
+    
+    syn_bg = FancyBboxPatch(
+        (card_x, syn_y), card_w, syn_h,
+        boxstyle="round,pad=0.005,rounding_size=0.014",
+        facecolor='#030b1e', edgecolor='#1e3a8a', linewidth=1.4,
+        alpha=0.92, transform=fig.transFigure, zorder=30
+    )
+    fig.patches.append(syn_bg)
+    
+    # Header tag for systems
+    stag_h = 0.018
+    stag_y = card_b_top - 0.026
+    stag = FancyBboxPatch(
+        (card_x + 0.010, stag_y), badge_w, stag_h,
+        boxstyle="round,pad=0.002,rounding_size=0.004",
+        facecolor='#0f2a4a', edgecolor='#0284c7', linewidth=1.0,
+        transform=fig.transFigure, zorder=31
+    )
+    fig.patches.append(stag)
+    fig.text(card_x + card_w / 2.0, card_b_top - 0.017, "MONSOON TRANSITION & MGA SISTEMA",
+             color='#38bdf8', fontsize=6.8, fontweight='black', ha='center', va='center', zorder=32)
+
+    # 1. Habagat Termination
+    title1_y = card_b_top - 0.046
+    fig.text(card_x + 0.010, title1_y, "1. PAGTATAPOS NG HABAGAT (SW MONSOON)",
+             color='#fbbf24', fontsize=6.8, fontweight='black', zorder=32)
+    fig.text(card_x + 0.012, title1_y - 0.016, "• Pagtatapos ng Habagat at tag-ulan", color='#f8fafc', fontsize=6.0, zorder=32)
+    fig.text(card_x + 0.018, title1_y - 0.029, "sa unang linggo ng buwan.", color='#cbd5e1', fontsize=5.8, zorder=32)
+    fig.text(card_x + 0.012, title1_y - 0.045, "• Paghupa ng malalakas na pag-ulan", color='#f8fafc', fontsize=6.0, zorder=32)
+    fig.text(card_x + 0.018, title1_y - 0.058, "sa kanlurang bahagi ng bansa.", color='#94a3b8', fontsize=5.8, zorder=32)
+
+    div1_y = title1_y - 0.072
+    fig.lines.append(plt.Line2D([card_x + 0.010, card_x + card_w - 0.010],
+                                [div1_y, div1_y],
+                                color='#1e293b', lw=0.8, transform=fig.transFigure, zorder=32))
+
+    # 2. Amihan Onset
+    title2_y = div1_y - 0.016
+    fig.text(card_x + 0.010, title2_y, "2. PAGSISIMULA NG AMIHAN (NE MONSOON)",
+             color='#67e8f9', fontsize=6.8, fontweight='black', zorder=32)
+    fig.text(card_x + 0.012, title2_y - 0.016, "• Posibleng pagpasok ng Amihan at simula", color='#f8fafc', fontsize=6.0, zorder=32)
+    fig.text(card_x + 0.018, title2_y - 0.029, "ng cool dry season sa huling bahagi.", color='#cbd5e1', fontsize=5.8, zorder=32)
+    fig.text(card_x + 0.012, title2_y - 0.045, "• Mas malamig na simoy ng hangin", color='#f8fafc', fontsize=6.0, zorder=32)
+    fig.text(card_x + 0.018, title2_y - 0.058, "sa gabi at madaling araw.", color='#94a3b8', fontsize=5.8, zorder=32)
+
+    div2_y = title2_y - 0.072
+    fig.lines.append(plt.Line2D([card_x + 0.010, card_x + card_w - 0.010],
+                                [div2_y, div2_y],
+                                color='#1e293b', lw=0.8, transform=fig.transFigure, zorder=32))
+
+    # 3. Prevailing Systems
+    title3_y = div2_y - 0.016
+    fig.text(card_x + 0.010, title3_y, "3. MGA UMIIRAL NA WEATHER SYSTEMS",
+             color='#34d399', fontsize=6.8, fontweight='black', zorder=32)
+    fig.text(card_x + 0.012, title3_y - 0.016, "• ITCZ: Kalat-kalat na pag-ulan sa", color='#f8fafc', fontsize=6.0, zorder=32)
+    fig.text(card_x + 0.018, title3_y - 0.029, "bahagi ng Visayas at Mindanao.", color='#cbd5e1', fontsize=5.8, zorder=32)
+    fig.text(card_x + 0.012, title3_y - 0.045, "• Easterlies: Thunderstorms at maalinsangan", color='#cbd5e1', fontsize=6.0, zorder=32)
+    fig.text(card_x + 0.018, title3_y - 0.058, "na panahon sa silangang baybayin.", color='#94a3b8', fontsize=5.8, zorder=32)
+    fig.text(card_x + 0.012, title3_y - 0.074, "• LPAs: Namumuong sama ng panahon", color='#f87171', fontsize=6.0, zorder=32)
+    fig.text(card_x + 0.018, title3_y - 0.087, "sa loob at paligid ng ITCZ.", color='#fca5a5', fontsize=5.8, zorder=32)
+
+    div3_y = title3_y - 0.101
+    fig.lines.append(plt.Line2D([card_x + 0.010, card_x + card_w - 0.010],
+                                [div3_y, div3_y],
+                                color='#1e293b', lw=0.8, transform=fig.transFigure, zorder=32))
+
+    # Pinagmulan directly below section 3 divider (no dead space)
+    pinagmulan_y = div3_y - 0.014
+    fig.text(card_x + card_w / 2.0, pinagmulan_y, "Pinagmulan: DOST-PAGASA & NOAA IBTrACS",
+             color='#64748b', fontsize=6.2, fontweight='semibold', ha='center', va='center', zorder=32)
+    
+    # 5. User's App Logo (Bottom Right - Aligned to GRID_MARGIN)
     user_logo_file = next((p for p in USER_LOGO_PATHS if os.path.exists(p)), None)
     if user_logo_file:
         try:
@@ -536,8 +751,17 @@ def generate_outlook_poster(df_wp, target_month=9, target_year=2026,
     # Save Image
     os.makedirs(os.path.dirname(output_image_path), exist_ok=True)
     plt.savefig(output_image_path, dpi=160, facecolor='#020617')
-    plt.close()
     print(f"[Poster] Saved high-resolution poster to {output_image_path}")
+    
+    artifact_dir = r"C:\Users\Russel\.gemini\antigravity-ide\brain\a77c8e91-392d-4bc9-b623-b3d9de183f37"
+    if os.path.exists(artifact_dir):
+        try:
+            art_img_path = os.path.join(artifact_dir, "tropical_cyclone_outlook_october_2026.png")
+            plt.savefig(art_img_path, dpi=160, facecolor='#020617')
+            print(f"[Poster] Also saved copy to artifact: {art_img_path}")
+        except Exception as e:
+            print(f"[Poster] Note saving artifact copy: {e}")
+    plt.close()
 
 
 def process_climatology_and_json(df_wp, output_json_path=DEFAULT_JSON_OUTPUT):
@@ -654,9 +878,10 @@ def main():
     parser.add_argument("--csv", type=str, default=None, help="Path to ibtracs.WP.list.v04r01.csv")
     parser.add_argument("--json-out", type=str, default=DEFAULT_JSON_OUTPUT, help="Path to save historical_tracks.json")
     parser.add_argument("--image-out", type=str, default=DEFAULT_IMG_OUTPUT, help="Path to save output image poster")
-    parser.add_argument("--month", type=int, default=9, help="Target month (1-12, default 9 for September)")
+    parser.add_argument("--month", type=int, default=10, help="Target month (1-12, default 10 for October)")
     parser.add_argument("--year", type=int, default=2026, help="Target year (default 2026)")
-    parser.add_argument("--range", type=str, default="2-3", help="Expected TC range (default '2-3')")
+    parser.add_argument("--range", type=str, default="1–2", help="Expected TC range (default '1–2')")
+    parser.add_argument("--names", type=str, default="ROSAL,SAMUEL", help="Comma-separated upcoming names (default 'ROSAL,SAMUEL')")
     parser.add_argument("--no-json", action="store_true", help="Skip JSON export and only generate poster")
     parser.add_argument("--no-poster", action="store_true", help="Skip poster and only generate JSON")
     args = parser.parse_args()
@@ -699,7 +924,9 @@ def main():
     # 2. Outlook Poster Generation
     if not args.no_poster:
         expected_range = args.range
-        upcoming_names = ("QUEENIE", "ROSAL", "SAMUEL")
+        upcoming_names = tuple([n.strip().upper() for n in args.names.split(",") if n.strip()])
+        if not upcoming_names:
+            upcoming_names = ("ROSAL", "SAMUEL")
 
         generate_outlook_poster(
             df_wp=df_wp,
