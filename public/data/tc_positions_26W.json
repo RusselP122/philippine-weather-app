@@ -3,13 +3,13 @@
   "storm_name": "TC 26W (Invest 93W)",
   "track_id": "WP262026",
   "latest": {
-    "lat": 16.0,
-    "lon": 151.0,
-    "pressure_hpa": 1002.0,
+    "lat": 16.2,
+    "lon": 150.0,
+    "pressure_hpa": 1000.0,
     "wind_kt": 35.0,
     "wind_kmh": 65,
-    "movement": "NNE at 4.1 km/h (2.2 kt)",
-    "init_time": "2026-09-30 12:00",
+    "movement": "WNW at 18.2 km/h (9.8 kt)",
+    "init_time": "2026-09-30 18:00",
     "category": "Tropical Storm"
   },
   "history": [
@@ -72,6 +72,15 @@
       "lat": 16.0,
       "lon": 151.0,
       "pressure_hpa": 1002.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-09-30 18:00",
+      "lat": 16.2,
+      "lon": 150.0,
+      "pressure_hpa": 1000.0,
       "wind_kt": 35.0,
       "wind_kmh": 65,
       "category": "Tropical Storm"
