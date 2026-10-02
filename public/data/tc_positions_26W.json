@@ -3,13 +3,13 @@
   "storm_name": "TC 26W",
   "track_id": "WP262026",
   "latest": {
-    "lat": 17.0,
-    "lon": 144.7,
-    "pressure_hpa": 992.0,
-    "wind_kt": 54.0,
-    "wind_kmh": 100,
-    "movement": "WNW at 7.3 km/h (4.0 kt)",
-    "init_time": "2026-10-02 00:00",
+    "lat": 16.9,
+    "lon": 144.6,
+    "pressure_hpa": 987.0,
+    "wind_kt": 60.0,
+    "wind_kmh": 111,
+    "movement": "SW at 2.6 km/h (1.4 kt)",
+    "init_time": "2026-10-02 06:00",
     "category": "Severe Tropical Storm"
   },
   "history": [
@@ -128,6 +128,15 @@
       "pressure_hpa": 992.0,
       "wind_kt": 54.0,
       "wind_kmh": 100,
+      "category": "Severe Tropical Storm"
+    },
+    {
+      "cycle": "2026-10-02 06:00",
+      "lat": 16.9,
+      "lon": 144.6,
+      "pressure_hpa": 987.0,
+      "wind_kt": 60.0,
+      "wind_kmh": 111,
       "category": "Severe Tropical Storm"
     }
   ]
