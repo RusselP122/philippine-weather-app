@@ -124,8 +124,22 @@ const About = () => {
           </div>
         </div>
 
-        {/* Footer note stays the same in English (you can add Tagalog if you want) */}
-        <div className="mt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs md:text-sm text-slate-400">
+        {/* Policies & Disclaimers link */}
+        <div className="mt-8 p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs md:text-sm">
+          <div className="text-slate-300 text-center sm:text-left">
+            <span className="font-semibold text-slate-100">Official Policies & Guidelines:</span>{" "}
+            Read our full meteorological safety disclaimer, privacy policy (RA 10173), and scientific data attribution.
+          </div>
+          <a
+            href="/disclaimer"
+            className="shrink-0 px-3.5 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-semibold transition-colors flex items-center gap-1.5"
+          >
+            Review Policies & Disclaimer →
+          </a>
+        </div>
+
+        {/* Footer note stays the same in English */}
+        <div className="mt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs md:text-sm text-slate-400">
           <p>
             If you have feedback or spot something that looks incorrect, please
             treat it as experimental guidance and verify with official sources.

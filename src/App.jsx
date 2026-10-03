@@ -60,6 +60,7 @@ const WeatherAdvisory = lazyWithRetry(() => import("./components/WeatherAdvisory
 const LiveRadar = lazyWithRetry(() => import("./components/LiveRadar"));
 const RiskArea = lazyWithRetry(() => import("./components/RiskArea"));
 const SupportUs = lazyWithRetry(() => import("./components/SupportUs"));
+const Policies = lazyWithRetry(() => import("./components/Policies"));
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -409,6 +410,24 @@ function AppContent() {
         <Navbar />
         <main className="flex-grow">
           <SupportUs />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (
+    path === "/policies" ||
+    path === "/privacy" ||
+    path === "/terms" ||
+    path === "/disclaimer" ||
+    path === "/attribution"
+  ) {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">
+          <Policies />
         </main>
         <Footer />
       </div>
