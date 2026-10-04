@@ -3,13 +3,13 @@
   "storm_name": "Invest 94W",
   "track_id": "WP942026",
   "latest": {
-    "lat": 9.2,
-    "lon": 167.3,
-    "pressure_hpa": 1005.0,
+    "lat": 9.4,
+    "lon": 167.4,
+    "pressure_hpa": 1004.0,
     "wind_kt": 19.0,
     "wind_kmh": 35,
-    "movement": "NNE at 16.5 km/h (8.9 kt)",
-    "init_time": "2026-10-04 00:00",
+    "movement": "NNE at 4.1 km/h (2.2 kt)",
+    "init_time": "2026-10-04 06:00",
     "category": "Low Pressure Area"
   },
   "history": [
@@ -36,6 +36,15 @@
       "lat": 9.2,
       "lon": 167.3,
       "pressure_hpa": 1005.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-10-04 06:00",
+      "lat": 9.4,
+      "lon": 167.4,
+      "pressure_hpa": 1004.0,
       "wind_kt": 19.0,
       "wind_kmh": 35,
       "category": "Low Pressure Area"
