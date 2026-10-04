@@ -9,6 +9,7 @@ import handler from './api/fetch-gsmap.js';
 import capAlertsHandler from './api/cap-alerts.js';
 import earthquakesPhivolcsHandler from './api/earthquakes-phivolcs.js';
 import earthquakeBulletinHandler from './api/earthquake-bulletin.js';
+import volcanoDataHandler from './api/volcano-data.js';
 
 function vercelApiPlugin() {
   return {
@@ -76,6 +77,23 @@ function vercelApiPlugin() {
         } catch(e) {
             res.statusCode = 500;
             res.end(JSON.stringify({error: e.message}));
+        }
+      });
+
+      server.middlewares.use('/api/volcano-data', async (req, res, next) => {
+        const mockRes = {
+          setHeader: (name, value) => { res.setHeader(name, value); return mockRes; },
+          status: (code) => { res.statusCode = code; return mockRes; },
+          json: (data) => {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(data));
+          }
+        };
+        try {
+          await volcanoDataHandler(req, mockRes);
+        } catch (e) {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: e.message }));
         }
       });
     }

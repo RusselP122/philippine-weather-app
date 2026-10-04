@@ -364,3 +364,22 @@ body {
 .animate-loader-shimmer {
   animation: loader-shimmer 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
+
+/* ─── PAGASA Monitoring Domains Tooltip & Markers ─────────────── */
+.custom-domain-tooltip {
+  background: rgba(15, 23, 42, 0.95) !important;
+  border: 1px solid rgba(100, 116, 139, 0.5) !important;
+  color: #f1f5f9 !important;
+  border-radius: 6px !important;
+  padding: 5px 9px !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6) !important;
+  font-family: inherit !important;
+}
+.custom-domain-tooltip::before {
+  border-top-color: rgba(15, 23, 42, 0.95) !important;
+}
+
+.domain-label-icon {
+  background: transparent !important;
+  border: none !important;
+}

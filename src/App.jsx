@@ -55,7 +55,6 @@ const Volcanoes = lazyWithRetry(() => import("./components/Volcanoes"));
 const ForecastModels = lazyWithRetry(() => import("./components/ForecastModels"));
 const SpaghettiPlot = lazyWithRetry(() => import("./components/SpaghettiPlot"));
 const EnsoMonitor = lazyWithRetry(() => import("./components/EnsoMonitor"));
-const TropicalCyclonePrediction = lazyWithRetry(() => import("./components/TropicalCyclonePrediction"));
 const WeatherAdvisory = lazyWithRetry(() => import("./components/WeatherAdvisory"));
 const LiveRadar = lazyWithRetry(() => import("./components/LiveRadar"));
 const RiskArea = lazyWithRetry(() => import("./components/RiskArea"));
@@ -305,18 +304,6 @@ function AppContent() {
         <main className="flex-grow">
           <Warning />
         </main>
-      </div>
-    );
-  }
-
-  if (path === "/tc-prediction") {
-    return (
-      <div className="min-h-screen flex flex-col bg-slate-950">
-        <Navbar />
-        <main className="flex-grow">
-          <TropicalCyclonePrediction />
-        </main>
-        <Footer />
       </div>
     );
   }

@@ -13,6 +13,7 @@ const precipLayer = `https://tile.openweathermap.org/map/precipitation_new/{z}/{
 const pressureLayer = `https://tile.openweathermap.org/map/pressure_new/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`;
 const windLayer = `https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`;
 
+// Philippine Area of Responsibility (PAR)
 const PAR_POLYGON = [
   [5.0, 115.0],
   [15.0, 115.0],
@@ -23,21 +24,52 @@ const PAR_POLYGON = [
   [5.0, 115.0],
 ];
 
-function isInsidePar(lat, lon) {
+// Tropical Cyclone Advisory Domain (TCAD): 4°N 114°E, 27°N 114°E, 27°N 145°E, 4°N 145°E
+const TCAD_POLYGON = [
+  [4.0, 114.0],
+  [27.0, 114.0],
+  [27.0, 145.0],
+  [4.0, 145.0],
+  [4.0, 114.0],
+];
+
+// Tropical Cyclone Information Domain (TCID): 0°N 110°E, 27°N 110°E, 27°N 155°E, 0°N 155°E
+const TCID_POLYGON = [
+  [0.0, 110.0],
+  [27.0, 110.0],
+  [27.0, 155.0],
+  [0.0, 155.0],
+  [0.0, 110.0],
+];
+
+function isInsidePolygon(lat, lon, polygon) {
   let inside = false;
-  for (let i = 0, j = PAR_POLYGON.length - 1; i < PAR_POLYGON.length; j = i++) {
-    const yi = PAR_POLYGON[i][0];
-    const xi = PAR_POLYGON[i][1];
-    const yj = PAR_POLYGON[j][0];
-    const xj = PAR_POLYGON[j][1];
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const yi = polygon[i][0];
+    const xi = polygon[i][1];
+    const yj = polygon[j][0];
+    const xj = polygon[j][1];
 
     const intersect =
       yi > lat !== yj > lat &&
       lon < ((xj - xi) * (lat - yi)) / (yj - yi + 0.0000001) + xi;
     if (intersect) inside = !inside;
+  }
+  return inside;
 }
-return inside;
+
+function isInsidePar(lat, lon) {
+  return isInsidePolygon(lat, lon, PAR_POLYGON);
 }
+
+function isInsideTcad(lat, lon) {
+  return isInsidePolygon(lat, lon, TCAD_POLYGON);
+}
+
+function isInsideTcid(lat, lon) {
+  return isInsidePolygon(lat, lon, TCID_POLYGON);
+}
+
 
 // ── Himawari-9 Channel 13 Clean IR Brightness Temperature (°C) Color Enhancement ──
 // Standard PolarWx / Tropical Cyclone Brightness Temperature scale: +40°C down to -100°C
@@ -336,29 +368,6 @@ const CycloneMapLogic = ({
         console.error("Error loading Philippine province boundaries:", error)
       );
 
-    // PAR Boundary (Philippine Area of Responsibility)
-    const parGeoJSON = {
-      type: "Feature",
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          [
-            [115.0, 5.0],
-            [115.0, 15.0],
-            [120.0, 21.0],
-            [120.0, 25.0],
-            [135.0, 25.0],
-            [135.0, 5.0],
-            [115.0, 5.0],
-          ],
-        ],
-      },
-    };
-
-    const parLayer = L.geoJSON(parGeoJSON, {
-      style: { color: "#ef4444", weight: 2, fillOpacity: 0 },
-    }).addTo(map);
-
     // Storm Tracking
     const stormLayer = L.layerGroup().addTo(map);
     let stormMarkers = {};
@@ -619,11 +628,22 @@ const CycloneMapLogic = ({
         const categoryInfo = getStormCategory(winds10MinKph);
         const rawName = stormName;
         const insidePar = isInsidePar(latitude, longitude);
+        const insideTcad = isInsideTcad(latitude, longitude);
+        const insideTcid = isInsideTcid(latitude, longitude);
         const { displayName } = getStormDisplayName(rawName, categoryInfo.abbrev, insidePar, storm.atcf_id);
         const gustKph = toGustKmH(winds10MinKph);
         const categoryClass = categoryInfo.abbrev.toLowerCase();
         const iconSize = sizeMap[categoryInfo.abbrev] || [32, 32];
         const iconAnchor = [iconSize[0] / 2, iconSize[1] / 2];
+
+        let domainBadge = "";
+        if (insidePar) {
+          domainBadge = `<span class="text-[7.5px] px-1.5 py-0.5 rounded font-black tracking-wider uppercase bg-red-500/20 text-red-300 border border-red-500/40 ml-1.5 shadow-sm">PAR</span>`;
+        } else if (insideTcad) {
+          domainBadge = `<span class="text-[7.5px] px-1.5 py-0.5 rounded font-black tracking-wider uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40 ml-1.5 shadow-sm">TCAD</span>`;
+        } else if (insideTcid) {
+          domainBadge = `<span class="text-[7.5px] px-1.5 py-0.5 rounded font-black tracking-wider uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 ml-1.5 shadow-sm">TCID</span>`;
+        }
 
         const marker = L.marker([latitude, longitude], {
           icon: L.divIcon({
@@ -686,7 +706,7 @@ const CycloneMapLogic = ({
                                     <svg class="w-2.5 h-2.5 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"></path></svg>
                                     Location
                                 </span>
-                                <span class="font-bold text-slate-200 font-mono text-[8px] sm:text-[10px]" id="popup-location-text">${latitude.toFixed(2)}°N, ${longitude.toFixed(2)}°E</span>
+                                <span class="font-bold text-slate-200 font-mono text-[8px] sm:text-[10px] flex items-center" id="popup-location-text">${latitude.toFixed(2)}°N, ${longitude.toFixed(2)}°E ${domainBadge}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-slate-500 flex items-center gap-1.5">
@@ -1915,7 +1935,6 @@ const CycloneMapLogic = ({
       clearInterval(positionInterval);
       document.onkeydown = null;
       map.removeLayer(stormLayer);
-      map.removeLayer(parLayer);
       if (historyTrackGroupRef.current) {
         map.removeLayer(historyTrackGroupRef.current);
       }
@@ -2290,6 +2309,138 @@ const EnsembleLayerLogic = ({ ensembleTracks, pairedTracks, atcfPositions }) => 
   return null;
 };
 
+// Map overlay layer for PAGASA Monitoring Domains (PAR, TCAD, TCID)
+const DomainsLayerLogic = ({ showPAR = true, showTCAD = false, showTCID = false }) => {
+  const map = useMap();
+
+  const ensureBoundariesPane = () => {
+    if (!map) return "overlayPane";
+    const BOUNDARIES_PANE = "boundariesPane";
+    if (!map.getPane(BOUNDARIES_PANE)) {
+      map.createPane(BOUNDARIES_PANE);
+      const pane = map.getPane(BOUNDARIES_PANE);
+      if (pane) pane.style.zIndex = 550;
+    }
+    return BOUNDARIES_PANE;
+  };
+
+  // PAR layer
+  useEffect(() => {
+    if (!map || !showPAR) return;
+    const targetPane = ensureBoundariesPane();
+    const group = L.layerGroup().addTo(map);
+
+    const poly = L.polygon(PAR_POLYGON, {
+      color: "#ef4444",
+      weight: 2,
+      opacity: 0.9,
+      fill: false,
+      pane: targetPane,
+    });
+    poly.bindTooltip(
+      `<div class="font-bold text-red-400">PAR (Philippine Area of Responsibility)</div><div class="text-[10px] text-slate-300">5°N 115°E, 15°N 115°E, 21°N 120°E, 25°N 120°E, 25°N 135°E, 5°N 135°E</div>`,
+      { sticky: true, className: "custom-domain-tooltip" }
+    );
+    group.addLayer(poly);
+
+    const label = L.marker([25.0, 135.0], {
+      icon: L.divIcon({
+        className: "domain-label-icon",
+        html: `<div style="transform: translate(6px, -14px); display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; background: rgba(15, 23, 42, 0.85); border: 1px solid #ef4444; color: #fca5a5; font-size: 10px; font-weight: 800; font-family: monospace; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.6); pointer-events: none;">
+                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ef4444;"></span>
+                <span>PAR</span>
+              </div>`,
+        iconSize: [0, 0],
+      }),
+      pane: targetPane,
+      interactive: false,
+    });
+    group.addLayer(label);
+
+    return () => {
+      if (map) map.removeLayer(group);
+    };
+  }, [map, showPAR]);
+
+  // TCAD layer: 4°N 114°E, 27°N 114°E, 27°N 145°E, 4°N 145°E
+  useEffect(() => {
+    if (!map || !showTCAD) return;
+    const targetPane = ensureBoundariesPane();
+    const group = L.layerGroup().addTo(map);
+
+    const poly = L.polygon(TCAD_POLYGON, {
+      color: "#f59e0b",
+      weight: 2,
+      opacity: 0.9,
+      fill: false,
+      pane: targetPane,
+    });
+    poly.bindTooltip(
+      `<div class="font-bold text-amber-400">TCAD (Tropical Cyclone Advisory Domain)</div><div class="text-[10px] text-slate-300">4°N 114°E, 27°N 114°E, 27°N 145°E, 4°N 145°E</div>`,
+      { sticky: true, className: "custom-domain-tooltip" }
+    );
+    group.addLayer(poly);
+
+    const label = L.marker([27.0, 145.0], {
+      icon: L.divIcon({
+        className: "domain-label-icon",
+        html: `<div style="transform: translate(6px, -14px); display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; background: rgba(15, 23, 42, 0.85); border: 1px solid #f59e0b; color: #fcd34d; font-size: 10px; font-weight: 800; font-family: monospace; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.6); pointer-events: none;">
+                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #f59e0b;"></span>
+                <span>TCAD</span>
+              </div>`,
+        iconSize: [0, 0],
+      }),
+      pane: targetPane,
+      interactive: false,
+    });
+    group.addLayer(label);
+
+    return () => {
+      if (map) map.removeLayer(group);
+    };
+  }, [map, showTCAD]);
+
+  // TCID layer: 0°N 110°E, 27°N 110°E, 27°N 155°E, 0°N 155°E
+  useEffect(() => {
+    if (!map || !showTCID) return;
+    const targetPane = ensureBoundariesPane();
+    const group = L.layerGroup().addTo(map);
+
+    const poly = L.polygon(TCID_POLYGON, {
+      color: "#06b6d4",
+      weight: 2,
+      opacity: 0.85,
+      fill: false,
+      pane: targetPane,
+    });
+    poly.bindTooltip(
+      `<div class="font-bold text-cyan-400">TCID (Tropical Cyclone Information Domain)</div><div class="text-[10px] text-slate-300">0°N 110°E, 27°N 110°E, 27°N 155°E, 0°N 155°E</div>`,
+      { sticky: true, className: "custom-domain-tooltip" }
+    );
+    group.addLayer(poly);
+
+    const label = L.marker([27.0, 155.0], {
+      icon: L.divIcon({
+        className: "domain-label-icon",
+        html: `<div style="transform: translate(6px, -14px); display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; background: rgba(15, 23, 42, 0.85); border: 1px solid #06b6d4; color: #67e8f9; font-size: 10px; font-weight: 800; font-family: monospace; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.6); pointer-events: none;">
+                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #06b6d4;"></span>
+                <span>TCID</span>
+              </div>`,
+        iconSize: [0, 0],
+      }),
+      pane: targetPane,
+      interactive: false,
+    });
+    group.addLayer(label);
+
+    return () => {
+      if (map) map.removeLayer(group);
+    };
+  }, [map, showTCID]);
+
+  return null;
+};
+
 // Map overlay layer for Tropical Weather Outlook (Week 1 & 2)
 const OutlookLayerLogic = ({ data, onSelectArea, week }) => {
   const map = useMap();
@@ -2550,6 +2701,17 @@ const Cyclone = () => {
   const [showWeatherPanel, setShowWeatherPanel] = useState(false);
   const [showStormPanel, setShowStormPanel] = useState(false);
   const [showForecastPanel, setShowForecastPanel] = useState(false);
+  const [showDomainsPanel, setShowDomainsPanel] = useState(false);
+  const [showPAR, setShowPAR] = useState(true);
+  const [showTCAD, setShowTCAD] = useState(false);
+  const [showTCID, setShowTCID] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.removeItem("cyclone_show_tcad");
+      localStorage.removeItem("cyclone_show_tcid");
+    } catch {}
+  }, []);
   const wrapperRef = useRef(null);
 
   const toggleFullscreen = () => {
@@ -2909,6 +3071,7 @@ const Cyclone = () => {
                   setShowWeatherPanel(!showWeatherPanel);
                   setShowStormPanel(false);
                   setShowForecastPanel(false);
+                  setShowDomainsPanel(false);
                 }}
                 className={`flex h-[34px] w-[34px] items-center justify-center rounded-[4px] shadow-[0_1px_5px_rgba(0,0,0,0.65)] hover:bg-[#f4f4f4] transition-colors cursor-pointer ${showWeatherPanel ? "bg-cyan-900 text-white hover:bg-cyan-950" : "bg-white text-slate-800"
                   }`}
@@ -3007,6 +3170,7 @@ const Cyclone = () => {
                   setShowStormPanel(!showStormPanel);
                   setShowWeatherPanel(false);
                   setShowForecastPanel(false);
+                  setShowDomainsPanel(false);
                 }}
                 className={`flex h-[34px] w-[34px] items-center justify-center rounded-[4px] shadow-[0_1px_5px_rgba(0,0,0,0.65)] hover:bg-[#f4f4f4] transition-colors cursor-pointer ${showStormPanel ? "bg-cyan-900 text-white hover:bg-cyan-950" : "bg-white text-slate-800"
                   }`}
@@ -3022,7 +3186,7 @@ const Cyclone = () => {
               {/* Storm Tracks Panel */}
               <div
                 id="storm-controls-panel"
-                className={`${showStormPanel ? "" : "hidden"} flex flex-col gap-1.5 sm:gap-2 rounded-lg bg-slate-900/90 p-2 sm:p-3 backdrop-blur-sm border border-slate-700 shadow-xl w-[140px] sm:w-[155px] mr-[10px] max-h-[50vh] sm:max-h-[75vh] overflow-y-auto weather-panel-scrollbar select-none text-left`}
+                className={`${showStormPanel ? "" : "hidden"} flex flex-col gap-1.5 sm:gap-2 rounded-lg bg-slate-900/90 p-2 sm:p-3 backdrop-blur-sm border border-slate-700 shadow-xl w-[145px] sm:w-[160px] mr-[10px] max-h-[50vh] sm:max-h-[75vh] overflow-y-auto weather-panel-scrollbar select-none text-left`}
               >
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700 pb-1 mb-1 text-center">
                   Storm Tracks
@@ -3066,6 +3230,7 @@ const Cyclone = () => {
                   setShowForecastPanel(!showForecastPanel);
                   setShowWeatherPanel(false);
                   setShowStormPanel(false);
+                  setShowDomainsPanel(false);
                 }}
                 className={`flex h-[34px] w-[34px] items-center justify-center rounded-[4px] shadow-[0_1px_5px_rgba(0,0,0,0.65)] hover:bg-[#f4f4f4] transition-colors cursor-pointer ${showForecastPanel ? "bg-cyan-900 text-white hover:bg-cyan-950" : "bg-white text-slate-800"
                   }`}
@@ -3157,6 +3322,127 @@ const Cyclone = () => {
                 )}
               </div>
 
+              {/* Monitoring Domains Toggle Button */}
+              <button
+                id="btn-domains-toggle"
+                onClick={() => {
+                  setShowDomainsPanel(!showDomainsPanel);
+                  setShowWeatherPanel(false);
+                  setShowStormPanel(false);
+                  setShowForecastPanel(false);
+                }}
+                className={`flex h-[34px] w-[34px] items-center justify-center rounded-[4px] shadow-[0_1px_5px_rgba(0,0,0,0.65)] hover:bg-[#f4f4f4] transition-colors cursor-pointer ${showDomainsPanel ? "bg-cyan-900 text-white hover:bg-cyan-950" : "bg-white text-slate-800"
+                  }`}
+                title="PAGASA Monitoring Domains (PAR, TCAD, TCID)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  <circle cx="12" cy="11" r="3" />
+                </svg>
+              </button>
+
+              {/* Monitoring Domains Panel */}
+              <div
+                id="domains-controls-panel"
+                className={`${showDomainsPanel ? "" : "hidden"} flex flex-col gap-1.5 sm:gap-2 rounded-lg bg-slate-900/90 p-2 sm:p-3 backdrop-blur-sm border border-slate-700 shadow-xl w-[155px] sm:w-[175px] mr-[10px] max-h-[50vh] sm:max-h-[75vh] overflow-y-auto weather-panel-scrollbar select-none text-left`}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700 pb-1 mb-1 text-center">
+                  Monitoring Domains
+                </span>
+
+                {/* PAR Button */}
+                <button
+                  id="btn-par-toggle"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowPAR(!showPAR);
+                  }}
+                  className={`rounded px-2 py-1.5 text-[10px] sm:text-xs font-medium text-left cursor-pointer transition flex items-center justify-between ${showPAR
+                    ? "bg-red-950/70 text-red-200 outline outline-1 outline-red-500/50"
+                    : "text-slate-300 hover:bg-slate-700"
+                    }`}
+                  title="Philippine Area of Responsibility"
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
+                    <span className="truncate">PAR Domain</span>
+                  </div>
+                  <span className={`text-[8px] font-bold px-1 rounded ${showPAR ? "bg-red-500/30 text-red-300" : "bg-slate-800 text-slate-500"}`}>
+                    {showPAR ? "ON" : "OFF"}
+                  </span>
+                </button>
+
+                {/* TCAD Button */}
+                <button
+                  id="btn-tcad-toggle"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowTCAD(!showTCAD);
+                  }}
+                  className={`rounded px-2 py-1.5 text-[10px] sm:text-xs font-medium text-left cursor-pointer transition flex items-center justify-between ${showTCAD
+                    ? "bg-amber-950/70 text-amber-200 outline outline-1 outline-amber-500/50"
+                    : "text-slate-300 hover:bg-slate-700"
+                    }`}
+                  title="Tropical Cyclone Advisory Domain (4°N 114°E, 27°N 114°E, 27°N 145°E, 4°N 145°E)"
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0"></span>
+                    <span className="truncate">TCAD Domain</span>
+                  </div>
+                  <span className={`text-[8px] font-bold px-1 rounded ${showTCAD ? "bg-amber-500/30 text-amber-300" : "bg-slate-800 text-slate-500"}`}>
+                    {showTCAD ? "ON" : "OFF"}
+                  </span>
+                </button>
+
+                {/* TCID Button */}
+                <button
+                  id="btn-tcid-toggle"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowTCID(!showTCID);
+                  }}
+                  className={`rounded px-2 py-1.5 text-[10px] sm:text-xs font-medium text-left cursor-pointer transition flex items-center justify-between ${showTCID
+                    ? "bg-cyan-950/70 text-cyan-200 outline outline-1 outline-cyan-500/50"
+                    : "text-slate-300 hover:bg-slate-700"
+                    }`}
+                  title="Tropical Cyclone Information Domain (0°N 110°E, 27°N 110°E, 27°N 155°E, 0°N 155°E)"
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 flex-shrink-0"></span>
+                    <span className="truncate">TCID Domain</span>
+                  </div>
+                  <span className={`text-[8px] font-bold px-1 rounded ${showTCID ? "bg-cyan-500/30 text-cyan-300" : "bg-slate-800 text-slate-500"}`}>
+                    {showTCID ? "ON" : "OFF"}
+                  </span>
+                </button>
+
+                {/* Quick Toggle All */}
+                <div className="flex gap-1 pt-1.5 border-t border-slate-800 mt-0.5">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowPAR(true);
+                      setShowTCAD(true);
+                      setShowTCID(true);
+                    }}
+                    className="flex-1 py-1 rounded text-[9px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 text-center transition cursor-pointer"
+                  >
+                    All ON
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowPAR(false);
+                      setShowTCAD(false);
+                      setShowTCID(false);
+                    }}
+                    className="flex-1 py-1 rounded text-[9px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 text-center transition cursor-pointer"
+                  >
+                    All OFF
+                  </button>
+                </div>
+              </div>
+
               {/* Hidden div to maintain id reference logic */}
               <div id="radar-controls" className="hidden"></div>
             </div>
@@ -3175,6 +3461,7 @@ const Cyclone = () => {
             />
           </LeafletCustomControl>
 
+          <DomainsLayerLogic showPAR={showPAR} showTCAD={showTCAD} showTCID={showTCID} />
           <EnsembleLayerLogic ensembleTracks={showEnsemble ? fnv3EnsembleData : null} pairedTracks={showForecastTrack ? fnv3PairedData : null} atcfPositions={atcfPositions} />
           <OutlookLayerLogic data={showOutlookWeek1 ? outlookWeek1Data : null} onSelectArea={setSelectedArea} week={1} />
           <OutlookLayerLogic data={showOutlookWeek2 ? outlookWeek2Data : null} onSelectArea={setSelectedArea} week={2} />

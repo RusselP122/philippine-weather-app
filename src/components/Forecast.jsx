@@ -1,5 +1,5 @@
 // src/components/Forecast.jsx
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   Maximize2,
   Layers,
@@ -121,47 +121,72 @@ const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
     const isMidnight = hhmmss === "000000";
 
     const fnv3Base5Day = isMidnight ? `/assets/tropical_cyclone_5day_forecast_FNV3P2_${dateStr}.png` : `/assets/tropical_cyclone_5day_forecast_FNV3P2_${modelTime}.png`;
+    const fnv3Base5DayAlt = isMidnight ? `/assets/tropical_cyclone_5day_forecast_FNV3P2_${modelTime}.png` : `/assets/tropical_cyclone_5day_forecast_FNV3P2_${dateStr}.png`;
+
     const fnv3Base15Day = isMidnight ? `/assets/tropical_cyclone_15day_forecast_FNV3P2_${dateStr}.png` : `/assets/tropical_cyclone_15day_forecast_FNV3P2_${modelTime}.png`;
+    const fnv3Base15DayAlt = isMidnight ? `/assets/tropical_cyclone_15day_forecast_FNV3P2_${modelTime}.png` : `/assets/tropical_cyclone_15day_forecast_FNV3P2_${dateStr}.png`;
 
     const fnv3p15Day = isMidnight ? `/assets/tropical_cyclone_5day_forecast_FNV3P1_${dateStr}.png` : `/assets/tropical_cyclone_5day_forecast_FNV3P1_${modelTime}.png`;
+    const fnv3p15DayAlt = isMidnight ? `/assets/tropical_cyclone_5day_forecast_FNV3P1_${modelTime}.png` : `/assets/tropical_cyclone_5day_forecast_FNV3P1_${dateStr}.png`;
+
     const fnv3p115Day = isMidnight ? `/assets/tropical_cyclone_15day_forecast_FNV3P1_${dateStr}.png` : `/assets/tropical_cyclone_15day_forecast_FNV3P1_${modelTime}.png`;
+    const fnv3p115DayAlt = isMidnight ? `/assets/tropical_cyclone_15day_forecast_FNV3P1_${modelTime}.png` : `/assets/tropical_cyclone_15day_forecast_FNV3P1_${dateStr}.png`;
 
     const wnv35Day = isMidnight ? `/assets/tropical_cyclone_5day_forecast_WNV3_${dateStr}.png` : `/assets/tropical_cyclone_5day_forecast_WNV3_${modelTime}.png`;
+    const wnv35DayAlt = isMidnight ? `/assets/tropical_cyclone_5day_forecast_WNV3_${modelTime}.png` : `/assets/tropical_cyclone_5day_forecast_WNV3_${dateStr}.png`;
+
     const wnv315Day = isMidnight ? `/assets/tropical_cyclone_15day_forecast_WNV3_${dateStr}.png` : `/assets/tropical_cyclone_15day_forecast_WNV3_${modelTime}.png`;
+    const wnv315DayAlt = isMidnight ? `/assets/tropical_cyclone_15day_forecast_WNV3_${modelTime}.png` : `/assets/tropical_cyclone_15day_forecast_WNV3_${dateStr}.png`;
 
     const fnv3Large5Day = isMidnight ? `/assets/fnv3_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/fnv3_tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const fnv3Large5DayAlt = isMidnight ? `/assets/fnv3_tropical_cyclone_5day_forecast_${modelTime}.png` : `/assets/fnv3_tropical_cyclone_5day_forecast_${dateStr}.png`;
+
     const fnv3Large15Day = isMidnight ? `/assets/fnv3_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/fnv3_tropical_cyclone_15day_forecast_${modelTime}.png`;
+    const fnv3Large15DayAlt = isMidnight ? `/assets/fnv3_tropical_cyclone_15day_forecast_${modelTime}.png` : `/assets/fnv3_tropical_cyclone_15day_forecast_${dateStr}.png`;
 
     const ifs5Day = `/assets/ifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const ifs5DayAlt = isMidnight ? `/assets/ifs_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/ifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+
     const ifs15Day = `/assets/ifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
+    const ifs15DayAlt = isMidnight ? `/assets/ifs_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/ifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
 
     const aifs5Day = `/assets/aifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const aifs5DayAlt = isMidnight ? `/assets/aifs_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/aifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+
     const aifs15Day = `/assets/aifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
+    const aifs15DayAlt = isMidnight ? `/assets/aifs_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/aifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
 
     const aigefs5Day = `/assets/aigefs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const aigefs5DayAlt = isMidnight ? `/assets/aigefs_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/aigefs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+
     const aigefs15Day = `/assets/aigefs_tropical_cyclone_15day_forecast_${modelTime}.png`;
+    const aigefs15DayAlt = isMidnight ? `/assets/aigefs_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/aigefs_tropical_cyclone_15day_forecast_${modelTime}.png`;
 
     return [
-      { id: `fnv3-base-5day-${modelTime}`, type: "5day", model: "fnv3_base", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Base5Day) },
-      { id: `fnv3-base-15day-${modelTime}`, type: "15day", model: "fnv3_base", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Base15Day) },
-      { id: `fnv3p1-5day-${modelTime}`, type: "5day", model: "fnv3p1", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3p15Day) },
-      { id: `fnv3p1-15day-${modelTime}`, type: "15day", model: "fnv3p1", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3p115Day) },
-      { id: `wnv3-5day-${modelTime}`, type: "5day", model: "wnv3", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(wnv35Day) },
-      { id: `wnv3-15day-${modelTime}`, type: "15day", model: "wnv3", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(wnv315Day) },
-      { id: `fnv3-large-5day-${modelTime}`, type: "5day", model: "fnv3_large", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Large5Day) },
-      { id: `fnv3-large-15day-${modelTime}`, type: "15day", model: "fnv3_large", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Large15Day) },
-      { id: `ifs-5day-${modelTime}`, type: "5day", model: "ifs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(ifs5Day) },
-      { id: `ifs-15day-${modelTime}`, type: "15day", model: "ifs", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(ifs15Day) },
-      { id: `aifs-5day-${modelTime}`, type: "5day", model: "aifs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(aifs5Day) },
-      { id: `aifs-15day-${modelTime}`, type: "15day", model: "aifs", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(aifs15Day) },
-      { id: `aigefs-5day-${modelTime}`, type: "5day", model: "aigefs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(aigefs5Day) },
-      { id: `aigefs-15day-${modelTime}`, type: "15day", model: "aigefs", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(aigefs15Day) },
+      { id: `fnv3-base-5day-${modelTime}`, type: "5day", model: "fnv3_base", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Base5Day), altSrc: getAssetUrl(fnv3Base5DayAlt) },
+      { id: `fnv3-base-15day-${modelTime}`, type: "15day", model: "fnv3_base", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Base15Day), altSrc: getAssetUrl(fnv3Base15DayAlt) },
+      { id: `fnv3p1-5day-${modelTime}`, type: "5day", model: "fnv3p1", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3p15Day), altSrc: getAssetUrl(fnv3p15DayAlt) },
+      { id: `fnv3p1-15day-${modelTime}`, type: "15day", model: "fnv3p1", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3p115Day), altSrc: getAssetUrl(fnv3p115DayAlt) },
+      { id: `wnv3-5day-${modelTime}`, type: "5day", model: "wnv3", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(wnv35Day), altSrc: getAssetUrl(wnv35DayAlt) },
+      { id: `wnv3-15day-${modelTime}`, type: "15day", model: "wnv3", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(wnv315Day), altSrc: getAssetUrl(wnv315DayAlt) },
+      { id: `fnv3-large-5day-${modelTime}`, type: "5day", model: "fnv3_large", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Large5Day), altSrc: getAssetUrl(fnv3Large5DayAlt) },
+      { id: `fnv3-large-15day-${modelTime}`, type: "15day", model: "fnv3_large", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Large15Day), altSrc: getAssetUrl(fnv3Large15DayAlt) },
+      { id: `ifs-5day-${modelTime}`, type: "5day", model: "ifs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(ifs5Day), altSrc: getAssetUrl(ifs5DayAlt) },
+      { id: `ifs-15day-${modelTime}`, type: "15day", model: "ifs", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(ifs15Day), altSrc: getAssetUrl(ifs15DayAlt) },
+      { id: `aifs-5day-${modelTime}`, type: "5day", model: "aifs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(aifs5Day), altSrc: getAssetUrl(aifs5DayAlt) },
+      { id: `aifs-15day-${modelTime}`, type: "15day", model: "aifs", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(aifs15Day), altSrc: getAssetUrl(aifs15DayAlt) },
+      { id: `aigefs-5day-${modelTime}`, type: "5day", model: "aigefs", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(aigefs5Day), altSrc: getAssetUrl(aigefs5DayAlt) },
+      { id: `aigefs-15day-${modelTime}`, type: "15day", model: "aigefs", label: `15-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(aigefs15Day), altSrc: getAssetUrl(aigefs15DayAlt) },
     ];
   })
 );
 
 const Forecast = () => {
   const [availableIds, setAvailableIds] = useState([]);
+  const [resolvedSrcs, setResolvedSrcs] = useState({});
+  const cycleScrollRef = useRef(null);
+  const [canScrollCycleLeft, setCanScrollCycleLeft] = useState(false);
+  const [canScrollCycleRight, setCanScrollCycleRight] = useState(false);
   const [selectedModel, setSelectedModel] = useState("fnv3_base");
   const [selectedTimeId, setSelectedTimeId] = useState(null);
   const [enlargedImage, setEnlargedImage] = useState(null);
@@ -290,18 +315,28 @@ const Forecast = () => {
     }
   }, [selectedModel, trendHorizon, trendsManifest]);
 
-  // Probe available images in local assets
+  // Probe available images in local assets with alternate format fallback
   useEffect(() => {
     FORECAST_OPTIONS.forEach((opt) => {
       const img = new Image();
+      let triedAlt = false;
+
       img.onload = () => {
+        setResolvedSrcs((prev) => ({ ...prev, [opt.id]: img.src }));
         setAvailableIds((prev) =>
           prev.includes(opt.id) ? prev : [...prev, opt.id]
         );
       };
+
       img.onerror = () => {
+        if (!triedAlt && opt.altSrc && opt.altSrc !== opt.imageSrc) {
+          triedAlt = true;
+          img.src = opt.altSrc;
+          return;
+        }
         setAvailableIds((prev) => prev.filter((id) => id !== opt.id));
       };
+
       img.src = opt.imageSrc;
     });
   }, []);
@@ -341,6 +376,41 @@ const Forecast = () => {
     });
   }, [latestConfigurations, allAvailableOptions]);
 
+  const checkCycleScroll = () => {
+    if (cycleScrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = cycleScrollRef.current;
+      setCanScrollCycleLeft(scrollLeft > 6);
+      setCanScrollCycleRight(scrollLeft + clientWidth < scrollWidth - 6);
+    }
+  };
+
+  useEffect(() => {
+    checkCycleScroll();
+    const el = cycleScrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkCycleScroll, { passive: true });
+    window.addEventListener("resize", checkCycleScroll);
+    return () => {
+      el.removeEventListener("scroll", checkCycleScroll);
+      window.removeEventListener("resize", checkCycleScroll);
+    };
+  }, [timelineConfigs]);
+
+  // Keep latest card (15-Day Longrange) strictly visible at the beginning without left-edge clipping
+  useEffect(() => {
+    if (cycleScrollRef.current) {
+      cycleScrollRef.current.scrollLeft = 0;
+      setTimeout(checkCycleScroll, 60);
+    }
+  }, [selectedModel]);
+
+  const scrollCycles = (direction) => {
+    if (cycleScrollRef.current) {
+      const scrollAmount = direction === "left" ? -280 : 280;
+      cycleScrollRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
+    }
+  };
+
   const activeConfigId = useMemo(() => {
     if (selectedTimeId && latestConfigurations.includes(selectedTimeId)) {
       return selectedTimeId;
@@ -357,15 +427,16 @@ const Forecast = () => {
       (o) => o.model === selectedModel && o.type === type && o.modelTime === modelTime
     );
     const isAvailable = opt ? availableIds.includes(opt.id) : false;
+    const finalSrc = isAvailable ? (resolvedSrcs[opt.id] || opt.imageSrc) : null;
     return {
       id: opt ? opt.id : `fallback-${selectedModel}-${activeConfigId}`,
       type,
       modelTime,
       model: selectedModel,
       label: opt ? opt.label : `${type} forecast (${modelTime})`,
-      imageSrc: isAvailable ? opt.imageSrc : null,
+      imageSrc: finalSrc,
     };
-  }, [activeConfigId, selectedModel, availableIds]);
+  }, [activeConfigId, selectedModel, availableIds, resolvedSrcs]);
 
   let imageSrc = current ? current.imageSrc : null;
   if (showForecastTrack) {
@@ -694,30 +765,79 @@ const Forecast = () => {
 
         {/* Timeline selecting slider nodes (replacing old dropdown) */}
         {!showTrends && (timelineConfigs.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            <span className="text-[10px] uppercase font-black tracking-widest text-slate-500 flex items-center gap-1.5 pl-1">
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Select Model Run Cycle</span>
-            </span>
-            <div className="flex overflow-x-auto gap-2 sm:gap-2.5 custom-scroll no-scrollbar pb-1.5 w-full overscroll-x-contain snap-x">
-              {timelineConfigs.map((opt) => {
-                const isActive = (activeConfigId === opt.configId);
-                const cycleText = opt.label.substring(opt.label.indexOf('(') + 1, opt.label.indexOf(')'));
-
-                return (
+          <div className="flex flex-col gap-2 relative">
+            <div className="flex items-center justify-between pl-1 pr-1">
+              <span className="text-[10px] uppercase font-black tracking-widest text-slate-500 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Select Model Run Cycle</span>
+              </span>
+              {(canScrollCycleLeft || canScrollCycleRight) && (
+                <div className="flex items-center gap-1">
                   <button
-                    key={opt.configId}
-                    onClick={() => setSelectedTimeId(opt.configId)}
-                    className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl text-xs transition-all border flex flex-col items-start gap-1 cursor-pointer shrink-0 snap-start text-left ${isActive
-                      ? "bg-cyan-500/10 border-cyan-400/50 text-white shadow-lg shadow-cyan-950/40 scale-102"
-                      : "bg-slate-950/50 border-white/5 text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+                    onClick={() => scrollCycles("left")}
+                    disabled={!canScrollCycleLeft}
+                    aria-label="Previous cycles"
+                    className={`p-1.5 rounded-lg border transition-all cursor-pointer ${canScrollCycleLeft
+                      ? "bg-slate-900 border-white/10 text-cyan-400 hover:bg-slate-800 hover:border-cyan-500/40 shadow-sm"
+                      : "bg-slate-950/40 border-white/5 text-slate-600 opacity-30 cursor-not-allowed"
                       }`}
                   >
-                    <span className="font-black capitalize">{opt.type === "5day" ? "5-Day Outlook" : "15-Day Longrange"}</span>
-                    <span className="text-[10px] font-mono opacity-70 font-semibold">{cycleText}</span>
+                    <ChevronLeft className="w-3.5 h-3.5" />
                   </button>
-                );
-              })}
+                  <button
+                    onClick={() => scrollCycles("right")}
+                    disabled={!canScrollCycleRight}
+                    aria-label="Next cycles"
+                    className={`p-1.5 rounded-lg border transition-all cursor-pointer ${canScrollCycleRight
+                      ? "bg-slate-900 border-white/10 text-cyan-400 hover:bg-slate-800 hover:border-cyan-500/40 shadow-sm"
+                      : "bg-slate-950/40 border-white/5 text-slate-600 opacity-30 cursor-not-allowed"
+                      }`}
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="relative w-full group/cycle">
+              {/* Fade gradient indicator on left when scrolled */}
+              {canScrollCycleLeft && (
+                <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-slate-950 to-transparent pointer-events-none z-10 rounded-l-xl"></div>
+              )}
+              {/* Fade gradient indicator on right when more items available */}
+              {canScrollCycleRight && (
+                <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-950 to-transparent pointer-events-none z-10 rounded-r-xl"></div>
+              )}
+
+              <div
+                ref={cycleScrollRef}
+                onWheel={(e) => {
+                  if (cycleScrollRef.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                    cycleScrollRef.current.scrollLeft += e.deltaY;
+                  }
+                }}
+                style={{ overflowAnchor: "none" }}
+                className="flex overflow-x-auto gap-2 sm:gap-2.5 custom-scroll px-1.5 py-1.5 w-full overscroll-x-contain snap-x scroll-px-1.5"
+              >
+                {timelineConfigs.map((opt) => {
+                  const isActive = (activeConfigId === opt.configId);
+                  const cycleText = opt.label.substring(opt.label.indexOf('(') + 1, opt.label.indexOf(')'));
+
+                  return (
+                    <button
+                      key={opt.configId}
+                      onClick={() => setSelectedTimeId(opt.configId)}
+                      className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl text-xs transition-all border flex flex-col items-start gap-1 cursor-pointer shrink-0 snap-start text-left ${isActive
+                        ? "bg-cyan-500/15 border-cyan-400/80 text-white shadow-lg shadow-cyan-950/60 ring-2 ring-cyan-400/30"
+                        : "bg-slate-950/50 border-white/5 text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+                        }`}
+                    >
+                      <span className="font-black capitalize">{opt.type === "5day" ? "5-Day Outlook" : "15-Day Longrange"}</span>
+                      <span className="text-[10px] font-mono opacity-70 font-semibold">{cycleText}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {((selectedModel === "fnv3_base" || selectedModel === "fnv3_large") && !compareMode) && (
@@ -809,7 +929,7 @@ const Forecast = () => {
                     (o) => o.model === modelKey && o.type === type && o.modelTime === modelTime
                   );
                   const isAvailable = opt ? availableIds.includes(opt.id) : false;
-                  image = isAvailable ? opt.imageSrc : null;
+                  image = isAvailable ? (resolvedSrcs[opt.id] || opt.imageSrc) : null;
                   if (modelKey === "fnv3_large" && showClusters && image) {
                     image = image.replace(".png", "_cluster.png");
                   }
@@ -1813,7 +1933,7 @@ const Forecast = () => {
             (o) => o.model === currentModalKey && o.type === type && o.modelTime === modelTime
           );
           const isAvailable = opt ? availableIds.includes(opt.id) : false;
-          displayImg = isAvailable ? opt.imageSrc : null;
+          displayImg = isAvailable ? (resolvedSrcs[opt.id] || opt.imageSrc) : null;
           if (currentModalKey === "fnv3_large" && showClusters && displayImg) {
             displayImg = displayImg.replace(".png", "_cluster.png");
           }
