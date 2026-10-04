@@ -3,13 +3,13 @@
   "storm_name": "TC 26W",
   "track_id": "WP262026",
   "latest": {
-    "lat": 22.9,
-    "lon": 147.0,
-    "pressure_hpa": 924.0,
-    "wind_kt": 124.0,
-    "wind_kmh": 230,
-    "movement": "N at 14.9 km/h (8.1 kt)",
-    "init_time": "2026-10-04 06:00",
+    "lat": 23.3,
+    "lon": 146.9,
+    "pressure_hpa": 914.0,
+    "wind_kt": 134.0,
+    "wind_kmh": 248,
+    "movement": "NNW at 7.6 km/h (4.1 kt)",
+    "init_time": "2026-10-04 12:00",
     "category": "Super Typhoon"
   },
   "history": [
@@ -209,6 +209,15 @@
       "pressure_hpa": 924.0,
       "wind_kt": 124.0,
       "wind_kmh": 230,
+      "category": "Super Typhoon"
+    },
+    {
+      "cycle": "2026-10-04 12:00",
+      "lat": 23.3,
+      "lon": 146.9,
+      "pressure_hpa": 914.0,
+      "wind_kt": 134.0,
+      "wind_kmh": 248,
       "category": "Super Typhoon"
     }
   ]
