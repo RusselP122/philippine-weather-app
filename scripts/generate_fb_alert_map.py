@@ -8,6 +8,7 @@ import hmac
 import hashlib
 import time
 import secrets
+import subprocess
 import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -114,34 +115,58 @@ def get_signed_headers(api_sig_secret, csrf_token, cookie_header, pathname, base
     }
 
 def get_alerts():
-    garbin_url = "https://data.garbinwx.org/api/cap-alerts.json"
     data = None
     last_error = None
 
+    # 1. Primary: Fetch directly from live PANaHON portal (panahon.gov.ph)
     try:
-        res = requests.get(
-            garbin_url,
-            headers={
-                "User-Agent": "PhilippineWeatherApp/2.0 (contact@garbinwx.org)",
-                "Accept": "application/json"
-            },
-            timeout=12
-        )
-        res.raise_for_status()
-        data = res.json()
+        js_script = os.path.join(os.path.dirname(__file__), "fetch_panahon_alerts.js")
+        if os.path.exists(js_script):
+            res = subprocess.run(
+                ["node", js_script],
+                capture_output=True,
+                text=True,
+                timeout=25
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                data = json.loads(res.stdout)
+                print("Successfully fetched live alerts directly from PAGASA PANaHON.")
+            else:
+                last_error = res.stderr.strip() or f"Process returned code {res.returncode}"
+    except Exception as e:
+        last_error = e
 
-        # Sanitize alerts: remove defacement scripts and dummy notes
-        if data and isinstance(data.get("data"), dict) and isinstance(data["data"].get("alert_data"), list):
-            data["data"]["alert_data"] = [
-                a for a in data["data"]["alert_data"]
-                if a and not (
-                    "<script" in str(a.get("headline", "")) or
-                    "<script" in str(a.get("message", "")) or
-                    (a.get("event") == "NOTE" and a.get("subtype") == "NOTE")
-                )
-            ]
+    # 2. Secondary fallback: GarbinWx
+    if not data or not isinstance(data.get("data"), dict) or not data["data"].get("alert_data"):
+        garbin_url = "https://data.garbinwx.org/api/cap-alerts.json"
+        try:
+            print(f"Notice: Falling back to GarbinWx ({last_error})...")
+            res = requests.get(
+                garbin_url,
+                headers={
+                    "User-Agent": "PhilippineWeatherApp/2.0 (contact@garbinwx.org)",
+                    "Accept": "application/json"
+                },
+                timeout=12
+            )
+            if res.ok:
+                data = res.json()
+        except Exception as e:
+            last_error = e
 
-        # Cache freshly fetched alerts to public/data/cap_alerts.json
+    # Sanitize alerts: remove defacement scripts and dummy notes
+    if data and isinstance(data.get("data"), dict) and isinstance(data["data"].get("alert_data"), list):
+        data["data"]["alert_data"] = [
+            a for a in data["data"]["alert_data"]
+            if a and not (
+                "<script" in str(a.get("headline", "")) or
+                "<script" in str(a.get("message", "")) or
+                (a.get("event") == "NOTE" and a.get("subtype") == "NOTE")
+            )
+        ]
+
+    # Cache freshly fetched alerts to public/data/cap_alerts.json
+    if data and data.get("data", {}).get("alert_data"):
         try:
             os.makedirs("public/data", exist_ok=True)
             with open("public/data/cap_alerts.json", "w", encoding="utf-8") as cf:
@@ -149,11 +174,9 @@ def get_alerts():
         except Exception:
             pass
 
-    except Exception as e:
-        last_error = e
-
-    if not data:
-        print(f"Warning: Failed to fetch live alerts from GarbinWx ({last_error}). Falling back to cached cap_alerts.json if available.")
+    # 3. Tertiary fallback: Local cached cap_alerts.json
+    if not data or not data.get("data", {}).get("alert_data"):
+        print(f"Warning: Failed to fetch live alerts ({last_error}). Falling back to cached cap_alerts.json if available.")
         if os.path.exists("public/data/cap_alerts.json"):
             with open("public/data/cap_alerts.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
