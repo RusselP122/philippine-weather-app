@@ -24,24 +24,37 @@ import {
 
 // Helper to resolve asset URLs relative to the base path in both local development and deployed production (subfolder) environments
 const getAssetUrl = (path) => {
+  if (!path) return null;
   const base = import.meta.env.BASE_URL || "/";
   const cleanPath = path.startsWith("/") ? path.slice(1) : path;
   return `${base}${cleanPath}`;
 };
 
-// Build dynamic date strings for today and yesterday in YYYY-MM-DD format
-const today = new Date();
-const yyyy = today.getFullYear();
-const mm = String(today.getMonth() + 1).padStart(2, "0");
-const dd = String(today.getDate()).padStart(2, "0");
-const todayDateStr = `${yyyy}-${mm}-${dd}`;
+// Build dynamic date strings for today and yesterday in YYYY-MM-DD format (both UTC and local time)
+const getForecastDates = () => {
+  const dates = new Set();
+  const now = new Date();
 
-const yesterday = new Date(today);
-yesterday.setDate(today.getDate() - 1);
-const yyyyY = yesterday.getFullYear();
-const mmY = String(yesterday.getMonth() + 1).padStart(2, "0");
-const ddY = String(yesterday.getDate()).padStart(2, "0");
-const yesterdayDateStr = `${yyyyY}-${mmY}-${ddY}`;
+  // Only include today (0) and yesterday (-1)
+  [0, -1].forEach((offset) => {
+    // Local date
+    const dLocal = new Date(now);
+    dLocal.setDate(now.getDate() + offset);
+    const yLocal = dLocal.getFullYear();
+    const mLocal = String(dLocal.getMonth() + 1).padStart(2, "0");
+    const dayLocal = String(dLocal.getDate()).padStart(2, "0");
+    dates.add(`${yLocal}-${mLocal}-${dayLocal}`);
+
+    // UTC date
+    const dUtc = new Date(now.getTime() + offset * 86400000);
+    const yUtc = dUtc.getUTCFullYear();
+    const mUtc = String(dUtc.getUTCMonth() + 1).padStart(2, "0");
+    const dayUtc = String(dUtc.getUTCDate()).padStart(2, "0");
+    dates.add(`${yUtc}-${mUtc}-${dayUtc}`);
+  });
+
+  return Array.from(dates).sort((a, b) => b.localeCompare(a));
+};
 
 // Convert a model time string like "YYYY-MM-DDTHHMMSS" (UTC) to PHST
 const toPhstLabel = (modelTime) => {
@@ -49,15 +62,7 @@ const toPhstLabel = (modelTime) => {
   const utcHour = parseInt(timePart.slice(0, 2), 10);
   const utcMinute = parseInt(timePart.slice(2, 4), 10);
 
-  let phHour24;
-  switch (utcHour) {
-    case 0: phHour24 = 16; break; // 4 PM
-    case 6: phHour24 = 22; break; // 10 PM
-    case 12: phHour24 = 4; break;  // 4 AM
-    case 18: phHour24 = 10; break; // 10 AM
-    default: phHour24 = (utcHour + 8) % 24;
-  }
-
+  const phHour24 = (utcHour + 8) % 24;
   const period = phHour24 >= 12 ? "PM" : "AM";
   let hour12 = phHour24 % 12;
   if (hour12 === 0) hour12 = 12;
@@ -67,7 +72,7 @@ const toPhstLabel = (modelTime) => {
 };
 
 const FORECAST_HOURS = ["000000", "060000", "120000", "180000"];
-const FORECAST_DATES = [todayDateStr, yesterdayDateStr];
+const FORECAST_DATES = getForecastDates();
 
 const MODEL_INFO = {
   fnv3_base: {
@@ -121,46 +126,46 @@ const FORECAST_OPTIONS = FORECAST_DATES.flatMap((dateStr) =>
     const isMidnight = hhmmss === "000000";
 
     const fnv3Base5Day = isMidnight ? `/assets/tropical_cyclone_5day_forecast_FNV3P2_${dateStr}.png` : `/assets/tropical_cyclone_5day_forecast_FNV3P2_${modelTime}.png`;
-    const fnv3Base5DayAlt = isMidnight ? `/assets/tropical_cyclone_5day_forecast_FNV3P2_${modelTime}.png` : `/assets/tropical_cyclone_5day_forecast_FNV3P2_${dateStr}.png`;
+    const fnv3Base5DayAlt = isMidnight ? `/assets/tropical_cyclone_5day_forecast_FNV3P2_${modelTime}.png` : null;
 
     const fnv3Base15Day = isMidnight ? `/assets/tropical_cyclone_15day_forecast_FNV3P2_${dateStr}.png` : `/assets/tropical_cyclone_15day_forecast_FNV3P2_${modelTime}.png`;
-    const fnv3Base15DayAlt = isMidnight ? `/assets/tropical_cyclone_15day_forecast_FNV3P2_${modelTime}.png` : `/assets/tropical_cyclone_15day_forecast_FNV3P2_${dateStr}.png`;
+    const fnv3Base15DayAlt = isMidnight ? `/assets/tropical_cyclone_15day_forecast_FNV3P2_${modelTime}.png` : null;
 
     const fnv3p15Day = isMidnight ? `/assets/tropical_cyclone_5day_forecast_FNV3P1_${dateStr}.png` : `/assets/tropical_cyclone_5day_forecast_FNV3P1_${modelTime}.png`;
-    const fnv3p15DayAlt = isMidnight ? `/assets/tropical_cyclone_5day_forecast_FNV3P1_${modelTime}.png` : `/assets/tropical_cyclone_5day_forecast_FNV3P1_${dateStr}.png`;
+    const fnv3p15DayAlt = isMidnight ? `/assets/tropical_cyclone_5day_forecast_FNV3P1_${modelTime}.png` : null;
 
     const fnv3p115Day = isMidnight ? `/assets/tropical_cyclone_15day_forecast_FNV3P1_${dateStr}.png` : `/assets/tropical_cyclone_15day_forecast_FNV3P1_${modelTime}.png`;
-    const fnv3p115DayAlt = isMidnight ? `/assets/tropical_cyclone_15day_forecast_FNV3P1_${modelTime}.png` : `/assets/tropical_cyclone_15day_forecast_FNV3P1_${dateStr}.png`;
+    const fnv3p115DayAlt = isMidnight ? `/assets/tropical_cyclone_15day_forecast_FNV3P1_${modelTime}.png` : null;
 
     const wnv35Day = isMidnight ? `/assets/tropical_cyclone_5day_forecast_WNV3_${dateStr}.png` : `/assets/tropical_cyclone_5day_forecast_WNV3_${modelTime}.png`;
-    const wnv35DayAlt = isMidnight ? `/assets/tropical_cyclone_5day_forecast_WNV3_${modelTime}.png` : `/assets/tropical_cyclone_5day_forecast_WNV3_${dateStr}.png`;
+    const wnv35DayAlt = isMidnight ? `/assets/tropical_cyclone_5day_forecast_WNV3_${modelTime}.png` : null;
 
     const wnv315Day = isMidnight ? `/assets/tropical_cyclone_15day_forecast_WNV3_${dateStr}.png` : `/assets/tropical_cyclone_15day_forecast_WNV3_${modelTime}.png`;
-    const wnv315DayAlt = isMidnight ? `/assets/tropical_cyclone_15day_forecast_WNV3_${modelTime}.png` : `/assets/tropical_cyclone_15day_forecast_WNV3_${dateStr}.png`;
+    const wnv315DayAlt = isMidnight ? `/assets/tropical_cyclone_15day_forecast_WNV3_${modelTime}.png` : null;
 
     const fnv3Large5Day = isMidnight ? `/assets/fnv3_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/fnv3_tropical_cyclone_5day_forecast_${modelTime}.png`;
-    const fnv3Large5DayAlt = isMidnight ? `/assets/fnv3_tropical_cyclone_5day_forecast_${modelTime}.png` : `/assets/fnv3_tropical_cyclone_5day_forecast_${dateStr}.png`;
+    const fnv3Large5DayAlt = isMidnight ? `/assets/fnv3_tropical_cyclone_5day_forecast_${modelTime}.png` : null;
 
     const fnv3Large15Day = isMidnight ? `/assets/fnv3_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/fnv3_tropical_cyclone_15day_forecast_${modelTime}.png`;
-    const fnv3Large15DayAlt = isMidnight ? `/assets/fnv3_tropical_cyclone_15day_forecast_${modelTime}.png` : `/assets/fnv3_tropical_cyclone_15day_forecast_${dateStr}.png`;
+    const fnv3Large15DayAlt = isMidnight ? `/assets/fnv3_tropical_cyclone_15day_forecast_${modelTime}.png` : null;
 
     const ifs5Day = `/assets/ifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
-    const ifs5DayAlt = isMidnight ? `/assets/ifs_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/ifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const ifs5DayAlt = isMidnight ? `/assets/ifs_tropical_cyclone_5day_forecast_${dateStr}.png` : null;
 
     const ifs15Day = `/assets/ifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
-    const ifs15DayAlt = isMidnight ? `/assets/ifs_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/ifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
+    const ifs15DayAlt = isMidnight ? `/assets/ifs_tropical_cyclone_15day_forecast_${dateStr}.png` : null;
 
     const aifs5Day = `/assets/aifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
-    const aifs5DayAlt = isMidnight ? `/assets/aifs_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/aifs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const aifs5DayAlt = isMidnight ? `/assets/aifs_tropical_cyclone_5day_forecast_${dateStr}.png` : null;
 
     const aifs15Day = `/assets/aifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
-    const aifs15DayAlt = isMidnight ? `/assets/aifs_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/aifs_tropical_cyclone_15day_forecast_${modelTime}.png`;
+    const aifs15DayAlt = isMidnight ? `/assets/aifs_tropical_cyclone_15day_forecast_${dateStr}.png` : null;
 
     const aigefs5Day = `/assets/aigefs_tropical_cyclone_5day_forecast_${modelTime}.png`;
-    const aigefs5DayAlt = isMidnight ? `/assets/aigefs_tropical_cyclone_5day_forecast_${dateStr}.png` : `/assets/aigefs_tropical_cyclone_5day_forecast_${modelTime}.png`;
+    const aigefs5DayAlt = isMidnight ? `/assets/aigefs_tropical_cyclone_5day_forecast_${dateStr}.png` : null;
 
     const aigefs15Day = `/assets/aigefs_tropical_cyclone_15day_forecast_${modelTime}.png`;
-    const aigefs15DayAlt = isMidnight ? `/assets/aigefs_tropical_cyclone_15day_forecast_${dateStr}.png` : `/assets/aigefs_tropical_cyclone_15day_forecast_${modelTime}.png`;
+    const aigefs15DayAlt = isMidnight ? `/assets/aigefs_tropical_cyclone_15day_forecast_${dateStr}.png` : null;
 
     return [
       { id: `fnv3-base-5day-${modelTime}`, type: "5day", model: "fnv3_base", label: `5-day forecast (${dateStr} ${hourUtc}:00 UTC)`, modelTime, imageSrc: getAssetUrl(fnv3Base5Day), altSrc: getAssetUrl(fnv3Base5DayAlt) },
@@ -317,28 +322,46 @@ const Forecast = () => {
 
   // Probe available images in local assets with alternate format fallback
   useEffect(() => {
-    FORECAST_OPTIONS.forEach((opt) => {
-      const img = new Image();
-      let triedAlt = false;
+    const probeAvailableImages = () => {
+      FORECAST_OPTIONS.forEach((opt) => {
+        const img = new Image();
+        let triedAlt = false;
 
-      img.onload = () => {
-        setResolvedSrcs((prev) => ({ ...prev, [opt.id]: img.src }));
-        setAvailableIds((prev) =>
-          prev.includes(opt.id) ? prev : [...prev, opt.id]
-        );
-      };
+        img.onload = () => {
+          setResolvedSrcs((prev) => ({ ...prev, [opt.id]: img.src }));
+          setAvailableIds((prev) =>
+            prev.includes(opt.id) ? prev : [...prev, opt.id]
+          );
+        };
 
-      img.onerror = () => {
-        if (!triedAlt && opt.altSrc && opt.altSrc !== opt.imageSrc) {
-          triedAlt = true;
-          img.src = opt.altSrc;
-          return;
-        }
-        setAvailableIds((prev) => prev.filter((id) => id !== opt.id));
-      };
+        img.onerror = () => {
+          if (!triedAlt && opt.altSrc && opt.altSrc !== opt.imageSrc) {
+            triedAlt = true;
+            img.src = opt.altSrc;
+            return;
+          }
+          setAvailableIds((prev) => prev.filter((id) => id !== opt.id));
+        };
 
-      img.src = opt.imageSrc;
-    });
+        img.src = opt.imageSrc;
+      });
+    };
+
+    probeAvailableImages();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        probeAvailableImages();
+      }
+    };
+
+    window.addEventListener("focus", probeAvailableImages);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", probeAvailableImages);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   const allAvailableOptions = useMemo(() => {
