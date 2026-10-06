@@ -3,13 +3,13 @@
   "storm_name": "TC 27W (Invest 94W)",
   "track_id": "WP272026",
   "latest": {
-    "lat": 11.5,
-    "lon": 167.9,
-    "pressure_hpa": 1000.0,
-    "wind_kt": 35.0,
-    "wind_kmh": 65,
-    "movement": "N at 9.4 km/h (5.1 kt)",
-    "init_time": "2026-10-05 12:00",
+    "lat": 12.2,
+    "lon": 167.6,
+    "pressure_hpa": 997.0,
+    "wind_kt": 39.0,
+    "wind_kmh": 72,
+    "movement": "NNW at 14.1 km/h (7.6 kt)",
+    "init_time": "2026-10-05 18:00",
     "category": "Tropical Storm"
   },
   "history": [
@@ -92,6 +92,15 @@
       "pressure_hpa": 1000.0,
       "wind_kt": 35.0,
       "wind_kmh": 65,
+      "category": "Tropical Storm"
+    },
+    {
+      "cycle": "2026-10-05 18:00",
+      "lat": 12.2,
+      "lon": 167.6,
+      "pressure_hpa": 997.0,
+      "wind_kt": 39.0,
+      "wind_kmh": 72,
       "category": "Tropical Storm"
     }
   ]
