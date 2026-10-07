@@ -3,19 +3,19 @@
     "track_id": "WP262026",
     "storm_name": "TC 26W",
     "active": true,
-    "last_updated": "2026-10-06 12:00",
-    "latest_lat": 33.7,
-    "latest_lon": 147.6,
+    "last_updated": "2026-10-06 18:00",
+    "latest_lat": 36.3,
+    "latest_lon": 149.5,
     "category": "Typhoon"
   },
   {
     "track_id": "WP272026",
     "storm_name": "TC 27W",
     "active": true,
-    "last_updated": "2026-10-06 12:00",
-    "latest_lat": 14.0,
-    "latest_lon": 165.8,
-    "category": "Tropical Storm"
+    "last_updated": "2026-10-06 18:00",
+    "latest_lat": 14.7,
+    "latest_lon": 164.5,
+    "category": "Severe Tropical Storm"
   },
   {
     "track_id": "WP942026",
