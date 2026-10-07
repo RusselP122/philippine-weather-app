@@ -571,15 +571,13 @@ def detect_model_name(file_path):
     Determines the ensemble model group name from the filename.
     """
     name = os.path.basename(file_path).lower()
-    if 'aifs' in name:
+    if 'large' in name:
+        return 'GDM WNC Large'
+    elif 'aifs' in name:
         return 'ECMWF AIFS'
     elif 'ifs' in name:
         return 'ECMWF IFS'
-    elif 'wnv3' in name:
-        return 'GDM WNCv3'
-    elif 'fnv3' in name:
-        return 'GDM WNC'
-    elif 'oper' in name:
+    elif 'wnv3' in name or 'wnc' in name or 'fnv3' in name or 'oper' in name:
         return 'GDM WNCv3'
     else:
         return 'Ensemble Model'
@@ -1256,10 +1254,12 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
     # Determine boundaries and aspect ratio
     # For viewport calculation, use ensemble mean if available, otherwise use all storm data
     if not df_mean.empty:
-        lons_to_fit = list(df_mean['lon'].dropna().values)
+        wp_lons = [x for x in df_mean['lon'].dropna().values if x >= 100.0]
+        lons_to_fit = list(wp_lons) if wp_lons else list(df_mean['lon'].dropna().values)
         lats_to_fit = list(df_mean['lat'].dropna().values)
     else:
-        lons_to_fit = list(df_storm['lon'].dropna().values)
+        wp_lons = [x for x in df_storm['lon'].dropna().values if x >= 100.0]
+        lons_to_fit = list(wp_lons) if wp_lons else list(df_storm['lon'].dropna().values)
         lats_to_fit = list(df_storm['lat'].dropna().values)
     if atcf_pos is not None and use_live_atcf:
         lats_to_fit.append(atcf_pos[0])
@@ -1301,6 +1301,13 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
         diff = needed_lat_span - lat_span
         lat_min -= diff / 2.0
         lat_max += diff / 2.0
+
+    if lon_max > 180.0:
+        excess = lon_max - 180.0
+        lon_max = 180.0
+        lon_min = max(90.0, lon_min - excess)
+    if lon_min < 90.0:
+        lon_min = 90.0
 
     lon_span = lon_max - lon_min
     lat_span = lat_max - lat_min
@@ -1439,7 +1446,7 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
         for i in range(len(lons) - 1):
             if np.isnan(lons[i]) or np.isnan(lons[i+1]) or np.isnan(lats[i]) or np.isnan(lats[i+1]):
                 continue
-            if abs(lons[i+1] - lons[i]) > 180:
+            if abs(lons[i+1] - lons[i]) > 180 or lons[i] < 90.0 or lons[i+1] < 90.0:
                 continue
                 
             segments.append([[lons[i], lats[i]], [lons[i+1], lats[i+1]]])
@@ -1782,7 +1789,8 @@ def main():
         model_prefixes = [
             'aifs_tc_latest',
             'ifs_tc_latest',
-            'wnv3_latest'
+            'wnv3_latest',
+            'fnv3_large_latest'
         ]
         input_files = []
         for prefix in model_prefixes:
@@ -1848,10 +1856,14 @@ def main():
                 
         model = detect_model_name(f_path)
         
-        # Load corresponding paired file if available (for GDM WNV3)
+        # Load corresponding paired file if available (for GDM WNCv3 / Large)
         df_paired = pd.DataFrame()
-        if 'wnv3' in f_path.lower() or 'oper' in f_path.lower():
-            if 'wnv3_latest.dat' in f_path:
+        if any(k in f_path.lower() for k in ['wnv3', 'wnc', 'fnv3', 'oper', 'large']):
+            if 'fnv3_large_latest.dat' in f_path:
+                paired_path = f_path.replace('fnv3_large_latest.dat', 'fnv3_large_paired_latest.dat')
+            elif 'fnv3_large_latest.csv' in f_path:
+                paired_path = f_path.replace('fnv3_large_latest.csv', 'fnv3_large_paired_latest.csv')
+            elif 'wnv3_latest.dat' in f_path:
                 paired_path = f_path.replace('wnv3_latest.dat', 'wnv3_paired_latest.dat')
             elif 'wnv3_latest.csv' in f_path:
                 paired_path = f_path.replace('wnv3_latest.csv', 'wnv3_paired_latest.csv')
@@ -1859,10 +1871,14 @@ def main():
                 paired_path = f_path.replace('oper_latest.dat', 'oper_paired_latest.dat')
             elif 'oper_latest.csv' in f_path:
                 paired_path = f_path.replace('oper_latest.csv', 'oper_paired_latest.csv')
+            elif 'fnv3p2_latest.dat' in f_path:
+                paired_path = f_path.replace('fnv3p2_latest.dat', 'fnv3p2_paired_latest.dat')
+            elif 'fnv3p2_latest.csv' in f_path:
+                paired_path = f_path.replace('fnv3p2_latest.csv', 'fnv3p2_paired_latest.csv')
             else:
                 base = os.path.basename(f_path)
                 dir_name = os.path.dirname(f_path)
-                paired_base = base.replace('wnv3', 'wnv3_paired').replace('oper', 'oper_paired')
+                paired_base = base.replace('wnv3', 'wnv3_paired').replace('oper', 'oper_paired').replace('fnv3', 'fnv3_paired')
                 paired_path = os.path.join(dir_name, paired_base)
                 
             if os.path.exists(paired_path):

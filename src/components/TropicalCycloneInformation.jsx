@@ -612,6 +612,13 @@ const StormMediaViewer = ({ stormData, isOtherBasin }) => {
                   GDM WNCv3
                 </button>
                 <button
+                  onClick={() => setSelectedModel("gdm_wnc_large")}
+                  className={`px-2.5 py-1.5 text-[10px] font-semibold rounded-md transition-all cursor-pointer text-center whitespace-nowrap ${selectedModel === "gdm_wnc_large" ? "bg-cyan-500 text-slate-950 font-bold shadow" : "text-slate-400 hover:text-slate-200"
+                    }`}
+                >
+                  GDM Large
+                </button>
+                <button
                   onClick={() => setSelectedModel("ecmwf_ifs")}
                   className={`px-2.5 py-1.5 text-[10px] font-semibold rounded-md transition-all cursor-pointer text-center whitespace-nowrap ${selectedModel === "ecmwf_ifs" ? "bg-cyan-500 text-slate-950 font-bold shadow" : "text-slate-400 hover:text-slate-200"
                     }`}
