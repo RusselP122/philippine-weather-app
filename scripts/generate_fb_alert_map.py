@@ -77,6 +77,77 @@ def normalize_provinces(provinces_data):
         return [v for k, v in provinces_data.items() if isinstance(v, dict)]
     return []
 
+def extract_weather_system(alert):
+    if not alert or not isinstance(alert, dict):
+        return "Localized Convective Activity"
+
+    # 1. Direct field provided by PAGASA PANaHON API
+    ws = alert.get('weather_systems')
+    if ws and isinstance(ws, str) and ws.strip() and ws.strip().lower() not in ['none', 'null', 'undefined']:
+        return ws.strip()
+
+    # 2. Extract from message text or headline
+    msg = str(alert.get('message', ''))
+    hdln = str(alert.get('headline', ''))
+    combined = (msg + "\n" + hdln).strip()
+
+    # Standard PAGASA label in advisory text: "Weather System: <name>"
+    ws_match = re.search(r'Weather\s+System\s*:\s*([^\r\n]+)', combined, re.IGNORECASE)
+    if ws_match:
+        val = ws_match.group(1).strip()
+        val = re.sub(r'[\r\n].*', '', val).strip()
+        if val and val.lower() not in ['none', 'null', 'undefined']:
+            return val
+
+    # "due to / brought by / associated with"
+    sys_match = re.search(r'(?:due to(?: the)?|brought by(?: the)?|associated with(?: the)?)\s+([^\r\n\.,;]+)', combined, re.IGNORECASE)
+    if sys_match:
+        val = sys_match.group(1).strip()
+        if len(val) > 3 and not val.lower().startswith('rainfall') and not val.lower().startswith('thunderstorm'):
+            return val.title()
+
+    # Keyword matching against standard meteorology systems
+    combined_upper = combined.upper()
+    found_systems = []
+
+    tc_match = re.search(r'(SUPER TYPHOON|TYPHOON|SEVERE TROPICAL STORM|TROPICAL STORM|TROPICAL DEPRESSION|TROPICAL CYCLONE)\s+["\']?([A-Z-]{3,})["\']?', combined_upper)
+    if tc_match:
+        tc_type = tc_match.group(1).title()
+        tc_name = tc_match.group(2).upper()
+        found_systems.append(f"{tc_type} {tc_name}")
+    else:
+        if 'SUPER TYPHOON' in combined_upper: found_systems.append("Super Typhoon")
+        elif 'TYPHOON' in combined_upper: found_systems.append("Typhoon")
+        elif 'SEVERE TROPICAL STORM' in combined_upper: found_systems.append("Severe Tropical Storm")
+        elif 'TROPICAL STORM' in combined_upper: found_systems.append("Tropical Storm")
+        elif 'TROPICAL DEPRESSION' in combined_upper: found_systems.append("Tropical Depression")
+        elif 'TROPICAL CYCLONE' in combined_upper: found_systems.append("Tropical Cyclone")
+
+    if 'SOUTHWEST MONSOON' in combined_upper or 'HABAGAT' in combined_upper:
+        found_systems.append("Southwest Monsoon (Habagat)")
+    if 'NORTHEASTERLY WINDFLOW' in combined_upper:
+        found_systems.append("Northeasterly Windflow")
+    elif 'NORTHEAST MONSOON' in combined_upper or 'AMIHAN' in combined_upper:
+        found_systems.append("Northeast Monsoon (Amihan)")
+    if 'INTERTROPICAL CONVERGENCE ZONE' in combined_upper or 'ITCZ' in combined_upper:
+        found_systems.append("Intertropical Convergence Zone (ITCZ)")
+    if 'SHEAR LINE' in combined_upper or 'TAIL-END' in combined_upper:
+        found_systems.append("Shear Line")
+    if 'LOW PRESSURE AREA' in combined_upper or ' LPA ' in combined_upper:
+        if 'TROUGH' in combined_upper:
+            found_systems.append("Trough of Low Pressure Area (LPA)")
+        else:
+            found_systems.append("Low Pressure Area (LPA)")
+    elif 'TROUGH' in combined_upper:
+        found_systems.append("Trough of Weather System")
+    if 'EASTERLIES' in combined_upper:
+        found_systems.append("Easterlies")
+
+    if found_systems:
+        return " & ".join(found_systems[:2])
+
+    return "Localized Convective Activity"
+
 def extract_cookies(res, existing=None):
     cookie_map = dict(existing) if existing else {}
     set_cookies = res.raw.headers.getlist('Set-Cookie') if hasattr(res, 'raw') and hasattr(res.raw, 'headers') and hasattr(res.raw.headers, 'getlist') else []
@@ -487,7 +558,8 @@ def main():
                     'color_label': color_label,
                     'geometry': geom,
                     'color': color,
-                    'priority': priority
+                    'priority': priority,
+                    'alert': alert
                 })
             elif not municipality_name:
                 # Fallback to province lookup geometry ONLY if it's a province-wide alert without municipality
@@ -502,7 +574,8 @@ def main():
                         'color_label': color_label,
                         'geometry': matched_geom,
                         'color': color,
-                        'priority': priority
+                        'priority': priority,
+                        'alert': alert
                     })
 
     if not alert_shapes:
@@ -541,47 +614,7 @@ def main():
         shape_item['island_group'] = assigned_group
         active_groups.add(assigned_group)
 
-    # Extract weather system headline
-    alert_msg = str(alerts[0].get('message', '')).upper() if alerts else ''
-    alert_hdln = str(alerts[0].get('headline', 'WEATHER ADVISORY')).upper() if alerts else 'WEATHER ADVISORY'
-    combined_text = (alert_msg + " " + alert_hdln).upper()
-
-    found_systems = []
-    tc_match = re.search(r'(SUPER TYPHOON|TYPHOON|SEVERE TROPICAL STORM|TROPICAL STORM|TROPICAL DEPRESSION|TROPICAL CYCLONE)\s+["\']?([A-Z-]{3,})["\']?', combined_text)
-    if tc_match:
-        tc_type = tc_match.group(1).title()
-        tc_name = tc_match.group(2).upper()
-        found_systems.append(f"{tc_type} {tc_name}")
-    else:
-        if 'SUPER TYPHOON' in combined_text: found_systems.append("Super Typhoon")
-        elif 'TYPHOON' in combined_text: found_systems.append("Typhoon")
-        elif 'SEVERE TROPICAL STORM' in combined_text: found_systems.append("Severe Tropical Storm")
-        elif 'TROPICAL STORM' in combined_text: found_systems.append("Tropical Storm")
-        elif 'TROPICAL DEPRESSION' in combined_text: found_systems.append("Tropical Depression")
-        elif 'TROPICAL CYCLONE' in combined_text: found_systems.append("Tropical Cyclone")
-
-    if 'SOUTHWEST MONSOON' in combined_text or 'HABAGAT' in combined_text:
-        found_systems.append("Southwest Monsoon (Habagat)")
-    if 'LOW PRESSURE AREA' in combined_text or ' LPA ' in combined_text:
-        found_systems.append("Low Pressure Area")
-    if 'NORTHEAST MONSOON' in combined_text or 'AMIHAN' in combined_text:
-        found_systems.append("Northeast Monsoon (Amihan)")
-    if 'SHEAR LINE' in combined_text or 'TAIL-END' in combined_text:
-        found_systems.append("Shear Line")
-    if 'INTERTROPICAL' in combined_text or 'ITCZ' in combined_text:
-        found_systems.append("Intertropical Convergence Zone")
-    if 'TROUGH' in combined_text:
-        found_systems.append("Trough of LPA")
-
-    if found_systems:
-        latest_headline = " and ".join(found_systems) if len(found_systems) <= 2 else found_systems[0]
-    else:
-        sys_match = re.search(r'(?:due to|brought by|associated with)\s+(.*)', alert_hdln, re.IGNORECASE)
-        latest_headline = sys_match.group(1).strip() if sys_match else alert_hdln
-
-    latest_headline = latest_headline.replace('\n', ' ').strip()
     pst = datetime.timezone(datetime.timedelta(hours=8))
-    issued_time_str = datetime.datetime.now(pst).strftime("%I:%M %p, %d %B %Y (%A)")
 
     # ── Render TV Broadcast Map for each active region ────────────────────────
     for target_group in ["Luzon", "Visayas", "Mindanao"]:
@@ -593,6 +626,46 @@ def main():
         region_key = target_group.lower()
         region_info = BROADCAST_REGIONS[region_key]
         target_alerts = [s for s in alert_shapes if s.get('island_group') == target_group]
+
+        # Extract distinct alerts that affect this target region
+        group_alerts = []
+        seen_alert_ids = set()
+        for s in target_alerts:
+            alt = s.get('alert')
+            if alt:
+                aid = alt.get('identifier') or alt.get('headline')
+                if aid and aid not in seen_alert_ids:
+                    seen_alert_ids.add(aid)
+                    group_alerts.append(alt)
+        if not group_alerts and alerts:
+            group_alerts = [alerts[0]]
+
+        # Determine weather system(s) for this region
+        systems = []
+        for alt in group_alerts:
+            ws = extract_weather_system(alt)
+            if ws and ws not in systems:
+                systems.append(ws)
+        region_weather_system = " & ".join(systems) if systems else "Localized Convective Activity"
+
+        # Determine advisory title and issue time for this region
+        primary_alert = group_alerts[0] if group_alerts else None
+        region_advisory_title = (primary_alert.get('headline') or 'Rainfall Advisory').strip() if primary_alert else 'Rainfall Advisory'
+
+        issued_date_raw = primary_alert.get('issued_date') if primary_alert else None
+        if issued_date_raw:
+            try:
+                dt_obj = parser.parse(issued_date_raw)
+                if dt_obj.tzinfo is None:
+                    dt_obj = dt_obj.replace(tzinfo=pst)
+                issued_time_str = dt_obj.strftime("%I:%M %p, %d %B %Y (%A)")
+                short_time = dt_obj.strftime("%I:%M %p")
+            except Exception:
+                issued_time_str = datetime.datetime.now(pst).strftime("%I:%M %p, %d %B %Y (%A)")
+                short_time = datetime.datetime.now(pst).strftime("%I:%M %p")
+        else:
+            issued_time_str = datetime.datetime.now(pst).strftime("%I:%M %p, %d %B %Y (%A)")
+            short_time = datetime.datetime.now(pst).strftime("%I:%M %p")
 
         # 16:9 Widescreen TV Broadcast Canvas
         fig = plt.figure(figsize=(16, 9), dpi=200)
@@ -727,14 +800,14 @@ def main():
         fig.text(0.41, 0.957, 'RAINFALL ADVISORY', fontsize=20, fontweight='heavy', color='#f8fafc', ha='center', va='center', zorder=42)
 
         # Subtitle Blue Bar
-        short_time = datetime.datetime.now(pst).strftime("%I:%M %p")
-        sub_title = f'{target_group.upper()} · {latest_headline} · {short_time}'
-        pill_w = max(0.34, len(sub_title) * 0.0076)
+        sub_title = f'{target_group.upper()} · {region_weather_system} · {short_time}'
+        pill_w = max(0.36, len(sub_title) * 0.0078)
         pill_x = 0.41 - pill_w / 2
         sub_pill = FancyBboxPatch((pill_x, 0.892), pill_w, 0.034, boxstyle='round,pad=0.01,rounding_size=0.01',
                                   transform=fig.transFigure, facecolor='#0369a1', edgecolor='none', zorder=41)
         fig.patches.append(sub_pill)
-        fig.text(0.41, 0.908, sub_title, fontsize=10.5, fontweight='bold', color='#ffffff', ha='center', va='center', zorder=42)
+        sub_font_size = 8.8 if len(sub_title) > 52 else (9.8 if len(sub_title) > 38 else 10.5)
+        fig.text(0.41, 0.908, sub_title, fontsize=sub_font_size, fontweight='bold', color='#ffffff', ha='center', va='center', zorder=42)
 
         # ── Top Right Warning Level Legend Pills ─────────────────────────────
         legend_items = [
@@ -784,7 +857,9 @@ def main():
         # ── Generate Facebook Text Caption ───────────────────────────────────
         caption_lines = []
         caption_lines.append(f"⚠️ RAINFALL ADVISORY: {target_group.upper()} ⚠️")
-        caption_lines.append(f"ACTIVE SYSTEM: {latest_headline}")
+        caption_lines.append(f"WEATHER SYSTEM: {region_weather_system}")
+        if region_advisory_title and "WEATHER ADVISORY" not in region_advisory_title.upper():
+            caption_lines.append(f"ADVISORY: {region_advisory_title}")
         caption_lines.append(f"Issued at: {issued_time_str}")
         caption_lines.append("")
         

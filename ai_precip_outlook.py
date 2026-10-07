@@ -59,10 +59,10 @@ broadcast_cmap = ListedColormap(BROADCAST_COLORS)
 broadcast_cmap.set_over('#3a0ca3')
 broadcast_norm = BoundaryNorm(BROADCAST_LEVELS, ncolors=len(BROADCAST_COLORS), clip=False)
 
-# 2. Today (24-Hour) Scale (0.1 to 200+ mm)
-BROADCAST_TODAY_LEVELS = [0.1, 2, 5, 15, 30, 50, 75, 100, 150, 200]
+# 2. Today (24-Hour) Scale (2.5 to 200+ mm)
+BROADCAST_TODAY_LEVELS = [2.5, 5, 15, 30, 50, 75, 100, 150, 200]
 BROADCAST_TODAY_COLORS = [
-    '#2a9d8f', '#52b788', '#70e000', '#9ef01a', '#ffea00',
+    '#2a9d8f', '#52b788', '#70e000', '#ffea00',
     '#ff9e00', '#ff5400', '#d90429', '#7209b7'
 ]
 broadcast_today_cmap = ListedColormap(BROADCAST_TODAY_COLORS)
@@ -197,7 +197,7 @@ def multi_model_blend(models_dict, lead_hours=24):
     avail_keys = list(models_dict.keys())
     if len(avail_keys) == 1:
         single_grid = np.nan_to_num(models_dict[avail_keys[0]], nan=0.0)
-        floor = 0.1 if lead_hours <= 24 else (1.5 if lead_hours <= 72 else 2.0)
+        floor = 1.0 if lead_hours <= 24 else (1.5 if lead_hours <= 72 else 2.0)
         return np.where(single_grid < floor, 0.0, single_grid)
     
     # Normalize weights among available models
@@ -217,7 +217,7 @@ def multi_model_blend(models_dict, lead_hours=24):
     max_member = np.max(stack, axis=0)
     
     # 3. Ensemble Agreement / Probability of Precipitation (PoP) Gate
-    rain_threshold = 0.1 if lead_hours <= 24 else 1.0
+    rain_threshold = 1.0
     agreement_count = np.sum(stack >= rain_threshold, axis=0)
     
     # If only 1 model predicts rain while others predict dry (< 1.0 mm):
@@ -240,9 +240,9 @@ def multi_model_blend(models_dict, lead_hours=24):
     blended_precip = blended_precip * agreement_factor
     
     # 5. Light-Precipitation Elimination (Trimming Drizzle Smear)
-    elim_floor = 0.1 if lead_hours <= 24 else (1.5 if lead_hours <= 72 else 2.0)
+    elim_floor = 1.0 if lead_hours <= 24 else (1.5 if lead_hours <= 72 else 2.0)
     
-    taper_range = 0.2 if lead_hours <= 24 else 1.0
+    taper_range = 1.0
     transition_mask = (blended_precip >= elim_floor) & (blended_precip < elim_floor + taper_range)
     t = (blended_precip[transition_mask] - elim_floor) / taper_range
     smooth_t = 3.0 * (t ** 2) - 2.0 * (t ** 3)
@@ -499,14 +499,14 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
     region_info = BROADCAST_REGIONS[region_key]
     smoothed_grid = scipy.ndimage.gaussian_filter(consensus_grid, sigma=1.1)
 
-    # Colormap and scale selection: Today (0.1 to 200 mm) vs Multi-Day (5 to 450 mm)
+    # Colormap and scale selection: Today (2.5 to 200 mm) vs Multi-Day (5 to 450 mm)
     if days == 1:
         active_levels = BROADCAST_TODAY_LEVELS
         active_cmap = broadcast_today_cmap
         active_norm = broadcast_today_norm
         cbar_ticks = BROADCAST_TODAY_LEVELS
-        cbar_labels = ['0.1', '2', '5', '15', '30', '50', '75', '100', '150', '200+']
-        cbar_tick_size = 8.8
+        cbar_labels = ['2.5', '5', '15', '30', '50', '75', '100', '150', '200+']
+        cbar_tick_size = 9.2
     else:
         active_levels = BROADCAST_LEVELS
         active_cmap = broadcast_cmap
@@ -562,11 +562,11 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
             min_idx = np.unravel_index(np.argmin(dist), dist.shape)
             val = land_rain[min_idx]
             
-            min_badge_val = 0.1 if days == 1 else 1.0
+            min_badge_val = 2.5 if days == 1 else 1.0
             if np.isnan(val) or val < min_badge_val:
                 continue
 
-            val_str = f"{val:.1f} mm" if (days == 1 and val < 1.0) else f"{val:.0f} mm"
+            val_str = f"{val:.0f} mm"
 
             bbox_props = dict(boxstyle='round,pad=0.35', facecolor='#000000', edgecolor='#ffffff', alpha=0.78, lw=1.1)
             callout = f"{val_str}\n{name}"
@@ -620,11 +620,11 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
                 dist = (M_LONS - clon)**2 + (M_LATS - clat)**2
                 min_idx = np.unravel_index(np.argmin(dist), dist.shape)
                 val = palawan_rain[min_idx]
-                min_badge_val = 0.1 if days == 1 else 1.0
+                min_badge_val = 2.5 if days == 1 else 1.0
                 if np.isnan(val) or val < min_badge_val:
                     continue
 
-                val_str = f"{val:.1f} mm" if (days == 1 and val < 1.0) else f"{val:.0f} mm"
+                val_str = f"{val:.0f} mm"
 
                 bbox_props = dict(boxstyle='round,pad=0.25', facecolor='#000000', edgecolor='#ffffff', alpha=0.78, lw=0.9)
                 callout = f"{val_str}\n{name}"
@@ -671,11 +671,11 @@ def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key
                 dist = (M_LONS - clon)**2 + (M_LATS - clat)**2
                 min_idx = np.unravel_index(np.argmin(dist), dist.shape)
                 val = bb_rain[min_idx]
-                min_badge_val = 0.1 if days == 1 else 1.0
+                min_badge_val = 2.5 if days == 1 else 1.0
                 if np.isnan(val) or val < min_badge_val:
                     continue
 
-                val_str = f"{val:.1f} mm" if (days == 1 and val < 1.0) else f"{val:.0f} mm"
+                val_str = f"{val:.0f} mm"
 
                 bbox_props = dict(boxstyle='round,pad=0.22', facecolor='#000000', edgecolor='#ffffff', alpha=0.78, lw=0.85)
                 callout = f"{val_str}\n{name}"
