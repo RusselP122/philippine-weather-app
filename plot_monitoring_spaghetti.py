@@ -472,7 +472,146 @@ def is_atcf_storm_or_invest(tracks, knack_storms=None, atcf_index_storms=None):
 
     return False, ""
 
-def cluster_and_validate_lpas(df_wp, knack_storms, atcf_index_storms=None, total_members=50, min_members=5, min_wind_kt=25.0, max_mslp_hpa=1004.0, min_duration=36.0, max_dist=450.0):
+def aggregate_nursery_lpas(validated_lpas, max_nursery_dist=600.0, max_genesis_gap_h=96.0, min_motion_cos=0.50):
+    """
+    Groups validated LPA candidate clusters originating within the same spatial nursery (<= 600km)
+    with compatible trajectory heading vectors and overlapping/adjacent genesis time windows.
+    Deduplicates tracks per ensemble member to maintain statistical integrity.
+    """
+    if len(validated_lpas) <= 1:
+        return validated_lpas
+
+    lpas_with_meta = []
+    for idx, c in enumerate(validated_lpas):
+        tracks = c['tracks']
+        avg_lat = c.get('avg_lat', float(np.mean([t['f_lat'] for t in tracks])))
+        avg_lon = c.get('avg_lon', float(np.mean([t['f_lon'] for t in tracks])))
+        avg_h = c.get('avg_h', float(np.mean([t['h_min'] for t in tracks])))
+
+        dx_list, dy_list = [], []
+        for t in tracks:
+            p_dict = t.get('points_dict', {})
+            if not p_dict:
+                continue
+            sorted_h = sorted(p_dict.keys())
+            if len(sorted_h) < 2:
+                continue
+            p_start = p_dict[sorted_h[0]]
+            candidates = [h for h in sorted_h if h <= sorted_h[0] + 48]
+            target_h = candidates[-1] if len(candidates) > 1 else sorted_h[-1]
+            p_end = p_dict[target_h]
+            dlat_km = (p_end[0] - p_start[0]) * 111.0
+            dlon_km = (p_end[1] - p_start[1]) * 111.0 * math.cos(math.radians(p_start[0]))
+            dx_list.append(dlon_km)
+            dy_list.append(dlat_km)
+
+        mean_dx = np.mean(dx_list) if dx_list else 0.0
+        mean_dy = np.mean(dy_list) if dy_list else 0.0
+        norm = math.sqrt(mean_dx**2 + mean_dy**2)
+        dir_vec = (mean_dx / norm, mean_dy / norm) if norm > 0 else (0.0, 0.0)
+
+        lpas_with_meta.append({
+            'tracks': tracks,
+            'members': c['members'],
+            'avg_lat': avg_lat,
+            'avg_lon': avg_lon,
+            'avg_h': avg_h,
+            'dir_vec': dir_vec,
+            'max_w': c['max_w'],
+            'min_p': c['min_p'],
+            'duration': c['duration']
+        })
+
+    sorted_lpas = sorted(lpas_with_meta, key=lambda x: x['members'], reverse=True)
+    merged = []
+    used = set()
+
+    for i, anchor in enumerate(sorted_lpas):
+        if i in used:
+            continue
+        group = [anchor]
+        used.add(i)
+
+        for j, candidate in enumerate(sorted_lpas):
+            if j in used:
+                continue
+            # 1. Spatial distance between nursery genesis centers
+            dist_gen = haversine_km(anchor['avg_lat'], anchor['avg_lon'], candidate['avg_lat'], candidate['avg_lon'])
+            if dist_gen > max_nursery_dist:
+                continue
+
+            # 2. Timing gap between genesis lead hours
+            dh = abs(anchor['avg_h'] - candidate['avg_h'])
+            if dh > max_genesis_gap_h:
+                continue
+
+            # 3. Trajectory heading compatibility
+            cos_sim = anchor['dir_vec'][0] * candidate['dir_vec'][0] + anchor['dir_vec'][1] * candidate['dir_vec'][1]
+            if cos_sim < min_motion_cos:
+                continue
+
+            group.append(candidate)
+            used.add(j)
+
+        if len(group) == 1:
+            merged.append(anchor)
+            continue
+
+        # Combine tracks across group and deduplicate per ensemble member
+        combined_tracks = []
+        for item in group:
+            combined_tracks.extend(item['tracks'])
+
+        by_member = {}
+        for t in combined_tracks:
+            sid = t['sample']
+            if sid not in by_member:
+                by_member[sid] = []
+            by_member[sid].append(t)
+
+        deduped = []
+        for sid, m_tracks in by_member.items():
+            if len(m_tracks) == 1:
+                deduped.append(m_tracks[0])
+            else:
+                deduped.append(max(m_tracks, key=lambda tr: (len(tr.get('points_dict', {})), tr.get('max_w', 0))))
+
+        num_mems = len(deduped)
+        c_lat = float(np.mean([t['f_lat'] for t in deduped]))
+        c_lon = float(np.mean([t['f_lon'] for t in deduped]))
+        c_h = float(np.mean([t['h_min'] for t in deduped]))
+        c_max_w = float(max(t['max_w'] for t in deduped))
+        c_min_p = float(min(t['min_p'] for t in deduped))
+        c_duration = float(max(t['h_max'] for t in deduped) - min(t['h_min'] for t in deduped))
+
+        print(f"Spatial Nursery Aggregation: Merged {len(group)} candidate clusters near ({c_lat:.1f}N, {c_lon:.1f}E) into unified signal with {num_mems} members")
+        merged.append({
+            'tracks': deduped,
+            'members': num_mems,
+            'avg_lat': c_lat,
+            'avg_lon': c_lon,
+            'avg_h': c_h,
+            'max_w': c_max_w,
+            'min_p': c_min_p,
+            'duration': c_duration
+        })
+
+    return merged
+
+def cluster_and_validate_lpas(
+    df_wp, 
+    knack_storms, 
+    atcf_index_storms=None, 
+    total_members=50, 
+    min_members=5, 
+    min_wind_kt=25.0, 
+    max_mslp_hpa=1004.0, 
+    min_duration=36.0, 
+    max_dist=450.0,
+    enable_nursery_aggregation=True,
+    max_nursery_dist=600.0,
+    max_nursery_gap_h=96.0
+):
     """
     Identifies, clusters, and validates tropical disturbances under monitoring using Average-Linkage
     spatio-temporal clustering. Prevents chaining and survivor bias.
@@ -486,12 +625,41 @@ def cluster_and_validate_lpas(df_wp, knack_storms, atcf_index_storms=None, total
     df_wp['rep_track_id'] = 'UNKNOWN'
     df_wp['is_monitoring'] = False
     
+    # Build known official storm names (e.g. KOGUMA, CHOI-WAN) to skip immediately
+    known_official_names = set()
+    if knack_storms:
+        for s in knack_storms:
+            if s.get('atcf_id'):
+                known_official_names.add(str(s['atcf_id']).upper().strip())
+            if s.get('name') and str(s['name']).upper() not in ('INVEST', 'UNKNOWN'):
+                known_official_names.add(str(s['name']).upper().strip())
+    if atcf_index_storms:
+        for s in atcf_index_storms:
+            if s.get('track_id'):
+                known_official_names.add(str(s['track_id']).upper().strip())
+            if s.get('storm_name'):
+                name_clean = str(s['storm_name']).upper().replace('TC', '').replace('INVEST', '').strip()
+                if name_clean:
+                    known_official_names.add(name_clean)
+
+    # Fast pre-filter regex for official ATCF storms/invests:
+    # 1. Full ATCF names: WP262026, EP152026, AL092026 (optionally with (2))
+    # 2. Designated TC numbers: 01W to 49W (or WP01 to WP49)
+    # 3. Official Invest numbers: 90W to 99W (or WP90 to WP99)
+    # Note: ECMWF disturbance trackers (70W-89W, 70B, etc.) and GDM disturbance IDs (digits) must be KEPT!
+    atcf_prefilter_pat = re.compile(
+        r'^(?:WP|EP|AL|CP|IO|SH)\d{2}\d{4}(?:\(\d+\))?'
+        r'|^(?:WP|EP|AL|CP|IO|SH)?(?:0[1-9]|[1-4]\d|9\d)[A-Z](?:\(\d+\))?$'
+        r'|^(?:WP|EP|AL|CP|IO|SH)(?:0[1-9]|[1-4]\d|9\d)(?:\(\d+\))?$',
+        re.I
+    )
+
     # 1. Extract valid track sequences
     tracks = []
     for (t_id, s_val), track_points in df_wp.groupby(['track_id', 'sample']):
         t_id_str = str(t_id).strip().upper()
         # Fast pre-filter: Skip tracks that represent official ATCF storms/invests
-        if re.search(r'^(?:WP|EP|CP|AL|IO|SH)\d{2}|^\d{2}[WECALBS]', t_id_str):
+        if t_id_str in known_official_names or atcf_prefilter_pat.match(t_id_str):
             continue
         track_points = track_points.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
         if len(track_points) < 3:
@@ -636,7 +804,14 @@ def cluster_and_validate_lpas(df_wp, knack_storms, atcf_index_storms=None, total
             'avg_lon': avg_lon,
             'avg_h': avg_h
         })
-        
+    # Spatial Nursery Aggregation: Combine clusters from the same geographic nursery
+    if enable_nursery_aggregation and len(validated_lpas) > 1:
+        validated_lpas = aggregate_nursery_lpas(
+            validated_lpas,
+            max_nursery_dist=max_nursery_dist,
+            max_genesis_gap_h=max_nursery_gap_h
+        )
+
     # Sort validated LPAs by member support, then intensity
     validated_lpas.sort(key=lambda x: (x['members'], x['max_w'] if not np.isnan(x['max_w']) else 0), reverse=True)
     
@@ -1526,6 +1701,9 @@ def main():
     parser.add_argument('--min-mean-members', type=int, default=25, help="Minimum ensemble members required to compute and render the ensemble mean track")
     parser.add_argument('--min-wind', type=float, default=25.0, help="Minimum maximum wind in knots for monitoring disturbance")
     parser.add_argument('--min-duration', type=float, default=36.0, help="Minimum duration in hours for monitoring disturbance")
+    parser.add_argument('--nursery-aggregation', action='store_true', default=True, help="Aggregate compatible candidate clusters in the same spatial nursery")
+    parser.add_argument('--no-nursery-aggregation', action='store_false', dest='nursery_aggregation', help="Disable spatial nursery aggregation")
+    parser.add_argument('--nursery-dist', type=float, default=600.0, help="Maximum distance in km between genesis centers to aggregate into a single nursery signal")
     args = parser.parse_args()
 
     input_files = args.input
@@ -1603,7 +1781,9 @@ def main():
             total_members=total_members,
             min_members=eff_min_members,
             min_wind_kt=args.min_wind,
-            min_duration=args.min_duration
+            min_duration=args.min_duration,
+            enable_nursery_aggregation=args.nursery_aggregation,
+            max_nursery_dist=args.nursery_dist
         )
 
         monitoring_df = wp_df[wp_df['storm_group'].str.startswith('monitoring_')].copy()
