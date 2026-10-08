@@ -1108,11 +1108,12 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
             else:
                 ensemble_data = df_storm
 
-    # Limit displayed ensemble members to at most 100 for visual clarity (e.g. for fnv3p2's large ensembles)
+    # Dynamic styling for large ensembles: use opacity and finer lines for luminous ribbon effect
     ensemble_samples = ensemble_data['sample'].unique()
-    if len(ensemble_samples) > 100:
-        # Systematic downsampling to keep a representative spread of 100 members
-        indices = np.linspace(0, len(ensemble_samples) - 1, 100, dtype=int)
+    is_large = 'large' in model_name.lower() or len(ensemble_samples) >= 200
+    max_display = 250 if is_large else 100
+    if len(ensemble_samples) > max_display:
+        indices = np.linspace(0, len(ensemble_samples) - 1, max_display, dtype=int)
         selected_samples = [ensemble_samples[idx] for idx in indices]
         ensemble_data = ensemble_data[ensemble_data['sample'].isin(selected_samples)]
 
@@ -1462,7 +1463,9 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
         if not segments:
             continue
             
-        lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=1.5, alpha=0.95, 
+        track_lw = 0.90 if is_large else 1.5
+        track_alpha = 0.35 if is_large else 0.95
+        lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=track_lw, alpha=track_alpha, 
                             capstyle='round', joinstyle='round', transform=ccrs.PlateCarree(), zorder=4)
         lc.set_array(np.array(seg_vals))
         ax.add_collection(lc)

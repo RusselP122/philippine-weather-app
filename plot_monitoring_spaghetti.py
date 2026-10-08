@@ -1231,14 +1231,18 @@ def plot_monitoring_tracks(
         par_vertices, facecolor='none', edgecolor='#f97316', linestyle='-', linewidth=1.6,
         alpha=0.75, transform=ccrs.PlateCarree(), zorder=4, label='PAR'
     ))
-    if view_lon_min + 1 <= 118 <= view_lon_max - 1 and view_lat_min + 1 <= 14 <= view_lat_max - 1:
-        wps_lbl = ax_map.text(118, 14, 'West Philippine\nSea', fontsize=8.0, color='#94a3b8', weight='bold',
-                    transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.85, zorder=7)
-        wps_lbl.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='#090d14')])
-    if view_lon_min + 1 <= 131 <= view_lon_max - 1 and view_lat_min + 1 <= 19 <= view_lat_max - 1:
-        ps_lbl = ax_map.text(131, 19, 'Philippine\nSea', fontsize=9.0, color='#94a3b8', weight='bold',
-                    transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.85, zorder=7)
-        ps_lbl.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='#090d14')])
+    # Canonical sea labels placed at zorder=3 (background layer below track lines at zorder=5/6)
+    if view_lon_min + 1.0 <= 118.0 <= view_lon_max - 1.0 and view_lat_min + 1.0 <= 14.0 <= view_lat_max - 1.0:
+        ax_map.text(
+            118.0, 14.0, 'West Philippine\nSea', fontsize=8.0, color='#94a3b8', weight='bold',
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.65, zorder=3, clip_on=True
+        )
+
+    if view_lon_min + 1.5 <= 130.5 <= view_lon_max - 1.5 and view_lat_min + 1.0 <= 18.5 <= view_lat_max - 1.0:
+        ax_map.text(
+            130.5, 18.5, 'Philippine\nSea', fontsize=9.0, color='#94a3b8', weight='bold',
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.65, zorder=3, clip_on=True
+        )
 
     gl = ax_map.gridlines(draw_labels=True, linewidth=0.4, color='#334155', alpha=0.4, linestyle=':')
     gl.top_labels = False
@@ -1331,6 +1335,19 @@ def plot_monitoring_tracks(
     track_cmap = mcolors.ListedColormap(wind_colors)
     track_norm = mcolors.BoundaryNorm(wind_bounds, track_cmap.N, extend='both')
 
+    # Dynamic track styling based on ensemble size / model
+    is_large = (total_ensemble_members is not None and total_ensemble_members >= 200) or ('large' in model_name.lower())
+    if is_large:
+        track_lw = 0.95
+        track_alpha = 0.40
+        halo_alpha = 0.10
+        halo_lw = 2.0
+    else:
+        track_lw = 1.2
+        track_alpha = 0.85
+        halo_alpha = 0.30
+        halo_lw = 2.8
+
     for member_df in deduped_track_dfs:
         member_df = member_df.sort_values('lead_time_hours')
         if len(member_df) < 2:
@@ -1353,16 +1370,17 @@ def plot_monitoring_tracks(
         if not segments:
             continue
 
-        lc_halo = LineCollection(
-            segments, cmap=track_cmap, norm=track_norm,
-            linewidth=2.8, alpha=0.30, transform=ccrs.PlateCarree(), zorder=5
-        )
-        lc_halo.set_array(np.array(seg_winds))
-        ax_map.add_collection(lc_halo)
+        if halo_alpha > 0:
+            lc_halo = LineCollection(
+                segments, cmap=track_cmap, norm=track_norm,
+                linewidth=halo_lw, alpha=halo_alpha, transform=ccrs.PlateCarree(), zorder=5
+            )
+            lc_halo.set_array(np.array(seg_winds))
+            ax_map.add_collection(lc_halo)
 
         lc = LineCollection(
             segments, cmap=track_cmap, norm=track_norm,
-            linewidth=1.2, alpha=0.85, capstyle='round', joinstyle='round',
+            linewidth=track_lw, alpha=track_alpha, capstyle='round', joinstyle='round',
             transform=ccrs.PlateCarree(), zorder=6
         )
         lc.set_array(np.array(seg_winds))

@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFont
 import shapely
 from shapely.geometry import shape
 from shapely.validation import make_valid
+from shapely.ops import unary_union, linemerge
 
 # ── Philippine Province Geometries Cache ─────────────────────────────────────
 _PROVINCE_GEOMS_CACHE = None
@@ -27,6 +28,7 @@ def load_philippine_province_geometries():
     """
     Loads high-resolution Philippine province boundaries from public/data/ph_provinces.json
     cached in memory for instantaneous rendering across frames.
+    Deduplicates shared borders between neighboring provinces for clean, single lines.
     """
     global _PROVINCE_GEOMS_CACHE
     if _PROVINCE_GEOMS_CACHE is not None:
@@ -42,7 +44,21 @@ def load_philippine_province_geometries():
         try:
             with open(found_path, "r", encoding="utf-8") as f:
                 geo_data = json.load(f)
-            _PROVINCE_GEOMS_CACHE = [make_valid(shape(feat["geometry"])) for feat in geo_data.get("features", [])]
+
+            raw_boundaries = []
+            for feat in geo_data.get("features", []):
+                geom = shape(feat["geometry"])
+                if not geom.is_valid:
+                    geom = make_valid(geom)
+                if hasattr(geom, 'boundary'):
+                    raw_boundaries.append(geom.boundary)
+
+            # Deduplicate shared borders between neighboring provinces
+            merged = linemerge(unary_union(raw_boundaries))
+            if hasattr(merged, 'geoms'):
+                _PROVINCE_GEOMS_CACHE = list(merged.geoms)
+            else:
+                _PROVINCE_GEOMS_CACHE = [merged]
             return _PROVINCE_GEOMS_CACHE
         except Exception as e:
             print(f"Notice: Failed to load province boundaries: {e}")
@@ -115,13 +131,13 @@ class ZoomEarthTiles(cimgt.GoogleTiles):
         seamless_ocean = Image.new('RGB', (256, 256), (11, 15, 20))
         return seamless_ocean, self.tileextent(tile), 'lower'
 
-# ── Fox Weather Broadcast Header Drawing Function (National / PAR Satellite) ───
-def draw_fox_weather_header(img, dt_utc, custom_title=None):
+# ── Fox Weather Broadcast Header Drawing Function (National / Regional Satellite) ───
+def draw_fox_weather_header(img, dt_utc, custom_title=None, sector_title=None):
     """
     Draws a TV broadcast-style top header matching the Fox Weather layout for general satellite:
     - Top navy container with 2-tier layout and rounded corners
     - Top Tier: 'VISIBLE SATELLITE' (or 'INFRARED SATELLITE') + 'PHILIPPINE TYPHOON WEATHER' badge
-    - Bottom Tier: 'WED 9:50AM PHT' + 'PHILIPPINES & PAR REGION' + 'CLEAR [ === ] CLOUDS' scale
+    - Bottom Tier: 'WED 9:50AM PHT' + Domain coverage (or Sector Name) + 'CLEAR [ === ] CLOUDS' scale
     """
     pht_tz = datetime.timezone(datetime.timedelta(hours=8))
     dt_pht = dt_utc.astimezone(pht_tz)
@@ -226,38 +242,174 @@ def draw_fox_weather_header(img, dt_utc, custom_title=None):
     draw.text((bar_left - cl_w - int(10 * scale), time_y), clear_text, fill=(255, 255, 255), font=font_sub)
 
     # 5. Bottom tier middle: Domain coverage label
-    domain_text = "PHILIPPINES & PAR REGION"
+    domain_text = sector_title.upper() if sector_title else "PHILIPPINES & PAR REGION"
     draw.text((sep_x + int(14 * scale), time_y), domain_text, fill=(200, 220, 255), font=font_sub)
 
     return img
 
-# ── Philippines / PAR Extent ────────────────────────────────────────────────
+# ── Aspect Ratio Extent Fitting Helper ───────────────────────────────────────
+def fit_extent_to_aspect(extent, aspect_ratio=10.0 / 7.5):
+    """
+    Ensures [min_lon, max_lon, min_lat, max_lat] strictly matches the canvas
+    aspect ratio (lon_span / lat_span == aspect_ratio) so Cartopy renders 100%
+    edge-to-edge full-bleed with zero black borders/bars on any side.
+    """
+    min_lon, max_lon, min_lat, max_lat = extent
+    c_lon = (min_lon + max_lon) / 2.0
+    c_lat = (min_lat + max_lat) / 2.0
+    lon_span = max_lon - min_lon
+    lat_span = max_lat - min_lat
+
+    current_aspect = lon_span / lat_span
+    if current_aspect < aspect_ratio:
+        target_lon_span = lat_span * aspect_ratio
+        min_lon = c_lon - target_lon_span / 2.0
+        max_lon = c_lon + target_lon_span / 2.0
+    elif current_aspect > aspect_ratio:
+        target_lat_span = lon_span / aspect_ratio
+        min_lat = c_lat - target_lat_span / 2.0
+        max_lat = c_lat + target_lat_span / 2.0
+
+    return [min_lon, max_lon, min_lat, max_lat]
+
+# ── Regional Sectors & Target Domains (Identical to PTCC) ─────────────────────
+SECTORS = {
+    'northern_luzon': {
+        'id': 'northern_luzon',
+        'key': 'northern_luzon',
+        'extent': fit_extent_to_aspect([117.5, 125.5, 15.5, 21.5], 10.0 / 7.5),
+        'title': 'NORTHERN & EXTREME NORTHERN LUZON',
+        'label': 'Northern & Extreme Northern Luzon Sector',
+        'filename_stem': 'philippines_northern_luzon',
+        'zoom_level': 7,
+        'grid_step': 1.0,
+    },
+    'southern_luzon': {
+        'id': 'southern_luzon',
+        'key': 'southern_luzon',
+        'extent': fit_extent_to_aspect([119.5, 124.5, 12.5, 16.25], 10.0 / 7.5),
+        'title': 'SOUTHERN LUZON (CALABARZON • NCR • MIMAROPA)',
+        'label': 'Southern Luzon Sector (CALABARZON / Laguna / Metro Manila / Mindoro)',
+        'filename_stem': 'philippines_southern_luzon',
+        'zoom_level': 7,
+        'grid_step': 1.0,
+    },
+    'visayas': {
+        'id': 'visayas',
+        'key': 'visayas',
+        'extent': fit_extent_to_aspect([120.75, 126.75, 9.0, 13.5], 10.0 / 7.5),
+        'title': 'VISAYAS',
+        'label': 'All Visayas Sector (Western, Central & Eastern Visayas)',
+        'filename_stem': 'philippines_visayas',
+        'zoom_level': 7,
+        'grid_step': 1.0,
+    },
+    'mindanao': {
+        'id': 'mindanao',
+        'key': 'mindanao',
+        'extent': fit_extent_to_aspect([119.0, 127.0, 4.75, 10.75], 10.0 / 7.5),
+        'title': 'MINDANAO',
+        'label': 'Mindanao Sector (Davao, Caraga, Zamboanga, BARMM)',
+        'filename_stem': 'philippines_mindanao',
+        'zoom_level': 7,
+        'grid_step': 1.0,
+    },
+    'luzon': {
+        'id': 'luzon',
+        'key': 'luzon',
+        'extent': fit_extent_to_aspect([116.0, 126.0, 13.0, 20.5], 10.0 / 7.5),
+        'title': 'LUZON ARCHIPELAGO REGIONAL FOCUS',
+        'label': 'General Luzon Sector',
+        'filename_stem': 'philippines_luzon',
+        'zoom_level': 6,
+        'grid_step': 2.0,
+    },
+    'philippines': {
+        'id': 'philippines',
+        'key': 'philippines',
+        'extent': fit_extent_to_aspect([113.0, 137.0, 4.0, 22.0], 10.0 / 7.5),
+        'title': 'PHILIPPINES & PAR REGION',
+        'label': 'Philippine Archipelago & PAR Overview',
+        'filename_stem': 'philippines_satellite',
+        'zoom_level': 6,
+        'grid_step': 5.0,
+    }
+}
+
+def resolve_sector(sector_name):
+    if not sector_name:
+        return None
+    s = str(sector_name).lower().replace('-', '_').strip()
+    if s in SECTORS:
+        return SECTORS[s]
+    alias_map = {
+        'north_luzon': 'northern_luzon',
+        'extreme_north_luzon': 'northern_luzon',
+        'extreme_northern_luzon': 'northern_luzon',
+        'nluzon': 'northern_luzon',
+        'south_luzon': 'southern_luzon',
+        'sluzon': 'southern_luzon',
+        'calabarzon': 'southern_luzon',
+        'central_luzon': 'southern_luzon',
+        'laguna': 'southern_luzon',
+        'all_visayas': 'visayas',
+        'vis': 'visayas',
+        'all_mindanao': 'mindanao',
+        'min': 'mindanao',
+        'par': 'philippines',
+        'all_philippines': 'philippines',
+        'all_luzon': 'luzon',
+    }
+    canonical = alias_map.get(s)
+    if canonical and canonical in SECTORS:
+        return SECTORS[canonical]
+    return None
+
+def get_sector_extent(sector_key):
+    info = resolve_sector(sector_key)
+    if info:
+        return info['extent']
+    return SECTORS['southern_luzon']['extent']
+
 def get_philippines_extent():
     """
     Returns extent tightly framing the Philippine archipelago and PAR boundary:
-    [min_lon, max_lon, min_lat, max_lat] -> [114.0, 136.0, 4.0, 22.0] (4:3 aspect ratio)
+    [min_lon, max_lon, min_lat, max_lat] -> [113.0, 137.0, 4.0, 22.0] (4:3 aspect ratio)
     """
-    return [114.0, 136.0, 4.0, 22.0]
+    return SECTORS['philippines']['extent']
 
-# ── Render a Single Philippines-Focused Frame ───────────────────────────────
+# ── Render a Single Frame (Regional or National) ─────────────────────────────
 def render_philippines_frame(
     dt_utc,
     extent=None,
+    sector_info=None,
+    sector_key=None,
     figsize=(10.0, 7.5),
     dpi=120,
-    zoom_level=6,
+    zoom_level=None,
     custom_title=None
 ):
     """
     Renders a full-bleed satellite frame overlaid with:
-    - Live Himawari satellite clouds
+    - Live Himawari satellite clouds (Zoom Earth)
     - Detailed Philippine Province Boundaries from ph_provinces.json
     - High-visibility yellow coastlines
-    - Orange PAR line
-    - Fox Weather broadcast header with CLEAR/CLOUDS scale
+    - Orange PAR line (omitted on regional sector zooms to avoid stray divider)
+    - Fox Weather broadcast header with CLEAR/CLOUDS scale and sector title
     """
+    if sector_key and not sector_info:
+        sector_info = resolve_sector(sector_key)
+
+    if sector_info is None and extent is None:
+        sector_info = SECTORS['philippines']
+
     if extent is None:
-        extent = get_philippines_extent()
+        extent = sector_info['extent'] if sector_info else get_philippines_extent()
+
+    extent = fit_extent_to_aspect(extent, aspect_ratio=figsize[0] / figsize[1])
+
+    if zoom_level is None:
+        zoom_level = sector_info.get('zoom_level', 6) if sector_info else 6
 
     date_str = dt_utc.strftime('%Y-%m-%d')
     time_str = f"{dt_utc.hour:02d}{(dt_utc.minute // 10) * 10:02d}"
@@ -294,17 +446,21 @@ def render_philippines_frame(
         )
 
     # 4. Philippine Area of Responsibility (PAR) Boundary
-    par_lons = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
-    par_lats = [ 5.0,  15.0,  21.0,  25.0,  25.0,   5.0,   5.0]
-    ax_map.plot(
-        par_lons, par_lats, color='#FF6B35', linewidth=2.0, linestyle='-',
-        alpha=0.95, transform=ccrs.PlateCarree(), label='PAR Boundary'
-    )
+    # Omitted for regional target sectors so it does not unnaturally cut across close views
+    is_regional = sector_info and sector_info.get('key') in ['northern_luzon', 'southern_luzon', 'visayas', 'mindanao', 'luzon']
+    if not is_regional:
+        par_lons = [115.0, 115.0, 120.0, 120.0, 135.0, 135.0, 115.0]
+        par_lats = [ 5.0,  15.0,  21.0,  25.0,  25.0,   5.0,   5.0]
+        ax_map.plot(
+            par_lons, par_lats, color='#FF6B35', linewidth=2.0, linestyle='-',
+            alpha=0.95, transform=ccrs.PlateCarree(), label='PAR Boundary'
+        )
 
     # 5. Lat/Lon Coordinate Gridlines (Subtle)
+    grid_step = sector_info.get('grid_step', 2.0) if sector_info else 5.0
     gl = ax_map.gridlines(draw_labels=False, linewidth=0.5, color='white', alpha=0.25, linestyle='--')
-    gl.xlocator = mticker.MultipleLocator(5.0)
-    gl.ylocator = mticker.MultipleLocator(5.0)
+    gl.xlocator = mticker.MultipleLocator(grid_step)
+    gl.ylocator = mticker.MultipleLocator(grid_step)
 
     # Convert plot directly to PIL Image
     fig.canvas.draw()
@@ -313,26 +469,39 @@ def render_philippines_frame(
     plt.close(fig)
 
     # 6. Composite Fox Weather broadcast header
-    img = draw_fox_weather_header(img, dt_utc=dt_utc, custom_title=custom_title)
+    sector_title = sector_info.get('title') if sector_info else None
+    img = draw_fox_weather_header(img, dt_utc=dt_utc, custom_title=custom_title, sector_title=sector_title)
 
     return img
 
-# ── Generate Animated Philippines GIF Loop ──────────────────────────────────
+# ── Generate Animated Satellite GIF Loop ─────────────────────────────────────
 def generate_philippines_gif(
-    output_path="philippines_satellite_loop.gif",
+    output_path=None,
+    sector_key=None,
     timeframe_hours=6.0,
     interval_mins=20,
     fps=8,
     dpi=120,
-    zoom_level=6,
+    zoom_level=None,
     last_frame_pause_sec=1.5
 ):
+    sector_info = resolve_sector(sector_key) if sector_key else SECTORS['philippines']
+    if not sector_info:
+        sector_info = SECTORS['philippines']
+
+    if output_path is None:
+        if sector_info['key'] == 'philippines':
+            output_path = "philippines_satellite_loop.gif"
+        else:
+            output_path = f"{sector_info['filename_stem']}_loop.gif"
+
     print("=" * 70)
-    print("Generating Philippines Satellite Loop GIF...")
+    print(f"Generating Satellite Loop GIF: {sector_info['title']}")
     print(f"Timeframe: Past {timeframe_hours:.1f} hours | Interval: {interval_mins} mins | FPS: {fps}")
     print("=" * 70)
 
-    extent = get_philippines_extent()
+    extent = sector_info['extent']
+    actual_zoom = zoom_level if zoom_level is not None else sector_info.get('zoom_level', 6)
 
     now_utc = get_latest_available_satellite_time()
     end_utc = now_utc
@@ -356,9 +525,10 @@ def generate_philippines_gif(
         frame_img = render_philippines_frame(
             dt_utc=t_utc,
             extent=extent,
+            sector_info=sector_info,
             figsize=(10.0, 7.5),
             dpi=dpi,
-            zoom_level=zoom_level
+            zoom_level=actual_zoom
         )
         frames.append(frame_img)
 
@@ -386,39 +556,67 @@ def generate_philippines_gif(
     )
 
     file_size_mb = os.path.getsize(output_path) / (1024 * 1024)
-    print(f"SUCCESS: Philippines GIF saved to: {os.path.abspath(output_path)} ({file_size_mb:.2f} MB)")
+    print(f"SUCCESS: Satellite GIF saved to: {os.path.abspath(output_path)} ({file_size_mb:.2f} MB)")
     print("=" * 70)
     return output_path
 
-# ── Generate Static Philippines Image ────────────────────────────────────────
+# ── Generate Static Satellite Image ──────────────────────────────────────────
 def generate_philippines_image(
-    output_path="philippines_satellite.png",
+    output_path=None,
+    sector_key=None,
     dpi=150,
-    zoom_level=6
+    zoom_level=None
 ):
+    sector_info = resolve_sector(sector_key) if sector_key else SECTORS['philippines']
+    if not sector_info:
+        sector_info = SECTORS['philippines']
+
+    if output_path is None:
+        if sector_info['key'] == 'philippines':
+            output_path = "philippines_satellite.png"
+        else:
+            output_path = f"{sector_info['filename_stem']}.png"
+
     print("=" * 70)
-    print("Generating Philippines Satellite Static Map...")
+    print(f"Generating Satellite Static Map: {sector_info['title']}")
     print("=" * 70)
 
-    extent = get_philippines_extent()
+    extent = sector_info['extent']
+    actual_zoom = zoom_level if zoom_level is not None else sector_info.get('zoom_level', 6)
     dt_utc = get_latest_available_satellite_time()
 
     img = render_philippines_frame(
         dt_utc=dt_utc,
         extent=extent,
+        sector_info=sector_info,
         figsize=(10.0, 7.5),
         dpi=dpi,
-        zoom_level=zoom_level
+        zoom_level=actual_zoom
     )
 
     img.save(output_path, dpi=(dpi, dpi))
-    print(f"SUCCESS: Philippines static map saved to: {os.path.abspath(output_path)} ({img.size[0]}x{img.size[1]})")
+    print(f"SUCCESS: Satellite static map saved to: {os.path.abspath(output_path)} ({img.size[0]}x{img.size[1]})")
     print("=" * 70)
     return output_path
 
 # ── CLI Entry Point ──────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="Generate Philippines Satellite Maps & Animated GIF Loops with Province Boundaries")
+    parser = argparse.ArgumentParser(description="Generate Philippines & Regional Satellite Maps & Animated GIF Loops with Province Boundaries")
+    parser.add_argument("--target", "--sector", dest="target", type=str, default=None,
+                        help="Target sector: northern_luzon, southern_luzon, visayas, mindanao, luzon, philippines")
+    parser.add_argument("--northern-luzon", "--north-luzon", "--extreme-northern-luzon", dest="northern_luzon", action="store_true",
+                        help="Target Northern & Extreme Northern Luzon Sector")
+    parser.add_argument("--southern-luzon", "--south-luzon", "--calabarzon", dest="southern_luzon", action="store_true",
+                        help="Target Southern & Central Luzon Sector (CALABARZON, NCR, Mindoro, Bicol)")
+    parser.add_argument("--visayas", "--all-visayas", dest="visayas", action="store_true",
+                        help="Target All Visayas Sector (Western, Central & Eastern Visayas)")
+    parser.add_argument("--mindanao", "--all-mindanao", dest="mindanao", action="store_true",
+                        help="Target Mindanao Sector (Davao, Caraga, Northern Mindanao, Zamboanga, BARMM)")
+    parser.add_argument("--luzon", action="store_true", default=None, help="Force focus on general Luzon sector")
+    parser.add_argument("--philippines", "--par", dest="philippines", action="store_true", help="Focus on full Philippine archipelago & PAR domain (default)")
+    parser.add_argument("--all-targets", "--all-sectors", dest="all_targets", action="store_true",
+                        help="Render all 4 regional target sectors: Northern Luzon, Southern Luzon, Visayas, and Mindanao")
+
     parser.add_argument("--png-only", action="store_true", help="Generate only static PNG image without GIF loop")
     parser.add_argument("--gif-only", action="store_true", help="Generate only animated GIF loop without PNG image")
     parser.add_argument("--gif", action="store_true", help="Generate animated satellite GIF loop")
@@ -427,32 +625,90 @@ def main():
     parser.add_argument("--interval", type=int, default=20, help="Frame step interval in minutes (default: 20)")
     parser.add_argument("--fps", type=int, default=8, help="Frames per second for GIF (default: 8)")
     parser.add_argument("--dpi", type=int, default=120, help="DPI resolution for GIF frames (default: 120)")
+    parser.add_argument("--zoom", type=int, default=None, help="Custom satellite zoom level (default: 6 for national, 7 for regional)")
     parser.add_argument("--output", type=str, default=None, help="Custom output filepath")
     args = parser.parse_args()
 
+    # Batch generate all regional sectors
+    if args.all_targets:
+        targets_list = ['northern_luzon', 'southern_luzon', 'visayas', 'mindanao']
+        print(f"\n--- Batch generating all 4 regional target sectors: {targets_list} ---")
+        for t_sec in targets_list:
+            if args.png_only:
+                generate_philippines_image(sector_key=t_sec, dpi=args.dpi, zoom_level=args.zoom)
+            elif args.gif_only or args.gif:
+                generate_philippines_gif(
+                    sector_key=t_sec,
+                    timeframe_hours=args.hours,
+                    interval_mins=args.interval,
+                    fps=args.fps,
+                    dpi=args.dpi,
+                    zoom_level=args.zoom
+                )
+            else:
+                generate_philippines_image(sector_key=t_sec, dpi=args.dpi, zoom_level=args.zoom)
+                generate_philippines_gif(
+                    sector_key=t_sec,
+                    timeframe_hours=args.hours,
+                    interval_mins=args.interval,
+                    fps=args.fps,
+                    dpi=args.dpi,
+                    zoom_level=args.zoom
+                )
+        print("\nAll regional targets generated successfully!")
+        return
+
+    # Determine sector key
+    sector_key = 'philippines'
+    if args.target:
+        sector_key = args.target
+    elif args.northern_luzon:
+        sector_key = 'northern_luzon'
+    elif args.southern_luzon:
+        sector_key = 'southern_luzon'
+    elif args.visayas:
+        sector_key = 'visayas'
+    elif args.mindanao:
+        sector_key = 'mindanao'
+    elif args.luzon:
+        sector_key = 'luzon'
+    elif args.philippines:
+        sector_key = 'philippines'
+
+    sec_info = resolve_sector(sector_key)
+    stem = sec_info['filename_stem'] if sec_info else 'philippines_satellite'
+
     if args.png_only:
-        out_png = args.output or "philippines_satellite.png"
-        generate_philippines_image(output_path=out_png, dpi=args.dpi)
+        out_png = args.output or f"{stem}.png"
+        generate_philippines_image(output_path=out_png, sector_key=sector_key, dpi=args.dpi, zoom_level=args.zoom)
     elif args.gif_only or args.gif:
-        out_gif = args.output or "philippines_satellite_loop.gif"
+        out_gif = args.output or f"{stem}_loop.gif"
         generate_philippines_gif(
             output_path=out_gif,
+            sector_key=sector_key,
             timeframe_hours=args.hours,
             interval_mins=args.interval,
             fps=args.fps,
-            dpi=args.dpi
+            dpi=args.dpi,
+            zoom_level=args.zoom
         )
     else:
         # Default: generate BOTH PNG and GIF!
-        out_png = args.output.replace(".gif", ".png") if args.output else "philippines_satellite.png"
-        out_gif = args.output.replace(".png", ".gif") if args.output else "philippines_satellite_loop.gif"
-        generate_philippines_image(output_path=out_png, dpi=args.dpi)
+        if args.output:
+            out_png = args.output.replace(".gif", ".png")
+            out_gif = args.output.replace(".png", ".gif")
+        else:
+            out_png = f"{stem}.png"
+            out_gif = f"{stem}_loop.gif"
+        generate_philippines_image(output_path=out_png, sector_key=sector_key, dpi=args.dpi, zoom_level=args.zoom)
         generate_philippines_gif(
             output_path=out_gif,
+            sector_key=sector_key,
             timeframe_hours=args.hours,
             interval_mins=args.interval,
             fps=args.fps,
-            dpi=args.dpi
+            dpi=args.dpi,
+            zoom_level=args.zoom
         )
 
 if __name__ == "__main__":
