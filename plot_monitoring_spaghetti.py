@@ -1518,7 +1518,8 @@ def plot_monitoring_tracks(
     ax_card2.set_facecolor('#0a0e17')
 
     cats = [
-        ('TD', 0, 34, '#0f172a', '#38bdf8'),
+        ('LPA', 0, 25, '#080d1a', '#64748b'),
+        ('TD', 25, 34, '#0f172a', '#38bdf8'),
         ('TS', 34, 64, '#064e3b', '#34d399'),
         ('C1', 64, 83, '#713f12', '#facc15'),
         ('C2', 83, 96, '#7c2d12', '#fb923c'),
@@ -1590,11 +1591,30 @@ def plot_monitoring_tracks(
         0.03, 1.14, "MEMBER INTENSITY (KT - 1-MIN SUSTAINED)",
         transform=ax_card2.transAxes, fontsize=8.0, weight='heavy', color='#f8fafc'
     )
-    leg_txt = "— MEDIAN   --- MEAN   ■ 25-75%   ■ 10-90%"
-    ax_card2.text(
-        0.03, 1.05, leg_txt,
-        transform=ax_card2.transAxes, fontsize=6.8, weight='bold', color='#cbd5e1'
-    )
+    # Multi-color legend on line y = 1.05
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    inv_c2 = ax_card2.transAxes.inverted()
+
+    leg2_items = [
+        ("—", "#ffffff", " MEDIAN", "#ffffff"),
+        ("---", "#cbd5e1", " MEAN", "#94a3b8"),
+        ("■", "#38bdf8", " 25-75%", "#94a3b8"),
+        ("■", "#0284c7", " 10-90%", "#94a3b8")
+    ]
+    cur_x = 0.03
+    for sym, sym_col, lbl, lbl_col in leg2_items:
+        t_sym = ax_card2.text(cur_x, 1.05, sym, transform=ax_card2.transAxes,
+                              fontsize=7.2, weight='heavy', color=sym_col, va='baseline')
+        bb_sym = t_sym.get_window_extent(renderer=renderer)
+        w_sym = inv_c2.transform((bb_sym.width, 0))[0] - inv_c2.transform((0, 0))[0]
+        cur_x += w_sym + 0.005
+
+        t_lbl = ax_card2.text(cur_x, 1.05, lbl, transform=ax_card2.transAxes,
+                              fontsize=6.8, weight='bold', color=lbl_col, va='baseline')
+        bb_lbl = t_lbl.get_window_extent(renderer=renderer)
+        w_lbl = inv_c2.transform((bb_lbl.width, 0))[0] - inv_c2.transform((0, 0))[0]
+        cur_x += w_lbl + 0.020
     ax_card2.text(
         0.97, 1.14, peak_median_str,
         transform=ax_card2.transAxes, fontsize=7.6, weight='bold', color='#fbbf24', ha='right'

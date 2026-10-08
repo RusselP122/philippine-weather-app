@@ -12,6 +12,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')  # Headless mode
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import matplotlib.patheffects as path_effects
 import matplotlib.patches as mpatches
 from matplotlib.collections import LineCollection
@@ -45,7 +46,7 @@ def parse_atcf_latlon(val_str):
 def fetch_knack_active_storms():
     """
     Fetches active tropical cyclones from the Knack API.
-    Returns a list of dicts: {'atcf_id': ..., 'name': ..., 'lat': ..., 'lon': ..., 'init_time': ...}
+    Returns a list of dicts: {'atcf_id': ..., 'name': ..., 'lat': ..., 'lon': ..., 'init_time': ..., 'winds': ..., 'pressure': ...}
     """
     url = "https://api.knackwx.com/atcf/v2"
     try:
@@ -87,12 +88,16 @@ def fetch_knack_active_storms():
             if not (atcf_id.upper().endswith('W') or atcf_id.upper().startswith('WP')):
                 continue
                 
+            raw_w = item.get('winds')
+            raw_p = item.get('pressure')
             storms.append({
                 'atcf_id': atcf_id,
                 'name': item.get('storm_name', 'INVEST'),
                 'lat': lat,
                 'lon': lon,
-                'init_time': init_time
+                'init_time': init_time,
+                'winds': float(raw_w) if raw_w is not None else None,
+                'pressure': float(raw_p) if raw_p is not None else None
             })
         print(f"Successfully fetched {len(storms)} active storms from Knack API.")
         return storms
@@ -1048,14 +1053,25 @@ def clean_storm_ensemble_tracks(df_storm, df_model, model_name, storm_name, atcf
 
     return df_storm.loc[df_storm.index.intersection(valid_indices)].copy()
 
-def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_name_override=None, color_by='pressure', atcf_pos=None, df_paired=None):
+def plot_model_tracks(
+    df_model, model_name, storm_group_id, output_path,
+    storm_name_override=None, color_by='wind', atcf_pos=None, df_paired=None,
+    knack_storms=None, total_ensemble_members=None
+):
     """
-    Generates a publication-quality spaghetti plot for a given model and storm cluster.
+    Generates a 16:9 broadcast-grade dark dashboard spaghetti plot for an active ATCF storm or invest.
+    Features:
+      - Left column: Cartopy map with dark theme, province boundaries, PAR, canonical sea labels (zorder=3),
+        translucent member tracks, high-visibility control/mean track with 24h milestone nodes, and active storm position marker.
+      - Docked legend bar: Track wind colormap (knots), primary track indicator, and official status badge.
+      - Top broadcast header: Storm title, model information, initialization time, and brand logo.
+      - Right column:
+        * Card 1: Active Storm & Intensity Overview (Current/Initial status, member tracking support, peak forecast intensity & window, category breakdown)
+        * Card 2: Member Intensity Plume (0-160 kt, TD/TS/C1-C5 bands, member lines, 10-90% & 25-75% envelopes, median, mean, control line, AI caution note)
+        * Card 3: Cumulative Category Probabilities (TS, Typhoon, Major curves over time)
     """
     # Filter for the specific storm cluster
     df_storm = df_model[df_model['storm_group'] == storm_group_id].copy()
-    if color_by == 'wind':
-        df_storm['wind'] = df_storm['wind'] * 1.852
     if df_storm.empty:
         print(f"No tracks found for storm group {storm_group_id} under model {model_name}")
         return
@@ -1068,19 +1084,58 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
 
     # Extract init time
     init_time_raw = df_storm['init_time'].dropna().iloc[0] if not df_storm['init_time'].isna().all() else 'Unknown'
-    init_time_str = format_init_time(init_time_raw)
+    try:
+        init_dt = pd.to_datetime(init_time_raw)
+        if init_dt.tzinfo is not None:
+            init_dt = init_dt.tz_convert(timezone.utc)
+        else:
+            init_dt = init_dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        init_dt = datetime.now(timezone.utc)
 
-    # Determine storm name
+    init_date_str = init_dt.strftime('%d %b %Y').upper()
+    cycle_str = f"{(init_dt.hour // 6) * 6:02d}Z"
+    local_dt = init_dt + timedelta(hours=8)
+    local_time_str = local_dt.strftime('%I:%M %p PHT').lstrip('0')
+
+    # Determine storm name and identify active Knack metadata
     group_name = df_storm['storm_group_name'].dropna().iloc[0] if not df_storm['storm_group_name'].isna().all() else 'Unknown'
     storm_name = storm_name_override if storm_name_override else group_name
 
+    active_storm_info = None
+    atcf_id_clean = storm_group_id.replace('knack_', '').upper() if storm_group_id.startswith('knack_') else ''
+    if knack_storms:
+        for ks in knack_storms:
+            ks_id = str(ks.get('atcf_id', '')).upper()
+            if ks_id == atcf_id_clean or atcf_id_clean in ks_id or ks_id in atcf_id_clean:
+                active_storm_info = ks
+                break
+            if ks.get('name') and str(ks['name']).upper() == storm_name.upper():
+                active_storm_info = ks
+                break
+
+    if active_storm_info:
+        real_name = active_storm_info.get('name', storm_name).strip()
+        real_id = active_storm_info.get('atcf_id', atcf_id_clean).strip().upper()
+        if real_name.upper() not in ('INVEST', 'UNKNOWN', ''):
+            storm_title_display = f"{real_name.upper()} ({real_id})"
+            is_invest = False
+        else:
+            storm_title_display = f"INVEST {real_id}"
+            is_invest = True
+        current_winds = active_storm_info.get('winds')
+        current_pres = active_storm_info.get('pressure')
+    else:
+        is_invest = ('9' in atcf_id_clean and len(atcf_id_clean) == 3) or 'INVEST' in storm_name.upper()
+        storm_title_display = storm_name.upper()
+        current_winds = None
+        current_pres = None
+
     # Forecast Processing & Grouping by Member
-    # Check for official deterministic control track (IFS, AIFS, or other models)
     df_mean, ctrl_indices, has_control = find_control_track_for_storm(
         df_storm, df_model, model_name, storm_name, atcf_pos=atcf_pos, color_by=color_by
     )
 
-    # Clean extraneous tracks so that only tracks truly matching this storm remain (1 track per sample)
     df_storm = clean_storm_ensemble_tracks(
         df_storm, df_model, model_name, storm_name,
         atcf_pos=atcf_pos, df_paired=df_paired, df_mean=df_mean,
@@ -1089,14 +1144,13 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
 
     if has_control:
         print(f"Using official {model_name} control track ({len(df_mean)} points) for {storm_name}")
-        # Exclude control member from thin ensemble lines
         ensemble_data = df_storm[~df_storm.index.isin(ctrl_indices) & (df_storm['sample'] > 0)].copy()
         if ensemble_data.empty:
             ensemble_data = df_storm[~df_storm.index.isin(ctrl_indices)].copy()
         has_ensemble_tracks = ensemble_data['sample'].nunique() >= 2 if not ensemble_data.empty else False
         deterministic_data = pd.DataFrame()
     else:
-        print(f"No official control track found for {model_name} {storm_name}; falling back to calculated ensemble mean.")
+        print(f"No official control track found for {model_name} {storm_name}; using calculated ensemble mean.")
         deterministic_data = df_storm[df_storm['sample'] == 0]
         ensemble_data = df_storm[df_storm['sample'] > 0]
         has_ensemble_tracks = ensemble_data['sample'].nunique() >= 2 if not ensemble_data.empty else False
@@ -1108,43 +1162,27 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
             else:
                 ensemble_data = df_storm
 
-    # Dynamic styling for large ensembles: use opacity and finer lines for luminous ribbon effect
-    ensemble_samples = ensemble_data['sample'].unique()
-    is_large = 'large' in model_name.lower() or len(ensemble_samples) >= 200
-    max_display = 250 if is_large else 100
-    if len(ensemble_samples) > max_display:
-        indices = np.linspace(0, len(ensemble_samples) - 1, max_display, dtype=int)
-        selected_samples = [ensemble_samples[idx] for idx in indices]
-        ensemble_data = ensemble_data[ensemble_data['sample'].isin(selected_samples)]
-
     # Compute Ensemble Mean Track if no control track was present
-    # Logic aligned with generate_trends_map.py: geodesic mean for position, median for wind/pressure
     if not has_control:
         if has_ensemble_tracks:
             calc_mean_df = ensemble_data[ensemble_data['sample'] != -1]
             if calc_mean_df.empty:
                 calc_mean_df = ensemble_data
 
-            # Find matched paired track (if available) for per-hour override (same as generate_trends_map.py)
             matched_paired = None
             if df_paired is not None and not df_paired.empty:
                 ref_lat, ref_lon = None, None
                 if atcf_pos is not None:
                     ref_lat, ref_lon = atcf_pos[0], atcf_pos[1]
                 else:
-                    # Use first ensemble point as reference
                     first_pts = calc_mean_df.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
                     if not first_pts.empty:
                         ref_lat, ref_lon = first_pts.iloc[0]['lat'], first_pts.iloc[0]['lon']
 
                 if ref_lat is not None and ref_lon is not None:
-                    # Build paired points list from sample == -1 entries (same filter as generate_trends_map.py)
                     df_paired_mean = df_paired[df_paired['sample'] == -1].copy()
-                    if color_by == 'wind':
-                        df_paired_mean['wind'] = df_paired_mean['wind'] * 1.852
-
                     best_paired_tid = None
-                    best_dist = 500.0  # km threshold (matching generate_trends_map.py)
+                    best_dist = 500.0
 
                     for tid, t_df in df_paired_mean.groupby('track_id'):
                         t_df = t_df.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
@@ -1167,15 +1205,10 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
                                 'wind': row['wind'],
                                 'pressure': row['pressure']
                             })
-                        print(f"Using official paired ensemble mean from track {best_paired_tid} for {storm_name}")
 
-            # Group ensemble data by hour (same structure as generate_trends_map.py)
             model_total_members = df_model[df_model['sample'] > 0]['sample'].nunique()
-            if model_total_members > 0:
-                effective_total = min(100, model_total_members)
-                required_support = max(1, effective_total // 2)
-            else:
-                required_support = 1
+            effective_total = min(100, model_total_members) if model_total_members > 0 else 1
+            required_support = max(1, effective_total // 2)
 
             by_hour = {}
             for _, row in calc_mean_df.iterrows():
@@ -1191,16 +1224,12 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
 
             hours = sorted(by_hour.keys())
             mean_points = []
-
             for h in hours:
                 d = by_hour[h]
-                n = len(d['lats'])
-                if n < required_support:
+                if len(d['lats']) < required_support:
                     continue
 
-                m_lat, m_lon, m_wind, m_press = np.nan, np.nan, np.nan, np.nan
                 if matched_paired:
-                    # Per-hour paired mean override (matching generate_trends_map.py ±3hr tolerance)
                     paired_pt = min(matched_paired, key=lambda pt: abs(pt['h'] - h))
                     if abs(paired_pt['h'] - h) <= 3:
                         m_lat = paired_pt['lat']
@@ -1210,12 +1239,10 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
                     else:
                         continue
                 else:
-                    # Spherical geodesic mean for position (matching generate_trends_map.py)
                     pts_at_hour = [{'lat': lat, 'lon': lon} for lat, lon in zip(d['lats'], d['lons'])]
                     geo_mean = mean_geo_center(pts_at_hour)
                     m_lat = geo_mean['lat']
                     m_lon = geo_mean['lon']
-                    # Median for wind and pressure (matching generate_trends_map.py)
                     valid_winds = [w for w in d['winds'] if not np.isnan(w)]
                     m_wind = np.median(valid_winds) if valid_winds else np.nan
                     valid_ps = [p for p in d['ps'] if not np.isnan(p)]
@@ -1235,403 +1262,685 @@ def plot_model_tracks(df_model, model_name, storm_group_id, output_path, storm_n
             else:
                 df_mean = pd.DataFrame(columns=['lead_time_hours', 'lat', 'lon', 'pressure', 'wind'])
         else:
-            # No ensemble tracks: use deterministic track positions for viewport calculation only
             df_mean = pd.DataFrame(columns=['lead_time_hours', 'lat', 'lon', 'pressure', 'wind'])
 
-    # Determine the model forecast track start point to see if live ATCF is too far
+    # Deduplicate member tracks to 1 representative track per sample
+    deduped_track_dfs = []
+    for (t_id, s_val), m_df in ensemble_data.groupby(['track_id', 'sample']):
+        m_df = m_df.sort_values('lead_time_hours').dropna(subset=['lat', 'lon'])
+        if len(m_df) >= 2:
+            deduped_track_dfs.append(m_df)
+    if not deduped_track_dfs and not df_mean.empty:
+        deduped_track_dfs = [df_mean]
+
+    plotted_members = len(deduped_track_dfs)
+    if total_ensemble_members is None or total_ensemble_members < plotted_members:
+        total_ensemble_members = max(plotted_members, 51)
+
+    # Determine if live ATCF point should connect to track
     first_track_lat, first_track_lon = None, None
     if not df_mean.empty:
         first_track_lat, first_track_lon = df_mean.iloc[0]['lat'], df_mean.iloc[0]['lon']
-    elif not deterministic_data.empty:
-        det_first = deterministic_data.sort_values('lead_time_hours').dropna(subset=['lat', 'lon']).iloc[0]
-        first_track_lat, first_track_lon = det_first['lat'], det_first['lon']
+    elif deduped_track_dfs:
+        first_track_lat = deduped_track_dfs[0].iloc[0]['lat']
+        first_track_lon = deduped_track_dfs[0].iloc[0]['lon']
 
     use_live_atcf = False
     if atcf_pos is not None and first_track_lat is not None and first_track_lon is not None:
         gap_deg = np.sqrt((atcf_pos[0] - first_track_lat)**2 + (atcf_pos[1] - first_track_lon)**2)
-        if gap_deg <= 2.0:
+        if gap_deg <= 3.0:
             use_live_atcf = True
 
-    # Determine boundaries and aspect ratio
-    # For viewport calculation, use ensemble mean if available, otherwise use all storm data
+    # Geographic region description
+    all_first_lats = [tdf.iloc[0]['lat'] for tdf in deduped_track_dfs if not tdf.empty]
+    all_first_lons = [tdf.iloc[0]['lon'] for tdf in deduped_track_dfs if not tdf.empty]
+    mean_gen_lat = np.mean(all_first_lats) if all_first_lats else 15.0
+    mean_gen_lon = np.mean(all_first_lons) if all_first_lons else 135.0
+
+    if 112.0 <= mean_gen_lon <= 121.0 and 10.0 <= mean_gen_lat <= 22.0:
+        region_desc = "in the West Philippine Sea"
+    elif 121.0 <= mean_gen_lon <= 138.0 and 5.0 <= mean_gen_lat <= 25.0:
+        region_desc = "in the Philippine Sea"
+    elif mean_gen_lon < 120.0 and mean_gen_lat < 12.0:
+        region_desc = "in the Sulu / Celebes Sea"
+    elif mean_gen_lon >= 152.0 and mean_gen_lat <= 20.0:
+        region_desc = "in Eastern Caroline Islands / WestPac"
+    elif 138.0 <= mean_gen_lon < 152.0 and mean_gen_lat <= 25.0:
+        region_desc = "east of the Marianas / WestPac"
+    elif mean_gen_lat > 25.0:
+        region_desc = "in the East China Sea / Northwest Pacific"
+    else:
+        region_desc = "in the Western Pacific"
+
+    # Compute Statistics across members
+    max_lead_h = max(tdf['lead_time_hours'].max() for tdf in deduped_track_dfs if not tdf.empty) if deduped_track_dfs else 120.0
+    end_run_dt = init_dt + timedelta(hours=float(max_lead_h))
+    end_run_str = end_run_dt.strftime('%b %d').upper()
+
+    ts_count = sum(1 for tdf in deduped_track_dfs if tdf['wind'].max() >= 34)
+    ty_count = sum(1 for tdf in deduped_track_dfs if tdf['wind'].max() >= 64)
+    major_count = sum(1 for tdf in deduped_track_dfs if tdf['wind'].max() >= 96)
+
+    ts_pct = int(round((ts_count / total_ensemble_members) * 100))
+    ty_pct = int(round((ty_count / total_ensemble_members) * 100))
+    major_pct = int(round((major_count / total_ensemble_members) * 100))
+
+    # Lead time intensity envelope statistics
+    all_leads = sorted(list(set(df_storm['lead_time_hours'].dropna().astype(int).values)))
+    lead_stats = []
+    for lh in all_leads:
+        winds_at_h = []
+        pressures_at_h = []
+        for tdf in deduped_track_dfs:
+            row = tdf[tdf['lead_time_hours'] == lh]
+            if not row.empty:
+                w = row.iloc[0]['wind']
+                if not np.isnan(w):
+                    winds_at_h.append(w)
+                p = row.iloc[0]['pressure']
+                if not np.isnan(p):
+                    pressures_at_h.append(p)
+        if winds_at_h:
+            lead_stats.append({
+                'h': lh,
+                'dt': init_dt + timedelta(hours=float(lh)),
+                'median': float(np.median(winds_at_h)),
+                'mean': float(np.mean(winds_at_h)),
+                'p10': float(np.percentile(winds_at_h, 10)),
+                'p25': float(np.percentile(winds_at_h, 25)),
+                'p75': float(np.percentile(winds_at_h, 75)),
+                'p90': float(np.percentile(winds_at_h, 90)),
+                'p_median': float(np.median(pressures_at_h)) if pressures_at_h else 1010.0
+            })
+
+    if lead_stats:
+        peak_entry = max(lead_stats, key=lambda s: s['median'])
+        peak_median_val = int(round(peak_entry['median']))
+        peak_dt = peak_entry['dt']
+        peak_median_str = f"PEAK MEDIAN {peak_median_val} KT · {peak_dt.strftime('%b %d %HZ').upper()}"
+        if peak_median_val >= 137:
+            peak_cat_str = "CATEGORY 5 SUPER TYPHOON"
+        elif peak_median_val >= 113:
+            peak_cat_str = "CATEGORY 4 TYPHOON"
+        elif peak_median_val >= 96:
+            peak_cat_str = "CATEGORY 3 MAJOR"
+        elif peak_median_val >= 83:
+            peak_cat_str = "CATEGORY 2 TYPHOON"
+        elif peak_median_val >= 64:
+            peak_cat_str = "CATEGORY 1 TYPHOON"
+        elif peak_median_val >= 34:
+            peak_cat_str = "TROPICAL STORM"
+        elif peak_median_val >= 25:
+            peak_cat_str = "TROPICAL DEPRESSION"
+        else:
+            peak_cat_str = "LOW PRESSURE AREA"
+    else:
+        peak_median_val = 0
+        peak_median_str = "PEAK MEDIAN N/A"
+        peak_cat_str = "N/A"
+        peak_dt = init_dt
+
+    if current_winds is None or current_winds == 0:
+        if lead_stats:
+            current_winds = int(round(lead_stats[0]['median']))
+            current_pres = int(round(lead_stats[0]['p_median']))
+        else:
+            current_winds = 30
+            current_pres = 1004
+    else:
+        current_winds = int(round(current_winds))
+        current_pres = int(round(current_pres)) if current_pres else 1000
+
+    # Viewport boundaries calculation
+    all_lons = [p for tdf in deduped_track_dfs for p in tdf['lon'].dropna().values if 90 <= p <= 180]
+    all_lats = [p for tdf in deduped_track_dfs for p in tdf['lat'].dropna().values if 0 <= p <= 55]
+    if atcf_pos is not None:
+        all_lons.append(atcf_pos[1])
+        all_lats.append(atcf_pos[0])
     if not df_mean.empty:
-        wp_lons = [x for x in df_mean['lon'].dropna().values if x >= 100.0]
-        lons_to_fit = list(wp_lons) if wp_lons else list(df_mean['lon'].dropna().values)
-        lats_to_fit = list(df_mean['lat'].dropna().values)
+        all_lons.extend(df_mean['lon'].dropna().values)
+        all_lats.extend(df_mean['lat'].dropna().values)
+
+    if all_lons and all_lats:
+        min_lon, max_lon = min(all_lons), max(all_lons)
+        min_lat, max_lat = min(all_lats), max(all_lats)
+        pad_lon = max(4.0, (max_lon - min_lon) * 0.18)
+        pad_lat = max(3.0, (max_lat - min_lat) * 0.18)
+        view_lon_min = max(100.0, min_lon - pad_lon)
+        view_lon_max = min(180.0, max_lon + pad_lon)
+        view_lat_min = max(0.0, min_lat - pad_lat)
+        view_lat_max = min(50.0, max_lat + pad_lat)
     else:
-        wp_lons = [x for x in df_storm['lon'].dropna().values if x >= 100.0]
-        lons_to_fit = list(wp_lons) if wp_lons else list(df_storm['lon'].dropna().values)
-        lats_to_fit = list(df_storm['lat'].dropna().values)
-    if atcf_pos is not None and use_live_atcf:
-        lats_to_fit.append(atcf_pos[0])
-        lons_to_fit.append(atcf_pos[1])
-        
-    if lons_to_fit and lats_to_fit:
-        min_lon, max_lon = min(lons_to_fit), max(lons_to_fit)
-        min_lat, max_lat = min(lats_to_fit), max(lats_to_fit)
-        
-        lon_pad = max(3.5, (max_lon - min_lon) * 0.18)
-        lat_pad = max(2.5, (max_lat - min_lat) * 0.18)
-        
-        lon_min = max(100.0, min_lon - lon_pad)
-        lon_max = min(180.0, max_lon + lon_pad)
-        lat_min = max(0.0, min_lat - lat_pad)
-        lat_max = min(50.0, max_lat + lat_pad)
-    else:
-        lon_min, lon_max, lat_min, lat_max = 105.0, 155.0, 0.0, 40.0
+        view_lon_min, view_lon_max, view_lat_min, view_lat_max = 110.0, 160.0, 5.0, 35.0
 
-    lon_span = lon_max - lon_min
-    lat_span = lat_max - lat_min
-    aspect = lon_span / max(0.1, lat_span)
+    print(f"Generating broadcast-grade ensemble track graphic for {model_name} • {storm_title_display} ...")
 
-    # Calculate dynamic figure dimensions to tightly fit the map aspect ratio
-    fig_width = 12.0
-    map_w_in = 9.36
-    map_h_in = map_w_in / aspect
-    map_h_in = max(4.0, min(7.5, map_h_in))
-    
-    # Match map coordinates aspect ratio exactly to the axes box so no dead space appears inside
-    actual_aspect = map_w_in / map_h_in
-    if aspect < actual_aspect:
-        needed_lon_span = lat_span * actual_aspect
-        diff = needed_lon_span - lon_span
-        lon_min -= diff / 2.0
-        lon_max += diff / 2.0
-    elif aspect > actual_aspect:
-        needed_lat_span = lon_span / actual_aspect
-        diff = needed_lat_span - lat_span
-        lat_min -= diff / 2.0
-        lat_max += diff / 2.0
+    # Setup the 16:9 widescreen canvas
+    fig = plt.figure(figsize=(16, 9.5), facecolor='#070a0f')
 
-    if lon_max > 180.0:
-        excess = lon_max - 180.0
-        lon_max = 180.0
-        lon_min = max(90.0, lon_min - excess)
-    if lon_min < 90.0:
-        lon_min = 90.0
+    # Map Axis
+    ax_map = fig.add_axes([0.035, 0.20, 0.585, 0.70], projection=ccrs.PlateCarree())
+    ax_map.set_facecolor('#0b1329')
 
-    lon_span = lon_max - lon_min
-    lat_span = lat_max - lat_min
+    # Cartopy features
+    ax_map.add_feature(cfeature.LAND, facecolor='#1e293b', edgecolor='#334155', linewidth=0.8, zorder=1)
+    ax_map.add_feature(cfeature.COASTLINE, edgecolor='#475569', linewidth=0.8, zorder=2)
+    ax_map.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='#475569', linewidth=0.8, zorder=2)
 
-    fig_height = map_h_in + 1.5
-    
-    print(f"Generating spaghetti track plot for {model_name} storm {storm_name} (Group: {storm_group_id}, Color by: {color_by}) ...")
-
-    # Setup the plot canvas
-    fig = plt.figure(figsize=(fig_width, fig_height), facecolor='white')
-    
-    map_y0 = 0.08
-    map_h_frac = map_h_in / fig_height
-    map_w_frac = map_w_in / fig_width
-    
-    # Custom axes configuration to tightly fit the map area
-    ax = fig.add_axes([0.08, map_y0, map_w_frac, map_h_frac], projection=ccrs.PlateCarree())
-    
-    # 1. Base Map Setup (ocean background, land features)
-    ax.set_facecolor('#87CEEB')  # Sky blue ocean background
-    
-    # Standard Cartopy high-resolution features styled like Forcast.py
-    ax.add_feature(cfeature.LAND, facecolor='#DEB887', edgecolor='#8B4513', linewidth=0.8, zorder=1)
-    ax.add_feature(cfeature.OCEAN, facecolor='#87CEEB', zorder=0)
-    ax.add_feature(cfeature.COASTLINE, edgecolor='#8B4513', linewidth=0.8, zorder=2)
-    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='#654321', linewidth=0.8, zorder=2)
-
-    # Philippine Province Overlay styled like Forcast.py
+    # Philippine Province Overlay
     try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
         geojson_paths = [
-            os.path.join(script_dir, "public", "data", "ph_provinces.json"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "public", "data", "ph_provinces.json"),
             "public/data/ph_provinces.json"
         ]
-        found_geojson = None
-        for p in geojson_paths:
-            if os.path.exists(p):
-                found_geojson = p
-                break
+        found_geojson = next((p for p in geojson_paths if os.path.exists(p)), None)
         if found_geojson:
             with open(found_geojson, 'r', encoding='utf-8') as gf:
                 geojson_data = json.load(gf)
             prov_geoms = [shape(feature['geometry']) for feature in geojson_data['features']]
-            ax.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#654321', linewidth=0.4, alpha=0.5, zorder=3)
+            ax_map.add_geometries(prov_geoms, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#334155', linewidth=0.45, alpha=0.6, zorder=3)
     except Exception as e:
         print(f"Warning: Province boundary overlay skipped: {e}")
 
-    # Add Sea Text Labels (only render if within visible map viewport)
-    wps_lon, wps_lat = 117.5, 13.8
-    if (lon_min + 1.0) <= wps_lon <= (lon_max - 1.0) and (lat_min + 1.0) <= wps_lat <= (lat_max - 1.0):
-        ax.text(
-            wps_lon, wps_lat, 'West Philippine\nSea', fontsize=5.5, color='navy', weight='bold',
-            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3,
-            clip_on=True
-        )
-
-    ps_lon, ps_lat = 130.0, 18.0
-    if (lon_min + 1.5) <= ps_lon <= (lon_max - 1.5) and (lat_min + 1.2) <= ps_lat <= (lat_max - 1.2):
-        ax.text(
-            ps_lon, ps_lat, 'Philippine\nSea', fontsize=7, color='navy', weight='bold',
-            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.5, zorder=3,
-            clip_on=True
-        )
-
-    # PAR Boundary Overlay styled like Forcast.py
+    # PAR Boundary Overlay
     par_vertices = [
         (115.0, 5.0), (115.0, 15.0), (120.0, 21.0), (120.0, 25.0),
         (135.0, 25.0), (135.0, 5.0), (115.0, 5.0)
     ]
-    ax.add_patch(mpatches.Polygon(par_vertices, facecolor='none', edgecolor='#FF6B35', 
-                                 linestyle='-', linewidth=3.0, alpha=0.8, 
-                                 transform=ccrs.PlateCarree(), zorder=3, label='PAR'))
+    ax_map.add_patch(mpatches.Polygon(
+        par_vertices, facecolor='none', edgecolor='#f97316', linestyle='-', linewidth=1.6,
+        alpha=0.75, transform=ccrs.PlateCarree(), zorder=4, label='PAR'
+    ))
 
-    # Gridlines Configuration styled like Forcast.py
-    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
-    gl.xlocator = plt.FixedLocator(np.arange(90, 181, 5))
-    gl.ylocator = plt.FixedLocator(np.arange(-10, 51, 5))
-    gl.xlabel_style = {'size': 10, 'weight': 'bold', 'color': '#475569'}
-    gl.ylabel_style = {'size': 10, 'weight': 'bold', 'color': '#475569'}
+    # Canonical Sea Text Labels (zorder=3 so track lines pass over them)
+    if view_lon_min + 1.0 <= 118.0 <= view_lon_max - 1.0 and view_lat_min + 1.0 <= 14.0 <= view_lat_max - 1.0:
+        ax_map.text(
+            118.0, 14.0, 'West Philippine\nSea', fontsize=8.0, color='#94a3b8', weight='bold',
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.65, zorder=3, clip_on=True
+        )
+
+    if view_lon_min + 1.5 <= 130.5 <= view_lon_max - 1.5 and view_lat_min + 1.0 <= 18.5 <= view_lat_max - 1.0:
+        ax_map.text(
+            130.5, 18.5, 'Philippine\nSea', fontsize=9.0, color='#94a3b8', weight='bold',
+            transform=ccrs.PlateCarree(), ha='center', va='center', style='italic', alpha=0.65, zorder=3, clip_on=True
+        )
+
+    # Gridlines
+    gl = ax_map.gridlines(draw_labels=True, linewidth=0.4, color='#334155', alpha=0.4, linestyle=':')
     gl.top_labels = False
     gl.right_labels = False
+    gl.xlabel_style = {'size': 8.0, 'color': '#64748b', 'weight': 'bold'}
+    gl.ylabel_style = {'size': 8.0, 'color': '#64748b', 'weight': 'bold'}
 
-    # Setup Colormap and Normalization based on selected parameter
+    # Colormap & Norm setup
     if color_by == 'pressure':
         bounds = [930, 940, 950, 960, 970, 980, 990, 1000, 1005, 1010]
-        # Colors selected to match Levi Cowan's style perfectly (11 colors for 11 bins including extend='both'):
-        colors = [
-            '#311b92',  # <930 (very deep violet)
-            '#4a148c',  # 930 - 940 (dark purple)
-            '#d500f9',  # 940 - 950 (magenta/pink)
-            '#880e4f',  # 950 - 960 (deep maroon)
-            '#d50000',  # 960 - 970 (bright red)
-            '#ff6d00',  # 970 - 980 (vibrant orange)
-            '#ffd600',  # 980 - 990 (yellow)
-            '#00c853',  # 990 - 1000 (vibrant green)
-            '#00b0ff',  # 1000 - 1005 (light blue)
-            '#2962ff',  # 1005 - 1010 (blue)
-            '#1a237e'   # >1010 (very dark blue)
-        ]
-        cmap = mcolors.ListedColormap(colors)
-        norm = mcolors.BoundaryNorm(bounds, cmap.N, extend='both')
+        colors = ['#311b92', '#4a148c', '#d500f9', '#880e4f', '#d50000', '#ff6d00', '#ffd600', '#00c853', '#00b0ff', '#2962ff', '#1a237e']
+        track_cmap = mcolors.ListedColormap(colors)
+        track_norm = mcolors.BoundaryNorm(bounds, track_cmap.N, extend='both')
     else:
-        bounds = [30, 60, 90, 120, 150, 180, 210, 240]
-        colors = [
-            '#00d2ff',  # <30 (light cyan)
-            '#00a8ff',  # 30 - 60 (blue)
-            '#00e676',  # 60 - 90 (green)
-            '#ffd600',  # 90 - 120 (yellow)
-            '#ff9100',  # 120 - 150 (orange)
-            '#ff3d00',  # 150 - 180 (red)
-            '#c51162',  # 180 - 210 (magenta/deep pink)
-            '#aa00ff',  # 210 - 240 (purple)
-            '#311b92'   # >240 (dark violet)
+        wind_bounds = [20, 30, 40, 50, 60, 70, 80, 100, 120, 140]
+        wind_colors = [
+            '#0f766e',  # < 20: dark teal
+            '#14b8a6',  # 20-30: teal
+            '#06b6d4',  # 30-40: cyan
+            '#22c55e',  # 40-50: green
+            '#84cc16',  # 50-60: lime
+            '#eab308',  # 60-70: yellow
+            '#f97316',  # 70-80: orange
+            '#ef4444',  # 80-100: red
+            '#ec4899',  # 100-120: hot pink
+            '#a855f7',  # 120-140: purple
+            '#f3e8ff'   # > 140: light lilac
         ]
-        cmap = mcolors.ListedColormap(colors)
-        norm = mcolors.BoundaryNorm(bounds, cmap.N, extend='both')
+        track_cmap = mcolors.ListedColormap(wind_colors)
+        track_norm = mcolors.BoundaryNorm(wind_bounds, track_cmap.N, extend='both')
 
-    # Plot Ensemble Members (reusing ensemble_data and deterministic_data computed above)
-    plotted_members = 0
-    ignored_members = 0
-    
-    for (t_id, m_id), member_df in ensemble_data.groupby(['track_id', 'sample']):
+    # Line styling based on ensemble size
+    is_large = (total_ensemble_members is not None and total_ensemble_members >= 200) or ('large' in model_name.lower())
+    if is_large:
+        track_lw = 0.95
+        track_alpha = 0.40
+        halo_alpha = 0.10
+        halo_lw = 2.0
+    else:
+        track_lw = 1.3
+        track_alpha = 0.85
+        halo_alpha = 0.30
+        halo_lw = 2.8
+
+    # Render Member Tracks
+    for member_df in deduped_track_dfs:
         member_df = member_df.sort_values('lead_time_hours')
-        if len(member_df) < 3:
-            ignored_members += 1
+        if len(member_df) < 2:
             continue
-            
         lons = member_df['lon'].values
         lats = member_df['lat'].values
         winds = member_df['wind'].values
         pressures = member_df['pressure'].values
-        
-        # Build segments for LineCollection
+
         segments = []
         seg_vals = []
         for i in range(len(lons) - 1):
             if np.isnan(lons[i]) or np.isnan(lons[i+1]) or np.isnan(lats[i]) or np.isnan(lats[i+1]):
                 continue
-            if abs(lons[i+1] - lons[i]) > 180 or lons[i] < 90.0 or lons[i+1] < 90.0:
+            if abs(lons[i+1] - lons[i]) > 180:
                 continue
-                
             segments.append([[lons[i], lats[i]], [lons[i+1], lats[i+1]]])
             if color_by == 'pressure':
-                p1 = pressures[i] if not np.isnan(pressures[i]) else 1010.0
-                p2 = pressures[i+1] if not np.isnan(pressures[i+1]) else 1010.0
-                seg_vals.append((p1 + p2) / 2.0)
+                p_avg = np.nanmean([pressures[i], pressures[i+1]]) if not np.isnan(pressures[i]) else 1008.0
+                seg_vals.append(p_avg)
             else:
-                w1 = winds[i] if not np.isnan(winds[i]) else 20.0
-                w2 = winds[i+1] if not np.isnan(winds[i+1]) else 20.0
-                seg_vals.append((w1 + w2) / 2.0)
-            
+                w_avg = np.nanmean([winds[i], winds[i+1]]) if not np.isnan(winds[i]) else 25.0
+                seg_vals.append(w_avg)
+
         if not segments:
             continue
-            
-        track_lw = 0.90 if is_large else 1.5
-        track_alpha = 0.35 if is_large else 0.95
-        lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=track_lw, alpha=track_alpha, 
-                            capstyle='round', joinstyle='round', transform=ccrs.PlateCarree(), zorder=4)
+
+        if halo_alpha > 0:
+            lc_halo = LineCollection(
+                segments, cmap=track_cmap, norm=track_norm,
+                linewidth=halo_lw, alpha=halo_alpha, transform=ccrs.PlateCarree(), zorder=5
+            )
+            lc_halo.set_array(np.array(seg_vals))
+            ax_map.add_collection(lc_halo)
+
+        lc = LineCollection(
+            segments, cmap=track_cmap, norm=track_norm,
+            linewidth=track_lw, alpha=track_alpha, capstyle='round', joinstyle='round',
+            transform=ccrs.PlateCarree(), zorder=6
+        )
         lc.set_array(np.array(seg_vals))
-        ax.add_collection(lc)
-        plotted_members += 1
+        ax_map.add_collection(lc)
 
-    # Plot Deterministic Runs
-    if not deterministic_data.empty:
-        for t_id, det_df in deterministic_data.groupby('track_id'):
-            det_df = det_df.sort_values('lead_time_hours')
-            if len(det_df) >= 3:
-                lons = det_df['lon'].values
-                lats = det_df['lat'].values
-                winds = det_df['wind'].values
-                pressures = det_df['pressure'].values
-                
-                segments = []
-                seg_vals = []
-                for i in range(len(lons) - 1):
-                    if np.isnan(lons[i]) or np.isnan(lons[i+1]) or np.isnan(lats[i]) or np.isnan(lats[i+1]):
-                        continue
-                    if abs(lons[i+1] - lons[i]) > 180:
-                        continue
-                    segments.append([[lons[i], lats[i]], [lons[i+1], lats[i+1]]])
-                    if color_by == 'pressure':
-                        p1 = pressures[i] if not np.isnan(pressures[i]) else 1010.0
-                        p2 = pressures[i+1] if not np.isnan(pressures[i+1]) else 1010.0
-                        seg_vals.append((p1 + p2) / 2.0)
-                    else:
-                        w1 = winds[i] if not np.isnan(winds[i]) else 20.0
-                        w2 = winds[i+1] if not np.isnan(winds[i+1]) else 20.0
-                        seg_vals.append((w1 + w2) / 2.0)
-                    
-                if segments:
-                    lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=2.5, alpha=0.9, 
-                                        capstyle='round', joinstyle='round', transform=ccrs.PlateCarree(), zorder=5)
-                    lc.set_array(np.array(seg_vals))
-                    ax.add_collection(lc)
-                    print(f"Plotted deterministic run (sample 0, track {t_id}) for {model_name}")
-
-    # 3. Plot Primary Track (Official Control Track or calculated Ensemble Mean)
-    plot_primary_track = False
-    if has_control and len(df_mean) >= 2:
-        plot_primary_track = True
-    elif has_ensemble_tracks and len(df_mean) >= 2 and plotted_members >= 25:
-        plot_primary_track = True
-
+    # Render Primary Track (Official Control or Calculated Ensemble Mean)
+    plot_primary_track = len(df_mean) >= 2
     if plot_primary_track:
-        m_lons = list(df_mean['lon'].values)
-        m_lats = list(df_mean['lat'].values)
+        m_lons = list(df_mean['lon'].dropna().values)
+        m_lats = list(df_mean['lat'].dropna().values)
 
-        # Prepend ATCF position to the mean track so the black line starts from the genesis marker
-        # Only prepend if gap is within 2.0 degrees
         if atcf_pos is not None and use_live_atcf:
-            atcf_lat, atcf_lon = atcf_pos
-            m_lats = [atcf_lat] + m_lats
-            m_lons = [atcf_lon] + m_lons
+            m_lats = [atcf_pos[0]] + m_lats
+            m_lons = [atcf_pos[1]] + m_lons
 
-        # Plot the ensemble mean as a thick black line with a white outline for maximum contrast
-        ax.plot(m_lons, m_lats, color='white', linewidth=6.5, zorder=6, transform=ccrs.PlateCarree())
-        ax.plot(m_lons, m_lats, color='black', linewidth=4.0, zorder=7, transform=ccrs.PlateCarree())
+        # Double-pass stroke: white outline with dark core
+        ax_map.plot(m_lons, m_lats, color='#ffffff', linewidth=5.2, zorder=7, transform=ccrs.PlateCarree())
+        ax_map.plot(m_lons, m_lats, color='#090d14', linewidth=3.0, zorder=8, transform=ccrs.PlateCarree())
 
-        # 4. Forecast Hour and Parameter Annotations at every 24-hour interval
-        last_labeled_pos = None
+        # Forecast Milestone Nodes every 24h
+        last_annot_pos = None
         for idx, row in df_mean.iterrows():
             hour = int(row['lead_time_hours'])
             if hour > 0 and hour % 24 == 0:
                 mx, my = row['lon'], row['lat']
-                
-                # Prevent overlapping labels by enforcing a minimum physical distance of 3.0 degrees from the last label
-                if last_labeled_pos is not None:
-                    dist = np.sqrt((mx - last_labeled_pos[0])**2 + (my - last_labeled_pos[1])**2)
-                    if dist < 3.0:
+                if np.isnan(mx) or np.isnan(my):
+                    continue
+                if last_annot_pos is not None:
+                    dist = np.sqrt((mx - last_annot_pos[0])**2 + (my - last_annot_pos[1])**2)
+                    if dist < 2.5:
                         continue
-                        
-                last_labeled_pos = (mx, my)
-                
+                last_annot_pos = (mx, my)
+
+                # Node circle
+                ax_map.plot(
+                    mx, my, marker='o', markerfacecolor='#ffffff', markeredgecolor='#090d14',
+                    markersize=5.0, markeredgewidth=1.5, zorder=9, transform=ccrs.PlateCarree()
+                )
+
                 if color_by == 'pressure':
                     mp = row['pressure']
-                    pressure_label = f"{int(round(mp))}mb" if not np.isnan(mp) else "N/A"
-                    label_text = f"{pressure_label}\n{hour}"
+                    val_str = f"{int(round(mp))}mb\n+{hour}h" if not np.isnan(mp) else f"+{hour}h"
                 else:
                     mw = row['wind']
-                    wind_label = f"{int(round(mw))} km/h" if not np.isnan(mw) else "N/A"
-                    label_text = f"{wind_label}\n{hour}"
-                
-                # Draw small node circle on mean track
-                ax.plot(mx, my, marker='o', markerfacecolor='white', markeredgecolor='black', 
-                        markersize=5, markeredgewidth=1.5, zorder=8, transform=ccrs.PlateCarree())
-                
-                # Place bold text with a thick white halo outline
-                text = ax.text(mx + 0.3, my + 0.3, label_text, color='black', weight='bold',
-                               fontsize=9, ha='left', va='bottom', transform=ccrs.PlateCarree(),
-                               zorder=10)
-                text.set_path_effects([path_effects.withStroke(linewidth=3, foreground='white')])
+                    val_str = f"{int(round(mw))}kt\n+{hour}h" if not np.isnan(mw) else f"+{hour}h"
 
-    # 5. Live ATCF Marker (replaces old Genesis Marker)
-    if atcf_pos is not None and use_live_atcf:
-        atcf_lat, atcf_lon = atcf_pos
-        # Plot a black circle for the live current ATCF position
-        ax.plot(atcf_lon, atcf_lat, 'o', color='black', markersize=10, markeredgecolor='white', markeredgewidth=1.5, zorder=10, transform=ccrs.PlateCarree())
-    elif len(df_mean) >= 1:
-        # Fallback if no ATCF position available or live position too far: use ensemble mean first point
-        gen_lon = df_mean.iloc[0]['lon']
-        gen_lat = df_mean.iloc[0]['lat']
-        ax.plot(gen_lon, gen_lat, 'o', color='black', markersize=10, markeredgecolor='white', markeredgewidth=1.5, zorder=9, transform=ccrs.PlateCarree())
-    elif not deterministic_data.empty:
-        # Fallback for non-ensemble models: use deterministic track's first point
-        det_first = deterministic_data.sort_values('lead_time_hours').dropna(subset=['lat', 'lon']).iloc[0]
-        gen_lon = det_first['lon']
-        gen_lat = det_first['lat']
-        ax.plot(gen_lon, gen_lat, 'o', color='black', markersize=10, markeredgecolor='white', markeredgewidth=1.5, zorder=9, transform=ccrs.PlateCarree())
+                t_node = ax_map.text(
+                    mx + 0.35, my + 0.35, val_str, color='#f8fafc', weight='bold',
+                    fontsize=7.5, ha='left', va='bottom', transform=ccrs.PlateCarree(), zorder=10
+                )
+                t_node.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='#090d14')])
 
-
-    # Set precalculated map boundaries
-    ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
-
-    # Add Colorbar for Scale
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
-    cbar_x = 0.08 + map_w_frac + 0.02
-    cbar_h = map_h_frac * 0.90
-    cbar_y0 = map_y0 + (map_h_frac - cbar_h) / 2.0
-    cax = fig.add_axes([cbar_x, cbar_y0, 0.022, cbar_h])
-    cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
-    if color_by == 'pressure':
-        cbar.set_label('Min. MSLP (hPa)', fontsize=11, weight='bold', color='#1e293b', labelpad=8)
-    else:
-        cbar.set_label('Wind Speed (km/h)', fontsize=11, weight='bold', color='#1e293b', labelpad=8)
-    cbar.ax.tick_params(labelsize=9, colors='#1e293b')
-
-    # Add Plot Headers
-    header_top = map_y0 + map_h_frac + 0.040
-    header_sub = map_y0 + map_h_frac + 0.012
-    # Top-Left lines
-    if color_by == 'pressure':
-        fig.text(0.08, header_top, f"{storm_name} – {model_name} Tracks and Min. MSLP (hPa)", fontsize=13, weight='bold', color='black', ha='left', va='bottom')
-    else:
-        fig.text(0.08, header_top, f"{storm_name} – {model_name} Tracks and Wind Speed (km/h)", fontsize=13, weight='bold', color='black', ha='left', va='bottom')
-    fig.text(0.08, header_sub, f"Initialized at {init_time_str}", fontsize=11, color='#475569', ha='left', va='bottom')
-    
-    # Top-Right source label
-    right_x = 0.08 + map_w_frac
-    fig.text(right_x, header_top, f"Philippine Typhoon/Weather", fontsize=11, weight='bold', color='black', ha='right', va='bottom')
-    if has_control:
-        data_type_str = "Ensemble" if has_ensemble_tracks else "Control"
-    elif has_ensemble_tracks:
-        data_type_str = "Ensemble"
-    else:
-        data_type_str = "Deterministic"
-    fig.text(right_x, header_sub, f"Data: {model_name} {data_type_str}", fontsize=10, color='#475569', ha='right', va='bottom')
-
-    # Disclaimer note for wind speed conversion and 10-min sustained difference from official agencies
-    if color_by == 'wind':
-        fig.text(
-            0.08, 0.022,
-            "*Note: Winds converted to km/h (1-min sustained). Differs from official agencies (e.g., PAGASA, JMA) using 10-min sustained winds.",
-            fontsize=8, color='#475569', style='italic', ha='left', va='center'
+    # Live ATCF / Analysis Position Marker
+    if atcf_pos is not None:
+        ax_map.plot(
+            atcf_pos[1], atcf_pos[0], 'o', color='#38bdf8', markersize=9,
+            markeredgecolor='#ffffff', markeredgewidth=1.8, zorder=11, transform=ccrs.PlateCarree()
         )
+        t_init = ax_map.text(
+            atcf_pos[1] + 0.35, atcf_pos[0] - 0.45, "CURRENT", color='#38bdf8', weight='heavy',
+            fontsize=7.5, transform=ccrs.PlateCarree(), zorder=11
+        )
+        t_init.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='#090d14')])
+
+    # Set Map Extent & Frame
+    ax_map.set_extent([view_lon_min, view_lon_max, view_lat_min, view_lat_max], crs=ccrs.PlateCarree())
+    for spine in ax_map.spines.values():
+        spine.set_edgecolor('#334155')
+        spine.set_linewidth(1.2)
+
+    # Docked Legends Axis below the Map
+    leg_bottom = 0.045
+    leg_h = 0.125
+    ax_leg = fig.add_axes([0.035, leg_bottom, 0.585, leg_h])
+    ax_leg.set_facecolor('#0d121c')
+    ax_leg.set_xticks([])
+    ax_leg.set_yticks([])
+    for spine in ax_leg.spines.values():
+        spine.set_edgecolor('#222d3d')
+        spine.set_linewidth(1.0)
+
+    # Section 1: Track Wind (KT) Colormap blocks
+    ax_leg.text(
+        0.04, 0.72, "TRACK WIND (KT)" if color_by == 'wind' else "MIN MSLP (HPA)",
+        transform=ax_leg.transAxes, fontsize=6.8, weight='heavy', color='#e2e8f0', va='center'
+    )
+    tw_x = 0.04
+    tw_w = 0.038
+    tw_h = 0.28
+    tw_y = 0.26
+    for idx, col in enumerate(wind_colors if color_by == 'wind' else colors[:9]):
+        rect = mpatches.Rectangle(
+            (tw_x + idx * tw_w, tw_y), tw_w, tw_h,
+            transform=ax_leg.transAxes, facecolor=col, edgecolor='#090d14', linewidth=0.5
+        )
+        ax_leg.add_patch(rect)
+    tw_ticks = [
+        (0, '20'), (2, '40'), (4, '60'), (6, '80'), (7, '100'), (8, '120'), (10, '140+')
+    ] if color_by == 'wind' else [
+        (0, '930'), (2, '950'), (4, '970'), (6, '990'), (8, '1010')
+    ]
+    for idx, lbl in tw_ticks:
+        ax_leg.text(
+            tw_x + idx * tw_w, tw_y - 0.06, lbl,
+            transform=ax_leg.transAxes, fontsize=6.2, color='#94a3b8', ha='center', va='top'
+        )
+
+    # Section 2: Primary Track legend
+    trk_type_lbl = "OFFICIAL CONTROL TRACK" if has_control else "ENSEMBLE MEAN TRACK"
+    ax_leg.text(
+        0.58, 0.72, trk_type_lbl,
+        transform=ax_leg.transAxes, fontsize=6.8, weight='heavy', color='#e2e8f0', ha='center', va='center'
+    )
+    ax_leg.plot([0.50, 0.66], [tw_y + tw_h / 2, tw_y + tw_h / 2], transform=ax_leg.transAxes, color='#ffffff', linewidth=4.0)
+    ax_leg.plot([0.50, 0.66], [tw_y + tw_h / 2, tw_y + tw_h / 2], transform=ax_leg.transAxes, color='#090d14', linewidth=2.2)
+    ax_leg.plot([0.58], [tw_y + tw_h / 2], transform=ax_leg.transAxes, marker='o', markerfacecolor='#ffffff', markeredgecolor='#090d14', markersize=4.8)
+
+    # Section 3: Status Badge
+    status_box = mpatches.Rectangle(
+        (0.74, tw_y), 0.22, tw_h, transform=ax_leg.transAxes,
+        facecolor='#1e293b', edgecolor='#334155', linewidth=0.8
+    )
+    ax_leg.add_patch(status_box)
+    status_text = "OFFICIAL ATCF INVEST" if is_invest else "ACTIVE TROPICAL CYCLONE"
+    status_color = '#fbbf24' if is_invest else '#38bdf8'
+    ax_leg.text(
+        0.85, tw_y + tw_h / 2, status_text,
+        transform=ax_leg.transAxes, fontsize=6.6, weight='bold', color=status_color,
+        ha='center', va='center'
+    )
+
+    # Top Broadcast Header
+    fig.text(0.035, 0.955, f"{storm_title_display} FORECAST TRACKS", fontsize=21, weight='heavy', color='#ffffff', fontfamily='sans-serif')
+    sub_title = f"{model_name.upper()} {total_ensemble_members}-MEMBER ENSEMBLE  |  INIT {init_date_str} {cycle_str} ({local_time_str})"
+    fig.text(0.035, 0.925, sub_title, fontsize=10, weight='bold', color='#94a3b8', fontfamily='monospace')
+
+    fig.text(0.965, 0.955, "PHILIPPINE TYPHOON WEATHER", fontsize=13, weight='heavy', color='#ffffff', ha='right', fontfamily='sans-serif')
+    fig.text(0.965, 0.928, "ENSEMBLE TRACK & INTENSITY OUTLOOK", fontsize=8.5, weight='bold', color='#94a3b8', ha='right', fontfamily='monospace')
+
+    # Right Column Cards
+    card_x = 0.640
+    card_w = 0.325
+
+    # Card 1: Active Storm Overview & Status Box
+    card1_bottom = 0.675
+    card1_h = 0.235
+    ax_card1 = fig.add_axes([card_x, card1_bottom, card_w, card1_h])
+    ax_card1.set_facecolor('#0d121c')
+    ax_card1.set_xticks([])
+    ax_card1.set_yticks([])
+    for spine in ax_card1.spines.values():
+        spine.set_edgecolor('#222d3d')
+        spine.set_linewidth(1.0)
+
+    headline_intensity = f"{current_winds} KT · {current_pres} HPA" if current_winds else f"{storm_title_display}"
+    ax_card1.text(
+        0.06, 0.90, headline_intensity,
+        fontsize=22, weight='heavy', color='#ffffff', fontfamily='sans-serif', va='top'
+    )
+    ax_card1.text(
+        0.06, 0.69, f"({plotted_members} OF {total_ensemble_members} MEMBERS TRACKING · FULL RUN TO {end_run_str})",
+        fontsize=9.2, weight='bold', color='#38bdf8', fontfamily='monospace', va='top'
+    )
+    ax_card1.text(
+        0.06, 0.50, f"active tropical cyclone ensemble track spread\n{region_desc}",
+        fontsize=9.0, weight='bold', color='#cbd5e1', fontfamily='sans-serif', va='top'
+    )
+    ax_card1.text(
+        0.06, 0.30, f"{peak_median_str} ({peak_cat_str})",
+        fontsize=8.5, weight='bold', color='#fbbf24', fontfamily='monospace', va='top'
+    )
+    ax_card1.text(
+        0.06, 0.15, f"{ts_count} OF {total_ensemble_members} ({ts_pct}%) REACH TS  ·  {ty_count} TYPHOON  ·  {major_count} MAJOR",
+        fontsize=8.0, weight='bold', color='#e2e8f0', fontfamily='monospace', va='top'
+    )
+
+    # Card 2: Intensity Plume (True Date Axis)
+    card2_bottom = 0.365
+    card2_h = 0.245
+    ax_card2 = fig.add_axes([card_x, card2_bottom, card_w, card2_h])
+    ax_card2.set_facecolor('#0a0e17')
+
+    cats = [
+        ('LPA', 0, 25, '#080d1a', '#64748b'),
+        ('TD', 25, 34, '#0f172a', '#38bdf8'),
+        ('TS', 34, 64, '#064e3b', '#34d399'),
+        ('C1', 64, 83, '#713f12', '#facc15'),
+        ('C2', 83, 96, '#7c2d12', '#fb923c'),
+        ('C3', 96, 113, '#7f1d1d', '#f87171'),
+        ('C4', 113, 137, '#701a75', '#e879f9'),
+        ('C5', 137, 160, '#3b0764', '#c084fc')
+    ]
+    for c_label, c_low, c_high, c_bg, c_txt in cats:
+        ax_card2.axhspan(c_low, c_high, facecolor=c_bg, alpha=0.55, edgecolor='none', zorder=1)
+        ax_card2.text(
+            0.015, (c_low + c_high) / 2, c_label,
+            color=c_txt, fontsize=7.2, weight='heavy', va='center', ha='left',
+            transform=ax_card2.get_yaxis_transform(), zorder=4
+        )
+
+    if lead_stats:
+        ls_dts = [s['dt'] for s in lead_stats]
+        ls_p10 = [s['p10'] for s in lead_stats]
+        ls_p25 = [s['p25'] for s in lead_stats]
+        ls_med = [s['median'] for s in lead_stats]
+        ls_mean = [s['mean'] for s in lead_stats]
+        ls_p75 = [s['p75'] for s in lead_stats]
+        ls_p90 = [s['p90'] for s in lead_stats]
+
+        for tdf in deduped_track_dfs:
+            tdf_dts = [init_dt + timedelta(hours=float(h)) for h in tdf['lead_time_hours']]
+            ax_card2.plot(
+                tdf_dts, tdf['wind'],
+                color='#94a3b8', alpha=0.10, linewidth=0.8, zorder=2
+            )
+
+        ax_card2.fill_between(
+            ls_dts, ls_p10, ls_p90,
+            color='#0284c7', alpha=0.20, label='10-90%', zorder=3
+        )
+        ax_card2.fill_between(
+            ls_dts, ls_p25, ls_p75,
+            color='#38bdf8', alpha=0.35, label='25-75%', zorder=3
+        )
+        ax_card2.plot(
+            ls_dts, ls_med,
+            color='#ffffff', linewidth=2.4, label='MEDIAN', zorder=5
+        )
+        ax_card2.plot(
+            ls_dts, ls_mean,
+            color='#f1f5f9', linestyle='--', linewidth=1.6, label='MEAN', zorder=5
+        )
+
+        if has_control and not df_mean.empty:
+            ctrl_dts = [init_dt + timedelta(hours=float(h)) for h in df_mean['lead_time_hours']]
+            ax_card2.plot(
+                ctrl_dts, df_mean['wind'],
+                color='#facc15', linewidth=2.0, label='CONTROL', zorder=6
+            )
+
+        min_c2_dt = min(ls_dts)
+        max_c2_dt = max(ls_dts)
+        ax_card2.set_xlim(min_c2_dt, max_c2_dt)
+        ax_card2.xaxis.set_major_locator(mdates.DayLocator(interval=2))
+        ax_card2.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
+        ax_card2.tick_params(axis='x', labelsize=7.2, colors='#94a3b8')
+    else:
+        ax_card2.set_xlim(init_dt, init_dt + timedelta(days=7))
+        ax_card2.xaxis.set_major_locator(mdates.DayLocator(interval=2))
+        ax_card2.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
+
+    ax_card2.set_ylim(0, 160)
+    ax_card2.set_yticks([0, 25, 50, 75, 100, 125, 150])
+    ax_card2.set_yticklabels(['0', '25', '50', '75', '100', '125', '150'], fontsize=7.2, color='#64748b')
+    ax_card2.yaxis.tick_right()
+    ax_card2.grid(True, linestyle=':', alpha=0.25, color='#64748b')
+
+    # Card 2 Header & Caveats
+    ax_card2.text(
+        0.03, 1.14, "MEMBER INTENSITY (KT - 1-MIN SUSTAINED)",
+        transform=ax_card2.transAxes, fontsize=8.0, weight='heavy', color='#f8fafc'
+    )
+    ax_card2.text(
+        0.97, 1.14, peak_median_str,
+        transform=ax_card2.transAxes, fontsize=7.6, weight='bold', color='#fbbf24', ha='right'
+    )
+    is_ai_model = any(k in model_name.lower() for k in ['wnc', 'wnv3', 'aifs', 'large'])
+    if is_ai_model:
+        ax_card2.text(
+            0.97, 1.05, "* AI intensity, treat with caution",
+            transform=ax_card2.transAxes, fontsize=6.8, weight='bold', color='#fbbf24', style='italic', ha='right'
+        )
+
+    # Multi-color legend on line y = 1.05
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    inv_c2 = ax_card2.transAxes.inverted()
+
+    leg2_items = [
+        ("—", "#ffffff", " MED", "#ffffff"),
+        ("---", "#cbd5e1", " MEAN", "#94a3b8"),
+        ("■", "#38bdf8", " 25-75%", "#94a3b8"),
+        ("■", "#0284c7", " 10-90%", "#94a3b8")
+    ]
+    if has_control:
+        leg2_items.append(("—", "#facc15", " CONTROL", "#facc15"))
+
+    cur_x = 0.03
+    for sym, sym_col, lbl, lbl_col in leg2_items:
+        t_sym = ax_card2.text(cur_x, 1.05, sym, transform=ax_card2.transAxes,
+                              fontsize=6.8, weight='heavy', color=sym_col, va='baseline')
+        bb_sym = t_sym.get_window_extent(renderer=renderer)
+        w_sym = inv_c2.transform((bb_sym.width, 0))[0] - inv_c2.transform((0, 0))[0]
+        cur_x += w_sym + 0.003
+
+        t_lbl = ax_card2.text(cur_x, 1.05, lbl, transform=ax_card2.transAxes,
+                              fontsize=6.3, weight='bold', color=lbl_col, va='baseline')
+        bb_lbl = t_lbl.get_window_extent(renderer=renderer)
+        w_lbl = inv_c2.transform((bb_lbl.width, 0))[0] - inv_c2.transform((0, 0))[0]
+        cur_x += w_lbl + 0.014
+
+    for spine in ax_card2.spines.values():
+        spine.set_edgecolor('#222d3d')
+        spine.set_linewidth(1.0)
+
+    # Card 3: Probability Trend across forecast run
+    card3_bottom = 0.045
+    card3_h = 0.240
+    ax_card3 = fig.add_axes([card_x, card3_bottom, card_w, card3_h])
+    ax_card3.set_facecolor('#0a0e17')
+
+    max_eval_h = max(48.0, df_storm['lead_time_hours'].max())
+    eval_hours = np.arange(0, max_eval_h + 1, 12.0)
+    eval_dts = [init_dt + timedelta(hours=float(h)) for h in eval_hours]
+
+    ts_by_lead = []
+    ty_by_lead = []
+    maj_by_lead = []
+
+    for h in eval_hours:
+        ts_m = sum(1 for tdf in deduped_track_dfs if tdf[tdf['lead_time_hours'] <= h]['wind'].max() >= 34)
+        ty_m = sum(1 for tdf in deduped_track_dfs if tdf[tdf['lead_time_hours'] <= h]['wind'].max() >= 64)
+        maj_m = sum(1 for tdf in deduped_track_dfs if tdf[tdf['lead_time_hours'] <= h]['wind'].max() >= 96)
+
+        ts_by_lead.append(round((ts_m / total_ensemble_members) * 100))
+        ty_by_lead.append(round((ty_m / total_ensemble_members) * 100))
+        maj_by_lead.append(round((maj_m / total_ensemble_members) * 100))
+
+    ax_card3.plot(eval_dts, ts_by_lead, color='#38bdf8', linewidth=2.8, label='TS', marker='o', markersize=3.6, zorder=4)
+    ax_card3.plot(eval_dts, ty_by_lead, color='#f59e0b', linewidth=2.0, label='TYPHOON', marker='D', markersize=3.4, zorder=5)
+    ax_card3.plot(eval_dts, maj_by_lead, color='#ef4444', linewidth=1.3, label='MAJOR', marker='^', markersize=3.6, zorder=6)
+
+    # Direct line label at end point
+    if ts_by_lead and ts_by_lead[-1] > 0:
+        ax_card3.text(
+            eval_dts[-1] + timedelta(hours=3), ts_by_lead[-1], f"{ts_by_lead[-1]}%",
+            color='#38bdf8', fontsize=7.2, weight='bold', va='center'
+        )
+    if ty_by_lead and ty_by_lead[-1] > 0:
+        ax_card3.text(
+            eval_dts[-1] + timedelta(hours=3), ty_by_lead[-1], f"{ty_by_lead[-1]}%",
+            color='#f59e0b', fontsize=7.2, weight='bold', va='center'
+        )
+    if maj_by_lead and maj_by_lead[-1] > 0:
+        ax_card3.text(
+            eval_dts[-1] + timedelta(hours=3), maj_by_lead[-1], f"{maj_by_lead[-1]}%",
+            color='#ef4444', fontsize=7.2, weight='bold', va='center'
+        )
+
+    max_prob = max(ts_by_lead + ty_by_lead + maj_by_lead + [10])
+    ax_card3.set_ylim(0, min(100, max(25, int(math.ceil(max_prob / 10.0)) * 10 + 5)))
+    ax_card3.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(xmax=100, decimals=0))
+    ax_card3.tick_params(axis='y', labelsize=7.2, colors='#64748b')
+    ax_card3.yaxis.tick_right()
+
+    if eval_dts:
+        ax_card3.set_xlim(min(eval_dts), max(eval_dts) + timedelta(hours=14))
+        ax_card3.xaxis.set_major_locator(mdates.DayLocator(interval=2))
+        ax_card3.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
+        ax_card3.tick_params(axis='x', labelsize=7.2, colors='#94a3b8')
+
+    ax_card3.grid(True, linestyle=':', alpha=0.25, color='#64748b')
+
+    # Card 3 Header
+    ax_card3.text(
+        0.03, 1.14, f"CUMULATIVE PROBABILITY (THROUGH {end_run_str})",
+        transform=ax_card3.transAxes, fontsize=8.0, weight='heavy', color='#f8fafc'
+    )
+    inv_c3 = ax_card3.transAxes.inverted()
+    leg3_items = [
+        ("— TS", "#38bdf8"),
+        ("— TYPHOON", "#f59e0b"),
+        ("— MAJOR", "#ef4444")
+    ]
+    cur_x3 = 0.03
+    for lbl, col in leg3_items:
+        t = ax_card3.text(cur_x3, 1.05, lbl, transform=ax_card3.transAxes,
+                          fontsize=7.2, weight='heavy', color=col, va='baseline')
+        bb = t.get_window_extent(renderer=renderer)
+        w_axes = inv_c3.transform((bb.width, 0))[0] - inv_c3.transform((0, 0))[0]
+        cur_x3 += w_axes + 0.035
+
+    for spine in ax_card3.spines.values():
+        spine.set_edgecolor('#222d3d')
+        spine.set_linewidth(1.0)
 
     # Save output publication image
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    plt.savefig(output_path, dpi=300, bbox_inches='tight', pad_inches=0.15, facecolor='white', edgecolor='none')
+    plt.savefig(output_path, dpi=300, facecolor='#070a0f', edgecolor='none')
     plt.close()
-    
-    print(f"Publication-quality spaghetti plot saved to: {output_path}")
-    print(f"Stats: {plotted_members} tracks plotted, {ignored_members} incomplete members ignored.")
+
+    print(f"Broadcast-grade spaghetti plot saved to: {output_path}")
+    print(f"Stats: {plotted_members} tracks plotted out of {total_ensemble_members} members.")
 
 def map_hdbscan_clusters_to_knack_storms(df, knack_storms, dist_threshold=4.0):
     """
@@ -1829,6 +2138,7 @@ def main():
             continue
 
         normalized_df = normalize_dataframe(raw_df)
+        total_members = normalized_df['sample'].nunique()
         wp_df = filter_western_pacific(normalized_df)
         
         if wp_df.empty:
@@ -1967,7 +2277,15 @@ def main():
                         atcf_pos = (s['lat'], s['lon'])
                         break
             
-            plot_model_tracks(wp_df, model, sg_id, out_file, storm_name_override=args.storm_name, color_by=args.color_by, atcf_pos=atcf_pos, df_paired=df_paired)
+            plot_model_tracks(
+                wp_df, model, sg_id, out_file,
+                storm_name_override=args.storm_name,
+                color_by=args.color_by,
+                atcf_pos=atcf_pos,
+                df_paired=df_paired,
+                knack_storms=knack_storms,
+                total_ensemble_members=total_members
+            )
             latest_plotted_init[out_file] = current_init_dt
             
             # Update manifest JSON
