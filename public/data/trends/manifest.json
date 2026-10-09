@@ -74,7 +74,7 @@
     {
       "id": "dist_20261008_12_4",
       "local_id": 5,
-      "name": "Disturbance 4",
+      "name": "Disturbance 5",
       "trackCount": 434,
       "standard": "/data/trends/large_5day_dist_20261008_12_4_standard.png",
       "wide": "/data/trends/large_5day_dist_20261008_12_4_wide.png"
@@ -117,7 +117,7 @@
     {
       "id": "dist_20261008_12_4",
       "local_id": 5,
-      "name": "Disturbance 4",
+      "name": "Disturbance 5",
       "trackCount": 340,
       "standard": "/data/trends/large_15day_dist_20261008_12_4_standard.png",
       "wide": "/data/trends/large_15day_dist_20261008_12_4_wide.png"
