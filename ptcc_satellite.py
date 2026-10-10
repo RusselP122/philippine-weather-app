@@ -55,6 +55,27 @@ from PIL import Image, ImageDraw, ImageFont
 from shapely.geometry import shape
 from shapely.validation import make_valid
 from shapely.ops import unary_union, linemerge
+import hashlib
+
+# ── Optional RapidOCR & PyMuPDF for PAGASA pf.pdf Parsing ────────────────────
+try:
+    import pymupdf
+    from rapidocr_onnxruntime import RapidOCR
+    _OCR_AVAILABLE = True
+    _RAPID_OCR_INSTANCE = None
+except ImportError:
+    _OCR_AVAILABLE = False
+    _RAPID_OCR_INSTANCE = None
+
+def get_ocr_instance():
+    global _RAPID_OCR_INSTANCE
+    if _RAPID_OCR_INSTANCE is None and _OCR_AVAILABLE:
+        try:
+            _RAPID_OCR_INSTANCE = RapidOCR()
+        except Exception as e:
+            print(f"Notice: Failed to initialize RapidOCR: {e}")
+            _RAPID_OCR_INSTANCE = False
+    return _RAPID_OCR_INSTANCE if _RAPID_OCR_INSTANCE else None
 
 # Explicit non-scaling dash pattern for aligned province and country borders
 DASH = (0, (5, 3))
@@ -781,6 +802,134 @@ def parse_jma_latlon(val_str):
     except Exception:
         return float('nan')
 
+# ── PAGASA pf.pdf Cache & Parser (for Storms Outside PAR / No cyclone.dat) ───
+_PAGASA_PF_PDF_CACHE = {
+    'hash': None,
+    'full_text': ""
+}
+
+def fetch_pagasa_pf_pdf(storm_data, data_dir='public/data'):
+    """
+    Fetches and parses PAGASA's official 24-Hour Public Weather Forecast PDF (pf.pdf)
+    from https://pubfiles.pagasa.dost.gov.ph/tamss/weather/pf.pdf when a storm is
+    outside PAR or does not have an active bulletin in cyclone.dat.
+    
+    Extracts official maximum sustained winds (KM/H & KT) from the Tropical Cyclone
+    Outside PAR or Synopsis sections.
+    """
+    if not storm_data or not _OCR_AVAILABLE:
+        return None
+
+    ocr = get_ocr_instance()
+    if not ocr:
+        return None
+
+    raw_name = str(storm_data.get('storm_name', '')).strip().upper()
+    pagasa_name = str(storm_data.get('pagasa_name', '')).strip().upper()
+    raw_id = str(storm_data.get('atcf_id', '')).replace('.', '').upper()
+    m_num = re.search(r'(\d{2})', raw_id)
+    num_str = m_num.group(1) if m_num else ''
+    curr_lat = float(storm_data.get('lat', 0.0))
+    curr_lon = float(storm_data.get('lon', 0.0))
+
+    url_pdf = "https://pubfiles.pagasa.dost.gov.ph/tamss/weather/pf.pdf"
+    local_pdf = os.path.join(data_dir, "pf.pdf")
+    pdf_bytes = None
+
+    # 1. Attempt live download first
+    try:
+        r = _HTTP_SESSION.get(url_pdf, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5.0)
+        if r.status_code == 200 and len(r.content) > 1000:
+            pdf_bytes = r.content
+            os.makedirs(data_dir, exist_ok=True)
+            with open(local_pdf, 'wb') as f:
+                f.write(pdf_bytes)
+    except Exception:
+        pass
+
+    # 2. Fallback to local cache if live fetch failed
+    if not pdf_bytes and os.path.exists(local_pdf):
+        try:
+            with open(local_pdf, 'rb') as f:
+                pdf_bytes = f.read()
+        except Exception:
+            pass
+
+    if not pdf_bytes:
+        return None
+
+    # 3. Check memory cache by MD5 hash to avoid repeating OCR across frames
+    pdf_hash = hashlib.md5(pdf_bytes).hexdigest()
+    if _PAGASA_PF_PDF_CACHE.get('hash') == pdf_hash:
+        full_text = _PAGASA_PF_PDF_CACHE.get('full_text', '')
+    else:
+        try:
+            doc = pymupdf.open(stream=pdf_bytes, filetype='pdf')
+            page = doc[0]
+            rect = page.rect
+            # Clip to Synopsis and Tropical Cyclone sections (top 50% of page)
+            clip = pymupdf.Rect(0, 100, rect.width, 420)
+            pix = page.get_pixmap(dpi=120, clip=clip)
+            res, _ = ocr(pix.tobytes('png'))
+            lines = [l[1].strip() for l in res] if res else []
+            full_text = '\n'.join(lines)
+            _PAGASA_PF_PDF_CACHE['hash'] = pdf_hash
+            _PAGASA_PF_PDF_CACHE['full_text'] = full_text
+        except Exception as e:
+            print(f"Notice: Failed to process pf.pdf with OCR: {e}")
+            return None
+
+    if not full_text:
+        return None
+
+    # 4. Check if storm matches by name or local PAGASA roster name
+    is_match = False
+    match_idx = -1
+    for cand in [raw_name, pagasa_name]:
+        if cand and len(cand) >= 3:
+            pos = full_text.upper().find(cand)
+            if pos != -1:
+                is_match = True
+                match_idx = pos
+                break
+
+    # Also check coordinate proximity if name not matched directly
+    if not is_match and (curr_lat or curr_lon):
+        pos_matches = re.finditer(r'\((\d+\.?\d*)\s*[°]?\s*[NS][,.\s]+(\d+\.?\d*)\s*[°]?\s*[EW]\)', full_text)
+        for m in pos_matches:
+            try:
+                plat, plon = float(m.group(1)), float(m.group(2))
+                dist = math.sqrt((plat - curr_lat)**2 + (plon - curr_lon)**2) * 111.0
+                if dist <= 500.0:
+                    is_match = True
+                    match_idx = m.start()
+                    break
+            except Exception:
+                pass
+
+    if not is_match:
+        return None
+
+    # 5. Extract maximum sustained wind from the relevant section snippet
+    snippet = full_text[match_idx:match_idx + 450] if match_idx != -1 else full_text
+    m_wind = re.search(r'(?:MAXIMUM\s*SUSTAINED\s*)?WINDS\s*:\s*(\d+)\s*KM/?H', snippet, re.IGNORECASE)
+    if not m_wind:
+        m_wind = re.search(r'(?:MAXIMUM\s*SUSTAINED\s*)?WINDS\s*:\s*(\d+)\s*KM/?H', full_text, re.IGNORECASE)
+
+    if not m_wind:
+        return None
+
+    kmh = int(m_wind.group(1))
+    kt = int(round(kmh / 1.852))
+
+    return {
+        'wind_kmh': kmh,
+        'wind_kt': kt,
+        'standard': '10-MIN SUSTAINED',
+        'status': 'ACTIVE',
+        'source': 'pf.pdf'
+    }
+
 def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
     """
     Fetches real-time operational storm wind estimates for the 3 official agencies:
@@ -951,24 +1100,28 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
     # ── 3. PAGASA Official Bulletin ──────────────────────────────────────────
     pagasa_kt = None
     pagasa_kmh = None
+
+    # 3A. STRICTLY LOOK cyclone.dat FIRST ALWAYS
     local_pag = os.path.join(data_dir, "cyclone.dat")
     pag_content = ""
-    if os.path.exists(local_pag):
+
+    # Attempt live download first
+    url_cyclone = "https://pubfiles.pagasa.dost.gov.ph/tamss/weather/cyclone.dat"
+    try:
+        r = _HTTP_SESSION.get(url_cyclone, headers={'User-Agent': 'Mozilla/5.0'}, timeout=3.5)
+        if r.status_code == 200 and len(r.text) > 30:
+            pag_content = r.text
+            os.makedirs(data_dir, exist_ok=True)
+            with open(local_pag, 'w', encoding='utf-8') as f:
+                f.write(pag_content)
+    except Exception:
+        pass
+
+    # Fallback to local cache if live fetch failed
+    if not pag_content.strip() and os.path.exists(local_pag):
         try:
             with open(local_pag, 'r', encoding='utf-8') as f:
                 pag_content = f.read()
-        except Exception:
-            pass
-
-    if not pag_content.strip():
-        url = "https://pubfiles.pagasa.dost.gov.ph/tamss/weather/cyclone.dat"
-        try:
-            r = _HTTP_SESSION.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=3.0)
-            if r.status_code == 200 and len(r.text) > 30:
-                pag_content = r.text
-                os.makedirs(data_dir, exist_ok=True)
-                with open(local_pag, 'w', encoding='utf-8') as f:
-                    f.write(pag_content)
         except Exception:
             pass
 
@@ -1013,12 +1166,27 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
                         pagasa_kt, pagasa_kmh = cat_map[cat]
 
     if pagasa_kt is not None:
+        # cyclone.dat had active data for this storm -> USE IT AND FINISH!
         agency_results['PAGASA'] = {
             'wind_kt': pagasa_kt,
             'wind_kmh': pagasa_kmh,
             'status': 'ACTIVE',
-            'standard': '10-MIN SUSTAINED'
+            'standard': '10-MIN SUSTAINED',
+            'source': 'cyclone.dat'
         }
+        return agency_results
+
+    # 3B. IF NO cyclone.dat DATA FOR THIS STORM, USE pf.pdf
+    pf_res = fetch_pagasa_pf_pdf(storm_data, data_dir=data_dir)
+    if pf_res and pf_res.get('wind_kmh'):
+        agency_results['PAGASA'] = {
+            'wind_kt': pf_res.get('wind_kt'),
+            'wind_kmh': pf_res.get('wind_kmh'),
+            'status': 'ACTIVE',
+            'standard': '10-MIN SUSTAINED',
+            'source': 'pf.pdf'
+        }
+        return agency_results
 
     return agency_results
 
