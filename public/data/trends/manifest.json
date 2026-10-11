@@ -1,13 +1,13 @@
 {
-  "base_5day_cycle": "2026-10-10 12:00",
+  "base_5day_cycle": "2026-10-10 18:00",
   "base_5day": [
     {
-      "id": "dist_20261009_12_1",
+      "id": "dist_20261009_18_1",
       "local_id": 1,
       "name": "Disturbance 1",
       "trackCount": 50,
-      "standard": "/data/trends/base_5day_dist_20261009_12_1_standard.png",
-      "wide": "/data/trends/base_5day_dist_20261009_12_1_wide.png"
+      "standard": "/data/trends/base_5day_dist_20261009_18_1_standard.png",
+      "wide": "/data/trends/base_5day_dist_20261009_18_1_wide.png"
     },
     {
       "id": "27W",
@@ -21,28 +21,28 @@
       "id": "95W",
       "local_id": 3,
       "name": "Invest 95W",
-      "trackCount": 41,
+      "trackCount": 49,
       "standard": "/data/trends/base_5day_95W_standard.png",
       "wide": "/data/trends/base_5day_95W_wide.png"
     },
     {
-      "id": "dist_20261009_12_4",
+      "id": "dist_20261009_18_4",
       "local_id": 4,
       "name": "Disturbance 4",
-      "trackCount": 41,
-      "standard": "/data/trends/base_5day_dist_20261009_12_4_standard.png",
-      "wide": "/data/trends/base_5day_dist_20261009_12_4_wide.png"
+      "trackCount": 40,
+      "standard": "/data/trends/base_5day_dist_20261009_18_4_standard.png",
+      "wide": "/data/trends/base_5day_dist_20261009_18_4_wide.png"
     }
   ],
-  "base_15day_cycle": "2026-10-10 12:00",
+  "base_15day_cycle": "2026-10-10 18:00",
   "base_15day": [
     {
-      "id": "dist_20261009_12_1",
+      "id": "dist_20261009_18_1",
       "local_id": 1,
       "name": "Disturbance 1",
       "trackCount": 50,
-      "standard": "/data/trends/base_15day_dist_20261009_12_1_standard.png",
-      "wide": "/data/trends/base_15day_dist_20261009_12_1_wide.png"
+      "standard": "/data/trends/base_15day_dist_20261009_18_1_standard.png",
+      "wide": "/data/trends/base_15day_dist_20261009_18_1_wide.png"
     },
     {
       "id": "27W",
@@ -56,17 +56,17 @@
       "id": "95W",
       "local_id": 3,
       "name": "Invest 95W",
-      "trackCount": 41,
+      "trackCount": 49,
       "standard": "/data/trends/base_15day_95W_standard.png",
       "wide": "/data/trends/base_15day_95W_wide.png"
     },
     {
-      "id": "dist_20261009_12_4",
+      "id": "dist_20261009_18_4",
       "local_id": 4,
       "name": "Disturbance 4",
       "trackCount": 50,
-      "standard": "/data/trends/base_15day_dist_20261009_12_4_standard.png",
-      "wide": "/data/trends/base_15day_dist_20261009_12_4_wide.png"
+      "standard": "/data/trends/base_15day_dist_20261009_18_4_standard.png",
+      "wide": "/data/trends/base_15day_dist_20261009_18_4_wide.png"
     }
   ],
   "large_5day_cycle": "2026-10-10 12:00",
