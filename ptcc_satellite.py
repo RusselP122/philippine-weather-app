@@ -805,32 +805,148 @@ def parse_jma_latlon(val_str):
 # ── PAGASA pf.pdf Cache & Parser (for Storms Outside PAR / No cyclone.dat) ───
 _PAGASA_PF_PDF_CACHE = {
     'hash': None,
-    'full_text': ""
+    'records': []
 }
+
+def parse_pagasa_pf_pdf_records(pdf_bytes):
+    """
+    Parses pf.pdf into a list of structured records for all tropical cyclones
+    reported under TROPICAL CYCLONE OUTSIDE PAR or in the SYNOPSIS.
+    Accurately separates multi-column tables (e.g. 2 cyclones reported side-by-side)
+    so each cyclone retains its own coordinates, winds, category, and name.
+    """
+    if not _OCR_AVAILABLE:
+        return []
+    ocr = get_ocr_instance()
+    if not ocr:
+        return []
+
+    try:
+        doc = pymupdf.open(stream=pdf_bytes, filetype='pdf')
+        page = doc[0]
+        rect = page.rect
+        # Clip from top of page through Tropical Cyclone section (first 520 points)
+        clip = pymupdf.Rect(0, 0, rect.width, min(rect.height, 520))
+        pix = page.get_pixmap(dpi=120, clip=clip)
+        res, _ = ocr(pix.tobytes('png'))
+        if not res:
+            return []
+    except Exception as e:
+        print(f"Notice: Failed to process pf.pdf with OCR: {e}")
+        return []
+
+    # 1. Identify items inside the Tropical Cyclone Outside PAR table and Synopsis
+    tc_items = []
+    synopsis_items = []
+    state = 'BEFORE'
+    for item in res:
+        txt = item[1].strip()
+        txt_u = txt.upper()
+        box = item[0]
+        cx = sum(p[0] for p in box) / 4.0
+        cy = sum(p[1] for p in box) / 4.0
+
+        if 'TROPICAL' in txt_u and 'OUTSIDE' in txt_u and 'PAR' in txt_u:
+            state = 'TC_TABLE'
+            continue
+        if 'FORECAST' in txt_u and 'WEATHER' in txt_u and 'CONDITION' in txt_u:
+            state = 'AFTER'
+            break
+
+        if state == 'BEFORE':
+            synopsis_items.append((cx, cy, txt))
+        elif state == 'TC_TABLE':
+            tc_items.append((cx, cy, txt))
+
+    # 2. Check if TC table has columns (e.g. 2 columns separated around mid_x)
+    mid_x = pix.width / 2.0
+    has_left = any(it[0] < mid_x - 30 for it in tc_items)
+    has_right = any(it[0] > mid_x + 30 for it in tc_items)
+
+    columns = []
+    if has_left and has_right:
+        # Two columns!
+        left_items = sorted([it for it in tc_items if it[0] < mid_x], key=lambda x: x[1])
+        right_items = sorted([it for it in tc_items if it[0] >= mid_x], key=lambda x: x[1])
+        columns.append('\n'.join(it[2] for it in left_items))
+        columns.append('\n'.join(it[2] for it in right_items))
+    elif tc_items:
+        # Single column
+        all_items = sorted(tc_items, key=lambda x: x[1])
+        columns.append('\n'.join(it[2] for it in all_items))
+
+    records = []
+    for col_text in columns:
+        if not col_text.strip():
+            continue
+
+        # Extract winds
+        m_wind = re.search(r'(?:MAXIMUM\s*SUSTAINED\s*)?WINDS?\s*:\s*(\d+)\s*K\s*M\s*/?\s*H', col_text, re.IGNORECASE)
+        kmh = int(m_wind.group(1)) if m_wind else None
+
+        # Fallback to gustiness or category defaults if sustained wind line was missed
+        if kmh is None:
+            m_gust = re.search(r'GUSTINESS\s*:\s*(?:UP\s*TO\s*)?(\d+)\s*K\s*M\s*/?\s*H', col_text, re.IGNORECASE)
+            if m_gust:
+                g_val = int(m_gust.group(1))
+                kmh = int(round(g_val / 1.3 / 5.0) * 5)
+            elif 'TROPICAL DEPRESSION' in col_text.upper():
+                kmh = 45
+            elif 'TROPICAL STORM' in col_text.upper():
+                kmh = 65
+            elif 'TYPHOON' in col_text.upper():
+                kmh = 120
+
+        kt = int(round(kmh / 1.852)) if kmh is not None else None
+
+        # Extract coordinates: (lat°N, lon°E), allowing unicode degree symbol or OCR replacement chars
+        pos_m = re.findall(r'\((\d+\.?\d*)\s*[^A-Z0-9\s]?\s*[NS][,.\s]+(\d+\.?\d*)\s*[^A-Z0-9\s]?\s*[EW]\)', col_text)
+        coords = [(float(p[0]), float(p[1])) for p in pos_m]
+
+        # Extract category and name
+        m_cat = re.search(r'(SUPER\s*TYPHOON|TYPHOON|SEVERE\s*TROPICAL\s*STORM|TROPICAL\s*STORM|TROPICAL\s*DEPRESSION)', col_text, re.IGNORECASE)
+        category = m_cat.group(1).upper() if m_cat else ''
+        name = ''
+        if m_cat:
+            after_cat = col_text[m_cat.end():].strip().splitlines()[0]
+            m_name = re.search(r'([A-Za-z0-9_-]+)', after_cat)
+            if m_name and m_name.group(1).upper() not in ['LOCATION', 'MAXIMUM', 'WINDS', 'GUSTINESS', 'MOVEMENT']:
+                name = m_name.group(1).upper()
+
+        records.append({
+            'text': col_text,
+            'category': category,
+            'name': name,
+            'coords': coords,
+            'wind_kmh': kmh,
+            'wind_kt': kt
+        })
+
+    # Also check if an LPA is described in the synopsis
+    syn_text = '\n'.join(it[2] for it in sorted(synopsis_items, key=lambda x: x[1]))
+    if 'LOW PRESSURE AREA' in syn_text.upper() or 'LPA' in syn_text.upper():
+        pos_m = re.findall(r'\((\d+\.?\d*)\s*[°]?\s*[NS][,.\s]+(\d+\.?\d*)\s*[°]?\s*[EW]\)', syn_text)
+        coords = [(float(p[0]), float(p[1])) for p in pos_m]
+        if coords:
+            records.append({
+                'text': syn_text,
+                'category': 'LOW PRESSURE AREA',
+                'name': 'LPA',
+                'coords': coords,
+                'wind_kmh': 30,
+                'wind_kt': 15
+            })
+
+    return records
 
 def fetch_pagasa_pf_pdf(storm_data, data_dir='public/data'):
     """
     Fetches and parses PAGASA's official 24-Hour Public Weather Forecast PDF (pf.pdf)
-    from https://pubfiles.pagasa.dost.gov.ph/tamss/weather/pf.pdf when a storm is
-    outside PAR or does not have an active bulletin in cyclone.dat.
-    
-    Extracts official maximum sustained winds (KM/H & KT) from the Tropical Cyclone
-    Outside PAR or Synopsis sections.
+    when a storm is outside PAR or does not have an active bulletin in cyclone.dat.
+    Supports multi-storm PDF tables with 2+ columns (e.g. Typhoon + Tropical Depression).
     """
     if not storm_data or not _OCR_AVAILABLE:
         return None
-
-    ocr = get_ocr_instance()
-    if not ocr:
-        return None
-
-    raw_name = str(storm_data.get('storm_name', '')).strip().upper()
-    pagasa_name = str(storm_data.get('pagasa_name', '')).strip().upper()
-    raw_id = str(storm_data.get('atcf_id', '')).replace('.', '').upper()
-    m_num = re.search(r'(\d{2})', raw_id)
-    num_str = m_num.group(1) if m_num else ''
-    curr_lat = float(storm_data.get('lat', 0.0))
-    curr_lon = float(storm_data.get('lon', 0.0))
 
     url_pdf = "https://pubfiles.pagasa.dost.gov.ph/tamss/weather/pf.pdf"
     local_pdf = os.path.join(data_dir, "pf.pdf")
@@ -861,70 +977,54 @@ def fetch_pagasa_pf_pdf(storm_data, data_dir='public/data'):
     # 3. Check memory cache by MD5 hash to avoid repeating OCR across frames
     pdf_hash = hashlib.md5(pdf_bytes).hexdigest()
     if _PAGASA_PF_PDF_CACHE.get('hash') == pdf_hash:
-        full_text = _PAGASA_PF_PDF_CACHE.get('full_text', '')
+        records = _PAGASA_PF_PDF_CACHE.get('records', [])
     else:
-        try:
-            doc = pymupdf.open(stream=pdf_bytes, filetype='pdf')
-            page = doc[0]
-            rect = page.rect
-            # Clip to Synopsis and Tropical Cyclone sections (top 50% of page)
-            clip = pymupdf.Rect(0, 100, rect.width, 420)
-            pix = page.get_pixmap(dpi=120, clip=clip)
-            res, _ = ocr(pix.tobytes('png'))
-            lines = [l[1].strip() for l in res] if res else []
-            full_text = '\n'.join(lines)
-            _PAGASA_PF_PDF_CACHE['hash'] = pdf_hash
-            _PAGASA_PF_PDF_CACHE['full_text'] = full_text
-        except Exception as e:
-            print(f"Notice: Failed to process pf.pdf with OCR: {e}")
-            return None
+        records = parse_pagasa_pf_pdf_records(pdf_bytes)
+        _PAGASA_PF_PDF_CACHE['hash'] = pdf_hash
+        _PAGASA_PF_PDF_CACHE['records'] = records
 
-    if not full_text:
+    if not records:
         return None
 
-    # 4. Check if storm matches by name or local PAGASA roster name
-    is_match = False
-    match_idx = -1
-    for cand in [raw_name, pagasa_name]:
-        if cand and len(cand) >= 3:
-            pos = full_text.upper().find(cand)
-            if pos != -1:
-                is_match = True
-                match_idx = pos
-                break
+    raw_name = str(storm_data.get('storm_name', '')).strip().upper()
+    pagasa_name = str(storm_data.get('pagasa_name', '')).strip().upper()
+    curr_lat = float(storm_data.get('lat', 0.0))
+    curr_lon = float(storm_data.get('lon', 0.0))
 
-    # Also check coordinate proximity if name not matched directly
-    if not is_match and (curr_lat or curr_lon):
-        pos_matches = re.finditer(r'\((\d+\.?\d*)\s*[°]?\s*[NS][,.\s]+(\d+\.?\d*)\s*[°]?\s*[EW]\)', full_text)
-        for m in pos_matches:
-            try:
-                plat, plon = float(m.group(1)), float(m.group(2))
+    # 4. Find the best matching record for this target storm
+    best_record = None
+    best_score = 0.0
+
+    for r in records:
+        score = 0.0
+
+        # Exact name match (if not generic INVEST/UNKNOWN)
+        if raw_name and raw_name not in ['INVEST', 'UNKNOWN', 'CUSTOM'] and len(raw_name) >= 3:
+            if raw_name in r['text'].upper():
+                score = max(score, 100.0)
+        if pagasa_name and len(pagasa_name) >= 3:
+            if pagasa_name in r['text'].upper():
+                score = max(score, 100.0)
+
+        # Coordinate proximity match
+        if curr_lat and curr_lon:
+            for plat, plon in r['coords']:
                 dist = math.sqrt((plat - curr_lat)**2 + (plon - curr_lon)**2) * 111.0
-                if dist <= 500.0:
-                    is_match = True
-                    match_idx = m.start()
-                    break
-            except Exception:
-                pass
+                if dist <= 600.0:
+                    prox_score = max(0.0, 95.0 - (dist / 10.0))
+                    score = max(score, prox_score)
 
-    if not is_match:
+        if score > best_score and score >= 40.0:
+            best_score = score
+            best_record = r
+
+    if not best_record or not best_record.get('wind_kmh'):
         return None
-
-    # 5. Extract maximum sustained wind from the relevant section snippet
-    snippet = full_text[match_idx:match_idx + 450] if match_idx != -1 else full_text
-    m_wind = re.search(r'(?:MAXIMUM\s*SUSTAINED\s*)?WINDS\s*:\s*(\d+)\s*KM/?H', snippet, re.IGNORECASE)
-    if not m_wind:
-        m_wind = re.search(r'(?:MAXIMUM\s*SUSTAINED\s*)?WINDS\s*:\s*(\d+)\s*KM/?H', full_text, re.IGNORECASE)
-
-    if not m_wind:
-        return None
-
-    kmh = int(m_wind.group(1))
-    kt = int(round(kmh / 1.852))
 
     return {
-        'wind_kmh': kmh,
-        'wind_kt': kt,
+        'wind_kmh': best_record['wind_kmh'],
+        'wind_kt': best_record['wind_kt'],
+        'category': best_record.get('category'),
         'standard': '10-MIN SUSTAINED',
         'status': 'ACTIVE',
         'source': 'pf.pdf'
