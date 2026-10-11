@@ -72,12 +72,12 @@
   "large_5day_cycle": "2026-10-11 00:00",
   "large_5day": [
     {
-      "id": "dist_20261010_00_1",
+      "id": "dist_20261010_06_1",
       "local_id": 1,
       "name": "Disturbance 1",
       "trackCount": 1000,
-      "standard": "/data/trends/large_5day_dist_20261010_00_1_standard.png",
-      "wide": "/data/trends/large_5day_dist_20261010_00_1_wide.png"
+      "standard": "/data/trends/large_5day_dist_20261010_06_1_standard.png",
+      "wide": "/data/trends/large_5day_dist_20261010_06_1_wide.png"
     },
     {
       "id": "27W",
@@ -96,23 +96,23 @@
       "wide": "/data/trends/large_5day_95W_wide.png"
     },
     {
-      "id": "dist_20261010_00_4",
+      "id": "dist_20261010_06_5",
       "local_id": 4,
       "name": "Disturbance 4",
       "trackCount": 863,
-      "standard": "/data/trends/large_5day_dist_20261010_00_4_standard.png",
-      "wide": "/data/trends/large_5day_dist_20261010_00_4_wide.png"
+      "standard": "/data/trends/large_5day_dist_20261010_06_5_standard.png",
+      "wide": "/data/trends/large_5day_dist_20261010_06_5_wide.png"
     }
   ],
   "large_15day_cycle": "2026-10-11 00:00",
   "large_15day": [
     {
-      "id": "dist_20261010_00_1",
+      "id": "dist_20261010_06_1",
       "local_id": 1,
       "name": "Disturbance 1",
       "trackCount": 1000,
-      "standard": "/data/trends/large_15day_dist_20261010_00_1_standard.png",
-      "wide": "/data/trends/large_15day_dist_20261010_00_1_wide.png"
+      "standard": "/data/trends/large_15day_dist_20261010_06_1_standard.png",
+      "wide": "/data/trends/large_15day_dist_20261010_06_1_wide.png"
     },
     {
       "id": "27W",
@@ -131,12 +131,12 @@
       "wide": "/data/trends/large_15day_95W_wide.png"
     },
     {
-      "id": "dist_20261010_00_4",
+      "id": "dist_20261010_06_5",
       "local_id": 4,
       "name": "Disturbance 4",
       "trackCount": 977,
-      "standard": "/data/trends/large_15day_dist_20261010_00_4_standard.png",
-      "wide": "/data/trends/large_15day_dist_20261010_00_4_wide.png"
+      "standard": "/data/trends/large_15day_dist_20261010_06_5_standard.png",
+      "wide": "/data/trends/large_15day_dist_20261010_06_5_wide.png"
     },
     {
       "id": "dist_20261010_06_8",
