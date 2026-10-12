@@ -3,13 +3,13 @@
   "storm_name": "TC 28W (Invest 95W)",
   "track_id": "WP282026",
   "latest": {
-    "lat": 16.4,
-    "lon": 150.8,
+    "lat": 16.8,
+    "lon": 149.8,
     "pressure_hpa": 1006.0,
     "wind_kt": 25.0,
     "wind_kmh": 46,
-    "movement": "SSE at 11.7 km/h (6.3 kt)",
-    "init_time": "2026-10-12 00:00",
+    "movement": "WNW at 19.2 km/h (10.4 kt)",
+    "init_time": "2026-10-12 06:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -107,6 +107,15 @@
       "cycle": "2026-10-12 00:00",
       "lat": 16.4,
       "lon": 150.8,
+      "pressure_hpa": 1006.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-10-12 06:00",
+      "lat": 16.8,
+      "lon": 149.8,
       "pressure_hpa": 1006.0,
       "wind_kt": 25.0,
       "wind_kmh": 46,
