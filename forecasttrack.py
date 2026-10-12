@@ -2431,7 +2431,8 @@ def format_storm_title(storm):
 
 def prepare_anchored_track(df, curr_lat, curr_lon, max_lead_time=120.0):
     """
-    Filters track to standard 5-day horizon (<= 120h) and smoothly anchors
+    Filters track to standard 5-day horizon (<= 120h), normalizes longitudes to
+    degrees East (0-360), clips at antimeridian (180.0°E), and smoothly anchors
     the initial point to the active storm center fix (curr_lat, curr_lon).
     """
     if df is None or not isinstance(df, pd.DataFrame) or df.empty:
@@ -2440,6 +2441,36 @@ def prepare_anchored_track(df, curr_lat, curr_lon, max_lead_time=120.0):
     sub_df = df[df['lead_time_hours'] <= max_lead_time].copy().sort_values('lead_time_hours').reset_index(drop=True)
     if sub_df.empty:
         return pd.DataFrame()
+
+    # Normalize longitudes in Western Pacific: convert negative longitudes (e.g. -179W) to degrees East (> 180)
+    if curr_lon >= 90.0:
+        sub_df['lon'] = sub_df['lon'].apply(lambda x: (x + 360.0) if (pd.notna(x) and x < 0) else x)
+
+        # Clip track at antimeridian (180.0°E) to maintain Western North Pacific basin boundary
+        clipped_rows = []
+        crossed = False
+        prev_r = None
+        for _, r in sub_df.iterrows():
+            lo = float(r['lon'])
+            if pd.isna(lo):
+                continue
+            if lo <= 180.0:
+                clipped_rows.append(r)
+                prev_r = r
+            else:
+                if not crossed and prev_r is not None and float(prev_r['lon']) < 180.0:
+                    frac = (180.0 - float(prev_r['lon'])) / (lo - float(prev_r['lon']))
+                    r_interp = r.copy()
+                    r_interp['lon'] = 180.0
+                    r_interp['lat'] = float(prev_r['lat']) + frac * (float(r['lat']) - float(prev_r['lat']))
+                    r_interp['lead_time_hours'] = float(prev_r['lead_time_hours']) + frac * (float(r['lead_time_hours']) - float(prev_r['lead_time_hours']))
+                    clipped_rows.append(r_interp)
+                crossed = True
+                break
+        if clipped_rows:
+            sub_df = pd.DataFrame(clipped_rows).reset_index(drop=True)
+        else:
+            return pd.DataFrame()
         
     t0_lat = float(sub_df.iloc[0]['lat'])
     t0_lon = float(sub_df.iloc[0]['lon'])
@@ -2607,38 +2638,159 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     # Sea Text Labels (strictly bounded and zoom-scaled)
     render_sea_labels(ax, extent)
     
-    # Plot Official Agency Tracks
-    for name, color in AGENCY_COLORS.items():
-        df = processed_agencies.get(name)
+    # Plot Official Agency & Model Tracks with white waypoint dots and small date labels
+    base_dt = parse_storm_init_time(storm.get('init_time') or init_time_str)
+    placed_labels = []
+
+    def draw_track_line_dots_and_dates(df, color, linewidth, zorder, name):
         if df is None or df.empty:
-            continue
+            return
+            
         lats = df['lat'].dropna().values
         lons = df['lon'].dropna().values
         if len(lats) == 0 or len(lons) == 0:
-            continue
+            return
             
-        # Smooth line with dark halo
+        # 1. Smooth line with dark halo
         ax.plot(
-            lons, lats, color=color, linestyle='-', linewidth=2.4, label=name,
-            transform=ccrs.PlateCarree(), zorder=10,
-            path_effects=[path_effects.Stroke(linewidth=4.2, foreground=BG_DARK), path_effects.Normal()]
+            lons, lats, color=color, linestyle='-', linewidth=linewidth, label=name,
+            transform=ccrs.PlateCarree(), zorder=zorder, clip_on=True,
+            path_effects=[path_effects.Stroke(linewidth=linewidth + 1.8, foreground=BG_DARK), path_effects.Normal()]
         )
+        
+        # 2. Extract forecast points (lead_time_hours > 0)
+        valid_df = df[df['lead_time_hours'].notna() & (df['lead_time_hours'] > 0) & df['lat'].notna() & df['lon'].notna()].copy()
+        if valid_df.empty:
+            return
+            
+        valid_df = valid_df.sort_values('lead_time_hours').reset_index(drop=True)
+        N = len(valid_df)
+        
+        # Identify points for white dots and small date labels
+        # White dots at every 12h/24h or last point
+        # Date labels at 24h intervals (24, 48, 72, 96, 120) or last point if tau >= 24
+        labeled_taus = set()
+        dot_items = []
+        date_items = []
+        
+        for i, row in valid_df.iterrows():
+            tau = float(row['lead_time_hours'])
+            tau_r = int(round(tau))
+            lo = float(row['lon'])
+            la = float(row['lat'])
+            
+            is_24h = (tau_r in [24, 48, 72, 96, 120]) or (tau_r % 24 == 0 and tau_r > 0)
+            is_12h = (tau_r % 12 == 0 and tau_r > 0)
+            is_last = (i == N - 1)
+            
+            if is_24h or is_12h or is_last:
+                dot_items.append((lo, la, is_24h or is_last))
+                
+            if is_24h:
+                date_items.append((lo, la, tau, i))
+                labeled_taus.add(tau_r)
+            elif is_last and tau_r >= 20 and not any(abs(tau_r - lt) < 14 for lt in labeled_taus):
+                date_items.append((lo, la, tau, i))
+                labeled_taus.add(tau_r)
+                
+        # Draw white dots on the line
+        for lo, la, is_major in dot_items:
+            dot_size = 32 if is_major else 18
+            ax.scatter(
+                lo, la, s=dot_size, color='#ffffff', edgecolor=color,
+                linewidth=1.3, zorder=zorder + 3, transform=ccrs.PlateCarree(), clip_on=True,
+                path_effects=[path_effects.Stroke(linewidth=2.2, foreground=BG_DARK), path_effects.Normal()]
+            )
+            
+        # Draw small date of each model and agency
+        min_lon, max_lon, min_lat, max_lat = extent
+        for lo, la, tau, i in date_items:
+            # Only render date labels if waypoint is within the visible map viewport
+            if not ((min_lon <= lo <= max_lon) and (min_lat <= la <= max_lat)):
+                continue
+
+            if base_dt:
+                pt_dt = base_dt + timedelta(hours=tau)
+                # Local Philippine Time (+8h)
+                pt_ph = pt_dt + timedelta(hours=8)
+                date_str = pt_ph.strftime("%b %d") # e.g. "Oct 13"
+            else:
+                date_str = f"+{int(round(tau))}h"
+                
+            # If an existing label has the identical date_str and is extremely close (< 0.55 deg),
+            # skip to avoid overlapping duplicate date labels for tightly clustered models
+            if any(p_date == date_str and math.hypot(lo - px, la - py) < 0.55 for px, py, p_date in placed_labels):
+                continue
+
+            # Direction tangent & normal vector
+            if i < N - 1:
+                dx = float(valid_df.iloc[i + 1]['lon']) - lo
+                dy = float(valid_df.iloc[i + 1]['lat']) - la
+            elif i > 0:
+                dx = lo - float(valid_df.iloc[i - 1]['lon'])
+                dy = la - float(valid_df.iloc[i - 1]['lat'])
+            else:
+                dx, dy = 1.0, 0.0
+                
+            dist = math.hypot(dx, dy)
+            if dist > 0.01:
+                nx = -dy / dist
+                ny = dx / dist
+            else:
+                nx, ny = 0.707, 0.707
+                
+            candidates = [
+                (lo + nx * 0.40, la + ny * 0.40),
+                (lo - nx * 0.40, la - ny * 0.40),
+                (lo + nx * 0.70, la + ny * 0.70),
+                (lo - nx * 0.70, la - ny * 0.70),
+                (lo + 0.50, la + 0.38),
+                (lo - 0.50, la - 0.38),
+                (lo + 0.50, la - 0.38),
+                (lo - 0.50, la + 0.38),
+                (lo + nx * 0.98, la + ny * 0.98),
+                (lo - nx * 0.98, la - ny * 0.98),
+            ]
+            
+            valid_cands = [
+                (cx, cy) for cx, cy in candidates
+                if (min_lon + 0.4) <= cx <= (max_lon - 0.4) and (min_lat + 0.4) <= cy <= (max_lat - 0.4)
+            ]
+            if not valid_cands:
+                valid_cands = candidates
+                
+            best_pos = valid_cands[0]
+            if placed_labels:
+                best_score = -1
+                for cx, cy in valid_cands:
+                    min_d = min(math.hypot(cx - px, cy - py) for px, py, _ in placed_labels)
+                    if min_d > best_score:
+                        best_score = min_d
+                        best_pos = (cx, cy)
+                        
+            lbl_lon, lbl_lat = best_pos
+            placed_labels.append((lbl_lon, lbl_lat, date_str))
+            
+            ax.text(
+                lbl_lon, lbl_lat, date_str,
+                color='#ffffff', fontsize=6.8, weight='bold',
+                ha='center', va='center',
+                transform=ccrs.PlateCarree(), zorder=zorder + 5, clip_on=True,
+                path_effects=[
+                    path_effects.Stroke(linewidth=2.4, foreground=BG_DARK),
+                    path_effects.Normal()
+                ]
+            )
+
+    # Plot Official Agency Tracks
+    for name, color in AGENCY_COLORS.items():
+        df = processed_agencies.get(name)
+        draw_track_line_dots_and_dates(df, color=color, linewidth=2.4, zorder=10, name=name)
                 
     # Plot Ensemble Mean Tracks
     for name, color in ENSEMBLE_COLORS.items():
         df = processed_ensembles.get(name)
-        if df is None or df.empty:
-            continue
-        lats = df['lat'].dropna().values
-        lons = df['lon'].dropna().values
-        if len(lats) == 0 or len(lons) == 0:
-            continue
-            
-        ax.plot(
-            lons, lats, color=color, linestyle='-', linewidth=2.0, label=name,
-            transform=ccrs.PlateCarree(), zorder=8,
-            path_effects=[path_effects.Stroke(linewidth=3.6, foreground=BG_DARK), path_effects.Normal()]
-        )
+        draw_track_line_dots_and_dates(df, color=color, linewidth=2.0, zorder=8, name=name)
                 
     # Draw initial storm center fix icon
     draw_current_storm_glyph(ax, curr_lon, curr_lat, color='#ffffff', size=130)
@@ -2671,6 +2823,8 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             y_val = 0.68 - ((idx - 2) * 0.28)
             
         panel_ax.plot([x_start, x_start + 0.026], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.8, transform=panel_ax.transAxes)
+        if is_active:
+            panel_ax.scatter([x_start + 0.013], [y_val], s=14, color='#ffffff', edgecolor=line_color, linewidth=1.0, zorder=5, transform=panel_ax.transAxes)
         panel_ax.text(x_text, y_val + 0.03, ag_name, color=text_color, fontsize=8.5, weight='bold', transform=panel_ax.transAxes)
         run_str = track_inits.get(ag_name, 'Latest') if is_active else 'Not Available'
         panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.8, transform=panel_ax.transAxes)
@@ -2693,6 +2847,8 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
         y_val = 0.68 - (idx * 0.28)
         
         panel_ax.plot([x_start, x_start + 0.026], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
+        if is_active:
+            panel_ax.scatter([x_start + 0.013], [y_val], s=14, color='#ffffff', edgecolor=line_color, linewidth=1.0, zorder=5, transform=panel_ax.transAxes)
         panel_ax.text(x_text, y_val + 0.03, m_name, color=text_color, fontsize=8.2, weight='bold', transform=panel_ax.transAxes)
         run_str = track_inits.get(m_name, 'Latest' if is_active else 'Not Available')
         panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.7, transform=panel_ax.transAxes)
@@ -2721,6 +2877,8 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             y_val = 0.68
             
         panel_ax.plot([x_start, x_start + 0.026], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
+        if is_active:
+            panel_ax.scatter([x_start + 0.013], [y_val], s=14, color='#ffffff', edgecolor=line_color, linewidth=1.0, zorder=5, transform=panel_ax.transAxes)
         panel_ax.text(x_text, y_val + 0.03, m_name, color=text_color, fontsize=8.2, weight='bold', transform=panel_ax.transAxes)
         run_str = track_inits.get(m_name)
         if not run_str and m_name == 'WeatherNext 3 Cyclone':
@@ -2753,6 +2911,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
     full_storm_title = format_storm_title(storm)
     curr_lat, curr_lon = float(storm['lat']), float(storm['lon'])
     mean_track = compute_compiled_mean_track(agency_tracks, ensemble_means, storm=storm)
+    init_dt = parse_storm_init_time(storm.get('init_time') or init_time_str)
     
     fig = plt.figure(figsize=(12, 7.6), facecolor=BG_DARK)
     
@@ -2896,7 +3055,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
         # Spline Consensus Track Line
         ax.plot(
             lons, lats, color='#f1f5f9', linestyle='-', linewidth=2.8,
-            label='Unofficial Mean Track', transform=ccrs.PlateCarree(), zorder=10,
+            label='Unofficial Mean Track', transform=ccrs.PlateCarree(), zorder=10, clip_on=True,
             path_effects=[path_effects.Stroke(linewidth=4.8, foreground=BG_DARK), path_effects.Normal()]
         )
         
@@ -2914,10 +3073,14 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             size = 82
             ax.scatter(
                 lo, la, color=pt_color, edgecolor='#ffffff', linewidth=1.8,
-                s=size, zorder=12, transform=ccrs.PlateCarree()
+                s=size, zorder=12, transform=ccrs.PlateCarree(), clip_on=True
             )
             
-            lbl_text = f"T+{h}h\n{int(round(wind_for_color))} km/h"
+            if init_dt:
+                d_str = (init_dt + timedelta(hours=h + 8)).strftime("%b %d")
+                lbl_text = f"{d_str} (T+{h}h)\n{int(round(wind_for_color))} km/h"
+            else:
+                lbl_text = f"T+{h}h\n{int(round(wind_for_color))} km/h"
             
             # Compute track tangent vector to push labels perpendicular to track heading
             if idx < N_pts - 1:

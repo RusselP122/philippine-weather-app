@@ -905,7 +905,21 @@ def parse_pagasa_pf_pdf_records(pdf_bytes):
 
         # Extract category and name
         m_cat = re.search(r'(SUPER\s*TYPHOON|TYPHOON|SEVERE\s*TROPICAL\s*STORM|TROPICAL\s*STORM|TROPICAL\s*DEPRESSION)', col_text, re.IGNORECASE)
-        category = m_cat.group(1).upper() if m_cat else ''
+        category = ''
+        if m_cat:
+            raw_c = m_cat.group(1).upper()
+            if 'SUPER' in raw_c and 'TYPHOON' in raw_c:
+                category = 'SUPER TYPHOON'
+            elif 'TYPHOON' in raw_c:
+                category = 'TYPHOON'
+            elif 'SEVERE' in raw_c:
+                category = 'SEVERE TROPICAL STORM'
+            elif 'STORM' in raw_c:
+                category = 'TROPICAL STORM'
+            elif 'DEPRESSION' in raw_c:
+                category = 'TROPICAL DEPRESSION'
+            else:
+                category = re.sub(r'\s+', ' ', raw_c).strip()
         name = ''
         if m_cat:
             after_cat = col_text[m_cat.end():].strip().splitlines()[0]
@@ -1030,20 +1044,106 @@ def fetch_pagasa_pf_pdf(storm_data, data_dir='public/data'):
         'source': 'pf.pdf'
     }
 
+def get_agency_category(agency, wind_kt=None, wind_kmh=None, explicit_cat=None, storm_name=None):
+    """
+    Returns the official tropical cyclone intensity category for each agency:
+    - JTWC: Category 1-5 Typhoon, Super Typhoon, Tropical Storm, Tropical Depression, Low Pressure Area
+    - JMA: Typhoon, Severe Tropical Storm, Tropical Storm, Tropical Depression, Low Pressure Area
+    - PAGASA: Super Typhoon, Typhoon, Severe Tropical Storm, Tropical Storm, Tropical Depression, Low Pressure Area
+    """
+    if wind_kmh is None and wind_kt is None and not explicit_cat:
+        return None
+
+    agency = (agency or '').upper()
+    name_u = (storm_name or '').upper()
+    is_invest = ('INVEST' in name_u or (name_u.startswith('9') and len(name_u) <= 3))
+
+    # Compute from wind
+    kt = wind_kt if wind_kt is not None else (int(round(wind_kmh / 1.852)) if wind_kmh else 0)
+    kmh = wind_kmh if wind_kmh is not None else (int(round(wind_kt * 1.852)) if wind_kt else 0)
+
+    # 45 km/h or lower (or < 25 kt) is classified as a Low Pressure Area (LPA / Disturbance / Invest)
+    is_lpa = (kmh <= 45 or kt < 25)
+
+    if explicit_cat:
+        c = explicit_cat.strip().upper()
+        if 'SUPER' in c and 'TYPHOON' in c:
+            return 'SUPER TYPHOON'
+        elif 'TYPHOON' in c:
+            return 'TYPHOON'
+        elif 'SEVERE' in c:
+            return 'SEVERE TROPICAL STORM'
+        elif 'STORM' in c:
+            return 'TROPICAL STORM'
+        elif 'DEPRESSION' in c:
+            if is_lpa:
+                return 'LOW PRESSURE AREA'
+            return 'TROPICAL DEPRESSION'
+        elif 'LOW PRESSURE' in c or 'LPA' in c or 'INVEST' in c or 'DISTURBANCE' in c:
+            return 'LOW PRESSURE AREA'
+
+    if agency == 'PAGASA':
+        if kmh >= 185:
+            return 'SUPER TYPHOON'
+        elif kmh >= 118:
+            return 'TYPHOON'
+        elif kmh >= 89:
+            return 'SEVERE TROPICAL STORM'
+        elif kmh >= 62:
+            return 'TROPICAL STORM'
+        elif kmh > 45:
+            return 'TROPICAL DEPRESSION'
+        else:
+            return 'LOW PRESSURE AREA'
+
+    elif agency == 'JMA':
+        if kt >= 64:
+            return 'TYPHOON'
+        elif kt >= 48:
+            return 'SEVERE TROPICAL STORM'
+        elif kt >= 34:
+            return 'TROPICAL STORM'
+        elif not is_lpa:
+            return 'TROPICAL DEPRESSION'
+        else:
+            return 'LOW PRESSURE AREA'
+
+    elif agency == 'JTWC':
+        if kt >= 137:
+            return 'CATEGORY 5 TYPHOON'
+        elif kt >= 130:
+            return 'SUPER TYPHOON'
+        elif kt >= 113:
+            return 'CATEGORY 4 TYPHOON'
+        elif kt >= 96:
+            return 'CATEGORY 3 TYPHOON'
+        elif kt >= 83:
+            return 'CATEGORY 2 TYPHOON'
+        elif kt >= 64:
+            return 'CATEGORY 1 TYPHOON'
+        elif kt >= 34:
+            return 'TROPICAL STORM'
+        elif not is_lpa:
+            return 'TROPICAL DEPRESSION'
+        else:
+            return 'LOW PRESSURE AREA'
+
+    return 'LOW PRESSURE AREA' if is_lpa else 'TROPICAL DEPRESSION'
+
 def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
     """
     Fetches real-time operational storm wind estimates for the 3 official agencies:
-    - JTWC (Joint Typhoon Warning Center): 1-minute sustained winds (kt & km/h)
-    - JMA (Japan Meteorological Agency): 10-minute sustained winds (kt & km/h)
-    - PAGASA (DOST-PAGASA): 10-minute sustained winds (kt & km/h or category)
+    - JTWC (Joint Typhoon Warning Center): 1-minute sustained winds (kt & km/h) + category
+    - JMA (Japan Meteorological Agency): 10-minute sustained winds (kt & km/h) + category
+    - PAGASA (DOST-PAGASA): 10-minute sustained winds (kt & km/h) + category
     
     If an agency does not have an active bulletin or data, its status is set to 'N/A'.
     """
     if not storm_data:
         return {
-            'JTWC': {'wind_kt': None, 'wind_kmh': None, 'status': 'N/A', 'note': 'NO DATA', 'standard': '1-MIN SUSTAINED'},
-            'JMA': {'wind_kt': None, 'wind_kmh': None, 'status': 'N/A', 'note': 'NO DATA', 'standard': '10-MIN SUSTAINED'},
-            'PAGASA': {'wind_kt': None, 'wind_kmh': None, 'status': 'N/A', 'note': 'NO DATA', 'standard': '10-MIN SUSTAINED'}
+            'JTWC': {'wind_kt': None, 'wind_kmh': None, 'category': None, 'status': 'N/A', 'note': 'NO BULLETIN', 'standard': '1-MIN SUSTAINED'},
+            'JMA': {'wind_kt': None, 'wind_kmh': None, 'category': None, 'status': 'N/A', 'note': 'NO BULLETIN', 'standard': '10-MIN SUSTAINED'},
+            'PAGASA': {'wind_kt': None, 'wind_kmh': None, 'category': None, 'status': 'N/A', 'note': 'NO BULLETIN', 'standard': '10-MIN SUSTAINED'}
         }
 
     raw_id = str(storm_data.get('atcf_id', '')).replace('.', '').upper()
@@ -1059,9 +1159,9 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
     pagasa_name = str(storm_data.get('pagasa_name') or PAGASA_STORM_MAP_2026.get(short_id) or PAGASA_STORM_MAP_2026.get(raw_name) or '').upper()
 
     agency_results = {
-        'JTWC': {'wind_kt': None, 'wind_kmh': None, 'status': 'N/A', 'note': 'NO BULLETIN', 'standard': '1-MIN SUSTAINED'},
-        'JMA': {'wind_kt': None, 'wind_kmh': None, 'status': 'N/A', 'note': 'NO BULLETIN', 'standard': '10-MIN SUSTAINED'},
-        'PAGASA': {'wind_kt': None, 'wind_kmh': None, 'status': 'N/A', 'note': 'OUTSIDE PAR' if not is_point_inside_par(curr_lat, curr_lon) else 'NO BULLETIN', 'standard': '10-MIN SUSTAINED'}
+        'JTWC': {'wind_kt': None, 'wind_kmh': None, 'category': None, 'status': 'N/A', 'note': 'NO BULLETIN', 'standard': '1-MIN SUSTAINED'},
+        'JMA': {'wind_kt': None, 'wind_kmh': None, 'category': None, 'status': 'N/A', 'note': 'NO BULLETIN', 'standard': '10-MIN SUSTAINED'},
+        'PAGASA': {'wind_kt': None, 'wind_kmh': None, 'category': None, 'status': 'N/A', 'note': 'NO BULLETIN', 'standard': '10-MIN SUSTAINED'}
     }
 
     # ── 1. JTWC Official Track / Advisory ────────────────────────────────────
@@ -1112,6 +1212,7 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
         agency_results['JTWC'] = {
             'wind_kt': jtwc_kt,
             'wind_kmh': kmh,
+            'category': get_agency_category('JTWC', wind_kt=jtwc_kt, wind_kmh=kmh, storm_name=raw_name),
             'status': 'ACTIVE',
             'standard': '1-MIN SUSTAINED'
         }
@@ -1193,6 +1294,7 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
         agency_results['JMA'] = {
             'wind_kt': jma_kt,
             'wind_kmh': kmh,
+            'category': get_agency_category('JMA', wind_kt=jma_kt, wind_kmh=kmh, storm_name=raw_name),
             'status': 'ACTIVE',
             'standard': '10-MIN SUSTAINED'
         }
@@ -1267,9 +1369,18 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
 
     if pagasa_kt is not None:
         # cyclone.dat had active data for this storm -> USE IT AND FINISH!
+        pag_cat_map = {
+            'TD': 'TROPICAL DEPRESSION',
+            'TS': 'TROPICAL STORM',
+            'STS': 'SEVERE TROPICAL STORM',
+            'TY': 'TYPHOON',
+            'STY': 'SUPER TYPHOON'
+        }
+        pag_cat = pag_cat_map.get(cat) or get_agency_category('PAGASA', wind_kt=pagasa_kt, wind_kmh=pagasa_kmh, storm_name=raw_name)
         agency_results['PAGASA'] = {
             'wind_kt': pagasa_kt,
             'wind_kmh': pagasa_kmh,
+            'category': pag_cat,
             'status': 'ACTIVE',
             'standard': '10-MIN SUSTAINED',
             'source': 'cyclone.dat'
@@ -1279,21 +1390,21 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
     # 3B. IF NO cyclone.dat DATA FOR THIS STORM, USE pf.pdf
     pf_res = fetch_pagasa_pf_pdf(storm_data, data_dir=data_dir)
     if pf_res and pf_res.get('wind_kmh'):
+        pag_cat = get_agency_category('PAGASA', wind_kt=pf_res.get('wind_kt'), wind_kmh=pf_res.get('wind_kmh'), explicit_cat=pf_res.get('category'), storm_name=raw_name)
         agency_results['PAGASA'] = {
             'wind_kt': pf_res.get('wind_kt'),
             'wind_kmh': pf_res.get('wind_kmh'),
+            'category': pag_cat,
             'status': 'ACTIVE',
             'standard': '10-MIN SUSTAINED',
             'source': 'pf.pdf'
         }
-        return agency_results
-
     return agency_results
 
 def draw_agency_wind_card(img, agency_data=None, storm_data=None):
     """
     Draws a TV broadcast comparison card at the bottom of the satellite map,
-    comparing storm maximum winds across official agencies: JTWC, JMA, and PAGASA.
+    comparing storm maximum winds and official categories across JTWC, JMA, and PAGASA.
     Matches the Fox Weather broadcast widget styling with enhanced hierarchy, line spacing, & contrast.
     """
     if agency_data is None:
@@ -1303,13 +1414,13 @@ def draw_agency_wind_card(img, agency_data=None, storm_data=None):
     draw = ImageDraw.Draw(img)
     scale = w / 1200.0
 
-    # Dimensions & placement at bottom center (balanced vertical padding against satellite view)
-    card_w = int(530 * scale)
-    card_h = int(160 * scale)
+    # Dimensions & placement at bottom center - tight & compact without excessive bottom space
+    card_w = int(550 * scale)
+    card_h = int(154 * scale)
     card_x = int((w - card_w) / 2)
     card_y = int(h - card_h - (22 * scale))
 
-    radius = max(8, int(14 * scale))
+    radius = max(8, int(13 * scale))
     border_w = max(1, int(2 * scale))
 
     # 1. Outer White Card Container
@@ -1321,46 +1432,41 @@ def draw_agency_wind_card(img, agency_data=None, storm_data=None):
         width=border_w
     )
 
-    # 2. Dark Navy Header Pill (Restored prominent size)
+    # 2. Dark Navy Header Pill
     pill_margin_x = int(9 * scale)
-    pill_margin_y = int(8 * scale)
-    pill_h = int(32 * scale)
+    pill_margin_y = int(7 * scale)
+    pill_h = int(28 * scale)
     pill_x1 = card_x + pill_margin_x
     pill_y1 = card_y + pill_margin_y
     pill_x2 = card_x + card_w - pill_margin_x
     pill_y2 = pill_y1 + pill_h
-    pill_radius = max(4, int(8 * scale))
+    pill_radius = max(4, int(6 * scale))
 
     draw.rounded_rectangle(
         [pill_x1, pill_y1, pill_x2, pill_y2],
         radius=pill_radius,
-        fill=(13, 35, 66),  # #0d2342 Dark Navy (matching forcast5.py)
+        fill=(13, 35, 66),  # #0d2342 Dark Navy
         outline=None
     )
 
     # Fonts
     try:
-        font_pill = ImageFont.truetype("arialbd.ttf", max(10, int(13.5 * scale)))
-        # Agency names: prominent hierarchy (Agency -> KM/H -> KT -> Standard)
-        font_agency = ImageFont.truetype("arialbd.ttf", max(13, int(18.5 * scale)))
-        # KM/H dominant large value on top
-        font_wind_large = ImageFont.truetype("arialbd.ttf", max(20, int(27.5 * scale)))
-        font_wind_na = ImageFont.truetype("arialbd.ttf", max(20, int(29 * scale)))
-        # KT values below KM/H
-        font_metric = ImageFont.truetype("arialbd.ttf", max(10, int(13.5 * scale)))
-        # Sustained standard: bumped up for phone readability, high contrast
-        font_sub = ImageFont.truetype("arialbd.ttf", max(9, int(12.5 * scale)))
-        # N/A notes
-        font_na_note = ImageFont.truetype("arialbd.ttf", max(10, int(12.5 * scale)))
-        font_na_sub = ImageFont.truetype("arialbd.ttf", max(8, int(11.0 * scale)))
+        font_pill = ImageFont.truetype("arialbd.ttf", max(10, int(12.5 * scale)))
+        font_agency = ImageFont.truetype("arialbd.ttf", max(12, int(16.5 * scale)))
+        font_cat = ImageFont.truetype("arialbd.ttf", max(8, int(10.5 * scale)))
+        font_wind_large = ImageFont.truetype("arialbd.ttf", max(18, int(25.0 * scale)))
+        font_wind_na = ImageFont.truetype("arialbd.ttf", max(18, int(25.0 * scale)))
+        font_metric = ImageFont.truetype("arialbd.ttf", max(9, int(12.5 * scale)))
+        font_sub = ImageFont.truetype("arialbd.ttf", max(8, int(11.0 * scale)))
+        font_na_sub = ImageFont.truetype("arialbd.ttf", max(9, int(12.0 * scale)))
     except Exception:
         font_pill = ImageFont.load_default()
         font_agency = font_pill
+        font_cat = font_pill
         font_wind_large = font_pill
         font_wind_na = font_pill
         font_metric = font_pill
         font_sub = font_pill
-        font_na_note = font_pill
         font_na_sub = font_pill
 
     # Header Pill Title
@@ -1375,10 +1481,9 @@ def draw_agency_wind_card(img, agency_data=None, storm_data=None):
     )
 
     # 3. Three Equal Columns
-    body_y1 = pill_y2 + int(6 * scale)
+    body_y1 = pill_y2 + int(5 * scale)
     col_w = (card_w - (pill_margin_x * 2)) / 3.0
 
-    # Darkened agency colors for high contrast on white
     agencies = [
         ('JTWC', agency_data.get('JTWC', {}), (190, 18, 60)),     # #be123c Rich Crimson
         ('JMA', agency_data.get('JMA', {}), (4, 120, 87)),        # #047857 Deep Forest Emerald
@@ -1386,17 +1491,18 @@ def draw_agency_wind_card(img, agency_data=None, storm_data=None):
     ]
 
     # Vertical dividers between columns
-    div_y1 = body_y1 + int(4 * scale)
-    div_y2 = card_y + card_h - int(12 * scale)
+    div_y1 = body_y1 + int(3 * scale)
+    div_y2 = card_y + card_h - int(8 * scale)
     for i in [1, 2]:
         div_x = card_x + pill_margin_x + int(i * col_w)
         draw.line([(div_x, div_y1), (div_x, div_y2)], fill=(203, 213, 225), width=max(1, int(1.2 * scale)))
 
     # Synchronized row coordinates for clean horizontal alignment
-    agency_y = body_y1 + int(3 * scale)
-    val_y = agency_y + int(24 * scale)
-    metric_y = val_y + int(36 * scale)   # comfortable breathing room below primary value
-    standard_y = metric_y + int(18 * scale)
+    agency_y = body_y1 + int(2 * scale)
+    cat_y = agency_y + int(19 * scale)
+    val_y = cat_y + int(16 * scale)
+    metric_y = val_y + int(31 * scale)
+    standard_y = metric_y + int(16 * scale)
 
     # Render each agency column
     for i, (name, data, color) in enumerate(agencies):
@@ -1404,51 +1510,60 @@ def draw_agency_wind_card(img, agency_data=None, storm_data=None):
         c_x2 = c_x1 + col_w
         c_mid = (c_x1 + c_x2) / 2.0
 
-        # Row 1: Agency Label (Prominent, hierarchy: Agency -> KM/H -> KT -> Standard)
+        # Row 1: Agency Label (Prominent, colored)
         ab = draw.textbbox((0, 0), name, font=font_agency)
         aw = ab[2] - ab[0]
         draw.text((c_mid - aw / 2.0, agency_y), name, fill=color, font=font_agency)
 
-        # Wind Value & Details
         wind_kt = data.get('wind_kt')
         wind_kmh = data.get('wind_kmh')
 
         if wind_kmh is not None and wind_kmh > 0:
-            # Row 2: Dominant KM/H number on TOP
+            # Row 2: Official Category
+            cat_str = get_agency_category(name, wind_kt=wind_kt, wind_kmh=wind_kmh, explicit_cat=data.get('category'), storm_name=storm_data.get('storm_name') if storm_data else None) or data.get('category') or ''
+            cb = draw.textbbox((0, 0), cat_str, font=font_cat)
+            cw = cb[2] - cb[0]
+
+            # Auto-shrink font if long category string to maintain clean margins
+            use_font_cat = font_cat
+            if cw > col_w - int(10 * scale):
+                try:
+                    use_font_cat = ImageFont.truetype("arialbd.ttf", max(7, int(9.0 * scale)))
+                    cb = draw.textbbox((0, 0), cat_str, font=use_font_cat)
+                    cw = cb[2] - cb[0]
+                except Exception:
+                    pass
+            draw.text((c_mid - cw / 2.0, cat_y), cat_str, fill=(71, 85, 105), font=use_font_cat)
+
+            # Row 3: Dominant KM/H number on TOP
             val_str = f"{int(wind_kmh)} KM/H"
             vb = draw.textbbox((0, 0), val_str, font=font_wind_large)
             vw = vb[2] - vb[0]
             draw.text((c_mid - vw / 2.0, val_y), val_str, fill=(10, 29, 55), font=font_wind_large)
 
-            # Row 3: KT Metric Line below KM/H
+            # Row 4: KT Metric Line below KM/H
             kt_str = f"{int(wind_kt)} KT" if wind_kt is not None else ""
             kb = draw.textbbox((0, 0), kt_str, font=font_metric)
             kw = kb[2] - kb[0]
             draw.text((c_mid - kw / 2.0, metric_y), kt_str, fill=(3, 105, 161), font=font_metric)
 
-            # Row 4: Standard line (bold, larger, deep high-contrast slate #0f172a)
+            # Row 5: Sustained Standard line
             std_str = data.get('standard', 'SUSTAINED')
             sb = draw.textbbox((0, 0), std_str, font=font_sub)
             sw = sb[2] - sb[0]
             draw.text((c_mid - sw / 2.0, standard_y), std_str, fill=(15, 23, 42), font=font_sub)
         else:
-            # Row 2: N/A in muted slate
+            # Row 3: N/A in muted slate
             val_str = "N/A"
             vb = draw.textbbox((0, 0), val_str, font=font_wind_na)
             vw = vb[2] - vb[0]
             draw.text((c_mid - vw / 2.0, val_y), val_str, fill=(148, 163, 184), font=font_wind_na)
 
-            # Row 3: Note line (e.g. OUTSIDE PAR, comfortable breathing room below N/A, dark slate #334155)
-            note_str = data.get('note', 'NO ACTIVE DATA')
-            nb = draw.textbbox((0, 0), note_str, font=font_na_note)
+            # Row 4: Clean single note: NO BULLETIN (No OUTSIDE PAR text on JMA or JTWC)
+            note_str = "NO BULLETIN"
+            nb = draw.textbbox((0, 0), note_str, font=font_na_sub)
             nw = nb[2] - nb[0]
-            draw.text((c_mid - nw / 2.0, metric_y), note_str, fill=(51, 65, 85), font=font_na_note)
-
-            # Row 4: Sub line (e.g. NO BULLETIN, legible dark slate #475569)
-            sub_str = "NO BULLETIN"
-            sub_b = draw.textbbox((0, 0), sub_str, font=font_na_sub)
-            sub_w = sub_b[2] - sub_b[0]
-            draw.text((c_mid - sub_w / 2.0, standard_y), sub_str, fill=(71, 85, 105), font=font_na_sub)
+            draw.text((c_mid - nw / 2.0, metric_y + int(3 * scale)), note_str, fill=(71, 85, 105), font=font_na_sub)
 
     return img
 
