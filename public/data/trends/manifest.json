@@ -1,5 +1,5 @@
 {
-  "base_5day_cycle": "2026-10-11 18:00",
+  "base_5day_cycle": "2026-10-12 00:00",
   "base_5day": [
     {
       "id": "27W",
@@ -10,23 +10,23 @@
       "wide": "/data/trends/base_5day_27W_wide.png"
     },
     {
-      "id": "95W",
+      "id": "28W",
       "local_id": 2,
-      "name": "Invest 95W",
-      "trackCount": 46,
-      "standard": "/data/trends/base_5day_95W_standard.png",
-      "wide": "/data/trends/base_5day_95W_wide.png"
+      "name": "TC 28W",
+      "trackCount": 49,
+      "standard": "/data/trends/base_5day_28W_standard.png",
+      "wide": "/data/trends/base_5day_28W_wide.png"
     },
     {
-      "id": "dist_20261010_18_4",
+      "id": "dist_20261011_00_4",
       "local_id": 3,
       "name": "Disturbance 3",
-      "trackCount": 49,
-      "standard": "/data/trends/base_5day_dist_20261010_18_4_standard.png",
-      "wide": "/data/trends/base_5day_dist_20261010_18_4_wide.png"
+      "trackCount": 50,
+      "standard": "/data/trends/base_5day_dist_20261011_00_4_standard.png",
+      "wide": "/data/trends/base_5day_dist_20261011_00_4_wide.png"
     }
   ],
-  "base_15day_cycle": "2026-10-11 18:00",
+  "base_15day_cycle": "2026-10-12 00:00",
   "base_15day": [
     {
       "id": "27W",
@@ -37,20 +37,20 @@
       "wide": "/data/trends/base_15day_27W_wide.png"
     },
     {
-      "id": "95W",
+      "id": "28W",
       "local_id": 2,
-      "name": "Invest 95W",
-      "trackCount": 46,
-      "standard": "/data/trends/base_15day_95W_standard.png",
-      "wide": "/data/trends/base_15day_95W_wide.png"
+      "name": "TC 28W",
+      "trackCount": 49,
+      "standard": "/data/trends/base_15day_28W_standard.png",
+      "wide": "/data/trends/base_15day_28W_wide.png"
     },
     {
-      "id": "dist_20261010_18_4",
+      "id": "dist_20261011_00_4",
       "local_id": 3,
       "name": "Disturbance 3",
-      "trackCount": 49,
-      "standard": "/data/trends/base_15day_dist_20261010_18_4_standard.png",
-      "wide": "/data/trends/base_15day_dist_20261010_18_4_wide.png"
+      "trackCount": 50,
+      "standard": "/data/trends/base_15day_dist_20261011_00_4_standard.png",
+      "wide": "/data/trends/base_15day_dist_20261011_00_4_wide.png"
     }
   ],
   "large_5day_cycle": "2026-10-11 18:00",
