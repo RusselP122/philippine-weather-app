@@ -1,8 +1,8 @@
 {
   "model": "NOAA AIGFS",
   "source": "NOAA NCEP NOMADS",
-  "generated_at": "2026-10-12 11:26 AM",
-  "run_time": "2026-10-12 00:00 UTC",
+  "generated_at": "2026-10-12 10:39 PM",
+  "run_time": "2026-10-12 18:00 UTC",
   "animation_frames": [
     "aigfs_precip_006",
     "aigfs_precip_012",
@@ -63,10 +63,6 @@
     "aigfs_precip_342",
     "aigfs_precip_348",
     "aigfs_precip_354",
-    "aigfs_precip_360",
-    "aigfs_precip_366",
-    "aigfs_precip_372",
-    "aigfs_precip_378",
-    "aigfs_precip_384"
+    "aigfs_precip_360"
   ]
 }
