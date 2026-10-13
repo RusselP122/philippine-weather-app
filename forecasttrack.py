@@ -562,6 +562,16 @@ def get_actual_ensemble_mean_for_storm(storm, model_file_path):
     df = load_and_decrypt_track_file(model_file_path)
     if df.empty or 'lat' not in df.columns or 'lon' not in df.columns:
         return pd.DataFrame()
+
+    # Reject stale files older than 72 hours
+    if 'init_time' in df.columns and not df['init_time'].dropna().empty:
+        try:
+            init_dt = pd.to_datetime(df['init_time'].dropna().iloc[0])
+            init_age = (datetime.now(timezone.utc) - init_dt.tz_localize('UTC')).total_seconds() / 3600.0
+            if init_age > 72.0:
+                return pd.DataFrame()
+        except Exception:
+            pass
         
     curr_lat, curr_lon = storm['lat'], storm['lon']
     short_id = get_short_atcf_id(storm['atcf_id'])
@@ -573,7 +583,7 @@ def get_actual_ensemble_mean_for_storm(storm, model_file_path):
         mask = track_ids.str.contains(short_id.upper()) | track_ids.str.contains(storm['atcf_id'].upper())
         matching_tracks = df[mask]
         
-    # 2. If no track_id match or empty, spatial proximity filter (initial point <= 500 km from active storm)
+    # 2. If no track_id match or empty, spatial proximity filter (initial point <= 350 km from active storm)
     if matching_tracks.empty:
         keep_keys = set()
         for (t_id, s_val), track_pts in df.groupby(['track_id', 'sample']):
@@ -582,7 +592,7 @@ def get_actual_ensemble_mean_for_storm(storm, model_file_path):
                 continue
             first_pt = track_pts.iloc[0]
             dist_km = haversine_km(first_pt['lat'], first_pt['lon'], curr_lat, curr_lon)
-            if dist_km <= 500.0:
+            if dist_km <= 350.0:
                 keep_keys.add((t_id, s_val))
                 
         if keep_keys:
@@ -665,16 +675,24 @@ def get_fnv3_paired_mean_track(storm, data_dir='public/data'):
         if not os.path.exists(fpath):
             continue
             
-        # Reject historical files older than 48 hours unless it's explicitly named *_latest.*
-        if 'latest' not in os.path.basename(fpath):
-            file_mtime = os.path.getmtime(fpath)
-            age_hours = (datetime.now().timestamp() - file_mtime) / 3600.0
-            if age_hours > 48.0:
-                continue
+        # Reject historical files older than 72 hours
+        file_mtime = os.path.getmtime(fpath)
+        age_hours = (datetime.now().timestamp() - file_mtime) / 3600.0
+        if age_hours > 72.0:
+            continue
 
         df = load_and_decrypt_track_file(fpath)
         if df.empty or 'lat' not in df.columns or 'lon' not in df.columns:
             continue
+            
+        if 'init_time' in df.columns and not df['init_time'].dropna().empty:
+            try:
+                init_dt = pd.to_datetime(df['init_time'].dropna().iloc[0])
+                init_age = (datetime.now(timezone.utc) - init_dt.tz_localize('UTC')).total_seconds() / 3600.0
+                if init_age > 72.0:
+                    continue
+            except Exception:
+                pass
             
         # Filter paired tracks (sample == -1)
         paired_df = df[df['sample'] == -1].copy()
@@ -1817,18 +1835,24 @@ def load_all_actual_tracks_for_storm(storm):
     if not wnc_paired.empty:
         ensemble_means['WeatherNext 3 Cyclone'] = wnc_paired
     else:
-        for raw_cand in ['wnv3_paired_latest.dat', 'wnv3_paired_latest.csv', 'wnv3_latest.dat', 'wnv3_latest.csv']:
-            cand_path = os.path.join(data_dir, raw_cand)
-            if os.path.exists(cand_path):
-                wnc_calc = get_actual_ensemble_mean_for_storm(storm, cand_path)
-                if not wnc_calc.empty:
-                    ensemble_means['WeatherNext 3 Cyclone'] = wnc_calc
-                    break
+        wnc_candidates = [
+            os.path.join(data_dir, 'wnv3_paired_latest.dat'),
+            os.path.join(data_dir, 'wnv3_latest.dat'),
+            os.path.join(data_dir, 'wnv3_paired_latest.csv'),
+            os.path.join(data_dir, 'wnv3_latest.csv')
+        ]
+        existing_wnc = [f for f in wnc_candidates if os.path.exists(f)]
+        existing_wnc.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+        for cand_path in existing_wnc:
+            wnc_calc = get_actual_ensemble_mean_for_storm(storm, cand_path)
+            if not wnc_calc.empty:
+                ensemble_means['WeatherNext 3 Cyclone'] = wnc_calc
+                break
 
     for wnc_f in [
         os.path.join(data_dir, 'wnv3_paired_latest.dat'),
-        os.path.join(data_dir, 'wnv3_paired_latest.csv'),
         os.path.join(data_dir, 'wnv3_latest.dat'),
+        os.path.join(data_dir, 'wnv3_paired_latest.csv'),
         os.path.join(data_dir, 'wnv3_latest.csv')
     ]:
         if os.path.exists(wnc_f):
@@ -1836,8 +1860,10 @@ def load_all_actual_tracks_for_storm(storm):
             if 'init_time' in df_wnc.columns and not df_wnc['init_time'].dropna().empty:
                 try:
                     dt = pd.to_datetime(df_wnc['init_time'].dropna().iloc[0])
-                    track_inits['WeatherNext 3 Cyclone'] = dt.strftime('%Y-%m-%d %HZ')
-                    break
+                    init_age = (datetime.now(timezone.utc) - dt.tz_localize('UTC')).total_seconds() / 3600.0
+                    if init_age <= 72.0:
+                        track_inits['WeatherNext 3 Cyclone'] = dt.strftime('%Y-%m-%d %HZ')
+                        break
                 except Exception:
                     pass
     if 'WeatherNext 3 Cyclone' not in track_inits:
