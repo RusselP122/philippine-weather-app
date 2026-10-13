@@ -53,7 +53,7 @@
       "wide": "/data/trends/base_15day_28W_wide.png"
     }
   ],
-  "large_5day_cycle": "2026-10-13 06:00",
+  "large_5day_cycle": "2026-10-13 12:00",
   "large_5day": [
     {
       "id": "27W",
@@ -67,7 +67,7 @@
       "id": "96W",
       "local_id": 2,
       "name": "Invest 96W",
-      "trackCount": 990,
+      "trackCount": 1000,
       "standard": "/data/trends/large_5day_96W_standard.png",
       "wide": "/data/trends/large_5day_96W_wide.png"
     },
@@ -75,12 +75,12 @@
       "id": "28W",
       "local_id": 3,
       "name": "TC 28W",
-      "trackCount": 972,
+      "trackCount": 965,
       "standard": "/data/trends/large_5day_28W_standard.png",
       "wide": "/data/trends/large_5day_28W_wide.png"
     }
   ],
-  "large_15day_cycle": "2026-10-13 06:00",
+  "large_15day_cycle": "2026-10-13 12:00",
   "large_15day": [
     {
       "id": "27W",
@@ -91,26 +91,34 @@
       "wide": "/data/trends/large_15day_27W_wide.png"
     },
     {
-      "id": "96W",
+      "id": "28W",
       "local_id": 2,
+      "name": "TC 28W",
+      "trackCount": 965,
+      "standard": "/data/trends/large_15day_28W_standard.png",
+      "wide": "/data/trends/large_15day_28W_wide.png"
+    },
+    {
+      "id": "96W",
+      "local_id": 3,
       "name": "Invest 96W",
-      "trackCount": 994,
+      "trackCount": 716,
       "standard": "/data/trends/large_15day_96W_standard.png",
       "wide": "/data/trends/large_15day_96W_wide.png"
     },
     {
-      "id": "28W",
-      "local_id": 3,
-      "name": "TC 28W",
-      "trackCount": 972,
-      "standard": "/data/trends/large_15day_28W_standard.png",
-      "wide": "/data/trends/large_15day_28W_wide.png"
+      "id": "dist_20261013_00_4",
+      "local_id": 4,
+      "name": "Disturbance 4",
+      "trackCount": 286,
+      "standard": "/data/trends/large_15day_dist_20261013_00_4_standard.png",
+      "wide": "/data/trends/large_15day_dist_20261013_00_4_wide.png"
     },
     {
       "id": "dist_20261013_06_6",
       "local_id": 6,
       "name": "Disturbance 6",
-      "trackCount": 531,
+      "trackCount": 588,
       "standard": "/data/trends/large_15day_dist_20261013_06_6_standard.png",
       "wide": "/data/trends/large_15day_dist_20261013_06_6_wide.png"
     }
