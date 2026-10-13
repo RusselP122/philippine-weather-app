@@ -3,13 +3,13 @@
   "storm_name": "TC 27W",
   "track_id": "WP272026",
   "latest": {
-    "lat": 33.9,
-    "lon": 151.7,
-    "pressure_hpa": 979.0,
+    "lat": 35.4,
+    "lon": 153.7,
+    "pressure_hpa": 978.0,
     "wind_kt": 70.0,
     "wind_kmh": 130,
-    "movement": "NE at 45.3 km/h (24.5 kt)",
-    "init_time": "2026-10-13 00:00",
+    "movement": "NE at 41.3 km/h (22.3 kt)",
+    "init_time": "2026-10-13 06:00",
     "category": "Typhoon"
   },
   "history": [
@@ -360,6 +360,15 @@
       "lat": 33.9,
       "lon": 151.7,
       "pressure_hpa": 979.0,
+      "wind_kt": 70.0,
+      "wind_kmh": 130,
+      "category": "Typhoon"
+    },
+    {
+      "cycle": "2026-10-13 06:00",
+      "lat": 35.4,
+      "lon": 153.7,
+      "pressure_hpa": 978.0,
       "wind_kt": 70.0,
       "wind_kmh": 130,
       "category": "Typhoon"
