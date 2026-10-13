@@ -202,7 +202,7 @@ const Forecast = () => {
   const [selectedStormId, setSelectedStormId] = useState("latest");
 
   useEffect(() => {
-    fetch(getAssetUrl("/data/tc_storms_index.json"))
+    fetch(getAssetUrl(`/data/tc_storms_index.json?t=${Date.now()}`))
       .then((res) => {
         if (res.ok) return res.json();
         throw new Error("Failed to load storms index");
@@ -266,7 +266,7 @@ const Forecast = () => {
 
   useEffect(() => {
     if (showTrends && !trendsManifest) {
-      fetch(getAssetUrl("/data/trends/manifest.json"))
+      fetch(getAssetUrl(`/data/trends/manifest.json?t=${Date.now()}`))
         .then(res => {
           if (res.ok) return res.json();
           throw new Error("Failed to load trends manifest");

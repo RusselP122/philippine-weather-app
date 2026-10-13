@@ -80,9 +80,16 @@ export default function middleware(request) {
     }
 
     // 2. Hotlink / Direct Access Protection
+    const secFetchSite = request.headers.get('sec-fetch-site');
+    if (secFetchSite === 'same-origin' || secFetchSite === 'same-site') {
+        return;
+    }
+
     const referer = request.headers.get('referer');
     const allowedDomains = [
         'philippine-weather-app.vercel.app',
+        'vercel.app',
+        'garbinwx.org',
         'localhost',
         '127.0.0.1'
     ];
@@ -94,7 +101,10 @@ export default function middleware(request) {
             getErrorHtml('404', 'Resource Not Found', 'The requested image or asset could not be found or access is restricted.', '#fbbf24'),
             {
                 status: 404,
-                headers: { 'Content-Type': 'text/html' }
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Cache-Control': 'no-store, max-age=0, must-revalidate'
+                }
             }
         );
     }

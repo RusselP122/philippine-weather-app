@@ -51,8 +51,10 @@ const TCPositions = () => {
   const [stormsList, setStormsList] = useState([]);
   const [selectedTrackId, setSelectedTrackId] = useState(null);
 
+  const [assetTimestamp] = useState(() => Date.now());
+
   const loadLatestStorm = () => {
-    fetch(getAssetUrl("/data/tc_positions_latest.json"))
+    fetch(getAssetUrl(`/data/tc_positions_latest.json?t=${Date.now()}`))
       .then((res) => {
         if (!res.ok) {
           throw new Error("Failed to load initialization cycle data.");
@@ -83,7 +85,7 @@ const TCPositions = () => {
 
   // Load storms list index first
   useEffect(() => {
-    fetch(getAssetUrl("/data/tc_storms_index.json"))
+    fetch(getAssetUrl(`/data/tc_storms_index.json?t=${Date.now()}`))
       .then((res) => {
         if (!res.ok) {
           throw new Error("No index available, loading latest storm.");
@@ -122,7 +124,7 @@ const TCPositions = () => {
       ];
       for (const ep of endpoints) {
         try {
-          const res = await fetch(getAssetUrl(ep));
+          const res = await fetch(getAssetUrl(`${ep}?t=${Date.now()}`));
           if (res.ok) {
             const json = await res.json();
             if (json && (json.history || json.latest)) return json;
@@ -332,13 +334,13 @@ const TCPositions = () => {
               {/* Map Viewport */}
               <div className="h-80 md:h-[30rem] w-full bg-slate-950 border border-white/5 rounded-2xl overflow-hidden relative mt-2 shadow-inner flex items-center justify-center">
                 <img
-                  src={getAssetUrl(`/assets/tc_positions_${selectedTrackId || 'latest'}.png`)}
+                  src={getAssetUrl(`/assets/tc_positions_${selectedTrackId || 'latest'}.png?t=${assetTimestamp}`)}
                   alt="Tropical cyclone initialization cycle track map"
                   className="h-full w-full object-contain cursor-pointer transition-opacity hover:opacity-90"
-                  onClick={() => setEnlargedImage(getAssetUrl(`/assets/tc_positions_${selectedTrackId || 'latest'}.png`))}
+                  onClick={() => setEnlargedImage(getAssetUrl(`/assets/tc_positions_${selectedTrackId || 'latest'}.png?t=${assetTimestamp}`))}
                 />
                 <button
-                  onClick={() => setEnlargedImage(getAssetUrl(`/assets/tc_positions_${selectedTrackId || 'latest'}.png`))}
+                  onClick={() => setEnlargedImage(getAssetUrl(`/assets/tc_positions_${selectedTrackId || 'latest'}.png?t=${assetTimestamp}`))}
                   className="absolute bottom-4 right-4 p-3 bg-slate-900/95 hover:bg-slate-800 border border-white/10 hover:border-slate-500 rounded-2xl text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-2xl flex items-center gap-1.5 text-xs font-bold"
                 >
                   <Maximize2 className="w-4 h-4" />

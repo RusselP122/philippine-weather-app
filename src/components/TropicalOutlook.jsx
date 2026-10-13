@@ -11,7 +11,7 @@ const todayDateStr = `${yyyy}-${mm}-${dd}`;
 
 const TropicalOutlook = () => {
   const [activeTab, setActiveTab] = useState('week1');
-
+  const [assetTimestamp] = useState(() => Date.now());
   const [selectedImage, setSelectedImage] = useState(null);
 
   const openImage = (src) => {
@@ -71,16 +71,16 @@ const TropicalOutlook = () => {
             <div className="h-80 md:h-[26rem] flex items-center justify-center bg-slate-900 relative">
               {/* Image for Week 1 */}
               <img
-                src="/images/tropical_outlook_week1_latest.png"
+                src={`/images/tropical_outlook_week1_latest.png?t=${assetTimestamp}`}
                 alt="Tropical weather outlook Week 1"
-                onClick={() => openImage("/images/tropical_outlook_week1_latest.png")}
+                onClick={() => openImage(`/images/tropical_outlook_week1_latest.png?t=${assetTimestamp}`)}
                 className={`h-full w-full object-contain absolute transition-opacity duration-300 cursor-pointer hover:opacity-90 ${activeTab === 'week1' ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
               />
               {/* Image for Week 2 */}
               <img
-                src="/images/tropical_outlook_week2_latest.png"
+                src={`/images/tropical_outlook_week2_latest.png?t=${assetTimestamp}`}
                 alt="Tropical weather outlook Week 2"
-                onClick={() => openImage("/images/tropical_outlook_week2_latest.png")}
+                onClick={() => openImage(`/images/tropical_outlook_week2_latest.png?t=${assetTimestamp}`)}
                 className={`h-full w-full object-contain absolute transition-opacity duration-300 cursor-pointer hover:opacity-90 ${activeTab === 'week2' ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
               />
             </div>

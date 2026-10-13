@@ -1,5 +1,15 @@
 {
-
+    "headers": [
+        {
+            "source": "/(assets|images|data)/(.*)",
+            "headers": [
+                {
+                    "key": "Cache-Control",
+                    "value": "public, max-age=0, must-revalidate"
+                }
+            ]
+        }
+    ],
     "rewrites": [
         {
             "source": "/api/earthquake-data",
@@ -14,7 +24,7 @@
             "destination": "https://irain.eng.uci.edu/:path*"
         },
         {
-            "source": "/((?!data/|api/|assets/|.*\\.[\\w]+$).*)",
+            "source": "/((?!data/|api/|assets/|images/|.*\\.[\\w]+$).*)",
             "destination": "/index.html"
         }
     ],
