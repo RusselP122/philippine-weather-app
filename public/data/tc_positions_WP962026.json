@@ -3,13 +3,13 @@
   "storm_name": "Invest 96W",
   "track_id": "WP962026",
   "latest": {
-    "lat": 9.0,
-    "lon": 161.3,
-    "pressure_hpa": 1006.0,
+    "lat": 8.7,
+    "lon": 161.2,
+    "pressure_hpa": 1004.0,
     "wind_kt": 19.0,
     "wind_kmh": 35,
-    "movement": "SSW at 21.1 km/h (11.4 kt)",
-    "init_time": "2026-10-14 00:00",
+    "movement": "SSW at 5.9 km/h (3.2 kt)",
+    "init_time": "2026-10-14 06:00",
     "category": "Low Pressure Area"
   },
   "history": [
@@ -54,6 +54,15 @@
       "lat": 9.0,
       "lon": 161.3,
       "pressure_hpa": 1006.0,
+      "wind_kt": 19.0,
+      "wind_kmh": 35,
+      "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-10-14 06:00",
+      "lat": 8.7,
+      "lon": 161.2,
+      "pressure_hpa": 1004.0,
       "wind_kt": 19.0,
       "wind_kmh": 35,
       "category": "Low Pressure Area"

@@ -3,13 +3,13 @@
   "storm_name": "TC 28W",
   "track_id": "WP282026",
   "latest": {
-    "lat": 20.7,
-    "lon": 143.5,
-    "pressure_hpa": 1010.0,
+    "lat": 21.3,
+    "lon": 142.8,
+    "pressure_hpa": 1008.0,
     "wind_kt": 25.0,
     "wind_kmh": 46,
-    "movement": "WNW at 20.6 km/h (11.1 kt)",
-    "init_time": "2026-10-14 00:00",
+    "movement": "NW at 16.4 km/h (8.9 kt)",
+    "init_time": "2026-10-14 06:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -180,6 +180,15 @@
       "lat": 20.7,
       "lon": 143.5,
       "pressure_hpa": 1010.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-10-14 06:00",
+      "lat": 21.3,
+      "lon": 142.8,
+      "pressure_hpa": 1008.0,
       "wind_kt": 25.0,
       "wind_kmh": 46,
       "category": "Tropical Depression"
