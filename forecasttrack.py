@@ -2699,6 +2699,7 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
         dot_items = []
         date_items = []
         
+        seen_dot_coords = set()
         for i, row in valid_df.iterrows():
             tau = float(row['lead_time_hours'])
             tau_r = int(round(tau))
@@ -2709,10 +2710,12 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             is_12h = (tau_r % 12 == 0 and tau_r > 0)
             is_last = (i == N - 1)
             
-            if is_24h or is_12h or is_last:
+            coord_key = (round(lo, 3), round(la, 3))
+            if (is_24h or is_12h or is_last) and coord_key not in seen_dot_coords:
                 dot_items.append((lo, la, is_24h or is_last))
+                seen_dot_coords.add(coord_key)
                 
-            if is_24h:
+            if is_24h and tau_r not in labeled_taus:
                 date_items.append((lo, la, tau, i))
                 labeled_taus.add(tau_r)
             elif is_last and tau_r >= 20 and not any(abs(tau_r - lt) < 14 for lt in labeled_taus):
@@ -2739,13 +2742,20 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
                 pt_dt = base_dt + timedelta(hours=tau)
                 # Local Philippine Time (+8h)
                 pt_ph = pt_dt + timedelta(hours=8)
-                date_str = pt_ph.strftime("%b %d") # e.g. "Oct 13"
+                date_str = pt_ph.strftime("%b %d").upper() # e.g. "OCT 15"
             else:
-                date_str = f"+{int(round(tau))}h"
+                date_str = f"+{int(round(tau))}H"
                 
-            # If an existing label has the identical date_str and is extremely close (< 0.55 deg),
-            # skip to avoid overlapping duplicate date labels for tightly clustered models
-            if any(p_date == date_str and math.hypot(lo - px, la - py) < 0.55 for px, py, p_date in placed_labels):
+            # If an existing label has the identical date_str and is clustered/stacked (< 2.8 deg / ~300 km),
+            # display only 1 date label. If divergent (not stacked, >= 2.8 deg), display the date on that track.
+            is_stacked = any(
+                p[2] == date_str and (
+                    math.hypot(lo - p[3], la - p[4]) < 2.8 or
+                    math.hypot(lo - p[0], la - p[1]) < 2.8
+                )
+                for p in placed_labels
+            )
+            if is_stacked:
                 continue
 
             # Direction tangent & normal vector
@@ -2766,16 +2776,16 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
                 nx, ny = 0.707, 0.707
                 
             candidates = [
-                (lo + nx * 0.40, la + ny * 0.40),
-                (lo - nx * 0.40, la - ny * 0.40),
-                (lo + nx * 0.70, la + ny * 0.70),
-                (lo - nx * 0.70, la - ny * 0.70),
-                (lo + 0.50, la + 0.38),
-                (lo - 0.50, la - 0.38),
-                (lo + 0.50, la - 0.38),
-                (lo - 0.50, la + 0.38),
-                (lo + nx * 0.98, la + ny * 0.98),
-                (lo - nx * 0.98, la - ny * 0.98),
+                (lo + nx * 0.45, la + ny * 0.45),
+                (lo - nx * 0.45, la - ny * 0.45),
+                (lo + nx * 0.75, la + ny * 0.75),
+                (lo - nx * 0.75, la - ny * 0.75),
+                (lo + 0.52, la + 0.40),
+                (lo - 0.52, la - 0.40),
+                (lo + 0.52, la - 0.40),
+                (lo - 0.52, la + 0.40),
+                (lo + nx * 1.05, la + ny * 1.05),
+                (lo - nx * 1.05, la - ny * 1.05),
             ]
             
             valid_cands = [
@@ -2789,13 +2799,13 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             if placed_labels:
                 best_score = -1
                 for cx, cy in valid_cands:
-                    min_d = min(math.hypot(cx - px, cy - py) for px, py, _ in placed_labels)
+                    min_d = min(math.hypot(cx - p[0], cy - p[1]) for p in placed_labels)
                     if min_d > best_score:
                         best_score = min_d
                         best_pos = (cx, cy)
                         
             lbl_lon, lbl_lat = best_pos
-            placed_labels.append((lbl_lon, lbl_lat, date_str))
+            placed_labels.append((lbl_lon, lbl_lat, date_str, lo, la))
             
             ax.text(
                 lbl_lon, lbl_lat, date_str,
@@ -3103,7 +3113,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             )
             
             if init_dt:
-                d_str = (init_dt + timedelta(hours=h + 8)).strftime("%b %d")
+                d_str = (init_dt + timedelta(hours=h + 8)).strftime("%b %d").upper()
                 lbl_text = f"{d_str} (T+{h}h)\n{int(round(wind_for_color))} km/h"
             else:
                 lbl_text = f"T+{h}h\n{int(round(wind_for_color))} km/h"
