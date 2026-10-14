@@ -3,13 +3,13 @@
   "storm_name": "TC 27W",
   "track_id": "WP272026",
   "latest": {
-    "lat": 36.8,
-    "lon": 155.5,
-    "pressure_hpa": 985.0,
-    "wind_kt": 60.0,
-    "wind_kmh": 111,
+    "lat": 38.3,
+    "lon": 157.2,
+    "pressure_hpa": 988.0,
+    "wind_kt": 51.0,
+    "wind_kmh": 94,
     "movement": "NE at 37.4 km/h (20.2 kt)",
-    "init_time": "2026-10-13 12:00",
+    "init_time": "2026-10-13 18:00",
     "category": "Severe Tropical Storm"
   },
   "history": [
@@ -380,6 +380,15 @@
       "pressure_hpa": 985.0,
       "wind_kt": 60.0,
       "wind_kmh": 111,
+      "category": "Severe Tropical Storm"
+    },
+    {
+      "cycle": "2026-10-13 18:00",
+      "lat": 38.3,
+      "lon": 157.2,
+      "pressure_hpa": 988.0,
+      "wind_kt": 51.0,
+      "wind_kmh": 94,
       "category": "Severe Tropical Storm"
     }
   ]
