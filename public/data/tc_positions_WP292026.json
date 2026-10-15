@@ -3,13 +3,13 @@
   "storm_name": "TC 29W (Invest 96W)",
   "track_id": "WP292026",
   "latest": {
-    "lat": 10.7,
-    "lon": 159.4,
-    "pressure_hpa": 1004.0,
+    "lat": 10.9,
+    "lon": 158.4,
+    "pressure_hpa": 1002.0,
     "wind_kt": 29.0,
     "wind_kmh": 54,
-    "movement": "WNW at 20.8 km/h (11.2 kt)",
-    "init_time": "2026-10-15 00:00",
+    "movement": "WNW at 18.6 km/h (10.0 kt)",
+    "init_time": "2026-10-15 06:00",
     "category": "Tropical Depression"
   },
   "history": [
@@ -90,6 +90,15 @@
       "lat": 10.7,
       "lon": 159.4,
       "pressure_hpa": 1004.0,
+      "wind_kt": 29.0,
+      "wind_kmh": 54,
+      "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-10-15 06:00",
+      "lat": 10.9,
+      "lon": 158.4,
+      "pressure_hpa": 1002.0,
       "wind_kt": 29.0,
       "wind_kmh": 54,
       "category": "Tropical Depression"
