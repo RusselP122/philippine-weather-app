@@ -642,6 +642,142 @@ def get_past_track_nodes(timeline, current_dt, max_hours_back=18):
             })
     return nodes
 
+def parse_jma_latlon(val_str):
+    """Parses JMA lat/lon format like '22.4N' or '154.3E'."""
+    if not val_str:
+        return float('nan')
+    val_str = str(val_str).strip()
+    try:
+        num = float(val_str[:-1])
+        if val_str[-1].upper() in ('S', 'W'):
+            num = -num
+        return num
+    except Exception:
+        return float('nan')
+
+def is_placeholder_storm_name(name):
+    """
+    Checks if a storm name from ATCF / JTWC is just a placeholder,
+    temporary designation, number word, or INVEST ID rather than an official
+    international name assigned by RSMC Tokyo (JMA).
+    Examples: 'TWENTYNINE', 'TWENTY-NINE', '29W', 'INVEST', 'WP292026', 'UNKNOWN'.
+    """
+    if not name:
+        return True
+    clean = re.sub(r'[^A-Za-z0-9]', '', str(name).upper())
+    if not clean:
+        return True
+
+    # Generic terms
+    if clean in ('UNKNOWN', 'NONAME', 'SYSTEM', 'CYCLONE', 'CUSTOM', 'NA', 'NONE', 'INVEST'):
+        return True
+    if clean.startswith('INVEST') or re.match(r'^9\d[A-Z]?$', clean):
+        return True
+    if re.match(r'^(TC|WP|TD)?\d{1,2}[A-Z]?$', clean) or re.match(r'^WP\d{4}$', clean):
+        return True
+
+    # Spelled-out number words (JTWC standard depression designation)
+    number_words = {
+        'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN',
+        'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN',
+        'TWENTY', 'TWENTYONE', 'TWENTYTWO', 'TWENTYTHREE', 'TWENTYFOUR', 'TWENTYFIVE',
+        'TWENTYSIX', 'TWENTYSEVEN', 'TWENTYEIGHT', 'TWENTYNINE',
+        'THIRTY', 'THIRTYONE', 'THIRTYTWO', 'THIRTYTHREE', 'THIRTYFOUR', 'THIRTYFIVE',
+        'THIRTYSIX', 'THIRTYSEVEN', 'THIRTYEIGHT', 'THIRTYNINE', 'FORTY'
+    }
+    if clean in number_words:
+        return True
+
+    return False
+
+def find_jma_international_name(storm_data, data_dir='public/data'):
+    """
+    Scans JMA (RSMC Tokyo) observation bulletins (VPTW60_60 through 65) to find the
+    official international tropical cyclone name (e.g. CHAMPI for 29W) when
+    ATCF / JTWC still only reports a placeholder number word (e.g. TWENTYNINE) or code.
+    Matches by spatial proximity (within 650 km).
+    """
+    if not storm_data:
+        return None
+
+    try:
+        curr_lat = float(storm_data.get('lat', 0.0))
+        curr_lon = float(storm_data.get('lon', 0.0))
+    except (ValueError, TypeError):
+        return None
+
+    if not curr_lat or not curr_lon:
+        return None
+
+    best_name = None
+    min_dist = float('inf')
+
+    for i in range(60, 66):
+        local_jma = os.path.join(data_dir, f"jma_vptw60_{i}.json")
+        jma_json_str = ""
+
+        # Attempt live fetch first to ensure we have the latest bulletin
+        url = f"https://www.data.jma.go.jp/multi/data/VPTW60/{i}_en.json"
+        try:
+            r = _HTTP_SESSION.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=3.0)
+            if r.status_code == 200 and len(r.text) > 50:
+                jma_json_str = r.text
+                os.makedirs(data_dir, exist_ok=True)
+                with open(local_jma, 'w', encoding='utf-8') as f:
+                    f.write(jma_json_str)
+        except Exception:
+            pass
+
+        # Fallback to local cached file
+        if not jma_json_str.strip() and os.path.exists(local_jma):
+            try:
+                with open(local_jma, 'r', encoding='utf-8') as f:
+                    jma_json_str = f.read()
+            except Exception:
+                pass
+
+        if not jma_json_str.strip():
+            continue
+
+        try:
+            d = json.loads(jma_json_str)
+            remark = str(d.get('remark', '')).strip()
+            if any(k in remark for k in ['消滅', '低気圧化', '台風消滅', '温帯低気圧']):
+                continue
+
+            # Check product age (skip older than 36h)
+            target_dt_str = d.get('targetDateTime', '') or d.get('reportDateTime', '')
+            if target_dt_str:
+                try:
+                    tdt = datetime.datetime.strptime(target_dt_str, "%Y/%m/%d %H:%M").replace(tzinfo=datetime.timezone.utc)
+                    age_hours = (datetime.datetime.now(datetime.timezone.utc) - tdt).total_seconds() / 3600.0
+                    if age_hours > 36.0:
+                        continue
+                except Exception:
+                    pass
+
+            jma_name = str(d.get('name', '')).strip().upper()
+            if not jma_name or is_placeholder_storm_name(jma_name):
+                continue
+
+            infos = d.get('meteorologicalInfos', [])
+            if not infos:
+                continue
+
+            first_c = infos[0].get('centerPart', {})
+            c_lat = parse_jma_latlon(first_c.get('coordinateLat') or (first_c.get('probabilityCircle', {}) or {}).get('basePointLat'))
+            c_lon = parse_jma_latlon(first_c.get('coordinateLon') or (first_c.get('probabilityCircle', {}) or {}).get('basePointLon'))
+
+            if not math.isnan(c_lat) and not math.isnan(c_lon):
+                dist_km = math.sqrt((c_lat - curr_lat)**2 + (c_lon - curr_lon)**2) * 111.0
+                if dist_km <= 650.0 and dist_km < min_dist:
+                    min_dist = dist_km
+                    best_name = jma_name
+        except Exception:
+            continue
+
+    return best_name
+
 # ── Fox Weather Broadcast Header Drawing Function ───────────────────────────
 def draw_fox_weather_header(img, dt_utc, storm_data=None, custom_title=None, sector_title=None, is_luzon=False):
     """
@@ -763,6 +899,14 @@ def draw_fox_weather_header(img, dt_utc, storm_data=None, custom_title=None, sec
         if short_id and not (short_id.endswith('W') or short_id.endswith('E') or short_id.endswith('C')):
             short_id += 'W'
 
+        # If ATCF name is a placeholder (e.g. TWENTYNINE, 29W, etc.), check JMA data for official international name
+        if is_placeholder_storm_name(raw_name):
+            jma_name = storm_data.get("international_name") or find_jma_international_name(storm_data)
+            if jma_name:
+                raw_name = jma_name
+                storm_data["storm_name"] = jma_name
+                storm_data["international_name"] = jma_name
+
         pagasa_name = storm_data.get("pagasa_name") or PAGASA_STORM_MAP_2026.get(short_id) or PAGASA_STORM_MAP_2026.get(raw_name)
         if pagasa_name:
             if raw_name.startswith("TC ") or raw_name.startswith("WP") or raw_name == short_id:
@@ -789,18 +933,6 @@ def draw_fox_weather_header(img, dt_utc, storm_data=None, custom_title=None, sec
     return img
 
 # ── Official Agency Storm Wind Fetching & Broadcast Card ─────────────────────
-def parse_jma_latlon(val_str):
-    """Parses JMA lat/lon format like '22.4N' or '154.3E'."""
-    if not val_str:
-        return float('nan')
-    val_str = str(val_str).strip()
-    try:
-        num = float(val_str[:-1])
-        if val_str[-1].upper() in ('S', 'W'):
-            num = -num
-        return num
-    except Exception:
-        return float('nan')
 
 # ── PAGASA pf.pdf Cache & Parser (for Storms Outside PAR / No cyclone.dat) ───
 _PAGASA_PF_PDF_CACHE = {
@@ -1273,14 +1405,18 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
             c_lon = parse_jma_latlon(first_c.get('coordinateLon') or (first_c.get('probabilityCircle', {}) or {}).get('basePointLon'))
 
             is_match = False
-            if raw_name and raw_name != 'INVEST' and (raw_name in jma_name or jma_name in raw_name):
+            if raw_name and not is_placeholder_storm_name(raw_name) and (raw_name in jma_name or jma_name in raw_name):
                 is_match = True
             elif not math.isnan(c_lat) and not math.isnan(c_lon) and curr_lat and curr_lon:
                 dist_km = math.sqrt((c_lat - curr_lat)**2 + (c_lon - curr_lon)**2) * 111.0
-                if dist_km <= 500.0:
+                if dist_km <= 650.0:
                     is_match = True
 
             if is_match:
+                if jma_name and not is_placeholder_storm_name(jma_name):
+                    if is_placeholder_storm_name(storm_data.get('storm_name')):
+                        storm_data['storm_name'] = jma_name
+                        storm_data['international_name'] = jma_name
                 w_part = infos[0].get('windPart', {})
                 w_kt_str = w_part.get('windSpeedKnot')
                 if w_kt_str:
@@ -1755,16 +1891,24 @@ def fetch_active_storms():
                     atcf_id = str(item.get("atcf_id", "")).upper()
                     basin = str(item.get("basin", "")).upper()
                     if atcf_id.endswith("W") or basin == "WPAC":
-                        storms.append({
+                        raw_name = str(item.get("storm_name", "UNKNOWN")).strip().upper()
+                        st = {
                             "atcf_id": atcf_id,
-                            "storm_name": item.get("storm_name", "UNKNOWN"),
+                            "storm_name": raw_name,
                             "lat": float(item.get("latitude", 0.0)),
                             "lon": float(item.get("longitude", 0.0)),
                             "wind_kt": float(item.get("winds") or 0.0),
                             "pressure_hpa": float(item.get("pressure") or 1008.0),
                             "analysis_time": item.get("analysis_time", "Latest"),
                             "source": "JTWC"
-                        })
+                        }
+                        if is_placeholder_storm_name(raw_name):
+                            jma_name = find_jma_international_name(st)
+                            if jma_name:
+                                st["storm_name"] = jma_name
+                                st["international_name"] = jma_name
+                                st["atcf_name"] = raw_name
+                        storms.append(st)
     except Exception as e:
         print(f"Notice: Failed to fetch ATCF storms: {e}")
     return storms
@@ -1786,7 +1930,7 @@ def load_storm_from_local_positions(target_str):
                 with open(c, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 latest = data.get("latest", {})
-                return {
+                st = {
                     "atcf_id": data.get("track_id", t_clean),
                     "long_atcf_id": data.get("track_id", t_clean).lower(),
                     "storm_name": data.get("storm_name", t_clean),
@@ -1799,6 +1943,12 @@ def load_storm_from_local_positions(target_str):
                     "analysis_time": latest.get("init_time", "Latest"),
                     "source": "JTWC"
                 }
+                if is_placeholder_storm_name(st["storm_name"]):
+                    jma_name = find_jma_international_name(st)
+                    if jma_name:
+                        st["storm_name"] = jma_name
+                        st["international_name"] = jma_name
+                return st
             except Exception:
                 pass
     return None
@@ -2064,14 +2214,30 @@ def main():
     storm_data = None
     if args.storm:
         active = fetch_active_storms()
-        matched = [s for s in active if args.storm.upper() in s["atcf_id"].upper() or args.storm.upper() in s["storm_name"].upper()]
+        matched = [
+            s for s in active
+            if args.storm.upper() in s["atcf_id"].upper()
+            or args.storm.upper() in s["storm_name"].upper()
+            or args.storm.upper() in s.get("international_name", "").upper()
+            or args.storm.upper() in s.get("atcf_name", "").upper()
+        ]
         if matched:
             storm_data = matched[0]
+            if is_placeholder_storm_name(storm_data.get('storm_name')):
+                jma_name = find_jma_international_name(storm_data)
+                if jma_name:
+                    storm_data["storm_name"] = jma_name
+                    storm_data["international_name"] = jma_name
             print(f"Targeting active storm: {storm_data['storm_name']} ({storm_data['atcf_id']})")
         else:
             local_st = load_storm_from_local_positions(args.storm)
             if local_st:
                 storm_data = local_st
+                if is_placeholder_storm_name(storm_data.get('storm_name')):
+                    jma_name = find_jma_international_name(storm_data)
+                    if jma_name:
+                        storm_data["storm_name"] = jma_name
+                        storm_data["international_name"] = jma_name
                 print(f"Targeting storm from local dataset: {storm_data['storm_name']} ({storm_data['atcf_id']})")
             else:
                 print(f"Notice: Storm '{args.storm}' not found in active/local feeds. Using custom center.")
@@ -2083,6 +2249,11 @@ def main():
                     "wind_kt": 65.0,
                     "pressure_hpa": 980.0
                 }
+                if is_placeholder_storm_name(storm_data["storm_name"]):
+                    jma_name = find_jma_international_name(storm_data)
+                    if jma_name:
+                        storm_data["storm_name"] = jma_name
+                        storm_data["international_name"] = jma_name
 
     # Override coordinates if provided
     if args.lat is not None and args.lon is not None:

@@ -1775,6 +1775,18 @@ def get_jma_official_track(storm, data_dir='public/data'):
                     continue
 
                 print(f"Matched official JMA track for {short_id} (ID {i}, Name={jma_name}, dist={dist_km:.1f}km)")
+                if jma_name and jma_name.upper() not in [
+                    "INVEST", "NONAME", "UNKNOWN", "STORM", "NULL", "NONE", "LPA", "LOW PRESSURE AREA", "",
+                    "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN",
+                    "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN", "FIFTEEN", "SIXTEEN", "SEVENTEEN",
+                    "EIGHTEEN", "NINETEEN", "TWENTY", "TWENTY-ONE", "TWENTY-TWO", "TWENTY-THREE",
+                    "TWENTY-FOUR", "TWENTY-FIVE", "TWENTYFIVE", "TWENTY-SIX", "TWENTYSIX",
+                    "TWENTY-SEVEN", "TWENTYSEVEN", "TWENTY-EIGHT", "TWENTYEIGHT", "TWENTY-NINE",
+                    "TWENTYNINE", "THIRTY", "THIRTY-ONE", "THIRTYONE"
+                ]:
+                    storm['international_name'] = jma_name
+                    storm['name'] = jma_name
+                    storm['storm_name'] = jma_name
                 cols_ret = ['lead_time_hours', 'lat', 'lon']
                 if 'wind' in df.columns: cols_ret.append('wind')
                 if 'pressure' in df.columns: cols_ret.append('pressure')
@@ -2414,7 +2426,7 @@ def format_storm_title(storm):
     """
     raw_id = storm.get('atcf_id', '')
     short_id = get_short_atcf_id(raw_id)
-    raw_name = str(storm.get('name', '')).strip()
+    raw_name = str(storm.get('name', '') or storm.get('storm_name', '')).strip()
     curr_lat = float(storm.get('lat', 0))
     curr_lon = float(storm.get('lon', 0))
     inside_par = is_point_inside_par(curr_lat, curr_lon)
@@ -2433,6 +2445,8 @@ def format_storm_title(storm):
     intl_name = None
     if raw_name and raw_name.upper() not in ignored_names:
         intl_name = raw_name.title()
+    elif storm.get('international_name'):
+        intl_name = str(storm.get('international_name')).strip().title()
         
     p_name = storm.get('pagasa_name')
     if not p_name:
