@@ -655,6 +655,34 @@ def parse_jma_latlon(val_str):
     except Exception:
         return float('nan')
 
+def knots_to_kmh(kt):
+    """
+    Converts knots to km/h rounded to the nearest 5 km/h,
+    matching official WMO, PAGASA, and RSMC operational broadcast standards.
+    E.g., 45 kt -> 85 km/h, 30 kt -> 55 km/h, 25 kt -> 45 km/h, 15 kt -> 30 km/h.
+    """
+    if kt is None:
+        return None
+    try:
+        val = float(kt)
+        return int(round(val * 1.852 / 5.0) * 5)
+    except (ValueError, TypeError):
+        return None
+
+def kmh_to_knots(kmh):
+    """
+    Converts km/h to knots rounded to the nearest 5 kt,
+    matching official WMO and operational agency intensity standards.
+    E.g., 85 km/h -> 45 kt, 55 km/h -> 30 kt, 175 km/h -> 95 kt.
+    """
+    if kmh is None:
+        return None
+    try:
+        val = float(kmh)
+        return int(round(val / 1.852 / 5.0) * 5)
+    except (ValueError, TypeError):
+        return None
+
 def is_placeholder_storm_name(name):
     """
     Checks if a storm name from ATCF / JTWC is just a placeholder,
@@ -1029,7 +1057,7 @@ def parse_pagasa_pf_pdf_records(pdf_bytes):
             elif 'TYPHOON' in col_text.upper():
                 kmh = 120
 
-        kt = int(round(kmh / 1.852)) if kmh is not None else None
+        kt = kmh_to_knots(kmh) if kmh is not None else None
 
         # Extract coordinates: (lat°N, lon°E), allowing unicode degree symbol or OCR replacement chars
         pos_m = re.findall(r'\((\d+\.?\d*)\s*[^A-Z0-9\s]?\s*[NS][,.\s]+(\d+\.?\d*)\s*[^A-Z0-9\s]?\s*[EW]\)', col_text)
@@ -1191,8 +1219,8 @@ def get_agency_category(agency, wind_kt=None, wind_kmh=None, explicit_cat=None, 
     is_invest = ('INVEST' in name_u or (name_u.startswith('9') and len(name_u) <= 3))
 
     # Compute from wind
-    kt = wind_kt if wind_kt is not None else (int(round(wind_kmh / 1.852)) if wind_kmh else 0)
-    kmh = wind_kmh if wind_kmh is not None else (int(round(wind_kt * 1.852)) if wind_kt else 0)
+    kt = wind_kt if wind_kt is not None else (kmh_to_knots(wind_kmh) if wind_kmh else 0)
+    kmh = wind_kmh if wind_kmh is not None else (knots_to_kmh(wind_kt) if wind_kt else 0)
 
     # 45 km/h or lower (or < 25 kt) is classified as a Low Pressure Area (LPA / Disturbance / Invest)
     is_lpa = (kmh <= 45 or kt < 25)
@@ -1340,7 +1368,7 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
         jtwc_kt = int(round(float(storm_data['wind_kt'])))
 
     if jtwc_kt is not None and jtwc_kt > 0:
-        kmh = int(round(jtwc_kt * 1.852 / 5.0) * 5) if jtwc_kt >= 50 else int(round(jtwc_kt * 1.852))
+        kmh = knots_to_kmh(jtwc_kt)
         agency_results['JTWC'] = {
             'wind_kt': jtwc_kt,
             'wind_kmh': kmh,
@@ -1426,7 +1454,7 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
             continue
 
     if jma_kt is not None and jma_kt > 0:
-        kmh = int(round(jma_kt * 1.852 / 5.0) * 5) if jma_kt >= 50 else int(round(jma_kt * 1.852))
+        kmh = knots_to_kmh(jma_kt)
         agency_results['JMA'] = {
             'wind_kt': jma_kt,
             'wind_kmh': kmh,
@@ -1495,7 +1523,7 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
                     cat = pts[0]['cat']
                     cat_map = {
                         'TD': (30, 55),
-                        'TS': (45, 80),
+                        'TS': (45, 85),
                         'STS': (55, 100),
                         'TY': (75, 140),
                         'STY': (105, 195)
