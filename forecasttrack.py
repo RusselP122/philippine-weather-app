@@ -2233,6 +2233,192 @@ def estimate_atkinson_holliday_pressure(v_kt, p_env=1010.0):
     return int(round(max(870.0, min(1012.0, p_c))))
 
 
+def build_geodesic_circle(lat, lon, radius_km, num_points=72):
+    """
+    Builds a closed geodesic circle polygon around (lat, lon) with radius in kilometers
+    matching JMA and PAGASA circular warning areas.
+    """
+    if radius_km <= 0.1:
+        return None
+    circ_pts = []
+    for ang in np.linspace(0, 360, num_points, endpoint=False):
+        clat, clon = offset_point(lat, lon, radius_km, ang)
+        circ_pts.append((clon, clat))
+    poly = Polygon(circ_pts)
+    if not poly.is_valid:
+        poly = poly.buffer(0)
+    return poly
+
+
+def fetch_storm_circular_wind_radii(storm):
+    """
+    Extracts circular wind radii (in km) from JMA warnings and JTWC advisories matching JMA/PAGASA format:
+      - '34kt': Gale-Force Winds (>= 62 km/h / 34 kt / Strong Winds)
+      - '50kt': Storm-Force Winds (>= 89 km/h / 50 kt / Damaging Winds)
+      - '64kt': Typhoon-Force Winds (>= 118 km/h / 64 kt / Destructive Winds)
+    """
+    atcf_id = storm.get('atcf_id', '')
+    num_only = ''.join(c for c in atcf_id if c.isdigit())
+    radii_km = {}
+    
+    # 1. Search JMA JSON warnings (official circular warning areas in km)
+    jma_matches = glob.glob('public/data/jma_vptw60_*.json')
+    for jp in jma_matches:
+        try:
+            with open(jp, 'r', encoding='utf-8') as f:
+                jd = json.load(f)
+            infos = jd.get('meteorologicalInfos', [])
+            if infos:
+                info0 = infos[0]
+                w50 = info0.get('warningAreaPart50', [])
+                w30 = info0.get('warningAreaPart30', [])
+                if w50 and '50kt' not in radii_km:
+                    r_km = float(w50[0].get('radiusKm', 0))
+                    if r_km > 0: radii_km['50kt'] = r_km
+                if w30 and '34kt' not in radii_km:
+                    r_km = float(w30[0].get('radiusKm', 0))
+                    if r_km > 0: radii_km['34kt'] = r_km
+        except Exception:
+            pass
+
+    # 2. Search JTWC TCW advisories (4-quadrant radii converted to circular outer boundary)
+    jtwc_matches = glob.glob(f'public/data/jtwc_wp{num_only}*.tcw')
+    if jtwc_matches:
+        try:
+            with open(jtwc_matches[0], 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            for line in content.splitlines():
+                line = line.strip()
+                if line.startswith('T000'):
+                    for r_code, key in [('R064', '64kt'), ('R050', '50kt'), ('R034', '34kt')]:
+                        m = re.search(r_code + r'\s+(\d+)\s+NE\s+QD\s+(\d+)\s+SE\s+QD\s+(\d+)\s+SW\s+QD\s+(\d+)\s+NW\s+QD', line)
+                        if m:
+                            ne, se, sw, nw = float(m.group(1)), float(m.group(2)), float(m.group(3)), float(m.group(4))
+                            r_max_nm = max(ne, se, sw, nw)
+                            if r_max_nm > 0:
+                                r_km = r_max_nm * 1.852
+                                if key not in radii_km or key == '64kt':
+                                    radii_km[key] = r_km
+                    break
+        except Exception:
+            pass
+
+    # 3. If storm intensity warrants, provide empirical fallback for missing tiers
+    curr_w = float(storm.get('wind_kt') or storm.get('wind') or 65.0)
+    if '64kt' not in radii_km and curr_w >= 64.0:
+        if '50kt' in radii_km:
+            radii_km['64kt'] = round(radii_km['50kt'] * 0.65, 1)
+        else:
+            radii_km['64kt'] = 85.0
+            
+    if '50kt' not in radii_km and curr_w >= 50.0:
+        if '34kt' in radii_km:
+            radii_km['50kt'] = round(radii_km['34kt'] * 0.45, 1)
+        else:
+            radii_km['50kt'] = 140.0
+            
+    if '34kt' not in radii_km and curr_w >= 34.0:
+        radii_km['34kt'] = 250.0
+
+    return radii_km
+
+
+def render_circular_wind_radii(ax, curr_lat, curr_lon, radii_km):
+    """
+    Renders official JMA / PAGASA style circular wind radii around the current storm center:
+      - 34 kt (Gale-Force / Strong Winds): Yellow/Amber solid circle outline, transparent interior
+      - 50 kt (Storm-Force / Damaging Winds): Orange solid circle outline, transparent interior
+      - 64 kt (Typhoon-Force / Destructive Winds): Red solid circle outline, transparent interior
+    """
+    if not radii_km:
+        return
+        
+    tiers = [
+        ('34kt', '#facc15', 1.8),
+        ('50kt', '#fb923c', 2.0),
+        ('64kt', '#ef4444', 2.2)
+    ]
+    
+    for key, color, lw in tiers:
+        if key in radii_km and radii_km[key] > 0:
+            poly = build_geodesic_circle(curr_lat, curr_lon, radii_km[key])
+            if poly:
+                # Subtle dark halo for high-contrast visibility across bright white clouds
+                ax.add_geometries(
+                    [poly], crs=ccrs.PlateCarree(),
+                    facecolor='none',
+                    edgecolor='#020617', linestyle='-', linewidth=lw + 1.2,
+                    alpha=0.55,
+                    zorder=5.4
+                )
+                # Primary solid colored circle outline (transparent inside)
+                ax.add_geometries(
+                    [poly], crs=ccrs.PlateCarree(),
+                    facecolor='none',
+                    edgecolor=color, linestyle='-', linewidth=lw,
+                    alpha=0.95,
+                    zorder=5.5
+                )
+
+
+def render_wind_radii_legend(ax, radii_km):
+    """
+    Renders a compact, floating broadcast-grade legend box for the circular wind radii.
+    """
+    if not radii_km:
+        return
+        
+    items = []
+    if '64kt' in radii_km:
+        items.append(('≥118 km/h (Typhoon)', f"{int(round(radii_km['64kt']))} km", '#ef4444'))
+    if '50kt' in radii_km:
+        items.append(('≥89 km/h (Storm)', f"{int(round(radii_km['50kt']))} km", '#fb923c'))
+    if '34kt' in radii_km:
+        items.append(('≥62 km/h (Gale)', f"{int(round(radii_km['34kt']))} km", '#facc15'))
+        
+    if not items:
+        return
+
+    # Render floating card in top-right of map (transAxes coordinates)
+    x0, y0 = 0.985, 0.970
+    box_w = 0.280
+    box_h = 0.034 + len(items) * 0.026
+    
+    leg_box = FancyBboxPatch(
+        (x0 - box_w, y0 - box_h), box_w, box_h,
+        boxstyle="round,pad=0.012,rounding_size=0.03",
+        facecolor='#0b131eee', edgecolor='#334155', linewidth=0.9,
+        transform=ax.transAxes, zorder=25
+    )
+    ax.add_patch(leg_box)
+    
+    ax.text(
+        x0 - box_w * 0.5, y0 - 0.015, "CURRENT WIND RADII EXTENT",
+        transform=ax.transAxes, ha='center', va='center',
+        fontsize=7.0, fontweight='bold', color='#94a3b8', zorder=26,
+        fontfamily='monospace'
+    )
+    
+    for idx, (lbl, dist_str, color) in enumerate(items):
+        item_y = y0 - 0.036 - idx * 0.024
+        # Hollow ring marker matching the map circle style
+        ax.scatter(
+            [x0 - box_w + 0.016], [item_y], facecolors='none', edgecolors=color,
+            linewidths=1.8, s=32,
+            transform=ax.transAxes, zorder=26, clip_on=False
+        )
+        ax.text(
+            x0 - box_w + 0.030, item_y, lbl,
+            transform=ax.transAxes, ha='left', va='center',
+            fontsize=6.8, fontweight='bold', color='#e2e8f0', zorder=26
+        )
+        ax.text(
+            x0 - 0.016, item_y, dist_str,
+            transform=ax.transAxes, ha='right', va='center',
+            fontsize=6.8, color=color, fontweight='bold', zorder=26
+        )
+
+
 def get_intensity_color(wind_kmh, pressure=None):
     if pd.isna(wind_kmh) or wind_kmh is None:
         return INTENSITY_PALETTE['LPA']
@@ -2717,7 +2903,7 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     )
     ph_time_str = format_to_ph_time_str(init_time_str)
     ax_head.text(
-        title_x, 0.28, f"Latest Center Fix: {curr_lat:.1f}°N, {curr_lon:.1f}°E  |  PH Time: {ph_time_str}",
+        title_x, 0.28, f"5 Days Forecast Track  |  PH Time: {ph_time_str}",
         fontsize=9.5, color=TEXT_SEC, transform=ax_head.transAxes, va='center'
     )
     
@@ -3212,6 +3398,11 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
 
     # Sea Text Labels (strictly bounded and zoom-scaled)
     render_sea_labels(ax, extent)
+    
+    # Render JMA / PAGASA style circular wind radii around current storm center
+    radii_km = fetch_storm_circular_wind_radii(storm)
+    render_circular_wind_radii(ax, curr_lat, curr_lon, radii_km)
+    render_wind_radii_legend(ax, radii_km)
     
     # Cone of Uncertainty
     if not mean_track.empty and len(mean_track) > 0:
