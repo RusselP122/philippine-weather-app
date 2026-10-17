@@ -1231,9 +1231,31 @@ def get_agency_category(agency, wind_kt=None, wind_kmh=None, explicit_cat=None, 
     # 45 km/h or lower (or < 25 kt) is classified as a Low Pressure Area (LPA / Disturbance / Invest)
     is_lpa = (kmh <= 45 or kt < 25)
 
+    if agency == 'JTWC':
+        if kt >= 137:
+            return 'CATEGORY 5 SUPER TYPHOON'
+        elif kt >= 130:
+            return 'CATEGORY 4 SUPER TYPHOON'
+        elif kt >= 113:
+            return 'CATEGORY 4 TYPHOON'
+        elif kt >= 96:
+            return 'CATEGORY 3 TYPHOON'
+        elif kt >= 83:
+            return 'CATEGORY 2 TYPHOON'
+        elif kt >= 64:
+            return 'CATEGORY 1 TYPHOON'
+        elif kt >= 34:
+            return 'TROPICAL STORM'
+        elif not is_lpa:
+            return 'TROPICAL DEPRESSION'
+        else:
+            return 'LOW PRESSURE AREA'
+
     if explicit_cat:
         c = explicit_cat.strip().upper()
-        if 'SUPER' in c and 'TYPHOON' in c:
+        if 'CATEGORY' in c:
+            return c
+        elif 'SUPER' in c and 'TYPHOON' in c:
             return 'SUPER TYPHOON'
         elif 'TYPHOON' in c:
             return 'TYPHOON'
@@ -1267,26 +1289,6 @@ def get_agency_category(agency, wind_kt=None, wind_kmh=None, explicit_cat=None, 
             return 'TYPHOON'
         elif kt >= 48:
             return 'SEVERE TROPICAL STORM'
-        elif kt >= 34:
-            return 'TROPICAL STORM'
-        elif not is_lpa:
-            return 'TROPICAL DEPRESSION'
-        else:
-            return 'LOW PRESSURE AREA'
-
-    elif agency == 'JTWC':
-        if kt >= 137:
-            return 'CATEGORY 5 TYPHOON'
-        elif kt >= 130:
-            return 'SUPER TYPHOON'
-        elif kt >= 113:
-            return 'CATEGORY 4 TYPHOON'
-        elif kt >= 96:
-            return 'CATEGORY 3 TYPHOON'
-        elif kt >= 83:
-            return 'CATEGORY 2 TYPHOON'
-        elif kt >= 64:
-            return 'CATEGORY 1 TYPHOON'
         elif kt >= 34:
             return 'TROPICAL STORM'
         elif not is_lpa:

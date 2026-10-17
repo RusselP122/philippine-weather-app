@@ -99,9 +99,11 @@ def is_point_inside_par(lat, lon):
         p1x, p1y = p2x, p2y
     return inside
 
-def get_storm_classification_label(wind_kt, is_invest=False):
+def get_storm_classification_label(wind_kt, is_invest=False, agency="JTWC"):
     """
-    Classifies tropical cyclone intensity (PAGASA / WMO Standard).
+    Classifies tropical cyclone intensity:
+    - JTWC: Category 1-4 Typhoon, Category 5 Super Typhoon, Tropical Storm, Tropical Depression, Low Pressure Area
+    - PAGASA: Super Typhoon, Typhoon, Severe Tropical Storm, Tropical Storm, Tropical Depression, Low Pressure Area
     """
     if is_invest or wind_kt <= 0:
         return "INVEST"
@@ -111,7 +113,25 @@ def get_storm_classification_label(wind_kt, is_invest=False):
         return "TROPICAL DEPRESSION"
     elif wind_kt < 48:
         return "TROPICAL STORM"
-    elif wind_kt < 64:
+
+    if (agency or "").upper() == "JTWC":
+        if wind_kt >= 137:
+            return "CATEGORY 5 SUPER TYPHOON"
+        elif wind_kt >= 130:
+            return "CATEGORY 4 SUPER TYPHOON"
+        elif wind_kt >= 113:
+            return "CATEGORY 4 TYPHOON"
+        elif wind_kt >= 96:
+            return "CATEGORY 3 TYPHOON"
+        elif wind_kt >= 83:
+            return "CATEGORY 2 TYPHOON"
+        elif wind_kt >= 64:
+            return "CATEGORY 1 TYPHOON"
+        else:
+            return "TROPICAL STORM"
+
+    # Default / PAGASA Standard
+    if wind_kt < 64:
         return "SEVERE TROPICAL STORM"
     elif wind_kt < 130:
         return "TYPHOON"
@@ -123,7 +143,7 @@ def format_system_display_name(storm_data):
     Standardizes storm/system naming matching forecasttrack.py:
     - Inside PAR with intl name: 'TROPICAL STORM OBET (KROVANH)'
     - Inside PAR without intl name: 'TROPICAL DEPRESSION OBET (17W)'
-    - Outside PAR with intl name: 'TROPICAL STORM KROVANH (22W)'
+    - Outside PAR with intl name: 'CATEGORY 1 TYPHOON CHAMPI (29W)'
     - Invest: '97W INVEST'
     Appends wind speed & central pressure: ' • 40 KT (74 KM/H) • 998 HPA'
     """
@@ -167,21 +187,22 @@ def format_system_display_name(storm_data):
             PAGASA_STORM_MAP_2026.get(raw_name.upper())
         )
 
-    classification = get_storm_classification_label(wind_kt, is_invest=is_invest)
-
     # Build primary system title
     if is_invest:
         system_title = f"{short_id} INVEST"
     elif inside_par and pagasa_name:
         p_name = pagasa_name.upper()
+        pag_cat = get_storm_classification_label(wind_kt, is_invest=is_invest, agency="PAGASA")
         if intl_name:
-            system_title = f"{classification} {p_name} ({intl_name.upper()})"
+            system_title = f"{pag_cat} {p_name} ({intl_name.upper()})"
         else:
-            system_title = f"{classification} {p_name} ({short_id})"
+            system_title = f"{pag_cat} {p_name} ({short_id})"
     elif intl_name:
-        system_title = f"{classification} {intl_name.upper()} ({short_id})"
+        jtwc_cat = get_storm_classification_label(wind_kt, is_invest=is_invest, agency="JTWC")
+        system_title = f"{jtwc_cat} {intl_name.upper()} ({short_id})"
     else:
-        system_title = f"{classification} {short_id}"
+        jtwc_cat = get_storm_classification_label(wind_kt, is_invest=is_invest, agency="JTWC")
+        system_title = f"{jtwc_cat} {short_id}"
 
     # Append wind speed and central pressure metrics
     details = []
