@@ -20,6 +20,14 @@ import shapely
 from shapely.geometry import shape
 from shapely.validation import make_valid
 
+# ── Import Agency Wind Comparison & JMA Naming Utilities from ptcc_satellite ──
+from ptcc_satellite import (
+    fetch_agency_storm_winds,
+    draw_agency_wind_card,
+    find_jma_international_name,
+    is_placeholder_storm_name
+)
+
 # ── Philippine Province Geometries Cache ─────────────────────────────────────
 _PROVINCE_GEOMS_CACHE = None
 
@@ -97,6 +105,8 @@ def get_storm_classification_label(wind_kt, is_invest=False):
     """
     if is_invest or wind_kt <= 0:
         return "INVEST"
+    if wind_kt < 25:
+        return "LOW PRESSURE AREA"
     if wind_kt < 34:
         return "TROPICAL DEPRESSION"
     elif wind_kt < 48:
@@ -139,14 +149,15 @@ def format_system_display_name(storm_data):
     num_val = int(nums) if nums else 0
     is_invest = (90 <= num_val <= 99) or "INVEST" in raw_name
 
-    # Generic or numerical placeholder names
-    ignored_names = [
-        "INVEST", "NONAME", "UNKNOWN", "STORM", "NULL", "NONE", "LPA", "LOW PRESSURE AREA", "",
-        "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN",
-        "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN", "FIFTEEN", "SIXTEEN", "SEVENTEEN",
-        "EIGHTEEN", "NINETEEN", "TWENTY", "TWENTY-ONE", "TWENTY-TWO"
-    ]
-    intl_name = raw_name.title() if (raw_name and raw_name not in ignored_names) else None
+    # Check if raw_name is placeholder or number word, resolve JMA international name
+    if is_placeholder_storm_name(raw_name):
+        jma_name = storm_data.get("international_name") or find_jma_international_name(storm_data)
+        if jma_name:
+            raw_name = jma_name
+            storm_data["storm_name"] = jma_name
+            storm_data["international_name"] = jma_name
+
+    intl_name = raw_name.title() if not is_placeholder_storm_name(raw_name) else None
 
     # Check for assigned PAGASA name
     pagasa_name = storm_data.get("pagasa_name")
@@ -754,7 +765,8 @@ def render_storm_frame(
     figsize=(10.0, 7.5),
     dpi=120,
     zoom_level=6,
-    custom_title=None
+    custom_title=None,
+    draw_agency_card=False
 ):
     """
     Renders a full-bleed satellite frame overlaid with the Fox Weather broadcast header:
@@ -763,6 +775,7 @@ def render_storm_frame(
     - Orange Philippine Area of Responsibility (PAR) line
     - Subtle coordinate gridlines
     - Floating Fox Weather broadcast header with System Name from forecasttrack.py
+    - Official agency wind comparison card at bottom center (when draw_agency_card=True)
     """
     date_str = dt_utc.strftime('%Y-%m-%d')
     time_str = f"{dt_utc.hour:02d}{(dt_utc.minute // 10) * 10:02d}"
@@ -819,6 +832,14 @@ def render_storm_frame(
 
     # 5. Composite Fox Weather broadcast header onto the satellite image with storm name
     img = draw_fox_weather_header(img, dt_utc=dt_utc, storm_data=storm_data, custom_title=custom_title)
+
+    # 6. Composite Official Agency Wind Comparison Card (for static PNG maps)
+    if draw_agency_card and storm_data:
+        try:
+            agency_winds = fetch_agency_storm_winds(storm_data)
+            img = draw_agency_wind_card(img, agency_data=agency_winds, storm_data=storm_data)
+        except Exception as e:
+            print(f"Notice: Could not render agency wind card: {e}")
 
     return img
 
@@ -924,10 +945,12 @@ def generate_single_storm_image(
     storm_data=None,
     storm_label="Storm",
     dpi=150,
-    zoom_level=6
+    zoom_level=6,
+    draw_agency_card=True
 ):
     """
-    Renders a single high-resolution image for a given storm extent with the Fox Weather broadcast header.
+    Renders a single high-resolution image for a given storm extent with the Fox Weather broadcast header
+    and official agency wind comparison card.
     """
     dt_utc = get_latest_available_satellite_time()
 
@@ -937,7 +960,8 @@ def generate_single_storm_image(
         storm_data=storm_data,
         figsize=(10.0, 7.5),
         dpi=dpi,
-        zoom_level=zoom_level
+        zoom_level=zoom_level,
+        draw_agency_card=draw_agency_card
     )
 
     img.save(output_path, dpi=(dpi, dpi))
@@ -957,12 +981,14 @@ def process_storms(
     generate_gif=True,
     generate_both=True,
     output_custom=None,
-    track_storm=True
+    track_storm=True,
+    draw_agency_card=True
 ):
     print("=" * 70)
     mode_str = "GIF Loop + Static PNG" if generate_both else ("GIF Loop" if generate_gif else "Static PNG")
     track_str = "Frame-by-Frame Camera Tracking: ENABLED" if track_storm else "Camera: FIXED"
-    print(f"Storm-Focused Satellite Generator ({mode_str}) [{track_str}]")
+    agency_str = "Agency Wind Card: ENABLED" if draw_agency_card else "Agency Wind Card: DISABLED"
+    print(f"Storm-Focused Satellite Generator ({mode_str}) [{track_str}] [{agency_str}]")
     print("=" * 70)
 
     # 1. Check if user specified custom coordinates
@@ -975,7 +1001,7 @@ def process_storms(
         
         if generate_both or not generate_gif:
             out_png = output_custom.replace(".gif", ".png") if output_custom else f"storm_focused_{label}.png"
-            generate_single_storm_image(out_png, extent, storm_data=custom_storm, storm_label=label, dpi=dpi)
+            generate_single_storm_image(out_png, extent, storm_data=custom_storm, storm_label=label, dpi=dpi, draw_agency_card=draw_agency_card)
         if generate_both or generate_gif:
             out_gif = output_custom.replace(".png", ".gif") if output_custom else f"storm_focused_{label}.gif"
             generate_single_storm_gif(
@@ -1058,7 +1084,7 @@ def process_storms(
             else:
                 png_file = f"storm_focused_{clean_id}.png"
 
-            generate_single_storm_image(png_file, extent, storm_data=st, storm_label=label, dpi=dpi)
+            generate_single_storm_image(png_file, extent, storm_data=st, storm_label=label, dpi=dpi, draw_agency_card=draw_agency_card)
             generated_pngs.append(png_file)
 
             if idx == 0 and png_file != "storm_focused_satellite.png":
@@ -1111,7 +1137,7 @@ def process_storms(
 # ── CLI Entry Point ──────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="Generate Storm-Focused Satellite Maps & Animated GIF Loops (Fox Weather Theme)")
-    parser.add_argument("--png-only", action="store_true", help="Generate only static PNG images without GIF loops")
+    parser.add_argument("--png", "--png-only", dest="png_only", action="store_true", help="Generate only static PNG images without GIF loops")
     parser.add_argument("--gif-only", action="store_true", help="Generate only animated GIF loops without PNG images")
     parser.add_argument("--gif", action="store_true", help="Generate animated satellite GIF loops")
     parser.add_argument("--both", action="store_true", help="Generate both static PNG images and animated GIF loops")
@@ -1125,7 +1151,26 @@ def main():
     parser.add_argument("--dpi", type=int, default=120, help="DPI resolution for GIF frames (default: 120)")
     parser.add_argument("--output", type=str, default=None, help="Custom output filepath (when single storm)")
     parser.add_argument("--fixed-camera", "--no-track", dest="fixed_camera", action="store_true", help="Keep camera fixed at current position instead of dynamically tracking storm center")
-    args = parser.parse_args()
+    parser.add_argument("--agency-card", dest="agency_card", action="store_true", default=None, help="Force display of official agency wind comparison card")
+    parser.add_argument("--no-agency-card", dest="no_agency_card", action="store_true", help="Disable official agency wind comparison card")
+    args, unknown = parser.parse_known_args()
+
+    # Dynamic storm detection from shortcut flags like --29W, --26W, --CHAMPI, etc.
+    active_storm_arg = args.storm
+    if not active_storm_arg:
+        for u in unknown:
+            if u.startswith("--") and len(u) > 2:
+                cand = u[2:].strip().upper()
+                if re.match(r'^(WP)?\d{2}[A-Z]?$', cand) or re.match(r'^(INVEST)?\d{2}[A-Z]?$', cand):
+                    active_storm_arg = cand
+                    break
+                if cand in PAGASA_NAMES_2026 or cand in PAGASA_STORM_MAP_2026:
+                    active_storm_arg = cand
+                    break
+                if os.path.exists(os.path.join("public", "data", f"tc_positions_{cand}.json")) or \
+                   os.path.exists(os.path.join("public", "data", f"tc_positions_{cand}W.json")):
+                    active_storm_arg = cand
+                    break
 
     if args.png_only:
         gen_gif = False
@@ -1137,8 +1182,15 @@ def main():
         gen_gif = True
         gen_both = True
 
+    if args.no_agency_card:
+        card_override = False
+    elif args.agency_card:
+        card_override = True
+    else:
+        card_override = True
+
     process_storms(
-        target_storm=args.storm,
+        target_storm=active_storm_arg,
         center_lat=args.lat,
         center_lon=args.lon,
         lon_span=args.span,
@@ -1149,7 +1201,8 @@ def main():
         generate_gif=gen_gif,
         generate_both=gen_both,
         output_custom=args.output,
-        track_storm=(not args.fixed_camera)
+        track_storm=(not args.fixed_camera),
+        draw_agency_card=card_override
     )
 
 if __name__ == "__main__":

@@ -1040,16 +1040,22 @@ def parse_pagasa_pf_pdf_records(pdf_bytes):
         if not col_text.strip():
             continue
 
-        # Extract winds
-        m_wind = re.search(r'(?:MAXIMUM\s*SUSTAINED\s*)?WINDS?\s*:\s*(\d+)\s*K\s*M\s*/?\s*H', col_text, re.IGNORECASE)
-        kmh = int(m_wind.group(1)) if m_wind else None
+        # Extract winds (robust to OCR misinterpreting colon, spaces, and 'O'/'o' for zero '0')
+        m_wind = re.search(r'(?:MAXIMUM\s*SUSTAINED\s*)?WINDS?[^0-9A-Z]*([0-9OoIl\s]{2,4})\s*K\s*M\s*/?\s*H', col_text, re.IGNORECASE)
+        kmh = None
+        if m_wind:
+            raw_w = m_wind.group(1).upper().replace('O', '0').replace('I', '1').replace('L', '1').replace(' ', '')
+            if raw_w.isdigit():
+                kmh = int(raw_w)
 
         # Fallback to gustiness or category defaults if sustained wind line was missed
         if kmh is None:
-            m_gust = re.search(r'GUSTINESS\s*:\s*(?:UP\s*TO\s*)?(\d+)\s*K\s*M\s*/?\s*H', col_text, re.IGNORECASE)
+            m_gust = re.search(r'GUSTINESS[^0-9A-Z]*(?:UP\s*TO\s*)?([0-9OoIl\s]{2,4})\s*K\s*M\s*/?\s*H', col_text, re.IGNORECASE)
             if m_gust:
-                g_val = int(m_gust.group(1))
-                kmh = int(round(g_val / 1.3 / 5.0) * 5)
+                raw_g = m_gust.group(1).upper().replace('O', '0').replace('I', '1').replace('L', '1').replace(' ', '')
+                if raw_g.isdigit():
+                    g_val = int(raw_g)
+                    kmh = int(round(g_val / 1.3 / 5.0) * 5)
             elif 'TROPICAL DEPRESSION' in col_text.upper():
                 kmh = 45
             elif 'TROPICAL STORM' in col_text.upper():

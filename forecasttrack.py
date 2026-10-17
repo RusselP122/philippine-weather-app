@@ -37,10 +37,10 @@ LOGO_PATHS = [
     os.path.join(os.getcwd(), "public", "logo192.png")
 ]
 
-# JTWC / PAGASA Western North Pacific climatological error cone radii (nautical miles) by lead time (hours)
-# Incorporates realistic satellite / analysis fix uncertainty (~12 NM) at T+0
+# JTWC / PAGASA Western North Pacific 5-year climatological error cone radii (nautical miles)
+# Defines standard 67-70% statistical probability circle radius per forecast lead time (hours)
 LEAD_STANDARD = [0,   12,  24,  36,  48,   60,   72,   96,  120,  144]
-RADII_NM      = [12,  28,  42,  56,  72,   88,  105,  155,  210,  260]
+RADII_NM      = [12,  26,  46,  64,  84,  104,  128,  180,  240,  290]
 
 # ── TV Broadcast Dark Theme Palette Constants (matching forcast5.py) ─────
 BG_DARK       = "#0b131e"   # Deep broadcast backdrop canvas
@@ -450,12 +450,25 @@ def fetch_knack_active_storms():
             if not (atcf_id.upper().endswith('W') or atcf_id.upper().startswith('WP')):
                 continue
                 
+            winds_val = item.get('winds')
+            pressure_val = item.get('pressure')
+            wind_kt_val = None
+            if winds_val is not None:
+                try: wind_kt_val = float(winds_val)
+                except (ValueError, TypeError): wind_kt_val = None
+            mslp_val = None
+            if pressure_val is not None:
+                try: mslp_val = float(pressure_val)
+                except (ValueError, TypeError): mslp_val = None
+                
             storms.append({
                 'atcf_id': atcf_id,
                 'name': item.get('storm_name', 'INVEST'),
                 'lat': lat,
                 'lon': lon,
-                'init_time': init_time
+                'init_time': init_time,
+                'wind_kt': wind_kt_val,
+                'pressure': mslp_val
             })
         print(f"Successfully fetched {len(storms)} active storms from Knack API.")
         return storms
@@ -2168,15 +2181,22 @@ def offset_point(lat, lon, distance_km, bearing_deg):
     return math.degrees(la2), math.degrees(lo2)
 
 
-def build_cone_polygon(lats, lons, lead_times):
+def build_cone_polygon(lats, lons, lead_times, spreads_km=None):
     if len(lats) == 0:
         return None
     radii_nm_interp = np.interp(lead_times, LEAD_STANDARD, RADII_NM)
     radii_km = radii_nm_interp * 1.852
+    
+    # Hybrid dynamic cone: blends 5-year climatological error with real-time multi-model ensemble spread
+    if spreads_km is not None and len(spreads_km) == len(lead_times):
+        sp_arr = np.array(spreads_km, dtype=float)
+        # Quadrature combination: Radius = sqrt(R_climo^2 + (1.15 * Spread)^2)
+        radii_km = np.sqrt(radii_km**2 + (1.15 * sp_arr)**2)
+
     if len(lats) <= 1:
         circ_pts = []
         radius = max(radii_km[0], 0.1)
-        for ang in range(0, 360, 10):
+        for ang in range(0, 360, 6):
             clat, clon = offset_point(lats[0], lons[0], radius, ang)
             circ_pts.append((clon, clat))
         return Polygon(circ_pts)
@@ -2185,7 +2205,7 @@ def build_cone_polygon(lats, lons, lead_times):
     for i in range(len(lats)):
         circ_pts = []
         radius = max(radii_km[i], 0.1)
-        for ang in range(0, 360, 10):
+        for ang in range(0, 360, 6):
             clat, clon = offset_point(lats[i], lons[i], radius, ang)
             circ_pts.append((clon, clat))
         circles.append(Polygon(circ_pts))
@@ -2197,6 +2217,20 @@ def build_cone_polygon(lats, lons, lead_times):
         
     cone_geom = unary_union(segments)
     return cone_geom
+
+
+def estimate_atkinson_holliday_pressure(v_kt, p_env=1010.0):
+    """
+    Computes minimum central pressure (hPa) from maximum 10-minute sustained wind (kt)
+    using the Atkinson-Holliday (1977) wind-pressure relationship for the Western North Pacific:
+      V = 6.7 * (1010 - P_c)^0.644  ==>  P_c = 1010 - (V / 6.7)^(1 / 0.644)
+    Guarantees physical consistency between maximum sustained wind and central pressure.
+    """
+    if pd.isna(v_kt) or v_kt is None or v_kt <= 15.0:
+        return int(round(p_env))
+    dp = (float(v_kt) / 6.7) ** (1.0 / 0.644)
+    p_c = p_env - dp
+    return int(round(max(870.0, min(1012.0, p_c))))
 
 
 def get_intensity_color(wind_kmh, pressure=None):
@@ -2217,108 +2251,175 @@ def get_intensity_color(wind_kmh, pressure=None):
         return INTENSITY_PALETTE['STY']
 
 
-def compute_compiled_mean_track(agency_tracks, ensemble_means, storm=None):
+def compute_compiled_mean_track(agency_tracks, ensemble_means, storm=None, track_inits=None):
     """
-    Harmonizes wind metrics (1-min kt -> 10-min kt), resamples all valid tracks
-    to standard 6-hour intervals, enforces 5-day horizon (120h) and member quorum constraints
-    to prevent end-of-track outlier jumps, and smoothly anchors the consensus at T+0 to the active storm fix.
+    Computes a meteorologically accurate, weighted multi-model consensus forecast track:
+    1. Pre-anchors member tracks to verified storm center fix (curr_lat, curr_lon).
+    2. Resamples all tracks to standard 6-hour intervals (0, 6, 12, ..., 120h).
+    3. Weights members by historical forecasting skill (official agencies > top NWP > AI).
+    4. Trims geometric outliers (> 2.5 * median distance from cluster median).
+    5. Computes dynamic multi-model cross-track ensemble spread at each lead time for the Cone of Uncertainty.
+    6. Calibrates intensity using the IVCN Delta-V consensus anchored to verified T+0 initial intensity.
+    7. Calculates physically consistent minimum central pressures via Atkinson-Holliday relationship.
     """
-    resampled_tracks = []
+    if track_inits is None:
+        track_inits = {}
+
+    curr_lat = float(storm['lat']) if (storm and 'lat' in storm) else None
+    curr_lon = float(storm['lon']) if (storm and 'lon' in storm) else None
     
-    # 1. Process agency tracks
-    for name, df in agency_tracks.items():
-        if isinstance(df, pd.DataFrame) and not df.empty and len(df) >= 1:
-            df_copy = df.copy()
-            # JTWC issues 1-min sustained kt; convert to 10-min kt equivalent (~0.88x)
-            if name == 'JTWC' and 'wind' in df_copy.columns:
-                df_copy['wind'] = df_copy['wind'] * 0.88
-            resampled = resample_track_to_regular_intervals(df_copy, 6.0)
-            if not resampled.empty:
-                resampled_tracks.append(resampled)
-                
-    # 2. Process ensemble means
-    for name, df in ensemble_means.items():
-        if isinstance(df, pd.DataFrame) and not df.empty and len(df) >= 1:
-            resampled = resample_track_to_regular_intervals(df, 6.0)
-            if not resampled.empty:
-                resampled_tracks.append(resampled)
-                
+    # 1. Pre-anchor all tracks to storm center fix if available
+    anchored_tracks = {}
+    if curr_lat is not None and curr_lon is not None:
+        for name, df in agency_tracks.items():
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                df_copy = df.copy()
+                # JTWC issues 1-min sustained kt; convert to 10-min kt equivalent (~0.88x)
+                if name == 'JTWC' and 'wind' in df_copy.columns:
+                    df_copy['wind'] = df_copy['wind'] * 0.88
+                anchored = prepare_anchored_track(df_copy, curr_lat, curr_lon, max_lead_time=120.0)
+                if not anchored.empty:
+                    anchored_tracks[name] = anchored
+        for name, df in ensemble_means.items():
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                anchored = prepare_anchored_track(df, curr_lat, curr_lon, max_lead_time=120.0)
+                if not anchored.empty:
+                    anchored_tracks[name] = anchored
+    else:
+        for name, df in {**agency_tracks, **ensemble_means}.items():
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                anchored_tracks[name] = df.copy()
+
+    if not anchored_tracks:
+        return pd.DataFrame()
+
+    # 2. Resample all tracks to regular 6-hour intervals
+    resampled_tracks = {}
+    for name, df in anchored_tracks.items():
+        res = resample_track_to_regular_intervals(df, 6.0)
+        if not res.empty:
+            resampled_tracks[name] = res
+
     if not resampled_tracks:
         return pd.DataFrame()
-        
-    combined = pd.concat(resampled_tracks, ignore_index=True)
-    combined = combined.dropna(subset=['lat', 'lon', 'lead_time_hours'])
-    if combined.empty:
-        return pd.DataFrame()
-        
-    # Calculate baseline member count at early lead times (0 - 24h)
-    early_counts = [len(combined[combined['lead_time_hours'] == t].dropna(subset=['lat', 'lon'])) for t in [0.0, 6.0, 12.0, 24.0]]
-    valid_early = [c for c in early_counts if c > 0]
-    initial_members = max(valid_early) if valid_early else len(resampled_tracks)
-    
-    # Enforce minimum quorum (at least 40% of initial members, min 2 if >= 3 initial)
-    if initial_members >= 3:
-        min_quorum = max(2, int(np.ceil(initial_members * 0.40)))
-    else:
-        min_quorum = max(1, initial_members)
-        
-    # Enforce 5-day / 120-hour maximum forecast horizon constraint
-    sorted_taus = [t for t in sorted(combined['lead_time_hours'].unique()) if 0.0 <= t <= 120.0]
+
+    # 3. Determine verified initial intensity V0 at T+0 (kt)
+    v0_candidates = []
+    # Prioritize official agency warnings at T+0
+    for name in ['JTWC', 'JMA', 'PAGASA']:
+        if name in resampled_tracks:
+            w0 = resampled_tracks[name].iloc[0].get('wind')
+            if w0 is not None and not pd.isna(w0) and w0 > 0:
+                v0_candidates.append(float(w0))
+    if not v0_candidates:
+        for name, df in resampled_tracks.items():
+            w0 = df.iloc[0].get('wind')
+            if w0 is not None and not pd.isna(w0) and w0 > 0:
+                v0_candidates.append(float(w0))
+    v0 = float(np.mean(v0_candidates)) if v0_candidates else 45.0
+
+    # 4. Member weighting tables
+    # Track position weights
+    track_base_weights = {
+        'JTWC': 1.6, 'JMA': 1.6, 'PAGASA': 1.6,
+        'ECMWF IFS': 1.3, 'ECMWF AIFS': 1.2, 'WeatherNext 3 Cyclone': 1.1,
+        'GFS': 1.0, 'AIGEFS': 0.95
+    }
+    # Intensity forecast weights (official agencies & specialized models have much higher skill)
+    intensity_weights = {
+        'JTWC': 2.0, 'JMA': 2.0, 'PAGASA': 2.0,
+        'WeatherNext 3 Cyclone': 1.6,
+        'GFS': 1.0,
+        'ECMWF IFS': 0.6, 'ECMWF AIFS': 0.5, 'AIGEFS': 0.5
+    }
+
+    # 5. Build weighted consensus across lead times (0 - 120h)
+    sorted_taus = np.arange(0.0, 120.01, 6.0)
     mean_rows = []
-    
+    initial_members = len(resampled_tracks)
+    min_quorum = max(2, int(np.ceil(initial_members * 0.35))) if initial_members >= 3 else 1
+
     for tau in sorted_taus:
-        group = combined[combined['lead_time_hours'] == tau]
-        valid_pts = group.dropna(subset=['lat', 'lon'])
-        
-        # Stop extending consensus once surviving model support drops below quorum
-        if len(valid_pts) < min_quorum:
+        pts = []
+        d_vs = []
+        d_v_weights = []
+
+        for name, df in resampled_tracks.items():
+            sub = df[df['lead_time_hours'] == tau]
+            if not sub.empty:
+                r = sub.iloc[0]
+                la, lo = float(r['lat']), float(r['lon'])
+                if pd.isna(la) or pd.isna(lo):
+                    continue
+
+                w = track_base_weights.get(name, 1.0)
+                pts.append({
+                    'name': name,
+                    'lat': la,
+                    'lon': lo,
+                    'weight': w
+                })
+
+                # Delta-V intensity calculation
+                w_val = r.get('wind')
+                w0_val = df.iloc[0].get('wind')
+                if (w_val is not None and not pd.isna(w_val) and
+                    w0_val is not None and not pd.isna(w0_val)):
+                    dv = float(w_val) - float(w0_val)
+                    iw = intensity_weights.get(name, 1.0)
+                    d_vs.append(dv)
+                    d_v_weights.append(iw)
+
+        if len(pts) < min_quorum:
             break
-            
-        row = {
+
+        # Outlier filtering if >= 4 contributing members
+        if len(pts) >= 4:
+            med_lat = float(np.median([p['lat'] for p in pts]))
+            med_lon = float(np.median([p['lon'] for p in pts]))
+            dists_to_med = [haversine_km(med_lat, med_lon, p['lat'], p['lon']) for p in pts]
+            med_dist = float(np.median(dists_to_med))
+            # Outlier threshold: distance > 2.5 * median distance and > 250 km
+            outlier_thresh = max(250.0, 2.5 * med_dist)
+            filtered_pts = [p for p, d in zip(pts, dists_to_med) if d <= outlier_thresh]
+            if len(filtered_pts) >= min_quorum:
+                pts = filtered_pts
+
+        total_weight = sum(p['weight'] for p in pts)
+        mean_lat = sum(p['lat'] * p['weight'] for p in pts) / total_weight
+        mean_lon = sum(p['lon'] * p['weight'] for p in pts) / total_weight
+
+        # Calculate cross-track multi-model spread (RMS distance in km to consensus position)
+        distances = [haversine_km(mean_lat, mean_lon, p['lat'], p['lon']) for p in pts]
+        spread_km = float(np.sqrt(np.mean(np.array(distances)**2)))
+
+        # Intensity via Delta-V consensus anchored to V0
+        if d_vs:
+            mean_dv = float(np.average(d_vs, weights=d_v_weights))
+            v_kt = max(25.0, v0 + mean_dv)
+        else:
+            v_kt = v0
+
+        # WMO Standard Rounding: Round wind speeds to nearest 5 km/h (and 5 kt)
+        v_kmh_raw = float(v_kt * 1.852)
+        v_kmh = float(int(round(v_kmh_raw / 5.0)) * 5)
+        v_kt_wmo = float(int(round(v_kt / 5.0)) * 5)
+        p_min = estimate_atkinson_holliday_pressure(v_kt)
+
+        mean_rows.append({
             'lead_time_hours': float(tau),
-            'lat': float(valid_pts['lat'].mean()),
-            'lon': float(valid_pts['lon'].mean())
-        }
-        if 'wind' in valid_pts.columns:
-            v_winds = pd.to_numeric(valid_pts['wind'], errors='coerce').dropna()
-            if not v_winds.empty:
-                row['wind'] = float(v_winds.mean()) * 1.852  # convert knots to km/h
-        if 'pressure' in valid_pts.columns:
-            v_press = pd.to_numeric(valid_pts['pressure'], errors='coerce').dropna()
-            if not v_press.empty:
-                row['pressure'] = float(v_press.mean())
-        mean_rows.append(row)
-        
+            'lat': float(mean_lat),
+            'lon': float(mean_lon),
+            'wind': v_kmh,
+            'wind_kt': v_kt_wmo,
+            'pressure': p_min,
+            'spread_km': spread_km
+        })
+
     if not mean_rows:
         return pd.DataFrame()
-        
+
     mean_df = pd.DataFrame(mean_rows).sort_values('lead_time_hours').reset_index(drop=True)
-    
-    if 'wind' in mean_df.columns:
-        mean_df['wind'] = mean_df['wind'].interpolate(method='linear', limit_direction='both')
-    if 'pressure' in mean_df.columns:
-        mean_df['pressure'] = mean_df['pressure'].ffill().bfill()
-        
-    # Smooth T+0 anchoring to verified storm center fix
-    if storm is not None and not mean_df.empty:
-        try:
-            storm_lat = float(storm['lat'])
-            storm_lon = float(storm['lon'])
-            t0_lat = float(mean_df.iloc[0]['lat'])
-            t0_lon = float(mean_df.iloc[0]['lon'])
-            
-            init_offset_dist = haversine_km(t0_lat, t0_lon, storm_lat, storm_lon)
-            if init_offset_dist <= 350.0:
-                d_lat = storm_lat - t0_lat
-                d_lon = storm_lon - t0_lon
-                # Smooth decay factor: 1.0 at T+0, decaying to 0.0 by T+72h
-                taus = mean_df['lead_time_hours'].values.astype(float)
-                decay = np.clip(1.0 - (taus / 72.0), 0.0, 1.0)
-                mean_df['lat'] = mean_df['lat'] + d_lat * decay
-                mean_df['lon'] = mean_df['lon'] + d_lon * decay
-        except Exception as e:
-            print(f"Warning: Failed to anchor consensus track to storm center: {e}")
-            
     return mean_df
 
 
@@ -2960,7 +3061,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
     short_id = get_short_atcf_id(storm['atcf_id'])
     full_storm_title = format_storm_title(storm)
     curr_lat, curr_lon = float(storm['lat']), float(storm['lon'])
-    mean_track = compute_compiled_mean_track(agency_tracks, ensemble_means, storm=storm)
+    mean_track = compute_compiled_mean_track(agency_tracks, ensemble_means, storm=storm, track_inits=track_inits)
     init_dt = parse_storm_init_time(storm.get('init_time') or init_time_str)
     
     fig = plt.figure(figsize=(12, 7.6), facecolor=BG_DARK)
@@ -2992,12 +3093,12 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             title_x = 0.025
 
     ax_head.text(
-        title_x, 0.68, f"{full_storm_title} — Consensus Mean Track & Cone of Uncertainty",
+        title_x, 0.68, f"{full_storm_title} — Forecast Track",
         fontsize=13.5, fontweight='bold', color=TEXT_PRI, transform=ax_head.transAxes, va='center'
     )
     ph_time_str = format_to_ph_time_str(init_time_str)
     ax_head.text(
-        title_x, 0.28, f"Compiled Multi-Model & Agency Ensemble Consensus  |  PH Time: {ph_time_str}",
+        title_x, 0.28, f"5 Days Forecast  |  PH Time: {ph_time_str}",
         fontsize=9.5, color=TEXT_SEC, transform=ax_head.transAxes, va='center'
     )
     
@@ -3006,7 +3107,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
         fontsize=11.5, fontweight='bold', color=TEXT_PRI, transform=ax_head.transAxes, ha='right', va='center'
     )
     ax_head.text(
-        0.975, 0.28, "Unofficial Forecast Consensus",
+        0.975, 0.28, "Unofficial Forecast Track",
         fontsize=9.0, color='#38bdf8', transform=ax_head.transAxes, ha='right', va='center'
     )
     
@@ -3084,8 +3185,9 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
         lats = mean_track['lat'].values
         lons = mean_track['lon'].values
         taus = mean_track['lead_time_hours'].values
+        spreads_km = mean_track['spread_km'].values if 'spread_km' in mean_track.columns else None
         
-        cone_geom = build_cone_polygon(lats, lons, taus)
+        cone_geom = build_cone_polygon(lats, lons, taus, spreads_km=spreads_km)
         if cone_geom:
             if cone_geom.geom_type == 'Polygon':
                 geoms = [cone_geom]
@@ -3097,8 +3199,8 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             if geoms:
                 ax.add_geometries(
                     geoms, crs=ccrs.PlateCarree(),
-                    facecolor='#38bdf8', alpha=0.18,
-                    edgecolor='#7dd3fc', linestyle='--', linewidth=1.6,
+                    facecolor=(1.0, 1.0, 1.0, 0.18),
+                    edgecolor='#ffffff', linestyle='-', linewidth=1.6,
                     zorder=6, label='Cone of Uncertainty'
                 )
                 
@@ -3118,7 +3220,8 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             lo = float(row['lon'])
             w = row.get('wind', 45)
             wind_for_color = w if (w is not None and not pd.isna(w) and w > 0) else 45
-            pt_color, cat_name = get_intensity_color(wind_for_color)
+            wind_kmh_rounded = int(round(float(wind_for_color) / 5.0) * 5)
+            pt_color, cat_name = get_intensity_color(wind_kmh_rounded)
             
             size = 82
             ax.scatter(
@@ -3127,10 +3230,15 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             )
             
             if init_dt:
-                d_str = (init_dt + timedelta(hours=h + 8)).strftime("%b %d").upper()
-                lbl_text = f"{d_str} (T+{h}h)\n{int(round(wind_for_color))} km/h"
+                t_pht = init_dt + timedelta(hours=h + 8)
+                d_str = t_pht.strftime("%b %d").upper()
+                if t_pht.minute != 0:
+                    hr_str = t_pht.strftime("%I:%M%p").lstrip('0')
+                else:
+                    hr_str = t_pht.strftime("%I%p").lstrip('0')
+                lbl_text = f"{d_str} {hr_str}\n{wind_kmh_rounded} km/h"
             else:
-                lbl_text = f"T+{h}h\n{int(round(wind_for_color))} km/h"
+                lbl_text = f"{wind_kmh_rounded} km/h"
             
             # Compute track tangent vector to push labels perpendicular to track heading
             if idx < N_pts - 1:
@@ -3170,17 +3278,46 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
                 path_effects=[path_effects.withStroke(linewidth=3.0, foreground=BG_DARK)]
             )
             
+    # ── Resolve Verified Current Storm Intensity & Pressure ──────────
+    curr_wind_kt = storm.get('wind_kt') or storm.get('wind') or storm.get('winds')
+    curr_mslp = storm.get('pressure') or storm.get('mslp')
+
+    if curr_wind_kt is None:
+        for ag in ['JTWC', 'JMA', 'PAGASA']:
+            if ag in agency_tracks and not agency_tracks[ag].empty:
+                sub = agency_tracks[ag][agency_tracks[ag]['lead_time_hours'] == 0]
+                if not sub.empty and 'wind' in sub.columns and sub.iloc[0]['wind'] > 0:
+                    curr_wind_kt = float(sub.iloc[0]['wind'])
+                    break
+
+    if curr_mslp is None:
+        for ag in ['JMA', 'PAGASA', 'JTWC']:
+            if ag in agency_tracks and not agency_tracks[ag].empty:
+                sub = agency_tracks[ag][agency_tracks[ag]['lead_time_hours'] == 0]
+                if not sub.empty and 'pressure' in sub.columns and sub.iloc[0]['pressure'] > 0:
+                    curr_mslp = float(sub.iloc[0]['pressure'])
+                    break
+
+    if curr_wind_kt is None and not mean_track.empty:
+        curr_wind_kt = float(mean_track.iloc[0].get('wind_kt', 65.0))
+    if curr_mslp is None and not mean_track.empty:
+        curr_mslp = float(mean_track.iloc[0].get('pressure', 980.0))
+
+    curr_wind_kt = float(curr_wind_kt) if curr_wind_kt is not None else 65.0
+    curr_wind_kmh = int(round(float(curr_wind_kt * 1.852) / 5.0) * 5)
+    curr_wind_kt_rounded = int(round(float(curr_wind_kt) / 5.0) * 5)
+    curr_mslp_val = int(round(float(curr_mslp))) if (curr_mslp is not None and curr_mslp > 0) else estimate_atkinson_holliday_pressure(curr_wind_kt)
+    curr_pt_color, curr_cat_name = get_intensity_color(curr_wind_kmh)
+
     # Draw initial storm center fix icon
     draw_current_storm_glyph(ax, curr_lon, curr_lat, color='#38bdf8', size=130)
     
     # ── 3. Bottom Forecast Summary & Intensity Dashboard ─────────────
-    init_dt = None
-    if storm.get('init_time'):
-        try:
-            init_dt = datetime.strptime(str(storm['init_time']).split('.')[0], "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            try: init_dt = pd.to_datetime(storm['init_time'])
-            except Exception: pass
+    if not init_dt:
+        if storm.get('init_time'):
+            init_dt = parse_storm_init_time(storm['init_time'])
+        elif init_time_str:
+            init_dt = parse_storm_init_time(init_time_str)
             
     forecast_data = []
     key_hours = [0, 24, 48, 72, 96, 120]
@@ -3191,28 +3328,46 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
                 w_val = r.get('wind')
                 p_val = r.get('pressure')
                 
-                wind = int(round(w_val)) if (w_val is not None and not math.isnan(w_val) and w_val > 0) else 45
-                mslp = int(round(p_val)) if (p_val is not None and not math.isnan(p_val) and p_val > 0) else 1004
-                
-                time_lbl = ""
+                badge_lbl = ""
                 if init_dt:
-                    t_pt = init_dt + timedelta(hours=h)
-                    time_lbl = t_pt.strftime("%b %d %HZ")
+                    t_pht = init_dt + timedelta(hours=h + 8)
+                    d_pht = t_pht.strftime("%b %d")
+                    hr_pht = t_pht.strftime("%I:%M %p").lstrip('0')
+                    badge_lbl = f"{d_pht} • {hr_pht} PHT"
                 else:
-                    time_lbl = f"+{h}h"
-                    
-                pt_color, cat_name = get_intensity_color(wind)
+                    badge_lbl = f"Day {h // 24}" if h > 0 else "Initial"
+
+                if h == 0:
+                    wind = curr_wind_kmh
+                    wind_kt = curr_wind_kt_rounded
+                    mslp = curr_mslp_val
+                    cat_name = curr_cat_name
+                    dot_color = '#38bdf8'  # Matches the cyan current storm glyph on the map
+                    wind_color = curr_pt_color
+                else:
+                    # WMO Standard: round maximum sustained wind to nearest 5 km/h
+                    wind = int(round(float(w_val) / 5.0) * 5) if (w_val is not None and not math.isnan(w_val) and w_val > 0) else 45
+                    mslp = int(round(p_val)) if (p_val is not None and not math.isnan(p_val) and p_val > 0) else 1004
+                    w_kt_val = r.get('wind_kt')
+                    if w_kt_val is not None and not math.isnan(w_kt_val) and w_kt_val > 0:
+                        wind_kt = int(round(float(w_kt_val) / 5.0) * 5)
+                    else:
+                        wind_kt = int(round((wind / 1.852) / 5.0) * 5)
+                    pt_color, cat_name = get_intensity_color(wind)
+                    dot_color = pt_color
+                    wind_color = pt_color
                 
                 forecast_data.append({
-                    "label": f"T+{h}h",
-                    "date": time_lbl,
+                    "badge": badge_lbl,
                     "lat": round(float(r['lat']), 1),
                     "lon": round(float(r['lon']), 1),
                     "wind": wind,
-                    "wind_kt": int(round(wind / 1.852)),
+                    "wind_kt": wind_kt,
                     "mslp": mslp,
-                    "dot_color": pt_color,
-                    "cat_name": cat_name
+                    "dot_color": dot_color,
+                    "wind_color": wind_color,
+                    "cat_name": cat_name,
+                    "is_current": (h == 0)
                 })
                 
     N = len(forecast_data)
@@ -3230,7 +3385,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
         panel_ax.add_patch(panel_box)
         
         panel_ax.text(
-            0.02, 0.91, "FORECAST SUMMARY & INTENSITY DETAILS (6-HOUR CONSENSUS)",
+            0.02, 0.91, "FORECAST SUMMARY & INTENSITY DETAILS",
             transform=panel_ax.transAxes, fontsize=8.0, fontweight="bold", color='#38bdf8',
             fontfamily="monospace", va="center"
         )
@@ -3246,20 +3401,25 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             cw = x1 - x0
             cx = (x0 + x1) / 2.0
             
+            is_curr = fc.get('is_current', False)
+            edge_c = '#38bdf8' if is_curr else '#334155'
+            edge_lw = 1.3 if is_curr else 0.8
+            
             card = FancyBboxPatch(
                 (x0, 0.05), cw, 0.81, boxstyle="round,pad=0.005,rounding_size=0.03",
                 transform=panel_ax.transAxes,
-                facecolor='#1e293b', edgecolor='#334155', linewidth=0.8, zorder=1
+                facecolor='#1e293b', edgecolor=edge_c, linewidth=edge_lw, zorder=1
             )
             panel_ax.add_patch(card)
             
             dot_c = fc.get("dot_color", '#38bdf8')
+            wind_c = fc.get("wind_color", dot_c)
             
-            # Top: Lead Time Badge
+            # Top: Philippine Time Badge
             panel_ax.text(
-                cx, 0.77, f"{fc['label']} • {fc['date']}",
+                cx, 0.77, fc['badge'],
                 transform=panel_ax.transAxes, ha="center", va="center",
-                fontsize=7.8, fontweight="bold", color=dot_c, zorder=2
+                fontsize=7.6, fontweight="bold", color=dot_c, zorder=2
             )
             
             # Category Badge
@@ -3283,7 +3443,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
             panel_ax.text(
                 cx, 0.33, f"{fc['wind']} km/h",
                 transform=panel_ax.transAxes, ha="center", va="center",
-                fontsize=9.0, fontweight="bold", color=dot_c, zorder=2
+                fontsize=9.0, fontweight="bold", color=wind_c, zorder=2
             )
             panel_ax.text(
                 cx, 0.22, f"({fc['wind_kt']} kt)",
