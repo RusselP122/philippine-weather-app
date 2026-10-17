@@ -140,34 +140,30 @@ def get_storm_classification_label(wind_kt, is_invest=False, agency="JTWC"):
 
 def format_system_display_name(storm_data):
     """
-    Standardizes storm/system naming matching forecasttrack.py:
-    - Inside PAR with intl name: 'TROPICAL STORM OBET (KROVANH)'
-    - Inside PAR without intl name: 'TROPICAL DEPRESSION OBET (17W)'
-    - Outside PAR with intl name: 'CATEGORY 1 TYPHOON CHAMPI (29W)'
+    Standardizes storm/system naming matching ptcc_satellite.py:
+    - Storm with international name: 'CHAMPI (29W)'
+    - Inside PAR with PAGASA name: 'CHAMPI (QUEENIE) (29W)' or 'QUEENIE (29W)'
     - Invest: '97W INVEST'
-    Appends wind speed & central pressure: ' • 40 KT (74 KM/H) • 998 HPA'
+    Displays strictly the storm name in the header without wind or pressure data metrics.
     """
     if not storm_data:
         return "WESTERN PACIFIC SYSTEM"
 
     atcf_id = str(storm_data.get("atcf_id", "")).strip().upper()
     raw_name = str(storm_data.get("storm_name", "")).strip().upper()
-    lat = float(storm_data.get("lat", 0.0))
-    lon = float(storm_data.get("lon", 0.0))
-    wind_kt = float(storm_data.get("wind_kt", 0.0))
-    pressure = float(storm_data.get("pressure_hpa", 1008.0))
 
-    inside_par = is_point_inside_par(lat, lon)
-
-    # Clean short ATCF ID (e.g. 17W, 22W, 97W)
+    # Clean short ATCF ID (e.g. 17W, 22W, 29W, 97W)
     m = re.search(r'(\d{2}[A-Z]?)', atcf_id)
     short_id = m.group(1) if m else atcf_id
-    if short_id and not short_id.endswith('W') and not short_id.endswith('E') and not short_id.endswith('C'):
+    if short_id and not (short_id.endswith('W') or short_id.endswith('E') or short_id.endswith('C')):
         short_id += 'W'
 
     nums = ''.join(filter(str.isdigit, short_id))
     num_val = int(nums) if nums else 0
     is_invest = (90 <= num_val <= 99) or "INVEST" in raw_name
+
+    if is_invest:
+        return f"{short_id} INVEST"
 
     # Check if raw_name is placeholder or number word, resolve JMA international name
     if is_placeholder_storm_name(raw_name):
@@ -177,44 +173,21 @@ def format_system_display_name(storm_data):
             storm_data["storm_name"] = jma_name
             storm_data["international_name"] = jma_name
 
-    intl_name = raw_name.title() if not is_placeholder_storm_name(raw_name) else None
-
     # Check for assigned PAGASA name
-    pagasa_name = storm_data.get("pagasa_name")
-    if not pagasa_name and not is_invest:
-        pagasa_name = (
-            PAGASA_STORM_MAP_2026.get(short_id.upper()) or 
-            PAGASA_STORM_MAP_2026.get(raw_name.upper())
-        )
-
-    # Build primary system title
-    if is_invest:
-        system_title = f"{short_id} INVEST"
-    elif inside_par and pagasa_name:
-        p_name = pagasa_name.upper()
-        pag_cat = get_storm_classification_label(wind_kt, is_invest=is_invest, agency="PAGASA")
-        if intl_name:
-            system_title = f"{pag_cat} {p_name} ({intl_name.upper()})"
+    pagasa_name = storm_data.get("pagasa_name") or PAGASA_STORM_MAP_2026.get(short_id) or PAGASA_STORM_MAP_2026.get(raw_name)
+    if pagasa_name:
+        if raw_name.startswith("TC ") or raw_name.startswith("WP") or raw_name == short_id:
+            disp_name = pagasa_name
+        elif pagasa_name in raw_name:
+            disp_name = raw_name
         else:
-            system_title = f"{pag_cat} {p_name} ({short_id})"
-    elif intl_name:
-        jtwc_cat = get_storm_classification_label(wind_kt, is_invest=is_invest, agency="JTWC")
-        system_title = f"{jtwc_cat} {intl_name.upper()} ({short_id})"
+            disp_name = f"{raw_name} ({pagasa_name})"
     else:
-        jtwc_cat = get_storm_classification_label(wind_kt, is_invest=is_invest, agency="JTWC")
-        system_title = f"{jtwc_cat} {short_id}"
+        disp_name = raw_name
 
-    # Append wind speed and central pressure metrics
-    details = []
-    if wind_kt > 0:
-        kmh = int(wind_kt * 1.852)
-        details.append(f"{int(wind_kt)} KT ({kmh} KM/H)")
-    if 800 < pressure < 1040:
-        details.append(f"{int(pressure)} HPA")
-
-    if details:
-        return f"{system_title} • " + " • ".join(details)
-    return system_title
+    if short_id and short_id not in disp_name:
+        return f"{disp_name} ({short_id})"
+    return disp_name
 
 # ── Dynamically Find Latest Available Satellite Timestamp ────────────────────
 def get_latest_available_satellite_time():
@@ -397,8 +370,7 @@ def draw_fox_weather_header(img, dt_utc, storm_data=None, custom_title=None):
     draw.line([(sep1_x, mid_y + 1), (sep1_x, by2 - 1)], fill=(70, 105, 155), width=max(1, int(1 * scale)))
 
     # 6. Bottom Tier Far Right: Data Source (underneath Philippine Weather badge)
-    source_name = storm_data.get("source", "JTWC") if storm_data else "JTWC"
-    source_text = f"DATA: {source_name}"
+    source_text = "DATA: HIMAWARI-9 SATELLITE"
     src_bbox = draw.textbbox((0, 0), source_text, font=font_sub)
     src_w = src_bbox[2] - src_bbox[0]
     src_x = bx2 - int(16 * scale) - src_w
@@ -408,7 +380,7 @@ def draw_fox_weather_header(img, dt_utc, storm_data=None, custom_title=None):
     sep2_x = src_x - int(14 * scale)
     draw.line([(sep2_x, mid_y + 1), (sep2_x, by2 - 1)], fill=(70, 105, 155), width=max(1, int(1 * scale)))
 
-    # 7. Bottom Tier Middle: System Name & Intensity Metrics (from forecasttrack.py)
+    # 7. Bottom Tier Middle: Storm Name (strictly name, no metrics)
     system_text = format_system_display_name(storm_data)
     sys_x = sep1_x + int(14 * scale)
     draw.text((sys_x, time_y), system_text, fill=(255, 255, 255), font=font_sub)
