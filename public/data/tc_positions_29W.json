@@ -4,12 +4,12 @@
   "track_id": "WP292026",
   "latest": {
     "lat": 13.1,
-    "lon": 143.4,
-    "pressure_hpa": 934.0,
+    "lon": 142.3,
+    "pressure_hpa": 931.0,
     "wind_kt": 128.0,
     "wind_kmh": 237,
-    "movement": "W at 25.3 km/h (13.6 kt)",
-    "init_time": "2026-10-18 00:00",
+    "movement": "W at 19.9 km/h (10.7 kt)",
+    "init_time": "2026-10-18 06:00",
     "category": "Super Typhoon"
   },
   "history": [
@@ -198,6 +198,15 @@
       "lat": 13.1,
       "lon": 143.4,
       "pressure_hpa": 934.0,
+      "wind_kt": 128.0,
+      "wind_kmh": 237,
+      "category": "Super Typhoon"
+    },
+    {
+      "cycle": "2026-10-18 06:00",
+      "lat": 13.1,
+      "lon": 142.3,
+      "pressure_hpa": 931.0,
       "wind_kt": 128.0,
       "wind_kmh": 237,
       "category": "Super Typhoon"
