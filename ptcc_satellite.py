@@ -129,17 +129,57 @@ def is_point_inside_par(lat, lon):
         p1x, p1y = p2x, p2y
     return inside
 
-def get_storm_classification_label(wind_kt, is_invest=False):
+def get_storm_classification_label(wind_kt, is_invest=False, agency="JTWC"):
     """
-    Classifies tropical cyclone intensity (PAGASA / WMO Standard).
+    Classifies tropical cyclone intensity:
+    - JTWC: Category 1-4 Typhoon, Category 5 Super Typhoon, Tropical Storm, Tropical Depression, Low Pressure Area
+    - JMA: Violent Typhoon, Very Strong Typhoon, Typhoon, Severe Tropical Storm, Tropical Storm, Tropical Depression, Low Pressure Area
+    - PAGASA: Super Typhoon, Typhoon, Severe Tropical Storm, Tropical Storm, Tropical Depression, Low Pressure Area
     """
     if is_invest or wind_kt <= 0:
         return "INVEST"
+    if wind_kt < 25:
+        return "LOW PRESSURE AREA"
     if wind_kt < 34:
         return "TROPICAL DEPRESSION"
     elif wind_kt < 48:
         return "TROPICAL STORM"
-    elif wind_kt < 64:
+
+    agency_u = (agency or "").upper()
+    if agency_u == "JTWC":
+        if wind_kt >= 137:
+            return "CATEGORY 5 SUPER TYPHOON"
+        elif wind_kt >= 130:
+            return "CATEGORY 4 SUPER TYPHOON"
+        elif wind_kt >= 113:
+            return "CATEGORY 4 TYPHOON"
+        elif wind_kt >= 96:
+            return "CATEGORY 3 TYPHOON"
+        elif wind_kt >= 83:
+            return "CATEGORY 2 TYPHOON"
+        elif wind_kt >= 64:
+            return "CATEGORY 1 TYPHOON"
+        else:
+            return "TROPICAL STORM"
+
+    elif agency_u == "JMA":
+        if wind_kt >= 105:
+            return "VIOLENT TYPHOON"
+        elif wind_kt >= 85:
+            return "VERY STRONG TYPHOON"
+        elif wind_kt >= 64:
+            return "TYPHOON"
+        elif wind_kt >= 48:
+            return "SEVERE TROPICAL STORM"
+        elif wind_kt >= 34:
+            return "TROPICAL STORM"
+        elif wind_kt >= 25:
+            return "TROPICAL DEPRESSION"
+        else:
+            return "LOW PRESSURE AREA"
+
+    # Default / PAGASA Standard
+    if wind_kt < 64:
         return "SEVERE TROPICAL STORM"
     elif wind_kt < 130:
         return "TYPHOON"
@@ -1251,10 +1291,49 @@ def get_agency_category(agency, wind_kt=None, wind_kmh=None, explicit_cat=None, 
         else:
             return 'LOW PRESSURE AREA'
 
+    if agency == 'JMA':
+        if explicit_cat:
+            c = explicit_cat.strip().upper()
+            if 'VIOLENT' in c:
+                return 'VIOLENT TYPHOON'
+            elif 'VERY STRONG' in c:
+                return 'VERY STRONG TYPHOON'
+            elif 'SEVERE' in c:
+                return 'SEVERE TROPICAL STORM'
+            elif 'TYPHOON' in c:
+                if kt >= 105:
+                    return 'VIOLENT TYPHOON'
+                elif kt >= 85:
+                    return 'VERY STRONG TYPHOON'
+                return 'TYPHOON'
+            elif 'STORM' in c:
+                return 'TROPICAL STORM'
+            elif 'DEPRESSION' in c:
+                return 'LOW PRESSURE AREA' if is_lpa else 'TROPICAL DEPRESSION'
+
+        if kt >= 105:
+            return 'VIOLENT TYPHOON'
+        elif kt >= 85:
+            return 'VERY STRONG TYPHOON'
+        elif kt >= 64:
+            return 'TYPHOON'
+        elif kt >= 48:
+            return 'SEVERE TROPICAL STORM'
+        elif kt >= 34:
+            return 'TROPICAL STORM'
+        elif not is_lpa:
+            return 'TROPICAL DEPRESSION'
+        else:
+            return 'LOW PRESSURE AREA'
+
     if explicit_cat:
         c = explicit_cat.strip().upper()
         if 'CATEGORY' in c:
             return c
+        elif 'VIOLENT' in c:
+            return 'VIOLENT TYPHOON'
+        elif 'VERY STRONG' in c:
+            return 'VERY STRONG TYPHOON'
         elif 'SUPER' in c and 'TYPHOON' in c:
             return 'SUPER TYPHOON'
         elif 'TYPHOON' in c:
@@ -1280,18 +1359,6 @@ def get_agency_category(agency, wind_kt=None, wind_kmh=None, explicit_cat=None, 
         elif kmh >= 62:
             return 'TROPICAL STORM'
         elif kmh > 45:
-            return 'TROPICAL DEPRESSION'
-        else:
-            return 'LOW PRESSURE AREA'
-
-    elif agency == 'JMA':
-        if kt >= 64:
-            return 'TYPHOON'
-        elif kt >= 48:
-            return 'SEVERE TROPICAL STORM'
-        elif kt >= 34:
-            return 'TROPICAL STORM'
-        elif not is_lpa:
             return 'TROPICAL DEPRESSION'
         else:
             return 'LOW PRESSURE AREA'
@@ -1387,6 +1454,7 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
 
     # ── 2. JMA Official Track / Advisory ─────────────────────────────────────
     jma_kt = None
+    jma_explicit_cat = None
     for i in range(60, 66):
         local_jma = os.path.join(data_dir, f"jma_vptw60_{i}.json")
         jma_json_str = ""
@@ -1453,6 +1521,8 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
                     if is_placeholder_storm_name(storm_data.get('storm_name')):
                         storm_data['storm_name'] = jma_name
                         storm_data['international_name'] = jma_name
+                c_part = infos[0].get('classPart', {})
+                jma_explicit_cat = c_part.get('intensityAndTyphoonClass') or c_part.get('typhoonClassName')
                 w_part = infos[0].get('windPart', {})
                 w_kt_str = w_part.get('windSpeedKnot')
                 if w_kt_str:
@@ -1466,7 +1536,7 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
         agency_results['JMA'] = {
             'wind_kt': jma_kt,
             'wind_kmh': kmh,
-            'category': get_agency_category('JMA', wind_kt=jma_kt, wind_kmh=kmh, storm_name=raw_name),
+            'category': get_agency_category('JMA', wind_kt=jma_kt, wind_kmh=kmh, explicit_cat=jma_explicit_cat, storm_name=raw_name),
             'status': 'ACTIVE',
             'standard': '10-MIN SUSTAINED'
         }
@@ -1698,13 +1768,15 @@ def draw_agency_wind_card(img, agency_data=None, storm_data=None):
 
             # Auto-shrink font if long category string to maintain clean margins
             use_font_cat = font_cat
-            if cw > col_w - int(10 * scale):
+            curr_sz = max(8, int(10.5 * scale))
+            while cw > col_w - int(8 * scale) and curr_sz > max(6, int(7.0 * scale)):
+                curr_sz -= 1
                 try:
-                    use_font_cat = ImageFont.truetype("arialbd.ttf", max(7, int(9.0 * scale)))
+                    use_font_cat = ImageFont.truetype("arialbd.ttf", curr_sz)
                     cb = draw.textbbox((0, 0), cat_str, font=use_font_cat)
                     cw = cb[2] - cb[0]
                 except Exception:
-                    pass
+                    break
             draw.text((c_mid - cw / 2.0, cat_y), cat_str, fill=(71, 85, 105), font=use_font_cat)
 
             # Row 3: Dominant KM/H number on TOP

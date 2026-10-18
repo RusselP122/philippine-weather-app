@@ -103,6 +103,7 @@ def get_storm_classification_label(wind_kt, is_invest=False, agency="JTWC"):
     """
     Classifies tropical cyclone intensity:
     - JTWC: Category 1-4 Typhoon, Category 5 Super Typhoon, Tropical Storm, Tropical Depression, Low Pressure Area
+    - JMA: Violent Typhoon, Very Strong Typhoon, Typhoon, Severe Tropical Storm, Tropical Storm, Tropical Depression, Low Pressure Area
     - PAGASA: Super Typhoon, Typhoon, Severe Tropical Storm, Tropical Storm, Tropical Depression, Low Pressure Area
     """
     if is_invest or wind_kt <= 0:
@@ -114,7 +115,8 @@ def get_storm_classification_label(wind_kt, is_invest=False, agency="JTWC"):
     elif wind_kt < 48:
         return "TROPICAL STORM"
 
-    if (agency or "").upper() == "JTWC":
+    agency_u = (agency or "").upper()
+    if agency_u == "JTWC":
         if wind_kt >= 137:
             return "CATEGORY 5 SUPER TYPHOON"
         elif wind_kt >= 130:
@@ -129,6 +131,22 @@ def get_storm_classification_label(wind_kt, is_invest=False, agency="JTWC"):
             return "CATEGORY 1 TYPHOON"
         else:
             return "TROPICAL STORM"
+
+    elif agency_u == "JMA":
+        if wind_kt >= 105:
+            return "VIOLENT TYPHOON"
+        elif wind_kt >= 85:
+            return "VERY STRONG TYPHOON"
+        elif wind_kt >= 64:
+            return "TYPHOON"
+        elif wind_kt >= 48:
+            return "SEVERE TROPICAL STORM"
+        elif wind_kt >= 34:
+            return "TROPICAL STORM"
+        elif wind_kt >= 25:
+            return "TROPICAL DEPRESSION"
+        else:
+            return "LOW PRESSURE AREA"
 
     # Default / PAGASA Standard
     if wind_kt < 64:

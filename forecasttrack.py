@@ -2057,6 +2057,30 @@ def get_jma_official_track(storm, data_dir='public/data'):
                         init_str = p_dt.strftime("%Y-%m-%d %HZ")
                     except (ValueError, TypeError):
                         pass
+
+                # Store authentic wind radii from the MATCHED JMA product only
+                jma_r = {}
+                try:
+                    w50 = infos[0].get('warningAreaPart50', [])
+                    if w50 and isinstance(w50, list) and len(w50) > 0:
+                        r50_km = float(w50[0].get('radiusKm', 0) or 0)
+                        if r50_km > 0:
+                            jma_r['50kt'] = r50_km
+                except Exception:
+                    pass
+
+                try:
+                    w30 = infos[0].get('warningAreaPart30', [])
+                    if w30 and isinstance(w30, list) and len(w30) > 0:
+                        r30_km = float(w30[0].get('radiusKm', 0) or 0)
+                        if r30_km > 0:
+                            jma_r['30kt'] = r30_km
+                except Exception:
+                    pass
+
+                if jma_r:
+                    storm['jma_radii'] = jma_r
+
                 return df[cols_ret], init_str
         except Exception:
             continue
@@ -2358,8 +2382,8 @@ def draw_current_storm_glyph(ax, lon, lat, color='#ffffff', size=130):
     """Draws a broadcast-grade glowing hurricane eye center glyph at initial fix."""
     # Outer glow ring
     ax.scatter(lon, lat, s=size*1.9, facecolor='none', edgecolor=color, linewidth=2.2, alpha=0.45, transform=ccrs.PlateCarree(), zorder=18)
-    # Mid ring
-    ax.scatter(lon, lat, s=size, facecolor=BG_DARK, edgecolor=color, linewidth=2.0, alpha=0.95, transform=ccrs.PlateCarree(), zorder=19)
+    # Mid ring (transparent inside so satellite eye is visible)
+    ax.scatter(lon, lat, s=size, facecolor='none', edgecolor=color, linewidth=2.0, alpha=0.95, transform=ccrs.PlateCarree(), zorder=19)
     # Center core dot
     ax.scatter(lon, lat, s=size*0.22, facecolor=color, edgecolor='none', transform=ccrs.PlateCarree(), zorder=20)
 
@@ -2495,39 +2519,145 @@ def build_geodesic_circle(lat, lon, radius_km, num_points=72):
     return poly
 
 
+def build_quadrant_radii_polygon(lat, lon, r_ne, r_se, r_sw, r_nw, fillet_deg=10.0, num_pts=360):
+    """
+    Builds a closed 4-quadrant asymmetric wind sector polygon with smooth quarter-arcs
+    and smooth Hermite transitions across the quadrant boundaries (0°, 90°, 180°, 270°).
+    """
+    angles = np.linspace(0, 360, num_pts + 1)
+    pts = []
+    for ang in angles:
+        if ang < 90:
+            r_curr = r_ne
+        elif ang < 180:
+            r_curr = r_se
+        elif ang < 270:
+            r_curr = r_sw
+        else:
+            r_curr = r_nw
+
+        # Smooth Hermite transition across boundaries to eliminate abrupt notches
+        if 90 - fillet_deg <= ang <= 90 + fillet_deg:
+            t = (ang - (90 - fillet_deg)) / (2 * fillet_deg)
+            s = t * t * (3 - 2 * t)
+            r_curr = r_ne * (1 - s) + r_se * s
+        elif 180 - fillet_deg <= ang <= 180 + fillet_deg:
+            t = (ang - (180 - fillet_deg)) / (2 * fillet_deg)
+            s = t * t * (3 - 2 * t)
+            r_curr = r_se * (1 - s) + r_sw * s
+        elif 270 - fillet_deg <= ang <= 270 + fillet_deg:
+            t = (ang - (270 - fillet_deg)) / (2 * fillet_deg)
+            s = t * t * (3 - 2 * t)
+            r_curr = r_sw * (1 - s) + r_nw * s
+        elif ang <= fillet_deg:
+            t = (ang + fillet_deg) / (2 * fillet_deg)
+            s = t * t * (3 - 2 * t)
+            r_curr = r_nw * (1 - s) + r_ne * s
+        elif ang >= 360 - fillet_deg:
+            t = (ang - (360 - fillet_deg)) / (2 * fillet_deg)
+            s = t * t * (3 - 2 * t)
+            r_curr = r_nw * (1 - s) + r_ne * s
+
+        clat, clon = offset_point(lat, lon, r_curr, ang)
+        pts.append((clon, clat))
+
+    poly = Polygon(pts)
+    if not poly.is_valid:
+        poly = poly.buffer(0)
+    return poly
+
+build_quadrant_polygon = build_quadrant_radii_polygon
+
+
 def fetch_storm_circular_wind_radii(storm):
     """
-    Extracts circular wind radii (in km) from JMA warnings and JTWC advisories matching JMA/PAGASA format:
-      - '34kt': Gale-Force Winds (>= 62 km/h / 34 kt / Strong Winds)
-      - '50kt': Storm-Force Winds (>= 89 km/h / 50 kt / Damaging Winds)
-      - '64kt': Typhoon-Force Winds (>= 118 km/h / 64 kt / Destructive Winds)
+    Extracts authentic wind radii for the storm:
+    1. Primary source: JMA (10-minute sustained winds) from MATCHED JMA product only.
+       Stored in storm['jma_radii'] = {'50kt': km, '30kt': km}.
+       - RED (inner): >= 50 kt (93 km/h) storm-force winds
+       - TAN/YELLOW (outer): >= 30 kt (56 km/h) gale-force winds
+       Do NOT label these with PAGASA's thresholds (>=89 km/h, >=39 km/h).
+       Do NOT scale or convert radii between thresholds.
+       If inner ring is larger than outer ring, print a warning and skip outer ring.
+    2. Fallback: Only if JMA has no radii at all, use JTWC alone (never mixed with JMA):
+       Parse T000 line R034/R050/R064 quadrant radii (NE, SE, SW, NW in nm, convert to km) from cached .tcw file.
+       Draw smooth asymmetric quadrant polygons (build_quadrant_polygon, light smoothing).
+       Colors: yellow (34 kt), orange (50 kt), red (64 kt).
+       Legend title "JTWC 1-min", rows in kt with km/h as unit conversion.
+    3. No invented values: remove 85/140/250 km defaults and 0.65/0.45 ratios.
+       A missing ring is skipped and the reason is printed.
+       
+    Returns:
+       (rings, source_label)
     """
-    atcf_id = storm.get('atcf_id', '')
-    num_only = ''.join(c for c in atcf_id if c.isdigit())
-    radii_km = {}
+    # 1. Primary Source: JMA from MATCHED product only (no glob over cached jma files)
+    jma_radii = storm.get('jma_radii') or {}
     
-    # 1. Search JMA JSON warnings (official circular warning areas in km)
-    jma_matches = glob.glob('public/data/jma_vptw60_*.json')
-    for jp in jma_matches:
-        try:
-            with open(jp, 'r', encoding='utf-8') as f:
-                jd = json.load(f)
-            infos = jd.get('meteorologicalInfos', [])
-            if infos:
-                info0 = infos[0]
-                w50 = info0.get('warningAreaPart50', [])
-                w30 = info0.get('warningAreaPart30', [])
-                if w50 and '50kt' not in radii_km:
-                    r_km = float(w50[0].get('radiusKm', 0))
-                    if r_km > 0: radii_km['50kt'] = r_km
-                if w30 and '34kt' not in radii_km:
-                    r_km = float(w30[0].get('radiusKm', 0))
-                    if r_km > 0: radii_km['34kt'] = r_km
-        except Exception:
-            pass
+    has_jma = False
+    if isinstance(jma_radii, dict):
+        for k in ['50kt', '30kt']:
+            val = jma_radii.get(k)
+            if val is not None and float(val) > 0:
+                has_jma = True
+                break
 
-    # 2. Search JTWC TCW advisories (4-quadrant radii converted to circular outer boundary)
-    jtwc_matches = glob.glob(f'public/data/jtwc_wp{num_only}*.tcw')
+    if has_jma:
+        source_label = "WIND EXTENT"
+        r50 = float(jma_radii.get('50kt', 0) or 0)
+        r30 = float(jma_radii.get('30kt', 0) or 0)
+        
+        # If the inner ring is larger than the outer ring, print a warning and skip the outer ring
+        if r50 > 0 and r30 > 0 and r50 >= r30:
+            print(f"Warning: [Wind Radii] JMA 50kt inner ring radius ({r50:.0f} km) is >= 30kt outer ring radius ({r30:.0f} km); skipping outer ring.")
+            r30 = 0.0
+
+        rings = []
+        # Outer ring first, then the inner ring on top:
+        # RINGS = [('30kt', '#facc15', 0.22), ('50kt', '#ef4444', 0.38)]
+        if r30 > 0:
+            rings.append({
+                'key': '30kt',
+                'radius_km': r30,
+                'color': '#facc15',
+                'fill_alpha': 0.0,
+                'label': '>=30 kt (56 km/h)',
+                'type': 'circle',
+                'source': 'JMA 10-min'
+            })
+            print(f"[Wind Radii] JMA 10-min: 30kt (>=30 kt (56 km/h)) radius = {r30:.0f} km")
+        else:
+            print("Notice: [Wind Radii] JMA 30kt gale-force wind radius not reported or skipped; skipping ring.")
+
+        if r50 > 0:
+            rings.append({
+                'key': '50kt',
+                'radius_km': r50,
+                'color': '#ef4444',
+                'fill_alpha': 0.0,
+                'label': '>=50 kt (93 km/h)',
+                'type': 'circle',
+                'source': 'JMA 10-min'
+            })
+            print(f"[Wind Radii] JMA 10-min: 50kt (>=50 kt (93 km/h)) radius = {r50:.0f} km")
+        else:
+            print("Notice: [Wind Radii] JMA 50kt storm-force wind radius not reported; skipping ring.")
+
+        if rings:
+            return rings, source_label
+
+    # 2. Fallback: only if JMA has no radii at all, use JTWC alone (never mixed with JMA)
+    print("Notice: [Wind Radii] JMA has no radii available; checking JTWC fallback.")
+    atcf_id = storm.get('atcf_id', '')
+    digits = ''.join(c for c in atcf_id if c.isdigit())
+    num_str = digits[:2] if len(digits) >= 2 else "29"
+    year_short = digits[-2:] if len(digits) >= 4 else "26"
+
+    jtwc_matches = (
+        glob.glob(f'public/data/jtwc_wp{num_str}{year_short}.tcw') or
+        glob.glob(f'public/data/jtwc_wp{num_str}*.tcw')
+    )
+
+    jtwc_quads_nm = {}
     if jtwc_matches:
         try:
             with open(jtwc_matches[0], 'r', encoding='utf-8', errors='ignore') as f:
@@ -2539,84 +2669,179 @@ def fetch_storm_circular_wind_radii(storm):
                         m = re.search(r_code + r'\s+(\d+)\s+NE\s+QD\s+(\d+)\s+SE\s+QD\s+(\d+)\s+SW\s+QD\s+(\d+)\s+NW\s+QD', line)
                         if m:
                             ne, se, sw, nw = float(m.group(1)), float(m.group(2)), float(m.group(3)), float(m.group(4))
-                            r_max_nm = max(ne, se, sw, nw)
-                            if r_max_nm > 0:
-                                r_km = r_max_nm * 1.852
-                                if key not in radii_km or key == '64kt':
-                                    radii_km[key] = r_km
+                            if any(v > 0 for v in [ne, se, sw, nw]):
+                                jtwc_quads_nm[key] = {'NE': ne, 'SE': se, 'SW': sw, 'NW': nw}
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Notice: [Wind Radii] Error reading JTWC wind radii: {e}")
 
-    # Return authentic official agency radii only:
-    # If no genuine radii data is found from JMA or JTWC, radii_km remains empty ({}),
-    # cleanly hiding the circles and legend box from the map.
-    return radii_km
+    if jtwc_quads_nm:
+        source_label = "WIND EXTENT · JTWC 1-min"
+        # Outer to inner for drawing: 34kt (yellow), 50kt (orange), 64kt (red)
+        tier_cfg = [
+            ('34kt', '>=34 kt (63 km/h)',  '#facc15', 0.18),
+            ('50kt', '>=50 kt (93 km/h)',  '#fb923c', 0.26),
+            ('64kt', '>=64 kt (119 km/h)', '#ef4444', 0.36)
+        ]
+        rings = []
+        for key, lbl, color, alpha in tier_cfg:
+            if key in jtwc_quads_nm:
+                q_nm = jtwc_quads_nm[key]
+                q_km = {q: round(v * 1.852, 1) for q, v in q_nm.items()}
+                vals_km = list(q_km.values())
+                vals_nm = list(q_nm.values())
+                max_k = int(round(max(vals_km)))
+                min_k = int(round(min(vals_km)))
+                max_n = int(round(max(vals_nm)))
+                min_n = int(round(min(vals_nm)))
+                rings.append({
+                    'key': key,
+                    'radius_km': max_k,
+                    'min_km': min_k,
+                    'max_km': max_k,
+                    'min_nm': min_n,
+                    'max_nm': max_n,
+                    'quads_km': q_km,
+                    'quads_nm': q_nm,
+                    'color': color,
+                    'fill_alpha': alpha,
+                    'label': lbl,
+                    'type': 'quadrant',
+                    'source': 'JTWC 1-min'
+                })
+                print(f"[Wind Radii] JTWC 1-min: {key} ({lbl}) radius = {max_k} km (NE:{int(q_km['NE'])} SE:{int(q_km['SE'])} SW:{int(q_km['SW'])} NW:{int(q_km['NW'])} km)")
+            else:
+                print(f"Notice: [Wind Radii] JTWC {key} wind radius not reported; skipping ring.")
+
+        if rings:
+            return rings, source_label
+
+    print("Notice: [Wind Radii] Neither JMA nor JTWC has wind radii; rendering without wind radii.")
+    return [], None
+
+# Backwards compatibility alias
+fetch_storm_wind_radii = fetch_storm_circular_wind_radii
 
 
-def render_circular_wind_radii(ax, curr_lat, curr_lon, radii_km):
+def render_circular_wind_radii(ax, curr_lat, curr_lon, rings, source_label=None):
     """
-    Renders official JMA / PAGASA style circular wind radii around the current storm center:
-      - 34 kt (Gale-Force / Strong Winds): Yellow/Amber solid circle outline, transparent interior
-      - 50 kt (Storm-Force / Damaging Winds): Orange solid circle outline, transparent interior
-      - 64 kt (Typhoon-Force / Destructive Winds): Red solid circle outline, transparent interior
+    Renders tropical cyclone wind extent around current storm center:
+    - JMA: Two plain circles centered on the storm, each with a translucent fill and solid outline.
+      Outer ring first (30kt, #facc15, 0.22 alpha), inner ring on top (50kt, #ef4444, 0.38 alpha).
+      Solid outline linewidth 1.8, alpha 0.95, with dark halo underneath (edgecolor #020617, alpha 0.55, linewidth 3.0).
+    - JTWC fallback: Smooth asymmetric quadrant polygons (build_quadrant_polygon, light smoothing).
     """
-    if not radii_km:
+    if not rings:
         return
+
+    # Rings are ordered outer-first (e.g. 30kt then 50kt, or 34kt, 50kt, 64kt)
+    for idx, ring in enumerate(rings):
+        r_type = ring.get('type', 'circle')
+        color = ring.get('color', '#facc15')
+        fill_alpha = ring.get('fill_alpha', 0.0)
         
-    tiers = [
-        ('34kt', '#facc15', 1.8),
-        ('50kt', '#fb923c', 2.0),
-        ('64kt', '#ef4444', 2.2)
-    ]
-    
-    for key, color, lw in tiers:
-        if key in radii_km and radii_km[key] > 0:
-            poly = build_geodesic_circle(curr_lat, curr_lon, radii_km[key])
-            if poly:
-                # Subtle dark halo for high-contrast visibility across bright white clouds
+        poly = None
+        poly_fill = None
+        if r_type == 'circle':
+            r_km = float(ring.get('radius_km', 0))
+            if r_km > 0.1:
+                poly = build_geodesic_circle(curr_lat, curr_lon, r_km)
+                poly_fill = poly
+                # If this is the outer ring (30kt) and an inner ring (50kt) exists,
+                # cut out the inner circle from the outer fill so the circle inside is transparent
+                if ring.get('key') == '30kt':
+                    inner_ring = next((r for r in rings if r.get('key') == '50kt'), None)
+                    if inner_ring:
+                        r_inner = float(inner_ring.get('radius_km', 0))
+                        if 0 < r_inner < r_km:
+                            poly_inner = build_geodesic_circle(curr_lat, curr_lon, r_inner)
+                            if poly_inner and poly_inner.is_valid:
+                                poly_fill = poly.difference(poly_inner)
+        elif r_type == 'quadrant':
+            q_km = ring.get('quads_km', {})
+            r_ne = q_km.get('NE', 0)
+            r_se = q_km.get('SE', 0)
+            r_sw = q_km.get('SW', 0)
+            r_nw = q_km.get('NW', 0)
+            if max(r_ne, r_se, r_sw, r_nw) > 0.1:
+                poly = build_quadrant_polygon(curr_lat, curr_lon, r_ne, r_se, r_sw, r_nw, fillet_deg=10.0)
+                poly_fill = poly
+
+        if poly and poly.is_valid:
+            z_fill = 5.3 + (idx * 0.05)
+            z_halo = 5.45 + (idx * 0.05)
+            z_line = 5.5 + (idx * 0.05)
+
+            # 1. Translucent fill (only if fill_alpha > 0 and poly_fill is valid)
+            if fill_alpha > 0 and poly_fill and poly_fill.is_valid:
                 ax.add_geometries(
-                    [poly], crs=ccrs.PlateCarree(),
-                    facecolor='none',
-                    edgecolor='#020617', linestyle='-', linewidth=lw + 1.2,
-                    alpha=0.55,
-                    zorder=5.4
+                    [poly_fill], crs=ccrs.PlateCarree(),
+                    facecolor=color, edgecolor='none',
+                    alpha=fill_alpha, zorder=z_fill
                 )
-                # Primary solid colored circle outline (transparent inside)
-                ax.add_geometries(
-                    [poly], crs=ccrs.PlateCarree(),
-                    facecolor='none',
-                    edgecolor=color, linestyle='-', linewidth=lw,
-                    alpha=0.95,
-                    zorder=5.5
-                )
+            # 2. Dark halo under outline so it stays visible over bright clouds
+            ax.add_geometries(
+                [poly], crs=ccrs.PlateCarree(),
+                facecolor='none', edgecolor='#020617',
+                linewidth=1.8 + 1.2, alpha=0.55,
+                zorder=z_halo
+            )
+            # 3. Solid colored outline
+            ax.add_geometries(
+                [poly], crs=ccrs.PlateCarree(),
+                facecolor='none', edgecolor=color,
+                linewidth=1.8, alpha=0.95,
+                zorder=z_line
+            )
+
+# Backwards compatibility alias
+render_asymmetric_wind_radii = render_circular_wind_radii
 
 
-def render_wind_radii_legend(ax, radii_km):
+def render_wind_radii_legend(ax, rings, source_label="WIND EXTENT"):
     """
-    Renders a compact, floating broadcast-grade legend box for the circular wind radii.
-    Only displayed if authentic wind radii are available; otherwise completely hidden.
+    Renders a compact, floating broadcast-grade legend box for the wind radii extent.
+    Reuse existing FancyBboxPatch card, top-right.
+    - Title: "WIND EXTENT" (or "WIND EXTENT · JTWC 1-min" for fallback)
+    - Rows only for rings drawn:
+      - red marker: ">=50 kt (93 km/h)" with radius in km on the right
+      - yellow marker: ">=30 kt (56 km/h)" with radius in km on the right
+    If no rings or neither JMA nor JTWC has radii, renders nothing.
     """
-    if not radii_km:
+    if not rings or not source_label:
         return
-        
-    items = []
-    if '64kt' in radii_km and radii_km['64kt'] > 0:
-        items.append(('≥118 km/h (Typhoon)', f"{int(round(radii_km['64kt']))} km", '#ef4444'))
-    if '50kt' in radii_km and radii_km['50kt'] > 0:
-        items.append(('≥89 km/h (Storm)', f"{int(round(radii_km['50kt']))} km", '#fb923c'))
-    if '34kt' in radii_km and radii_km['34kt'] > 0:
-        items.append(('≥62 km/h (Gale)', f"{int(round(radii_km['34kt']))} km", '#facc15'))
-        
-    if not items:
+
+    # In legend, display higher intensity (inner ring) on top:
+    # JMA: 50kt (red) first, 30kt (yellow) second
+    # JTWC: 64kt (red) first, 50kt (orange) second, 34kt (yellow) third
+    order_pref = {'64kt': 0, '50kt': 1, '34kt': 2, '30kt': 3}
+    sorted_rings = sorted(rings, key=lambda r: order_pref.get(r.get('key'), 99))
+
+    rows = []
+    for r in sorted_rings:
+        lbl = r.get('label', '')
+        color = r.get('color', '#facc15')
+        if r.get('type') == 'quadrant':
+            min_k = r.get('min_km', 0)
+            max_k = r.get('max_km', 0)
+            if min_k == max_k or min_k == 0:
+                dist_str = f"{max_k} km"
+            else:
+                dist_str = f"{min_k}–{max_k} km"
+        else:
+            r_km = int(round(r.get('radius_km', 0)))
+            dist_str = f"{r_km} km"
+        rows.append((lbl, dist_str, color))
+
+    if not rows:
         return
 
     # Render floating card in top-right of map (transAxes coordinates)
     x0, y0 = 0.985, 0.982
-    box_w = 0.285
+    box_w = 0.320
     row_h = 0.026
-    box_h = 0.048 + len(items) * row_h
-    
+    box_h = 0.048 + len(rows) * row_h
+
     leg_box = FancyBboxPatch(
         (x0 - box_w, y0 - box_h), box_w, box_h,
         boxstyle="round,pad=0.012,rounding_size=0.035",
@@ -2624,15 +2849,21 @@ def render_wind_radii_legend(ax, radii_km):
         transform=ax.transAxes, zorder=25
     )
     ax.add_patch(leg_box)
-    
+
+    # Ensure title is strictly "WIND EXTENT" without "JMA 10-min"
+    if "JTWC" in str(source_label):
+        display_title = "WIND EXTENT · JTWC 1-min"
+    else:
+        display_title = "WIND EXTENT"
+
     title_y = y0 - 0.016
     ax.text(
-        x0 - box_w * 0.5, title_y, "CURRENT WIND RADII EXTENT",
+        x0 - box_w * 0.5, title_y, display_title,
         transform=ax.transAxes, ha='center', va='center',
-        fontsize=7.0, fontweight='bold', color='#94a3b8', zorder=26,
+        fontsize=6.8, fontweight='bold', color='#94a3b8', zorder=26,
         fontfamily='monospace'
     )
-    
+
     # Subtle divider line below the title
     div_y = title_y - 0.012
     ax.plot(
@@ -2640,12 +2871,11 @@ def render_wind_radii_legend(ax, radii_km):
         color='#334155', linewidth=0.75,
         transform=ax.transAxes, zorder=26
     )
-    
-    # Generous vertical space between title/divider and the first item
+
+    # Vertical rows for rings drawn
     first_item_y = div_y - 0.018
-    for idx, (lbl, dist_str, color) in enumerate(items):
+    for idx, (lbl, dist_str, color) in enumerate(rows):
         item_y = first_item_y - idx * row_h
-        # Hollow ring marker matching the map circle style
         ax.scatter(
             [x0 - box_w + 0.018], [item_y], facecolors='none', edgecolors=color,
             linewidths=1.8, s=34,
@@ -2663,11 +2893,11 @@ def render_wind_radii_legend(ax, radii_km):
         )
 
 
-def render_category_legend(ax, radii_km=None):
+def render_category_legend(ax, rings=None, radii_data=None):
     """
     Renders a sleek, broadcast-grade floating legend card for the tropical cyclone
     intensity category icons (PAGASA scale) positioned directly BELOW the
-    Current Wind Radii Extent card in the top right.
+    Wind Extent card in the top right.
     """
     categories = [
         ('STY', 'Super Typhoon',       '≥185 km/h'),
@@ -2677,28 +2907,36 @@ def render_category_legend(ax, radii_km=None):
         ('TD',  'Tropical Depression', '≤61'),
         ('LPA', 'Low Pressure Area',   '<45 km/h'),
     ]
-    
-    # Calculate starting top position based on whether Current Wind Radii card is present
+
+    # Calculate starting top position based on whether Wind Extent card is present
     has_radii = False
-    if radii_km:
-        valid_items = [k for k in ['64kt', '50kt', '34kt'] if k in radii_km and radii_km[k] > 0]
-        has_radii = len(valid_items) > 0
-        
+    valid_count = 0
+    items = rings if rings is not None else radii_data
+    if items:
+        if isinstance(items, list):
+            valid_count = len(items)
+        elif isinstance(items, dict):
+            for k in ['64kt', '50kt', '34kt', '30kt']:
+                if k in items:
+                    val = items[k]
+                    if isinstance(val, dict) and val.get('max_km', 0) > 0:
+                        valid_count += 1
+                    elif isinstance(val, (int, float)) and val > 0:
+                        valid_count += 1
+        has_radii = valid_count > 0
+
     x0 = 0.985
-    box_w = 0.285
-    
+    box_w = 0.320
+
     if has_radii:
-        # Wind radii card starts at y0=0.982, height = 0.048 + len(items)*0.026
-        radii_h = 0.048 + len(valid_items) * 0.026
-        # Position directly below with a clean gap between card borders
+        radii_h = 0.048 + valid_count * 0.026
         y0 = 0.982 - radii_h - 0.036
     else:
-        # If no wind radii card, place at top right
         y0 = 0.982
 
     row_h = 0.023
     box_h = 0.045 + (len(categories) * row_h)
-    
+
     leg_box = FancyBboxPatch(
         (x0 - box_w, y0 - box_h), box_w, box_h,
         boxstyle="round,pad=0.012,rounding_size=0.035",
@@ -2706,7 +2944,7 @@ def render_category_legend(ax, radii_km=None):
         transform=ax.transAxes, zorder=25
     )
     ax.add_patch(leg_box)
-    
+
     # Title
     title_y = y0 - 0.016
     ax.text(
@@ -2715,7 +2953,7 @@ def render_category_legend(ax, radii_km=None):
         fontsize=7.0, fontweight='bold', color='#94a3b8', zorder=26,
         fontfamily='monospace'
     )
-    
+
     # Subtle divider line below the title
     div_y = title_y - 0.011
     ax.plot(
@@ -3883,17 +4121,23 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
     gl.top_labels = False
     gl.right_labels = False
     
-    # Fetch circular wind radii
-    radii_km = fetch_storm_circular_wind_radii(storm)
+    # Fetch authentic wind radii (Primary: JMA concentric circles; Fallback: JTWC asymmetric quadrants)
+    rings, source_label = fetch_storm_circular_wind_radii(storm)
 
     # Adaptive Viewport (zoomed out a little with full track, cone, radii & geography)
     all_lats = [curr_lat]
     all_lons = [curr_lon]
-    if radii_km:
-        max_r_km = max(radii_km.values()) if radii_km.values() else 0.0
-        deg_r = max_r_km / 111.0
-        all_lats.extend([curr_lat - deg_r, curr_lat + deg_r])
-        all_lons.extend([curr_lon - deg_r, curr_lon + deg_r])
+    if rings:
+        max_r_km = 0.0
+        for r_item in rings:
+            if isinstance(r_item, dict):
+                max_r_km = max(max_r_km, float(r_item.get('radius_km', 0)))
+            elif isinstance(r_item, (int, float)):
+                max_r_km = max(max_r_km, float(r_item))
+        if max_r_km > 0:
+            deg_r = max_r_km / 111.0
+            all_lats.extend([curr_lat - deg_r, curr_lat + deg_r])
+            all_lons.extend([curr_lon - deg_r, curr_lon + deg_r])
 
     if not mean_track.empty:
         all_lats.extend(mean_track['lat'].dropna().tolist())
@@ -3912,10 +4156,10 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
     # Sea Text Labels (strictly bounded and zoom-scaled)
     render_sea_labels(ax, extent)
     
-    # Render JMA / PAGASA style circular wind radii around current storm center
-    render_circular_wind_radii(ax, curr_lat, curr_lon, radii_km)
-    render_wind_radii_legend(ax, radii_km)
-    render_category_legend(ax, radii_km=radii_km)
+    # Render authentic wind radii around current storm center (PAGASA-style concentric circles from JMA or JTWC fallback)
+    render_circular_wind_radii(ax, curr_lat, curr_lon, rings, source_label)
+    render_wind_radii_legend(ax, rings, source_label)
+    render_category_legend(ax, rings=rings)
     
     # Cone of Uncertainty
     if not mean_track.empty and len(mean_track) > 0:
@@ -4076,7 +4320,7 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
         generate_prognostic_reasoning(
             storm=storm,
             mean_track=mean_track,
-            radii_km=radii_km,
+            radii_km=rings,
             agency_tracks=agency_tracks,
             ensemble_means=ensemble_means,
             output_dir='public/data'
@@ -4185,24 +4429,56 @@ def generate_prognostic_reasoning(storm, mean_track, radii_km, agency_tracks, en
     dir_from_lm = bearing_to_compass(brng_from_lm)
     landmark_ref_str = f"{dist_lm_km:,} km {dir_from_lm} of {closest_lm[0]}"
     
-    # ── 2. Wind Radii Analysis ─────────────────────────────────────────
+    # ── 2. Wind Radii Analysis ───────────────────────────
     radii_lines = []
     if radii_km:
-        if '64kt' in radii_km and radii_km['64kt'] > 0:
-            r64 = int(round(radii_km['64kt']))
-            r64_nm = int(round(r64 / 1.852))
-            radii_lines.append(f"  • Typhoon-Force Winds (≥118 km/h / ≥64 kt): {r64} km ({r64_nm} NM) radius")
-        if '50kt' in radii_km and radii_km['50kt'] > 0:
-            r50 = int(round(radii_km['50kt']))
-            r50_nm = int(round(r50 / 1.852))
-            radii_lines.append(f"  • Storm-Force Winds   (≥89 km/h  / ≥50 kt): {r50} km ({r50_nm} NM) radius")
-        if '34kt' in radii_km and radii_km['34kt'] > 0:
-            r34 = int(round(radii_km['34kt']))
-            r34_nm = int(round(r34 / 1.852))
-            radii_lines.append(f"  • Gale-Force Winds    (≥62 km/h  / ≥34 kt): {r34} km ({r34_nm} NM) radius")
+        if isinstance(radii_km, list):
+            order_pref = {'64kt': 0, '50kt': 1, '34kt': 2, '30kt': 3}
+            sorted_items = sorted(radii_km, key=lambda x: order_pref.get(x.get('key'), 99))
+            for item in sorted_items:
+                lbl = item.get('label', '')
+                r_km = int(round(item.get('radius_km', 0)))
+                r_nm = int(round(r_km / 1.852))
+                if item.get('type') == 'quadrant':
+                    q_km = item.get('quads_km', {})
+                    q_nm = item.get('quads_nm', {})
+                    min_k, max_k = item.get('min_km', r_km), item.get('max_km', r_km)
+                    min_n, max_n = item.get('min_nm', r_nm), item.get('max_nm', r_nm)
+                    range_str = f"{min_k} km ({min_n} NM)" if min_k == max_k else f"{min_k}–{max_k} km ({min_n}–{max_n} NM)"
+                    radii_lines.append(f"  • {lbl} [{range_str}]:")
+                    radii_lines.append(
+                        f"      NE: {int(round(q_km.get('NE', 0)))} km ({int(round(q_nm.get('NE', 0)))} NM) | "
+                        f"SE: {int(round(q_km.get('SE', 0)))} km ({int(round(q_nm.get('SE', 0)))} NM) | "
+                        f"SW: {int(round(q_km.get('SW', 0)))} km ({int(round(q_nm.get('SW', 0)))} NM) | "
+                        f"NW: {int(round(q_km.get('NW', 0)))} km ({int(round(q_nm.get('NW', 0)))} NM)"
+                    )
+                else:
+                    radii_lines.append(f"  • {lbl}: {r_km} km ({r_nm} NM) circular radius")
+        elif isinstance(radii_km, dict):
+            for k in ['64kt', '50kt', '34kt', '30kt']:
+                if k in radii_km:
+                    item = radii_km[k]
+                    if isinstance(item, dict):
+                        lbl = item.get('label', k)
+                        min_k, max_k = item.get('min_km', 0), item.get('max_km', 0)
+                        min_n, max_n = item.get('min_nm', 0), item.get('max_nm', 0)
+                        q_km = item.get('quads_km', {})
+                        q_nm = item.get('quads_nm', {})
+                        range_str = f"{min_k} km ({min_n} NM)" if min_k == max_k else f"{min_k}–{max_k} km ({min_n}–{max_n} NM)"
+                        radii_lines.append(f"  • {lbl} [{range_str}]:")
+                        radii_lines.append(
+                            f"      NE: {int(round(q_km.get('NE', 0)))} km ({int(round(q_nm.get('NE', 0)))} NM) | "
+                            f"SE: {int(round(q_km.get('SE', 0)))} km ({int(round(q_nm.get('SE', 0)))} NM) | "
+                            f"SW: {int(round(q_km.get('SW', 0)))} km ({int(round(q_nm.get('SW', 0)))} NM) | "
+                            f"NW: {int(round(q_km.get('NW', 0)))} km ({int(round(q_nm.get('NW', 0)))} NM)"
+                        )
+                    elif isinstance(item, (int, float)) and item > 0:
+                        r_val = int(round(item))
+                        r_nm = int(round(r_val / 1.852))
+                        radii_lines.append(f"  • {k} Winds: {r_val} km ({r_nm} NM) radius")
             
     if not radii_lines:
-        radii_summary = "  Current wind field radii are localized; gale-force wind extent estimated under 150 km."
+        radii_summary = "  Current wind field radii are localized; no expansive gale-force wind extent reported."
     else:
         radii_summary = "\n".join(radii_lines)
         
@@ -4275,7 +4551,6 @@ def generate_prognostic_reasoning(storm, mean_track, radii_km, agency_tracks, en
     sections.append(f"• Peak Gusts        : {curr_gust_kmh} km/h ({curr_gust_kt} kt)")
     sections.append(f"• Central Pressure  : {curr_mslp} hPa")
     sections.append(f"• Intensity Category: {cat_full} ({cat_code})")
-    sections.append("")
     sections.append("CURRENT WIND RADII EXTENT:")
     sections.append(radii_summary)
     sections.append("")
