@@ -73,10 +73,6 @@ jobs:
         run: |
           python scripts/download_multi_cycle.py
 
-      - name: Generate FNV3 Base Ensemble Trend Maps
-        run: |
-          python generate_trends_map.py --dataset base --horizon 5day --all
-          python generate_trends_map.py --dataset base --horizon 15day --all
 
       - name: Generate TC Positions Map and JSON
         run: |
@@ -107,7 +103,7 @@ jobs:
           git add -f public/data/tc_positions_latest.json || true
           git add -f public/data/tc_positions_*.json || true
           git add -f public/data/tc_storms_index.json || true
-          git add public/data/trends/* 2>/dev/null || true
+
 
           # Commit if there are changes
           if git diff --staged --quiet; then

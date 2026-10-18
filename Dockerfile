@@ -32,8 +32,7 @@ COPY --from=build /app/dist ./dist
 COPY package*.json ./
 RUN npm ci --only=production
 
-# Copy Python scripts, manifest, and assets needed for trends map generation
-COPY generate_trends_map.py ./
+# Copy public data
 COPY public/data ./public/data
 
 # Copy production server script

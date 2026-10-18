@@ -223,22 +223,13 @@ const Forecast = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  const [showTrends, setShowTrends] = useState(false);
-  const [trendsManifest, setTrendsManifest] = useState(null);
-  const [activeTrendDistId, setActiveTrendDistId] = useState(null);
-  const [isWideTrend, setIsWideTrend] = useState(false);
-  const [trendHorizon, setTrendHorizon] = useState("5day");
-
   // Touch swipe state for modal slider
   const [swipeStart, setSwipeStart] = useState(null);
   const [swipeEnd, setSwipeEnd] = useState(null);
 
   const handleOpenEnlarged = (modelKey = null, directUrl = null) => {
     resetZoom();
-    if (showTrends) {
-      setEnlargedImage(directUrl || "trends");
-      setEnlargedModelKey(null);
-    } else if (showForecastTrack) {
+    if (showForecastTrack) {
       setEnlargedImage(directUrl || getAssetUrl(`/assets/tc_forecast_${selectedStormId}.png`));
       setEnlargedModelKey(null);
     } else {
@@ -259,66 +250,19 @@ const Forecast = () => {
     resetZoom();
   };
 
-  // Automatically sync/default the trend horizon when model changes
   useEffect(() => {
-    setTrendHorizon(selectedModel === "fnv3_large" ? "15day" : "5day");
-  }, [selectedModel]);
-
-  useEffect(() => {
-    if (showTrends && !trendsManifest) {
-      fetch(getAssetUrl(`/data/trends/manifest.json?t=${Date.now()}`))
-        .then(res => {
-          if (res.ok) return res.json();
-          throw new Error("Failed to load trends manifest");
-        })
-        .then(data => {
-          setTrendsManifest(data);
-          const key = `${selectedModel === "fnv3_large" ? "large" : "base"}_${trendHorizon}`;
-          const dists = data[key] || [];
-          if (dists.length > 0) {
-            setActiveTrendDistId(dists[0].id);
-          }
-        })
-        .catch(err => {
-          console.error(err);
-          setTrendsManifest({});
-        });
-    }
-  }, [showTrends, selectedModel, trendHorizon, trendsManifest]);
-
-  // Disable trends view if selected model is changed to one that does not support it
-  useEffect(() => {
-    if (selectedModel !== "fnv3_base" && selectedModel !== "fnv3_large") {
-      setShowTrends(false);
-      setShowForecastTrack(false);
-    } else {
-      setShowForecastTrack(false);
-    }
+    setShowForecastTrack(false);
     if (selectedModel !== "fnv3_large") {
       setShowClusters(false);
     }
     setSelectedStormId("latest");
   }, [selectedModel]);
 
-  // Disable trends view if compareMode is turned on
   useEffect(() => {
     if (compareMode) {
-      setShowTrends(false);
       setShowForecastTrack(false);
     }
   }, [compareMode]);
-
-  useEffect(() => {
-    if (trendsManifest) {
-      const key = `${selectedModel === "fnv3_large" ? "large" : "base"}_${trendHorizon}`;
-      const dists = trendsManifest[key] || [];
-      if (dists.length > 0) {
-        setActiveTrendDistId(dists[0].id);
-      } else {
-        setActiveTrendDistId(null);
-      }
-    }
-  }, [selectedModel, trendHorizon, trendsManifest]);
 
   // Probe available images in local assets with alternate format fallback
   useEffect(() => {
@@ -547,30 +491,6 @@ const Forecast = () => {
     setSelectedTimeId(timelineConfigs[nextIdx].configId);
   };
 
-  const handlePrevTrendDist = (e) => {
-    e?.stopPropagation?.();
-    if (!trendsManifest) return;
-    const key = `${selectedModel === "fnv3_large" ? "large" : "base"}_${trendHorizon}`;
-    const dists = trendsManifest[key] || [];
-    if (dists.length <= 1) return;
-    const currentIdx = dists.findIndex((d) => d.id === activeTrendDistId);
-    const prevIdx = (currentIdx - 1 + dists.length) % dists.length;
-    resetZoom();
-    setActiveTrendDistId(dists[prevIdx].id);
-  };
-
-  const handleNextTrendDist = (e) => {
-    e?.stopPropagation?.();
-    if (!trendsManifest) return;
-    const key = `${selectedModel === "fnv3_large" ? "large" : "base"}_${trendHorizon}`;
-    const dists = trendsManifest[key] || [];
-    if (dists.length <= 1) return;
-    const currentIdx = dists.findIndex((d) => d.id === activeTrendDistId);
-    const nextIdx = (currentIdx + 1) % dists.length;
-    resetZoom();
-    setActiveTrendDistId(dists[nextIdx].id);
-  };
-
   const allStormOptions = useMemo(() => ["latest", ...stormsIndex.map((s) => s.track_id)], [stormsIndex]);
 
   const handlePrevStorm = (e) => {
@@ -591,7 +511,7 @@ const Forecast = () => {
     setSelectedStormId(allStormOptions[nextIdx]);
   };
 
-  // Global Keyboard Navigation (Arrow keys: Left/Right = Models/Disturbances/Storms, Up/Down = Run Cycles/Horizon, Esc = Close Modal)
+  // Global Keyboard Navigation (Arrow keys: Left/Right = Models/Storms, Up/Down = Run Cycles, Esc = Close Modal)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target?.tagName)) return;
@@ -601,22 +521,6 @@ const Forecast = () => {
       if (e.key === "Escape" && isModalOpen) {
         e.preventDefault();
         handleCloseEnlarged();
-        return;
-      }
-
-      // Trends view active disturbance navigation
-      if (showTrends && trendsManifest) {
-        if (e.key === "ArrowLeft") {
-          e.preventDefault();
-          handlePrevTrendDist();
-        } else if (e.key === "ArrowRight") {
-          e.preventDefault();
-          handleNextTrendDist();
-        } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-          e.preventDefault();
-          resetZoom();
-          setTrendHorizon((prev) => (prev === "5day" ? "15day" : "5day"));
-        }
         return;
       }
 
@@ -655,10 +559,6 @@ const Forecast = () => {
     activeConfigId,
     timelineConfigs,
     modelKeys,
-    showTrends,
-    trendsManifest,
-    activeTrendDistId,
-    trendHorizon,
     showForecastTrack,
     selectedStormId,
     allStormOptions
@@ -735,19 +635,7 @@ const Forecast = () => {
               <span>SPAGHETTI PLOT</span>
             </a>
 
-            {/* Run Cycle Trends comparison button */}
-            {(selectedModel === "fnv3_base" || selectedModel === "fnv3_large") && (
-              <button
-                onClick={() => setShowTrends(!showTrends)}
-                className={`px-3.5 py-2 sm:py-2.5 rounded-xl text-xs font-black tracking-wide transition-all border flex items-center justify-center gap-2 cursor-pointer shadow-lg ${showTrends
-                    ? "bg-cyan-500/15 border-cyan-400/40 text-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.25)]"
-                    : "bg-slate-900/80 border-white/10 text-slate-300 hover:text-white"
-                  }`}
-              >
-                <Activity className="w-4 h-4 text-cyan-400 shrink-0" />
-                <span>{showTrends ? "CLOSE TRENDS" : "RUN CYCLE TRENDS"}</span>
-              </button>
-            )}
+
 
             {/* Split Screen Multi Compare toggler */}
             <button
@@ -787,7 +675,7 @@ const Forecast = () => {
         )}
 
         {/* Timeline selecting slider nodes (replacing old dropdown) */}
-        {!showTrends && (timelineConfigs.length > 0 ? (
+        {timelineConfigs.length > 0 ? (
           <div className="flex flex-col gap-2 relative">
             <div className="flex items-center justify-between pl-1 pr-1">
               <span className="text-[10px] uppercase font-black tracking-widest text-slate-500 flex items-center gap-1.5">
@@ -927,7 +815,7 @@ const Forecast = () => {
           <div className="p-5 rounded-2xl custom-glass text-center text-xs text-slate-500">
             No track forecasts found in active directories for any model today.
           </div>
-        ))}
+        )}
 
         {/* Grid / Single Map layout switch */}
         {compareMode ? (
@@ -1005,350 +893,131 @@ const Forecast = () => {
           /* Single Interactive Track Visualizer */
           <div className="grid grid-cols-1 lg:grid-cols-[2fr,1fr] gap-5 sm:gap-6 md:gap-8 items-start">
 
-            {/* Left Column Forecast Map or Trends Map */}
+            {/* Left Column Forecast Map */}
             <div className="custom-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 shadow-2xl relative group flex flex-col">
               <div className="border-b border-white/5 px-2.5 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between text-xs text-slate-400">
                 <span className="font-bold flex items-center gap-1.5">
                   <Activity className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                  <span>{showTrends ? "Run Cycle Forecast Trends Map" : "Forecast Track Map"}</span>
+                  <span>Forecast Track Map</span>
                 </span>
                 <div className="flex items-center gap-2">
-                  {showTrends && (
-                    <button
-                      onClick={() => setShowTrends(false)}
-                      className="px-2 py-1 bg-slate-900 border border-white/10 hover:border-slate-500 rounded-lg text-[10px] font-black text-slate-400 hover:text-white transition-all cursor-pointer flex items-center gap-1"
-                    >
-                      <X className="w-3 h-3" />
-                      <span>Back to Forecast</span>
-                    </button>
-                  )}
                   <span className="font-mono text-[10px] text-slate-400 font-bold bg-slate-950 px-2 py-0.5 rounded-lg border border-white/5">
                     {current ? current.modelTime : "N/A"}
                   </span>
                 </div>
               </div>
 
-              {showTrends ? (
-                /* Trends inline container */
-                <div className="mt-2 flex flex-col gap-3">
-                  {/* Trends inline controls toolbar */}
-                  <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center p-3 bg-slate-950/40 border border-white/5 rounded-2xl">
-                    {/* Active System selection */}
-                    <div className="flex-1 flex flex-col gap-1.5">
-                      <span className="text-[9px] uppercase font-black tracking-widest text-slate-500 pl-1">
-                        Select Active System
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(() => {
-                          const key = `${selectedModel === "fnv3_large" ? "large" : "base"}_${trendHorizon}`;
-                          const dists = trendsManifest?.[key] || [];
-                          if (dists.length === 0) {
-                            return (
-                              <div className="text-[10px] text-slate-500 italic font-bold">
-                                No active systems meeting threshold.
-                              </div>
-                            );
-                          }
-                          return dists.map((d) => (
-                            <button
-                              key={d.id}
-                              onClick={() => setActiveTrendDistId(d.id)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${activeTrendDistId === d.id
-                                  ? "bg-cyan-500/15 border-cyan-400/40 text-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.2)]"
-                                  : "bg-slate-900/40 border-white/5 text-slate-400 hover:text-slate-200"
-                                }`}
-                            >
-                              {d.name}
-                            </button>
-                          ));
-                        })()}
-                      </div>
+              {/* Standard Forecast Map */}
+              <div
+                tabIndex={0}
+                role="region"
+                aria-label="Forecast Track Map Visualizer - use arrow keys to navigate"
+                className="h-64 xs:h-72 sm:h-96 md:h-[28rem] lg:h-[30rem] flex items-center justify-center bg-slate-950 border border-white/5 rounded-xl sm:rounded-2xl overflow-hidden relative mt-2 shadow-inner group/map focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowLeft") { e.preventDefault(); handlePrevModel(); }
+                  else if (e.key === "ArrowRight") { e.preventDefault(); handleNextModel(); }
+                  else if (e.key === "ArrowUp") { e.preventDefault(); handlePrevCycle(); }
+                  else if (e.key === "ArrowDown") { e.preventDefault(); handleNextCycle(); }
+                  else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleOpenEnlarged(selectedModel, imageSrc); }
+                }}
+              >
+                {current && imageSrc ? (
+                  <>
+                    {/* Top Click hint badge (hidden on mobile/small screens) */}
+                    <div className="hidden sm:flex absolute top-2.5 left-2.5 z-20 items-center gap-1.5 px-2.5 py-1 bg-slate-950/80 backdrop-blur-md rounded-lg text-[10px] font-bold text-slate-300 border border-white/10 pointer-events-none shadow-lg">
+                      <Maximize2 className="w-3 h-3 text-cyan-400" />
+                      <span>Click to enlarge • ◀ ▶ arrows</span>
                     </div>
 
-                    {/* Horizon selection */}
-                    <div className="flex flex-col gap-1.5 shrink-0">
-                      <span className="text-[9px] uppercase font-black tracking-widest text-slate-500 pl-1">
-                        Forecast Horizon
-                      </span>
-                      <div className="flex rounded-lg bg-slate-950 p-1 border border-white/5">
-                        <button
-                          onClick={() => setTrendHorizon("5day")}
-                          className={`px-3 py-1 text-center rounded text-[10px] font-black tracking-wide transition-all cursor-pointer ${trendHorizon === "5day" ? "bg-slate-800 text-cyan-400 shadow" : "text-slate-500 hover:text-slate-300"
-                            }`}
-                        >
-                          5-Day
-                        </button>
-                        <button
-                          onClick={() => setTrendHorizon("15day")}
-                          className={`px-3 py-1 text-center rounded text-[10px] font-black tracking-wide transition-all cursor-pointer ${trendHorizon === "15day" ? "bg-slate-800 text-cyan-400 shadow" : "text-slate-500 hover:text-slate-300"
-                            }`}
-                        >
-                          15-Day
-                        </button>
-                      </div>
-                    </div>
+                    {/* Side navigation arrows on image (hidden on mobile/small screens) */}
+                    <button
+                      onClick={handlePrevModel}
+                      title="Previous Model (Left Arrow)"
+                      className="hidden sm:flex absolute left-2 top-1/2 -translate-y-1/2 z-20 p-2 sm:p-2.5 bg-slate-900/80 hover:bg-cyan-500 hover:text-slate-950 text-white rounded-xl border border-white/10 shadow-xl transition-all active:scale-90 cursor-pointer backdrop-blur-sm opacity-0 group-hover/map:opacity-100"
+                    >
+                      <ChevronLeft className="w-4 sm:w-5 h-4 sm:h-5" />
+                    </button>
 
-                    {/* Width options */}
-                    <div className="flex flex-col gap-1.5 shrink-0">
-                      <span className="text-[9px] uppercase font-black tracking-widest text-slate-500 pl-1">
-                        Extent Width
-                      </span>
-                      <div className="flex rounded-lg bg-slate-950 p-1 border border-white/5">
-                        <button
-                          onClick={() => setIsWideTrend(false)}
-                          className={`px-3 py-1 text-center rounded text-[10px] font-black tracking-wide transition-all cursor-pointer ${!isWideTrend ? "bg-slate-800 text-cyan-400 shadow" : "text-slate-500 hover:text-slate-300"
-                            }`}
-                        >
-                          Standard
-                        </button>
-                        <button
-                          onClick={() => setIsWideTrend(true)}
-                          className={`px-3 py-1 text-center rounded text-[10px] font-black tracking-wide transition-all cursor-pointer ${isWideTrend ? "bg-slate-800 text-cyan-400 shadow" : "text-slate-500 hover:text-slate-300"
-                            }`}
-                        >
-                          Wide
-                        </button>
-                      </div>
-                    </div>
+                    <button
+                      onClick={handleNextModel}
+                      title="Next Model (Right Arrow)"
+                      className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 p-2 sm:p-2.5 bg-slate-900/80 hover:bg-cyan-500 hover:text-slate-950 text-white rounded-xl border border-white/10 shadow-xl transition-all active:scale-90 cursor-pointer backdrop-blur-sm opacity-0 group-hover/map:opacity-100"
+                    >
+                      <ChevronRight className="w-4 sm:w-5 h-4 sm:h-5" />
+                    </button>
+
+                    <img
+                      src={imageSrc}
+                      alt={`Forecast track for ${current.label}`}
+                      className="h-full w-full object-contain cursor-pointer transition-transform duration-200 hover:scale-[1.01]"
+                      onClick={() => handleOpenEnlarged(selectedModel, imageSrc)}
+                    />
+
+                    <button
+                      onClick={() => handleOpenEnlarged(selectedModel, imageSrc)}
+                      className="hidden sm:flex absolute bottom-3 right-3 z-20 px-3 py-2 bg-slate-900/90 hover:bg-cyan-500 hover:text-slate-950 border border-white/10 rounded-xl text-white opacity-0 group-hover/map:opacity-100 transition-all cursor-pointer shadow-xl items-center gap-1.5 text-xs font-bold"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                      <span>Maximize</span>
+                    </button>
+                  </>
+                ) : (
+                  <div className="text-center p-8 flex flex-col items-center gap-3">
+                    <Database className="w-10 h-10 text-slate-700 animate-pulse" />
+                    <span className="text-xs md:text-sm text-slate-500 font-bold">No forecast image available as of the moment.</span>
                   </div>
-
-                  {/* Trends map image viewport */}
-                  <div className="h-64 xs:h-72 sm:h-96 md:h-[28rem] lg:h-[30rem] flex items-center justify-center bg-slate-950 border border-white/5 rounded-xl sm:rounded-2xl overflow-hidden relative shadow-inner group/trend">
-                    {(() => {
-                      const key = `${selectedModel === "fnv3_large" ? "large" : "base"}_${trendHorizon}`;
-                      const dists = trendsManifest?.[key] || [];
-                      const activeDist = dists.find(d => d.id === activeTrendDistId) || dists[0];
-
-                      if (!trendsManifest) {
-                        return (
-                          <div className="flex flex-col items-center justify-center p-8 text-center gap-2">
-                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cyan-400"></div>
-                            <span className="text-xs text-slate-500 font-bold">Loading trends manifest...</span>
-                          </div>
-                        );
-                      }
-
-                      if (dists.length === 0 || !activeDist) {
-                        return (
-                          <div className="text-center p-8 flex flex-col items-center gap-3">
-                            <Database className="w-10 h-10 text-slate-700 animate-pulse" />
-                            <span className="text-xs text-slate-500 font-bold leading-relaxed max-w-sm">
-                              No trend maps pre-rendered for this cycle. Trend maps are only generated for systems with ≥100 tracks (Large) or ≥25 tracks (Base).
-                            </span>
-                          </div>
-                        );
-                      }
-
-                      const imgPath = isWideTrend ? activeDist.wide : activeDist.standard;
-                      const finalImgUrl = getAssetUrl(imgPath);
-
-                      return (
-                        <>
-                          {/* Top Click hint badge (hidden on mobile/small screens) */}
-                          <div className="hidden sm:flex absolute top-2.5 left-2.5 z-20 items-center gap-1.5 px-2.5 py-1 bg-slate-950/80 backdrop-blur-md rounded-lg text-[10px] font-bold text-slate-300 border border-white/10 pointer-events-none shadow-lg">
-                            <Maximize2 className="w-3 h-3 text-cyan-400" />
-                            <span>Click to enlarge • ◀ ▶ systems</span>
-                          </div>
-
-                          <img
-                            src={finalImgUrl}
-                            alt={`Trends map for ${activeDist.name}`}
-                            className="h-full w-full object-contain cursor-pointer transition-transform duration-200 hover:scale-[1.01]"
-                            onClick={() => handleOpenEnlarged(null, finalImgUrl)}
-                          />
-                          <button
-                            onClick={() => handleOpenEnlarged(null, finalImgUrl)}
-                            className="hidden sm:flex absolute bottom-3 right-3 z-20 px-2.5 py-1.5 sm:px-3 sm:py-2 bg-slate-900/90 hover:bg-cyan-500 hover:text-slate-950 border border-white/10 rounded-xl text-white opacity-0 group-hover/trend:opacity-100 transition-all cursor-pointer shadow-xl items-center gap-1.5 text-xs font-bold"
-                          >
-                            <Maximize2 className="w-3.5 h-3.5" />
-                            <span className="hidden sm:inline">Maximize</span>
-                          </button>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-              ) : (
-                /* Standard Forecast Map */
-                <div
-                  tabIndex={0}
-                  role="region"
-                  aria-label="Forecast Track Map Visualizer - use arrow keys to navigate"
-                  className="h-64 xs:h-72 sm:h-96 md:h-[28rem] lg:h-[30rem] flex items-center justify-center bg-slate-950 border border-white/5 rounded-xl sm:rounded-2xl overflow-hidden relative mt-2 shadow-inner group/map focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
-                  onKeyDown={(e) => {
-                    if (e.key === "ArrowLeft") { e.preventDefault(); handlePrevModel(); }
-                    else if (e.key === "ArrowRight") { e.preventDefault(); handleNextModel(); }
-                    else if (e.key === "ArrowUp") { e.preventDefault(); handlePrevCycle(); }
-                    else if (e.key === "ArrowDown") { e.preventDefault(); handleNextCycle(); }
-                    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleOpenEnlarged(selectedModel, imageSrc); }
-                  }}
-                >
-                  {current && imageSrc ? (
-                    <>
-                      {/* Top Click hint badge (hidden on mobile/small screens) */}
-                      <div className="hidden sm:flex absolute top-2.5 left-2.5 z-20 items-center gap-1.5 px-2.5 py-1 bg-slate-950/80 backdrop-blur-md rounded-lg text-[10px] font-bold text-slate-300 border border-white/10 pointer-events-none shadow-lg">
-                        <Maximize2 className="w-3 h-3 text-cyan-400" />
-                        <span>Click to enlarge • ◀ ▶ arrows</span>
-                      </div>
-
-                      {/* Side navigation arrows on image (hidden on mobile/small screens) */}
-                      <button
-                        onClick={handlePrevModel}
-                        title="Previous Model (Left Arrow)"
-                        className="hidden sm:flex absolute left-2 top-1/2 -translate-y-1/2 z-20 p-2 sm:p-2.5 bg-slate-900/80 hover:bg-cyan-500 hover:text-slate-950 text-white rounded-xl border border-white/10 shadow-xl transition-all active:scale-90 cursor-pointer backdrop-blur-sm opacity-0 group-hover/map:opacity-100"
-                      >
-                        <ChevronLeft className="w-4 sm:w-5 h-4 sm:h-5" />
-                      </button>
-
-                      <button
-                        onClick={handleNextModel}
-                        title="Next Model (Right Arrow)"
-                        className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 p-2 sm:p-2.5 bg-slate-900/80 hover:bg-cyan-500 hover:text-slate-950 text-white rounded-xl border border-white/10 shadow-xl transition-all active:scale-90 cursor-pointer backdrop-blur-sm opacity-0 group-hover/map:opacity-100"
-                      >
-                        <ChevronRight className="w-4 sm:w-5 h-4 sm:h-5" />
-                      </button>
-
-                      <img
-                        src={imageSrc}
-                        alt={`Forecast track for ${current.label}`}
-                        className="h-full w-full object-contain cursor-pointer transition-transform duration-200 hover:scale-[1.01]"
-                        onClick={() => handleOpenEnlarged(selectedModel, imageSrc)}
-                      />
-
-                      <button
-                        onClick={() => handleOpenEnlarged(selectedModel, imageSrc)}
-                        className="hidden sm:flex absolute bottom-3 right-3 z-20 px-3 py-2 bg-slate-900/90 hover:bg-cyan-500 hover:text-slate-950 border border-white/10 rounded-xl text-white opacity-0 group-hover/map:opacity-100 transition-all cursor-pointer shadow-xl items-center gap-1.5 text-xs font-bold"
-                      >
-                        <Maximize2 className="w-3.5 h-3.5" />
-                        <span>Maximize</span>
-                      </button>
-                    </>
-                  ) : (
-                    <div className="text-center p-8 flex flex-col items-center gap-3">
-                      <Database className="w-10 h-10 text-slate-700 animate-pulse" />
-                      <span className="text-xs md:text-sm text-slate-500 font-bold">No forecast image available as of the moment.</span>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Right Column Metadata Details */}
             <div className="flex flex-col gap-6">
 
-              {/* Active Model run details or Trend Details */}
+              {/* Active Model run details */}
               <aside className="custom-glass rounded-2xl sm:rounded-3xl p-4 sm:p-5 md:p-6 shadow-2xl space-y-4 text-xs md:text-sm text-slate-300 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 blur-2xl rounded-full"></div>
 
-                {showTrends ? (
-                  /* Trend Details View */
-                  <div>
-                    <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3.5 flex items-center gap-1.5">
-                      <Layers className="w-4 h-4 text-cyan-400" />
-                      <span>Trend Details</span>
-                    </h2>
-                    {(() => {
-                      const key = `${selectedModel === "fnv3_large" ? "large" : "base"}_${trendHorizon}`;
-                      const dists = trendsManifest?.[key] || [];
-                      const activeDist = dists.find(d => d.id === activeTrendDistId) || dists[0];
-                      const totalMembers = selectedModel === "fnv3_large" ? 1000 : 50;
-
-                      if (!activeDist) {
-                        return (
-                          <div className="text-slate-500 text-xs italic">
-                            No active system details.
-                          </div>
-                        );
-                      }
-
-                      const supportRatio = (activeDist.trackCount / totalMembers) * 100;
-
-                      return (
-                        <dl className="space-y-3">
-                          <div className="flex justify-between items-center gap-4 border-b border-white/5 pb-2">
-                            <dt className="text-slate-500 font-bold">System Name</dt>
-                            <dd className="font-mono text-right text-slate-200 font-bold">
-                              {activeDist.name}
-                            </dd>
-                          </div>
-                          <div className="flex justify-between items-center gap-4 border-b border-white/5 pb-2">
-                            <dt className="text-slate-500 font-bold">Supporting Tracks</dt>
-                            <dd className="text-right text-cyan-400 font-bold">
-                              {activeDist.trackCount} / {totalMembers} members
-                            </dd>
-                          </div>
-                          <div className="flex flex-col gap-1.5 border-b border-white/5 pb-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-slate-500 font-bold">Support Ratio</span>
-                              <span className="text-right text-cyan-400 font-bold">{supportRatio.toFixed(1)}%</span>
-                            </div>
-                            <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-white/5">
-                              <div
-                                className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 rounded-full transition-all duration-500"
-                                style={{ width: `${Math.min(100, supportRatio)}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                          <div className="flex justify-between items-center gap-4 border-b border-white/5 pb-2">
-                            <dt className="text-slate-500 font-bold">Model Engine</dt>
-                            <dd className="text-right text-slate-200 font-bold">
-                              {MODEL_INFO[selectedModel]?.name}
-                            </dd>
-                          </div>
-                          <div className="flex justify-between items-center gap-4">
-                            <dt className="text-slate-500 font-bold">Visualized By</dt>
-                            <dd className="text-right text-slate-200 font-bold">Philippine Typhoon/Weather</dd>
-                          </div>
-                        </dl>
-                      );
-                    })()}
-                  </div>
-                ) : (
-                  /* Standard Run Details */
-                  <div>
-                    <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3.5 flex items-center gap-1.5">
-                      <Layers className="w-4 h-4 text-cyan-400" />
-                      <span>Run Details</span>
-                    </h2>
-                    <dl className="space-y-3">
-                      <div className="flex justify-between items-center gap-4 border-b border-white/5 pb-2">
-                        <dt className="text-slate-500 font-bold">Model Time</dt>
-                        <dd className="font-mono text-right text-slate-200 font-bold">
-                          {current
-                            ? `${current.modelTime.replace("T", " ")}`
-                            : "N/A"}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between items-center gap-4 border-b border-white/5 pb-2">
-                        <dt className="text-slate-500 font-bold">Local Time</dt>
-                        <dd className="text-right text-cyan-400 font-bold">
-                          {current
-                            ? `${toPhstLabel(current.modelTime)} PHST`
-                            : "N/A"}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between items-center gap-4 border-b border-white/5 pb-2">
-                        <dt className="text-slate-500 font-bold">Model Engine</dt>
-                        <dd className="text-right text-slate-200 font-bold">
-                          {MODEL_INFO[selectedModel]?.name}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between items-center gap-4">
-                        <dt className="text-slate-500 font-bold">Visualized By</dt>
-                        <dd className="text-right text-slate-200 font-bold">Philippine Typhoon/Weather</dd>
-                      </div>
-                    </dl>
-                  </div>
-                )}
+                {/* Standard Run Details */}
+                <div>
+                  <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3.5 flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-cyan-400" />
+                    <span>Run Details</span>
+                  </h2>
+                  <dl className="space-y-3">
+                    <div className="flex justify-between items-center gap-4 border-b border-white/5 pb-2">
+                      <dt className="text-slate-500 font-bold">Model Time</dt>
+                      <dd className="font-mono text-right text-slate-200 font-bold">
+                        {current
+                          ? `${current.modelTime.replace("T", " ")}`
+                          : "N/A"}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between items-center gap-4 border-b border-white/5 pb-2">
+                      <dt className="text-slate-500 font-bold">Local Time</dt>
+                      <dd className="text-right text-cyan-400 font-bold">
+                        {current
+                          ? `${toPhstLabel(current.modelTime)} PHST`
+                          : "N/A"}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between items-center gap-4 border-b border-white/5 pb-2">
+                      <dt className="text-slate-500 font-bold">Model Engine</dt>
+                      <dd className="text-right text-slate-200 font-bold">
+                        {MODEL_INFO[selectedModel]?.name}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between items-center gap-4">
+                      <dt className="text-slate-500 font-bold">Visualized By</dt>
+                      <dd className="text-right text-slate-200 font-bold">Philippine Typhoon/Weather</dd>
+                    </div>
+                  </dl>
+                </div>
 
                 <div className="border-t border-white/5 pt-4 space-y-2.5 text-xs text-slate-500 leading-relaxed font-medium">
                   <div className="flex items-start gap-2.5">
                     <Info className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
                     <p className="text-slate-400">
-                      {showTrends
-                        ? "Run cycle trends show the spatial track agreements and supporting member counts for disturbances over the last 4 forecast runs."
-                        : "These forecast maps are compiled directly from satellite runs. Always verify coordinates with official alerts from PAGASA and local hazard offices."
-                      }
+                      These forecast maps are compiled directly from satellite runs. Always verify coordinates with official alerts from PAGASA and local hazard offices.
                     </p>
                   </div>
                 </div>
@@ -1400,317 +1069,7 @@ const Forecast = () => {
 
       {/* Full Screen Interactive Image Modal (with Model Slider & Keyboard Navigation) */}
       {(enlargedModelKey || enlargedImage) && (() => {
-        // Mode 1: Run Cycle Trends Modal View
-        if (showTrends) {
-          const trendKey = `${selectedModel === "fnv3_large" ? "large" : "base"}_${trendHorizon}`;
-          const currentDists = trendsManifest?.[trendKey] || [];
-          const activeDist = currentDists.find((d) => d.id === activeTrendDistId) || currentDists[0];
-          const totalMembers = selectedModel === "fnv3_large" ? 1000 : 50;
-          const supportRatio = activeDist ? ((activeDist.trackCount / totalMembers) * 100).toFixed(1) : "0";
-          const cycleTimestamp = trendsManifest?.[`${trendKey}_cycle`] || "";
-          const imgPath = activeDist ? (isWideTrend ? activeDist.wide : activeDist.standard) : null;
-          const displayImg = imgPath ? getAssetUrl(imgPath) : enlargedImage;
-          const hasMultipleDists = currentDists.length > 1;
-
-          return (
-            <div
-              className="fixed inset-0 z-[9999] flex flex-col items-center justify-between bg-black/95 p-2 sm:p-4 md:p-6 backdrop-blur-md overflow-hidden select-none"
-              onClick={handleCloseEnlarged}
-            >
-              {/* Modal Header Toolbar */}
-              <div
-                className="w-full z-50 flex flex-col gap-2 pointer-events-none"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Row 1: Active Badge, Center Keyboard Guide, Right Controls */}
-                <div className="flex items-center justify-between gap-2 w-full pointer-events-auto">
-                  <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap">
-                    <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 bg-slate-900/90 backdrop-blur-md rounded-xl sm:rounded-2xl border border-white/10 shadow-xl">
-                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-                      <span className="text-xs font-black text-white">RUN CYCLE TRENDS</span>
-                      <span className="text-[9px] uppercase font-bold text-cyan-400 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-500/20">
-                        {selectedModel === "fnv3_large" ? "WNC Large (1000M)" : "WNCP2 (50M)"}
-                      </span>
-                      {activeDist && (
-                        <span className="text-[10px] font-bold text-white bg-slate-950 px-2 py-0.5 rounded border border-white/10">
-                          {activeDist.name}
-                        </span>
-                      )}
-                      {activeDist && (
-                        <span className="hidden sm:inline text-[10px] font-mono text-cyan-400 font-semibold bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-500/20">
-                          {activeDist.trackCount}/{totalMembers} ({supportRatio}%)
-                        </span>
-                      )}
-                      {cycleTimestamp && (
-                        <span className="hidden md:inline text-[10px] font-mono text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-white/5">
-                          {cycleTimestamp}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Keyboard Shortcut Hints (Desktop) */}
-                  <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-900/90 backdrop-blur-md rounded-xl border border-white/10 text-[10px] font-mono text-slate-300 shadow-xl">
-                    <Keyboard className="w-3.5 h-3.5 text-cyan-400" />
-                    <span><strong className="text-cyan-300">◀ ▶</strong> System</span>
-                    <span className="text-slate-600">•</span>
-                    <span><strong className="text-cyan-300">▲ ▼</strong> Horizon</span>
-                    <span className="text-slate-600">•</span>
-                    <span><strong className="text-cyan-300">ESC</strong> Close</span>
-                  </div>
-
-                  {/* Right Controls (Zoom & Close) */}
-                  <div className="flex items-center gap-1 bg-slate-900/90 backdrop-blur-md p-1 rounded-xl sm:rounded-2xl border border-white/10 shadow-xl shrink-0">
-                    <div className="text-[10px] font-black text-slate-300 px-2 hidden sm:block">
-                      {zoomScale.toFixed(1)}x
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setZoomScale(Math.min(4, zoomScale + 0.5)); }}
-                      className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl hover:bg-slate-800 text-white transition cursor-pointer"
-                      title="Zoom In (+)"
-                    >
-                      <ZoomIn className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setZoomScale(Math.max(1, zoomScale - 0.5)); }}
-                      className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl hover:bg-slate-800 text-white transition cursor-pointer"
-                      title="Zoom Out (-)"
-                    >
-                      <ZoomOut className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); resetZoom(); }}
-                      className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl hover:bg-slate-800 text-white transition cursor-pointer"
-                      title="Reset Zoom (R)"
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={handleCloseEnlarged}
-                      className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl hover:bg-red-500/20 text-red-400 hover:text-red-300 transition cursor-pointer ml-1"
-                      title="Close (ESC)"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Row 2: Trends Controls Toolbar (System selector, Horizon, Extent) */}
-                <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar py-1 px-1.5 bg-slate-900/80 backdrop-blur-md rounded-xl border border-white/10 pointer-events-auto shadow-lg max-w-full">
-                  {/* Disturbance / System buttons */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-[9px] uppercase font-black text-slate-400 px-1.5 hidden sm:inline">Systems:</span>
-                    {currentDists.map((d) => {
-                      const isAct = d.id === (activeDist ? activeDist.id : null);
-                      return (
-                        <button
-                          key={d.id}
-                          onClick={(e) => { e.stopPropagation(); resetZoom(); setActiveTrendDistId(d.id); }}
-                          className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer shrink-0 ${
-                            isAct
-                              ? "bg-cyan-500 text-slate-950 font-black shadow-[0_0_10px_rgba(34,211,238,0.5)]"
-                              : "text-slate-400 hover:text-white hover:bg-slate-800/60"
-                          }`}
-                        >
-                          {d.name} ({d.trackCount}m)
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Horizon & Extent Toggles */}
-                  <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                    {/* Horizon */}
-                    <div className="flex rounded-lg bg-slate-950 p-0.5 border border-white/5">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); resetZoom(); setTrendHorizon("5day"); }}
-                        className={`px-2 py-0.5 rounded text-[9px] font-black transition-all cursor-pointer ${
-                          trendHorizon === "5day" ? "bg-cyan-500/20 text-cyan-400" : "text-slate-500 hover:text-slate-300"
-                        }`}
-                      >
-                        5-Day
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); resetZoom(); setTrendHorizon("15day"); }}
-                        className={`px-2 py-0.5 rounded text-[9px] font-black transition-all cursor-pointer ${
-                          trendHorizon === "15day" ? "bg-cyan-500/20 text-cyan-400" : "text-slate-500 hover:text-slate-300"
-                        }`}
-                      >
-                        15-Day
-                      </button>
-                    </div>
-
-                    {/* Width */}
-                    <div className="flex rounded-lg bg-slate-950 p-0.5 border border-white/5">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); resetZoom(); setIsWideTrend(false); }}
-                        className={`px-2 py-0.5 rounded text-[9px] font-black transition-all cursor-pointer ${
-                          !isWideTrend ? "bg-cyan-500/20 text-cyan-400" : "text-slate-500 hover:text-slate-300"
-                        }`}
-                      >
-                        Std
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); resetZoom(); setIsWideTrend(true); }}
-                        className={`px-2 py-0.5 rounded text-[9px] font-black transition-all cursor-pointer ${
-                          isWideTrend ? "bg-cyan-500/20 text-cyan-400" : "text-slate-500 hover:text-slate-300"
-                        }`}
-                      >
-                        Wide
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Left Chevron (Previous Disturbance) */}
-              {hasMultipleDists && (
-                <button
-                  onClick={handlePrevTrendDist}
-                  title="Previous System (Left Arrow)"
-                  className="hidden sm:flex absolute left-5 top-1/2 -translate-y-1/2 z-50 p-3.5 bg-slate-900/80 hover:bg-cyan-500 hover:text-slate-950 text-white rounded-2xl border border-white/10 shadow-2xl transition-all hover:scale-110 active:scale-95 cursor-pointer items-center justify-center backdrop-blur-sm"
-                >
-                  <ChevronLeft className="w-6 h-6" />
-                </button>
-              )}
-
-              {/* Right Chevron (Next Disturbance) */}
-              {hasMultipleDists && (
-                <button
-                  onClick={handleNextTrendDist}
-                  title="Next System (Right Arrow)"
-                  className="hidden sm:flex absolute right-5 top-1/2 -translate-y-1/2 z-50 p-3.5 bg-slate-900/80 hover:bg-cyan-500 hover:text-slate-950 text-white rounded-2xl border border-white/10 shadow-2xl transition-all hover:scale-110 active:scale-95 cursor-pointer items-center justify-center backdrop-blur-sm"
-                >
-                  <ChevronRight className="w-6 h-6" />
-                </button>
-              )}
-
-              {/* Center Image Container with Gestures */}
-              <div
-                className="w-full h-full flex items-center justify-center relative overflow-hidden py-2"
-                onWheel={handleWheel}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-                onTouchStart={(e) => {
-                  if (e.touches.length < 1) return;
-                  setSwipeStart(e.touches[0].clientX);
-                  if (zoomScale > 1) {
-                    setIsDragging(true);
-                    setDragStart({ x: e.touches[0].clientX - panOffset.x, y: e.touches[0].clientY - panOffset.y });
-                  }
-                }}
-                onTouchMove={(e) => {
-                  if (e.touches.length < 1) return;
-                  setSwipeEnd(e.touches[0].clientX);
-                  if (isDragging && zoomScale > 1) {
-                    setPanOffset({
-                      x: e.touches[0].clientX - dragStart.x,
-                      y: e.touches[0].clientY - dragStart.y
-                    });
-                  }
-                }}
-                onTouchEnd={() => {
-                  setIsDragging(false);
-                  if (zoomScale <= 1 && swipeStart !== null && swipeEnd !== null) {
-                    const dist = swipeStart - swipeEnd;
-                    if (dist > 40) handleNextTrendDist();
-                    else if (dist < -40) handlePrevTrendDist();
-                  }
-                  setSwipeStart(null);
-                  setSwipeEnd(null);
-                }}
-              >
-                {displayImg ? (
-                  <img
-                    key={`${activeDist?.id}-${trendHorizon}-${isWideTrend}-${selectedModel}`}
-                    src={displayImg}
-                    alt={`Enlarged trends map for ${activeDist?.name || "system"}`}
-                    style={{
-                      transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
-                      cursor: zoomScale > 1 ? (isDragging ? "grabbing" : "grab") : "default",
-                      transition: isDragging ? "none" : "transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)"
-                    }}
-                    className="max-w-full max-h-[70vh] sm:max-h-[78vh] object-contain rounded-xl sm:rounded-2xl shadow-2xl select-none animate-in fade-in duration-200"
-                    onClick={(e) => e.stopPropagation()}
-                    onDragStart={(e) => e.preventDefault()}
-                  />
-                ) : (
-                  <div className="text-center p-6 sm:p-8 flex flex-col items-center gap-3 bg-slate-900/90 border border-white/10 rounded-2xl z-10 max-w-sm" onClick={(e) => e.stopPropagation()}>
-                    <Database className="w-10 sm:w-12 h-10 sm:h-12 text-slate-600 animate-pulse" />
-                    <span className="text-xs sm:text-sm font-bold text-slate-300">
-                      No trend maps pre-rendered for this cycle.
-                    </span>
-                    <span className="text-[11px] text-slate-500 font-medium">Trend maps are generated for active disturbances meeting threshold.</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Bottom Dock Navigation Bar */}
-              <div
-                className="z-50 flex items-center gap-2 bg-slate-900/95 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 shadow-2xl pointer-events-auto"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {hasMultipleDists && (
-                  <button
-                    onClick={handlePrevTrendDist}
-                    className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-white rounded-full text-xs font-bold transition-all cursor-pointer shadow"
-                    title="Previous System (Left Arrow)"
-                  >
-                    <ChevronLeft className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
-                    <span className="text-[11px]">Prev</span>
-                  </button>
-                )}
-
-                {/* System indicator dots */}
-                <div className="flex items-center gap-1 px-1">
-                  {currentDists.map((d) => (
-                    <button
-                      key={d.id}
-                      onClick={(e) => { e.stopPropagation(); resetZoom(); setActiveTrendDistId(d.id); }}
-                      className={`h-2 rounded-full transition-all cursor-pointer ${
-                        d.id === (activeDist ? activeDist.id : null)
-                          ? "w-4 sm:w-5 bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]"
-                          : "w-1.5 sm:w-2 bg-slate-700 hover:bg-slate-500"
-                      }`}
-                      title={d.name}
-                    />
-                  ))}
-                </div>
-
-                {hasMultipleDists && (
-                  <button
-                    onClick={handleNextTrendDist}
-                    className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-white rounded-full text-xs font-bold transition-all cursor-pointer shadow"
-                    title="Next System (Right Arrow)"
-                  >
-                    <span className="text-[11px]">Next</span>
-                    <ChevronRight className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
-                  </button>
-                )}
-
-                {/* Quick Horizon toggle in dock */}
-                <div className="flex items-center gap-1 pl-2 border-l border-white/10">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); resetZoom(); setTrendHorizon(trendHorizon === "5day" ? "15day" : "5day"); }}
-                    className="px-2 py-0.5 rounded text-[10px] font-mono font-bold text-cyan-300 hover:bg-slate-800 transition cursor-pointer"
-                  >
-                    {trendHorizon === "5day" ? "5D" : "15D"}
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); resetZoom(); setIsWideTrend(!isWideTrend); }}
-                    className="px-2 py-0.5 rounded text-[10px] font-mono font-bold text-slate-300 hover:bg-slate-800 transition cursor-pointer"
-                  >
-                    {isWideTrend ? "WIDE" : "STD"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        }
-
-        // Mode 2: Storm Forecast Track Modal View
+        // Mode 1: Storm Forecast Track Modal View
         if (showForecastTrack) {
           const activeStorm = stormsIndex.find((s) => s.track_id === selectedStormId);
           const stormLabel = selectedStormId === "latest" ? "All Systems Composite" : (activeStorm ? `${activeStorm.storm_name.toUpperCase()} (${activeStorm.track_id})` : selectedStormId);

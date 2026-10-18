@@ -115,7 +115,7 @@ def haversine_km(lat1, lon1, lat2, lon2):
 def mean_geo_center(points):
     """
     Computes the geographic centroid of a list of {'lat': ..., 'lon': ...} dicts
-    using spherical (3D Cartesian) averaging. Matches generate_trends_map.py.
+    using spherical (3D Cartesian) averaging.
     """
     if len(points) == 0:
         return {'lat': 0.0, 'lon': 0.0}
@@ -676,7 +676,7 @@ def get_storm_display_name(track_id):
 
 def cluster_genesis_locations(df, dist_threshold=6.0):
     """
-    Groups tracks within the same init_time using the custom HDBSCAN implementation from generate_trends_map.py.
+    Groups tracks within the same init_time using the custom HDBSCAN implementation.
     """
     if df.empty:
         return df
@@ -755,7 +755,7 @@ def cluster_genesis_locations(df, dist_threshold=6.0):
                     distance_matrix[i][j] = dist
                     distance_matrix[j][i] = dist
                     
-        # Compute min_cluster_size (same formula as generate_trends_map.py)
+        # Compute min_cluster_size based on ensemble member count
         num_members = len(init_df['sample'].unique())
         min_cluster_size = max(4, int(round(num_members * (0.03 if num_members > 100 else 0.08))))
         min_cluster_size = min(n_tracks, max(2, min_cluster_size))

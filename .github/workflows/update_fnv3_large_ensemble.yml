@@ -73,11 +73,6 @@ jobs:
         run: |
           python scripts/download_multi_cycle.py
 
-      - name: Generate FNV3 Large Ensemble Trend Maps
-        run: |
-          python generate_trends_map.py --dataset large --horizon 5day --all
-          python generate_trends_map.py --dataset large --horizon 15day --all
-
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
@@ -96,7 +91,6 @@ jobs:
           git add -f public/data/fnv3_large_*.dat || true
           git add -f public/data/fnv3_large_paired_*.dat || true
           git add -f public/data/cycles_manifest.json || true
-          git add public/data/trends/* 2>/dev/null || true
           
           # Commit if there are changes
           if git diff --staged --quiet; then
