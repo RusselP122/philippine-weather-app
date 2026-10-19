@@ -1,0 +1,1012 @@
+import os
+import json
+import requests
+import numpy as np
+import scipy.ndimage
+from scipy.interpolate import griddata
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+import matplotlib.patches as patches
+import matplotlib.patheffects as pe
+from matplotlib.patches import FancyBboxPatch
+from matplotlib.colors import ListedColormap, BoundaryNorm
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import shapely
+from shapely.geometry import shape, box
+from shapely.validation import make_valid
+from shapely.ops import unary_union
+from datetime import datetime, timedelta, timezone
+from eccodes import codes_grib_new_from_file, codes_get, codes_get_double_array, codes_get_values, codes_release
+from ecmwf.opendata import Client
+import xarray as xr
+import gcsfs
+import numcodecs
+from google.cloud import storage
+from weather_viz_styles import find_latest_weathernext_run, batch_cat_gcs
+
+# ── Directories ────────────────────────────────────────────────────────────
+OUTPUT_DIR = os.path.join(os.getcwd(), "public", "images", "ai_precip_outlook")
+DATA_DIR = os.path.join(os.getcwd(), "public", "data")
+LOGO_PATHS = [
+    os.path.join(os.getcwd(), "public", "images", "logo.png"),
+    os.path.join(os.getcwd(), "public", "logo512.png"),
+    os.path.join(os.getcwd(), "public", "logo192.png")
+]
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# ── Region & Master Grid ───────────────────────────────────────────────────
+LAT_MIN, LAT_MAX = 4.5, 21.5
+LON_MIN, LON_MAX = 114.0, 129.5
+
+# High-resolution master grid (0.02° ≈ 2.2 km resolution for smooth, crisp contours)
+GRID_RES = 0.02
+MASTER_LATS = np.arange(LAT_MIN, LAT_MAX + GRID_RES, GRID_RES)
+MASTER_LONS = np.arange(LON_MIN, LON_MAX + GRID_RES, GRID_RES)
+M_LONS, M_LATS = np.meshgrid(MASTER_LONS, MASTER_LATS)
+
+# ── TV Broadcast Colormaps ──────────────────────────────────────────────────
+# 1. Multi-Day (3-Day & 5-Day) Scale (5 to 450+ mm)
+BROADCAST_LEVELS = [5, 15, 30, 50, 75, 100, 150, 200, 300, 450]
+BROADCAST_COLORS = [
+    '#2d6a4f', '#52b788', '#70e000', '#9ef01a', '#ffea00',
+    '#ff9e00', '#ff5400', '#d90429', '#7209b7'
+]
+broadcast_cmap = ListedColormap(BROADCAST_COLORS)
+broadcast_cmap.set_over('#3a0ca3')
+broadcast_norm = BoundaryNorm(BROADCAST_LEVELS, ncolors=len(BROADCAST_COLORS), clip=False)
+
+# 2. Today (24-Hour) Scale (2.5 to 200+ mm)
+BROADCAST_TODAY_LEVELS = [2.5, 5, 15, 30, 50, 75, 100, 150, 200]
+BROADCAST_TODAY_COLORS = [
+    '#2a9d8f', '#52b788', '#70e000', '#ffea00',
+    '#ff9e00', '#ff5400', '#d90429', '#7209b7'
+]
+broadcast_today_cmap = ListedColormap(BROADCAST_TODAY_COLORS)
+broadcast_today_cmap.set_over('#3a0ca3')
+broadcast_today_norm = BoundaryNorm(BROADCAST_TODAY_LEVELS, ncolors=len(BROADCAST_TODAY_COLORS), clip=False)
+
+# ── Regional Definitions with Exact 16:9 Aspect Ratio Extents ─────────────
+BROADCAST_REGIONS = {
+    "luzon": {
+        "title": "LUZON",
+        "extent": [114.46, 127.94, 12.0, 19.3],
+        "cities": [
+            ("LAOAG", 120.59, 18.20, (-0.85, 0.0)),
+            ("TUGUEGARAO", 121.72, 17.61, (1.30, 0.0)),
+            ("BAGUIO", 120.59, 16.41, (-1.00, 0.10)),
+            ("DAGUPAN", 120.34, 16.04, (-1.05, -0.15)),
+            ("CLARK", 120.56, 15.18, (-1.35, -0.05)),
+            ("CABANATUAN", 120.96, 15.48, (1.75, 0.0)),
+            ("MANILA", 120.98, 14.59, (-0.85, -0.15)),
+            ("NAGA", 123.19, 13.62, (0.0, 0.65)),
+            ("LEGAZPI", 123.73, 13.14, (0.95, 0.10))
+        ]
+    },
+    "visayas": {
+        "title": "VISAYAS",
+        "extent": [120.08, 127.32, 9.0, 13.0],
+        "cities": [
+            ("BORACAY", 121.92, 11.97, (-0.48, 0.15)),
+            ("ROXAS", 122.75, 11.58, (0.20, 0.42)),
+            ("ILOILO", 122.56, 10.72, (-0.71, -0.30)),
+            ("BACOLOD", 122.95, 10.67, (0.45, 0.28)),
+            ("CEBU CITY", 123.89, 10.31, (0.46, 0.20)),
+            ("TAGBILARAN", 123.85, 9.65, (0.50, -0.30)),
+            ("DUMAGUETE", 123.30, 9.31, (0.35, 0.08)),
+            ("TACLOBAN", 125.00, 11.24, (0.65, -0.19)),
+            ("CATBALOGAN", 124.88, 11.77, (-0.63, 0.05))
+        ]
+    },
+    "mindanao": {
+        "title": "MINDANAO",
+        "extent": [120.02, 128.98, 5.2, 10.2],
+        "cities": [
+            ("SURIGAO", 125.49, 9.79, (-0.95, -0.40)),
+            ("BUTUAN", 125.54, 8.95, (-0.25, 0.15)),
+            ("CAGAYAN DE ORO", 124.63, 8.48, (0.0, 0.40)),
+            ("DIPOLOG", 123.34, 8.58, (-0.45, 0.25)),
+            ("PAGADIAN", 123.43, 7.82, (0.05, -0.35)),
+            ("ZAMBOANGA", 122.07, 6.92, (0.0, -0.30)),
+            ("COTABATO", 124.24, 7.22, (-0.55, 0.0)),
+            ("DAVAO", 125.60, 7.19, (0.35, -0.30)),
+            ("GEN SANTOS", 125.17, 6.11, (0.0, -0.35))
+        ]
+    }
+}
+
+PALAWAN_CITIES = [
+    ("CORON", 120.20, 12.00, (-0.65, 0.22)),
+    ("EL NIDO", 119.39, 11.18, (-0.60, 0.05)),
+    ("PTO PRINCESA", 118.73, 9.74, (0.85, 0.0)),
+    ("BROOKE’S PT", 117.83, 8.77, (0.70, -0.10))
+]
+
+BATANES_BABUYAN_CITIES = [
+    ("ITBAYAT", 121.84, 20.78, (-0.42, 0.0)),
+    ("BASCO", 121.97, 20.45, (0.35, 0.0)),
+    ("BABUYAN IS.", 121.93, 19.52, (0.38, 0.0)),
+    ("CALAYAN", 121.47, 19.26, (-0.42, -0.02)),
+    ("CAMIGUIN IS.", 121.93, 18.92, (0.38, -0.02))
+]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Regridding
+# ═══════════════════════════════════════════════════════════════════════════
+def regrid_to_master(lats, lons, values):
+    mask = (
+        (lats >= LAT_MIN - 1.5) & (lats <= LAT_MAX + 1.5) &
+        (lons >= LON_MIN - 1.5) & (lons <= LON_MAX + 1.5)
+    )
+    if np.any(mask):
+        sub_lats = lats[mask]
+        sub_lons = lons[mask]
+        sub_vals = values[mask]
+    else:
+        sub_lats, sub_lons, sub_vals = lats, lons, values
+
+    pts = np.column_stack((sub_lons.ravel(), sub_lats.ravel()))
+    vals = sub_vals.ravel()
+    valid = ~np.isnan(vals)
+    if not np.any(valid):
+        return np.zeros_like(M_LATS)
+
+    regridded = griddata(pts[valid], vals[valid], (M_LONS, M_LATS), method='cubic', fill_value=np.nan)
+    if np.any(np.isnan(regridded)):
+        linear_fill = griddata(pts[valid], vals[valid], (M_LONS, M_LATS), method='linear', fill_value=0.0)
+        regridded = np.where(np.isnan(regridded), linear_fill, regridded)
+
+    regridded = np.nan_to_num(regridded, nan=0.0)
+    regridded = np.clip(regridded, 0, None)
+    return regridded
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Multi-Model Blending (MMB) Algorithm
+# Based on: Journal of Meteorological Research (Springer, 2021)
+# - Dynamic Skill-Weighted Blending (WeatherNext 3, AIFS, AIGFS)
+# - Ensemble Agreement / Probability of Precipitation (PoP) Gate
+# - Convective Peak Preservation (Preserves intense tropical storm cores)
+# - Light-Precipitation Elimination (Removes interpolation drizzle smear)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def multi_model_blend(models_dict, lead_hours=24):
+    """
+    Performs operational Multi-Model Blending (MMB) for quantitative precipitation.
+    
+    Parameters:
+      models_dict: dict of {'model_key': 2D ndarray on master grid}
+                   where keys can include 'wn3', 'aifs', 'aigfs'
+      lead_hours: 24, 72, or 120 (used to tune convective & elimination thresholds)
+    
+    Returns:
+      2D ndarray on master grid representing the blended precipitation consensus.
+    """
+    if not models_dict:
+        return np.zeros_like(M_LATS)
+    
+    # 1. Base skill weights reflecting model spatial resolution & convective skill
+    BASE_WEIGHTS = {
+        "wn3": 0.45,   # Google WeatherNext 3 (0.1° high-res, specialized for tropical precip)
+        "aifs": 0.35,  # ECMWF AIFS (0.25°, world-leading synoptic circulation & moisture)
+        "aigfs": 0.20  # NOAA AIGFS (0.25°, reliable global operational foundation)
+    }
+    
+    avail_keys = list(models_dict.keys())
+    if len(avail_keys) == 1:
+        single_grid = np.nan_to_num(models_dict[avail_keys[0]], nan=0.0)
+        floor = 1.0 if lead_hours <= 24 else (1.5 if lead_hours <= 72 else 2.0)
+        return np.where(single_grid < floor, 0.0, single_grid)
+    
+    # Normalize weights among available models
+    norm_w = {k: BASE_WEIGHTS.get(k, 1.0 / len(avail_keys)) for k in avail_keys}
+    total_w = sum(norm_w.values())
+    norm_w = {k: w / total_w for k, w in norm_w.items()}
+    
+    grids = [np.nan_to_num(models_dict[k], nan=0.0) for k in avail_keys]
+    weights = [norm_w[k] for k in avail_keys]
+    
+    # 2. Compute Weighted Mean and Maximum Member
+    weighted_mean = np.zeros_like(M_LATS)
+    for g, w in zip(grids, weights):
+        weighted_mean += g * w
+        
+    stack = np.stack(grids, axis=0)
+    max_member = np.max(stack, axis=0)
+    
+    # 3. Ensemble Agreement / Probability of Precipitation (PoP) Gate
+    rain_threshold = 1.0
+    agreement_count = np.sum(stack >= rain_threshold, axis=0)
+    
+    # If only 1 model predicts rain while others predict dry (< 1.0 mm):
+    agreement_factor = np.ones_like(M_LATS)
+    single_model_mask = (agreement_count == 1)
+    
+    single_model_cutoff = 12.0 if lead_hours <= 24 else 20.0
+    light_single_rain = single_model_mask & (max_member < single_model_cutoff)
+    moderate_single_rain = single_model_mask & (max_member >= single_model_cutoff)
+    
+    agreement_factor[light_single_rain] = 0.20 * (max_member[light_single_rain] / single_model_cutoff)
+    agreement_factor[moderate_single_rain] = 0.65
+    
+    # 4. Convective Peak Preservation (Preserving intense tropical convective storm cores)
+    heavy_threshold = 25.0 if lead_hours <= 24 else (45.0 if lead_hours <= 72 else 70.0)
+    convective_scale = 100.0
+    alpha = np.clip((weighted_mean - heavy_threshold) / convective_scale, 0.0, 0.35)
+    
+    blended_precip = (1.0 - alpha) * weighted_mean + alpha * max_member
+    blended_precip = blended_precip * agreement_factor
+    
+    # 5. Light-Precipitation Elimination (Trimming Drizzle Smear)
+    elim_floor = 1.0 if lead_hours <= 24 else (1.5 if lead_hours <= 72 else 2.0)
+    
+    taper_range = 1.0
+    transition_mask = (blended_precip >= elim_floor) & (blended_precip < elim_floor + taper_range)
+    t = (blended_precip[transition_mask] - elim_floor) / taper_range
+    smooth_t = 3.0 * (t ** 2) - 2.0 * (t ** 3)
+    blended_precip[transition_mask] = elim_floor + smooth_t * taper_range
+    
+    blended_precip[blended_precip < elim_floor] = 0.0
+    
+    return np.clip(blended_precip, 0, None)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Fetchers
+# ═══════════════════════════════════════════════════════════════════════════
+
+def get_latest_aigfs_run(session):
+    base_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigfs/prod"
+    now = datetime.now(timezone.utc)
+    for days_back in range(0, 3):
+        t_date = now - timedelta(days=days_back)
+        date_str = t_date.strftime("%Y%m%d")
+        date_url = f"{base_url}/aigfs.{date_str}/"
+        try:
+            if session.get(date_url, timeout=6).status_code != 200: continue
+            for cycle in ["18", "12", "06", "00"]:
+                cycle_url = f"{date_url}{cycle}/model/atmos/grib2/"
+                test_idx = f"{cycle_url}aigfs.t{cycle}z.sfc.f120.grib2.idx"
+                try:
+                    if session.head(test_idx, timeout=5).status_code == 200:
+                        run_dt = datetime.strptime(f"{date_str}{cycle}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
+                        print(f"Found latest AIGFS run: {date_str} {cycle}Z")
+                        return cycle_url, run_dt, date_str, cycle
+                except: continue
+        except: continue
+    return None, None, None, None
+
+def download_aigfs_apcp(grib_url, idx_url, session, target_day):
+    r = session.get(idx_url, timeout=10)
+    if r.status_code != 200: return None
+    lines = r.text.splitlines()
+    
+    target_str = f"0-{target_day} day acc fcst"
+    start_byte, end_byte = None, ""
+    for i, line in enumerate(lines):
+        if "APCP" in line and target_str in line:
+            start_byte = int(line.split(":")[1])
+            if i < len(lines) - 1:
+                end_byte = int(lines[i + 1].split(":")[1]) - 1
+            break
+            
+    if start_byte is None: return None
+    temp_path = os.path.join(os.getcwd(), f"temp_aigfs_apcp_{os.getpid()}_{np.random.randint(1000,9999)}.grib2")
+    headers = {"Range": f"bytes={start_byte}-{end_byte}"}
+    gr = session.get(grib_url, headers=headers, timeout=25)
+    with open(temp_path, "wb") as f:
+        f.write(gr.content)
+    return temp_path
+
+def read_aigfs_apcp(grib_file_path):
+    lats, lons, apcp = None, None, None
+    with open(grib_file_path, "rb") as f:
+        gid = codes_grib_new_from_file(f)
+        if gid:
+            ni = codes_get(gid, "Ni")
+            nj = codes_get(gid, "Nj")
+            lats = codes_get_double_array(gid, "latitudes").reshape(nj, ni)
+            lons = codes_get_double_array(gid, "longitudes").reshape(nj, ni)
+            apcp = codes_get_values(gid).reshape(nj, ni)
+            codes_release(gid)
+    if lons is not None and np.max(lons) > 180:
+        lons = np.where(lons > 180, lons - 360, lons)
+    return lats, lons, apcp
+
+def get_aifs_tp(client, step):
+    target_file = f"temp_aifs_precip_{step:03d}_{os.getpid()}.grib2"
+    try:
+        client.retrieve(step=step, type="fc", param=["tp"], target=target_file)
+        ds_sfc = xr.open_dataset(target_file, engine="cfgrib")
+        if "time" in ds_sfc.dims and ds_sfc.sizes["time"] > 1:
+            ds_sfc = ds_sfc.isel(time=-1)
+        tp_var = ds_sfc["tp"]
+        tp_grid = tp_var.values.squeeze()
+        lats = tp_var.coords["latitude"].values
+        lons = tp_var.coords["longitude"].values
+        if np.nanmax(tp_grid) < 2.0: tp_grid = tp_grid * 1000.0
+        ds_sfc.close()
+        LONS, LATS = np.meshgrid(lons, lats)
+        return LATS, LONS, tp_grid
+    except Exception as e:
+        print(f"AIFS fetch error step {step}: {e}")
+        return None, None, None
+    finally:
+        if os.path.exists(target_file): os.remove(target_file)
+
+def load_weathernext_dataset(project_id="affable-ring-442402-j2"):
+    """
+    Loads Google WeatherNext 3 high-resolution precipitation forecasts (1-hour accumulation steps).
+    Returns a dictionary with 2D coordinates and 24h, 72h, and 120h total accumulated precipitation (in mm).
+    """
+    try:
+        client = storage.Client(project=project_id)
+        fs = gcsfs.GCSFileSystem(project=project_id)
+        latest_run, avail_hours = find_latest_weathernext_run(client, fs, project_id=project_id, min_hours=120, var_check="total_precipitation_1hr_mean")
+        print(f"WeatherNext 3: Reading latest forecast from {latest_run} ({avail_hours}h available)")
+
+        base = f"weathernext3_statistics_spatial/{latest_run}predictions.zarr"
+        codec = numcodecs.Zstd()
+
+        # Read 0.1 deg coordinates
+        lat = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lat_0p1/c/0')), dtype='<f4')
+        lon = np.frombuffer(codec.decode(fs.cat_file(f'{base}/lon_0p1/c/0')), dtype='<f4')
+
+        lat_mask = (lat >= LAT_MIN - 1.0) & (lat <= LAT_MAX + 1.0)
+        lon_mask = (lon >= LON_MIN - 1.0) & (lon <= LON_MAX + 1.0)
+        lat_idx = np.where(lat_mask)[0]
+        lon_idx = np.where(lon_mask)[0]
+        lat_slice = slice(lat_idx.min(), lat_idx.max() + 1)
+        lon_slice = slice(lon_idx.min(), lon_idx.max() + 1)
+
+        sub_lats = lat[lat_slice]
+        sub_lons = lon[lon_slice]
+        WN_LONS, WN_LATS = np.meshgrid(sub_lons, sub_lats)
+
+        # Batch fetch 120 hourly steps (covers 24h, 72h, 120h)
+        paths_120 = [f'{base}/total_precipitation_1hr_mean/c/{t}/0/0' for t in range(min(120, avail_hours))]
+        raw_dict = batch_cat_gcs(fs, paths_120, batch_size=20, desc="WeatherNext Precip chunks")
+
+        chunks = []
+        for p in paths_120:
+            if p in raw_dict:
+                arr = np.frombuffer(codec.decode(raw_dict[p]), dtype='<f4').reshape((1801, 3600))[lat_slice, lon_slice]
+                chunks.append(arr)
+            else:
+                chunks.append(np.zeros_like(WN_LATS))
+
+        # Calculate accumulation totals in mm (data is in meters, * 1000)
+        total_24h = np.maximum(np.sum(chunks[:24], axis=0) * 1000.0, 0)
+        total_72h = np.maximum(np.sum(chunks[:min(72, len(chunks))], axis=0) * 1000.0, 0)
+        total_120h = np.maximum(np.sum(chunks[:min(120, len(chunks))], axis=0) * 1000.0, 0)
+
+        return {
+            "lats_2d": WN_LATS,
+            "lons_2d": WN_LONS,
+            "total_24h": total_24h,
+            "total_72h": total_72h,
+            "total_120h": total_120h,
+            "run_name": latest_run
+        }
+    except Exception as e:
+        print(f"WeatherNext 3 error: {e}")
+        return None
+
+# ── Load Philippine Province Geometries Categorized by Region ─────────────
+def load_ph_regional_geometries():
+    """
+    Separates geometries and land masks into:
+      - Luzon Mainland (Mainland, Mindoro, Bicol, Marinduque, Romblon)
+      - Palawan (for dedicated Inset Box on Luzon view)
+      - Batanes & Babuyan Islands (for dedicated Upper-Right Inset Box on Luzon view)
+      - Visayas (Western, Central, Eastern Visayas)
+      - Mindanao (Northern, Southern, Western, Eastern, Caraga, BARMM)
+    """
+    LUZON_REGIONS = [
+        'Bicol Region (Region V)', 'CALABARZON (Region IV-A)', 'Cagayan Valley (Region II)',
+        'Central Luzon (Region III)', 'Cordillera Administrative Region (CAR)',
+        'Ilocos Region (Region I)', 'MIMAROPA (Region IV-B)', 'Metropolitan Manila'
+    ]
+    VISAYAS_REGIONS = [
+        'Central Visayas (Region VII)', 'Eastern Visayas (Region VIII)', 'Western Visayas (Region VI)'
+    ]
+    MINDANAO_REGIONS = [
+        'Autonomous Region of Muslim Mindanao (ARMM)', 'Caraga (Region XIII)',
+        'Davao Region (Region XI)', 'Northern Mindanao (Region X)',
+        'SOCCSKSARGEN (Region XII)', 'Zamboanga Peninsula (Region IX)'
+    ]
+
+    all_provs = []
+    luzon_main_geoms = []
+    palawan_geoms = []
+    batanes_babuyan_geoms = []
+    visayas_geoms = []
+    mindanao_geoms = []
+
+    bb_box = box(120.8, 18.7, 122.6, 21.4)
+
+    try:
+        geojson_paths = [os.path.join(DATA_DIR, "ph_provinces.json"), "public/data/ph_provinces.json"]
+        found_geo = next((p for p in geojson_paths if os.path.exists(p)), None)
+        if found_geo:
+            with open(found_geo, "r", encoding="utf-8") as f:
+                geo_data = json.load(f)
+            
+            for feat in geo_data["features"]:
+                reg = feat["properties"].get("REGION", "")
+                pname = feat["properties"].get("NAME_1", feat["properties"].get("PROVINCE", ""))
+                geom = make_valid(shape(feat["geometry"]))
+                all_provs.append(geom)
+                
+                if reg in LUZON_REGIONS:
+                    if pname.lower() == "palawan":
+                        palawan_geoms.append(geom)
+                    elif pname.lower() == "batanes":
+                        batanes_babuyan_geoms.append(geom)
+                    elif pname.lower() == "cagayan":
+                        babuyan_part = geom.intersection(bb_box)
+                        cagayan_main = geom.difference(bb_box)
+                        if not babuyan_part.is_empty:
+                            batanes_babuyan_geoms.append(babuyan_part)
+                        if not cagayan_main.is_empty:
+                            luzon_main_geoms.append(cagayan_main)
+                    else:
+                        luzon_main_geoms.append(geom)
+                elif reg in VISAYAS_REGIONS:
+                    visayas_geoms.append(geom)
+                elif reg in MINDANAO_REGIONS:
+                    mindanao_geoms.append(geom)
+
+            u_luzon_main = unary_union(luzon_main_geoms)
+            u_palawan = unary_union(palawan_geoms)
+            u_bb = unary_union(batanes_babuyan_geoms)
+            u_visayas = unary_union(visayas_geoms)
+            u_mindanao = unary_union(mindanao_geoms)
+
+            masks = {
+                "luzon_main": shapely.contains_xy(u_luzon_main, M_LONS, M_LATS),
+                "palawan": shapely.contains_xy(u_palawan, M_LONS, M_LATS),
+                "batanes_babuyan": shapely.contains_xy(u_bb, M_LONS, M_LATS),
+                "visayas": shapely.contains_xy(u_visayas, M_LONS, M_LATS),
+                "mindanao": shapely.contains_xy(u_mindanao, M_LONS, M_LATS)
+            }
+            geoms_dict = {
+                "all": all_provs,
+                "luzon_main": luzon_main_geoms,
+                "palawan": palawan_geoms,
+                "batanes_babuyan": batanes_babuyan_geoms,
+                "visayas": visayas_geoms,
+                "mindanao": mindanao_geoms
+            }
+            return geoms_dict, masks
+    except Exception as e:
+        print(f"Notice loading regional geometries: {e}")
+    return {}, {}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TV Broadcast Regional Map Generator with Dual Inset & Region Masking
+# ═══════════════════════════════════════════════════════════════════════════
+
+def plot_broadcast_regional_map(consensus_grid, filename_id, init_dt, region_key, days=3, geoms_dict=None, masks=None):
+    """
+    Renders 16:9 Widescreen TV Broadcast Weather Graphic with Custom Logo and City Callout Pills.
+    - Regional Isolation: Only the selected region's islands display rainfall color.
+    - Dual Insets on Luzon Map:
+        1. Palawan Inset Frame (Bottom-Left)
+        2. Batanes & Babuyan Islands Inset Frame (Upper-Right)
+    """
+    region_info = BROADCAST_REGIONS[region_key]
+    smoothed_grid = scipy.ndimage.gaussian_filter(consensus_grid, sigma=1.1)
+
+    # Colormap and scale selection: Today (2.5 to 200 mm) vs Multi-Day (5 to 450 mm)
+    if days == 1:
+        active_levels = BROADCAST_TODAY_LEVELS
+        active_cmap = broadcast_today_cmap
+        active_norm = broadcast_today_norm
+        cbar_ticks = BROADCAST_TODAY_LEVELS
+        cbar_labels = ['2.5', '5', '15', '30', '50', '75', '100', '150', '200+']
+        cbar_tick_size = 9.2
+    else:
+        active_levels = BROADCAST_LEVELS
+        active_cmap = broadcast_cmap
+        active_norm = broadcast_norm
+        cbar_ticks = BROADCAST_LEVELS[:-1]
+        cbar_labels = ['5', '15', '30', '50', '75', '100', '150', '200', '300+']
+        cbar_tick_size = 9.5
+
+    # Apply strict regional land mask so other regions don't bleed rain color
+    if masks:
+        if region_key == "luzon":
+            land_rain = np.where(masks.get("luzon_main"), smoothed_grid, np.nan)
+            palawan_rain = np.where(masks.get("palawan"), smoothed_grid, np.nan)
+            bb_rain = np.where(masks.get("batanes_babuyan"), smoothed_grid, np.nan)
+        elif region_key == "visayas":
+            land_rain = np.where(masks.get("visayas"), smoothed_grid, np.nan)
+        elif region_key == "mindanao":
+            land_rain = np.where(masks.get("mindanao"), smoothed_grid, np.nan)
+        else:
+            land_rain = smoothed_grid
+    else:
+        land_rain = smoothed_grid
+
+    fig = plt.figure(figsize=(16, 9), dpi=120)
+    fig.patch.set_facecolor('#0d1821')
+    ax = fig.add_axes([0, 0, 1, 1], projection=ccrs.PlateCarree())
+    ax.set_extent(region_info["extent"], crs=ccrs.PlateCarree())
+
+    # Deep Navy TV ocean & Dark Slate-Olive terrain
+    ax.add_feature(cfeature.OCEAN, facecolor='#162533', zorder=0)
+    ax.add_feature(cfeature.LAND, facecolor='#25342a', zorder=1)
+
+    # Precipitation Heatmap (Strictly masked to this region)
+    cf = ax.contourf(
+        M_LONS, M_LATS, land_rain,
+        levels=active_levels, cmap=active_cmap, norm=active_norm,
+        extend='max', transform=ccrs.PlateCarree(), zorder=2, alpha=0.90
+    )
+
+    # Crisp province boundaries & coastlines
+    if geoms_dict and "all" in geoms_dict:
+        ax.add_geometries(geoms_dict["all"], crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#475569', linewidth=0.8, alpha=0.85, zorder=3)
+    ax.add_feature(cfeature.COASTLINE, linewidth=1.3, edgecolor='#0f172a', zorder=4)
+
+    # ── City Point-Rainfall Callout Badges ─────────────────────────────────────
+    extent = region_info["extent"]
+    for item in region_info["cities"]:
+        name, clon, clat = item[0], item[1], item[2]
+        offset_x, offset_y = item[3] if len(item) > 3 else (0, 0)
+
+        if extent[0] - 0.2 <= clon <= extent[1] + 0.2 and extent[2] - 0.2 <= clat <= extent[3] + 0.2:
+            dist = (M_LONS - clon)**2 + (M_LATS - clat)**2
+            min_idx = np.unravel_index(np.argmin(dist), dist.shape)
+            val = land_rain[min_idx]
+            
+            min_badge_val = 2.5 if days == 1 else 1.0
+            if np.isnan(val) or val < min_badge_val:
+                continue
+
+            val_str = f"{val:.0f} mm"
+
+            bbox_props = dict(boxstyle='round,pad=0.35', facecolor='#000000', edgecolor='#ffffff', alpha=0.78, lw=1.1)
+            callout = f"{val_str}\n{name}"
+            
+            # City pin dot on land
+            ax.plot(clon, clat, marker='o', markersize=4.2, color='#38bdf8', markeredgecolor='#ffffff', markeredgewidth=0.9, zorder=11, transform=ccrs.PlateCarree())
+            
+            # Sleek leader line connecting city to floating badge
+            if abs(offset_x) > 0.05 or abs(offset_y) > 0.05:
+                ax.plot([clon, clon + offset_x * 0.78], [clat, clat + offset_y * 0.78], color='#cbd5e1', lw=1.2, alpha=0.80, zorder=9, transform=ccrs.PlateCarree())
+
+            ax.text(
+                clon + offset_x, clat + offset_y, callout,
+                transform=ccrs.PlateCarree(),
+                fontsize=12, fontweight='heavy',
+                color='#ffffff', ha='center', va='center',
+                bbox=bbox_props, zorder=10
+            )
+
+    # ── Dedicated Inset Mini-Maps on Luzon View ──────────────────────────────
+    if region_key == "luzon" and geoms_dict:
+        # 1. Palawan Inset (Bottom-Left)
+        if "palawan" in geoms_dict:
+            inset_pal_rect = [0.03, 0.05, 0.27, 0.48]
+            inset_pal_bg = FancyBboxPatch((inset_pal_rect[0]-0.005, inset_pal_rect[1]-0.005), inset_pal_rect[2]+0.01, inset_pal_rect[3]+0.01,
+                                          boxstyle='round,pad=0.005,rounding_size=0.012', transform=fig.transFigure,
+                                          facecolor='#0b131a', edgecolor='#38bdf8', lw=1.5, zorder=30)
+            fig.patches.append(inset_pal_bg)
+
+            palawan_title_pill = FancyBboxPatch((inset_pal_rect[0] + 0.01, inset_pal_rect[1] + inset_pal_rect[3] - 0.045), 0.12, 0.035,
+                                                boxstyle='round,pad=0.005,rounding_size=0.008', transform=fig.transFigure,
+                                                facecolor='#0369a1', edgecolor='none', zorder=32)
+            fig.patches.append(palawan_title_pill)
+            fig.text(inset_pal_rect[0] + 0.07, inset_pal_rect[1] + inset_pal_rect[3] - 0.028, 'PALAWAN',
+                     fontsize=11, fontweight='heavy', color='#ffffff', ha='center', va='center', zorder=33)
+
+            ax_pal = fig.add_axes(inset_pal_rect, projection=ccrs.PlateCarree(), zorder=31)
+            ax_pal.set_extent([116.6, 120.5, 8.2, 12.5], crs=ccrs.PlateCarree())
+            ax_pal.add_feature(cfeature.OCEAN, facecolor='#162533', zorder=0)
+            ax_pal.add_feature(cfeature.LAND, facecolor='#25342a', zorder=1)
+
+            ax_pal.contourf(
+                M_LONS, M_LATS, palawan_rain,
+                levels=active_levels, cmap=active_cmap, norm=active_norm,
+                extend='max', transform=ccrs.PlateCarree(), zorder=2, alpha=0.90
+            )
+            ax_pal.add_geometries(geoms_dict["palawan"], crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#475569', linewidth=0.8, alpha=0.85, zorder=3)
+            ax_pal.add_feature(cfeature.COASTLINE, linewidth=1.2, edgecolor='#0f172a', zorder=4)
+
+            for name, clon, clat, (ox, oy) in PALAWAN_CITIES:
+                dist = (M_LONS - clon)**2 + (M_LATS - clat)**2
+                min_idx = np.unravel_index(np.argmin(dist), dist.shape)
+                val = palawan_rain[min_idx]
+                min_badge_val = 2.5 if days == 1 else 1.0
+                if np.isnan(val) or val < min_badge_val:
+                    continue
+
+                val_str = f"{val:.0f} mm"
+
+                bbox_props = dict(boxstyle='round,pad=0.25', facecolor='#000000', edgecolor='#ffffff', alpha=0.78, lw=0.9)
+                callout = f"{val_str}\n{name}"
+                ax_pal.plot(clon, clat, marker='o', markersize=3.2, color='#38bdf8', markeredgecolor='#ffffff', markeredgewidth=0.8, zorder=11, transform=ccrs.PlateCarree())
+                if abs(ox) > 0.05 or abs(oy) > 0.05:
+                    ax_pal.plot([clon, clon + ox * 0.76], [clat, clat + oy * 0.76], color='#cbd5e1', lw=1.0, alpha=0.80, zorder=9, transform=ccrs.PlateCarree())
+                ax_pal.text(
+                    clon + ox, clat + oy, callout,
+                    transform=ccrs.PlateCarree(),
+                    fontsize=8.8, fontweight='heavy',
+                    color='#ffffff', ha='center', va='center',
+                    bbox=bbox_props, zorder=10
+                )
+
+        # 2. Batanes & Babuyan Inset (Upper-Right)
+        if "batanes_babuyan" in geoms_dict:
+            inset_bb_rect = [0.70, 0.36, 0.27, 0.50]
+            inset_bb_bg = FancyBboxPatch((inset_bb_rect[0]-0.005, inset_bb_rect[1]-0.005), inset_bb_rect[2]+0.01, inset_bb_rect[3]+0.01,
+                                         boxstyle='round,pad=0.005,rounding_size=0.012', transform=fig.transFigure,
+                                         facecolor='#0b131a', edgecolor='#38bdf8', lw=1.5, zorder=30)
+            fig.patches.append(inset_bb_bg)
+
+            bb_title_pill = FancyBboxPatch((inset_bb_rect[0] + 0.01, inset_bb_rect[1] + inset_bb_rect[3] - 0.045), 0.22, 0.035,
+                                           boxstyle='round,pad=0.005,rounding_size=0.008', transform=fig.transFigure,
+                                           facecolor='#0369a1', edgecolor='none', zorder=32)
+            fig.patches.append(bb_title_pill)
+            fig.text(inset_bb_rect[0] + 0.12, inset_bb_rect[1] + inset_bb_rect[3] - 0.028, 'BATANES & BABUYAN',
+                     fontsize=10.5, fontweight='heavy', color='#ffffff', ha='center', va='center', zorder=33)
+
+            ax_bb = fig.add_axes(inset_bb_rect, projection=ccrs.PlateCarree(), zorder=31)
+            ax_bb.set_extent([120.9, 122.6, 18.7, 21.2], crs=ccrs.PlateCarree())
+            ax_bb.add_feature(cfeature.OCEAN, facecolor='#162533', zorder=0)
+            ax_bb.add_feature(cfeature.LAND, facecolor='#25342a', zorder=1)
+
+            ax_bb.contourf(
+                M_LONS, M_LATS, bb_rain,
+                levels=active_levels, cmap=active_cmap, norm=active_norm,
+                extend='max', transform=ccrs.PlateCarree(), zorder=2, alpha=0.90
+            )
+            ax_bb.add_geometries(geoms_dict["batanes_babuyan"], crs=ccrs.PlateCarree(), facecolor='none', edgecolor='#475569', linewidth=0.8, alpha=0.85, zorder=3)
+            ax_bb.add_feature(cfeature.COASTLINE, linewidth=1.2, edgecolor='#0f172a', zorder=4)
+
+            for name, clon, clat, (ox, oy) in BATANES_BABUYAN_CITIES:
+                dist = (M_LONS - clon)**2 + (M_LATS - clat)**2
+                min_idx = np.unravel_index(np.argmin(dist), dist.shape)
+                val = bb_rain[min_idx]
+                min_badge_val = 2.5 if days == 1 else 1.0
+                if np.isnan(val) or val < min_badge_val:
+                    continue
+
+                val_str = f"{val:.0f} mm"
+
+                bbox_props = dict(boxstyle='round,pad=0.22', facecolor='#000000', edgecolor='#ffffff', alpha=0.78, lw=0.85)
+                callout = f"{val_str}\n{name}"
+                ax_bb.plot(clon, clat, marker='o', markersize=3.0, color='#38bdf8', markeredgecolor='#ffffff', markeredgewidth=0.8, zorder=11, transform=ccrs.PlateCarree())
+                if abs(ox) > 0.05 or abs(oy) > 0.05:
+                    ax_bb.plot([clon, clon + ox * 0.76], [clat, clat + oy * 0.76], color='#cbd5e1', lw=1.0, alpha=0.80, zorder=9, transform=ccrs.PlateCarree())
+                ax_bb.text(
+                    clon + ox, clat + oy, callout,
+                    transform=ccrs.PlateCarree(),
+                    fontsize=8.2, fontweight='heavy',
+                    color='#ffffff', ha='center', va='center',
+                    bbox=bbox_props, zorder=10
+                )
+
+    # ── Top Broadcast Header Banner ──────────────────────────────────────────
+    header_bg = patches.Rectangle((0, 0.88), 1, 0.12, transform=fig.transFigure, facecolor='#0b131a', alpha=0.95, zorder=40)
+    fig.patches.append(header_bg)
+
+    # Title Banner Pill
+    title_pill = FancyBboxPatch((0.23, 0.932), 0.38, 0.052, boxstyle='round,pad=0.01,rounding_size=0.012',
+                                transform=fig.transFigure, facecolor='#1e293b', edgecolor='#38bdf8', lw=1.2, zorder=41)
+    fig.patches.append(title_pill)
+    fig.text(0.42, 0.957, 'RAINFALL FORECAST', fontsize=21, fontweight='heavy', color='#f8fafc', ha='center', va='center', zorder=42)
+
+    # Subtitle Blue Bar
+    ph_tz = timezone(timedelta(hours=8))
+    init_dt_ph = init_dt.astimezone(ph_tz) if init_dt else None
+    start_str = init_dt_ph.strftime("%b %d") if init_dt_ph else "Start"
+    end_str = (init_dt_ph + timedelta(days=days)).strftime("%b %d") if init_dt_ph else "End"
+    
+    if days == 1:
+        sub_title = f'TODAY · {region_info["title"]} ({start_str})'
+        pill_w = 0.28
+        pill_x = 0.28
+    else:
+        sub_title = f'NEXT {days} DAYS · {region_info["title"]} ({start_str} - {end_str})'
+        pill_w = 0.30
+        pill_x = 0.27
+
+    sub_pill = FancyBboxPatch((pill_x, 0.892), pill_w, 0.034, boxstyle='round,pad=0.01,rounding_size=0.01',
+                             transform=fig.transFigure, facecolor='#0369a1', edgecolor='none', zorder=41)
+    fig.patches.append(sub_pill)
+    fig.text(0.42, 0.908, sub_title, fontsize=11, fontweight='bold', color='#ffffff', ha='center', va='center', zorder=42)
+
+    # Colorbar in upper right header
+    cbar_ax = fig.add_axes([0.65, 0.925, 0.31, 0.032], zorder=42)
+    cb = fig.colorbar(cf, cax=cbar_ax, orientation='horizontal')
+    cb.set_ticks(cbar_ticks)
+    cb.set_ticklabels(cbar_labels)
+    cb.ax.tick_params(labelsize=cbar_tick_size, colors='#ffffff', length=0)
+    cb.outline.set_edgecolor('#ffffff')
+    cb.outline.set_linewidth(1.0)
+    fig.text(0.805, 0.894, 'PRECIPITATION (mm)', fontsize=9, fontweight='bold', color='#94a3b8', ha='center', zorder=42)
+
+    # ── User Brand Logo ──────────────────────────────────────────────────────
+    found_logo = next((p for p in LOGO_PATHS if os.path.exists(p)), None)
+    if found_logo:
+        try:
+            logo_img = mpimg.imread(found_logo)
+            logo_ax = fig.add_axes([0.02, 0.888, 0.08, 0.10], zorder=45)
+            logo_ax.imshow(logo_img)
+            logo_ax.axis('off')
+        except Exception as e:
+            print(f"Notice loading logo: {e}")
+            fig.text(0.052, 0.936, 'PHIL\nWX', fontsize=12, fontweight='heavy', color='#38bdf8', ha='center', va='center', zorder=42)
+    else:
+        fig.text(0.052, 0.936, 'PHIL\nWX', fontsize=12, fontweight='heavy', color='#38bdf8', ha='center', va='center', zorder=42)
+
+    # ── Bottom-Right Forecast Guidance Note (Text Only) ──────────────────────
+    stroke = [pe.withStroke(linewidth=2.2, foreground='#0d1821')]
+    fig.text(0.835, 0.060, "MODELS FORECAST ONLY",
+             fontsize=8.8, fontweight='heavy', color='#38bdf8', ha='center', va='center', zorder=52,
+             path_effects=stroke)
+    fig.text(0.835, 0.038, "Values are models based estimates of total rainfall, subject to change",
+             fontsize=7.3, fontweight='bold', color='#cbd5e1', ha='center', va='center', zorder=52,
+             path_effects=stroke)
+
+    out_path = os.path.join(OUTPUT_DIR, f"{filename_id}.png")
+    tmp_path = os.path.join(OUTPUT_DIR, f"{filename_id}.tmp.png")
+    try:
+        fig.savefig(tmp_path, dpi=120, facecolor="#0d1821", edgecolor="none")
+        plt.close(fig)
+        if os.path.exists(out_path):
+            try:
+                os.remove(out_path)
+            except Exception:
+                pass
+        os.replace(tmp_path, out_path)
+    except Exception as e:
+        try:
+            fig.savefig(out_path, dpi=120, facecolor="#0d1821", edgecolor="none")
+            plt.close(fig)
+        except Exception:
+            pass
+    print(f"  Successfully saved {out_path}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Main Pipeline
+# ═══════════════════════════════════════════════════════════════════════════
+
+def main():
+    print("=== AI Multi-Model Regional Rainfall Broadcast Maps ===")
+    
+    session = requests.Session()
+    session.headers.update({"User-Agent": "Mozilla/5.0"})
+    aifs_client = Client(source="azure", model="aifs-single", resol="0p25")
+    
+    aigfs_url, init_dt, _, aigfs_cycle = get_latest_aigfs_run(session)
+    if not init_dt:
+        init_dt = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+    wn3_data = load_weathernext_dataset()
+    
+    geoms_dict, masks = load_ph_regional_geometries()
+    valid_frames = []
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 1. Process Today (24-hr) Accumulation
+    # ═══════════════════════════════════════════════════════════════════════
+    print(f"\nProcessing Today (24-hr) Accumulation...")
+    
+    # AIGFS Today
+    aigfs_today_master = np.zeros_like(M_LATS)
+    if aigfs_url:
+        grib_file_24 = f"aigfs.t{aigfs_cycle}z.sfc.f024.grib2"
+        grib_url_24 = f"{aigfs_url}{grib_file_24}"
+        idx_url_24 = f"{grib_url_24}.idx"
+        print("Downloading NOAA AIGFS 0-1 day...")
+        tmp_path = download_aigfs_apcp(grib_url_24, idx_url_24, session, 1)
+        if tmp_path:
+            lats, lons, current_total = read_aigfs_apcp(tmp_path)
+            if current_total is not None:
+                aigfs_today_master = regrid_to_master(lats, lons, current_total)
+            if os.path.exists(tmp_path): os.remove(tmp_path)
+
+    # AIFS Today
+    aifs_today_master = np.zeros_like(M_LATS)
+    print("Downloading ECMWF AIFS 24h...")
+    lats, lons, current_total = get_aifs_tp(aifs_client, 24)
+    if current_total is not None:
+        aifs_today_master = regrid_to_master(lats, lons, current_total)
+
+    # WeatherNext 3 Today
+    wn3_today_master = np.zeros_like(M_LATS)
+    if wn3_data is not None and wn3_data.get("total_24h") is not None:
+        print("Extracting Google WeatherNext 3 0-24h...")
+        try:
+            wn3_today_master = regrid_to_master(wn3_data["lats_2d"], wn3_data["lons_2d"], wn3_data["total_24h"])
+        except Exception as e:
+            print(f"WeatherNext 3 Today extraction error: {e}")
+
+    # Combine Today using Multi-Model Blending (MMB)
+    models_today = {}
+    if np.nanmax(wn3_today_master) > 0:
+        models_today["wn3"] = wn3_today_master
+    if np.nanmax(aifs_today_master) > 0:
+        models_today["aifs"] = aifs_today_master
+    if np.nanmax(aigfs_today_master) > 0:
+        models_today["aigfs"] = aigfs_today_master
+
+    print(f"Blending {len(models_today)} models for Today (24h) via MMB...")
+    consensus_today = multi_model_blend(models_today, lead_hours=24)
+
+    # Generate Regional Zoom Maps (Today)
+    print("Plotting TV Broadcast Regional Zoom Maps (Today)...")
+    for reg_key in ["luzon", "visayas", "mindanao"]:
+        frame_id = f"ai_precip_broadcast_today_{reg_key}"
+        plot_broadcast_regional_map(
+            consensus_today,
+            frame_id,
+            init_dt,
+            region_key=reg_key,
+            days=1,
+            geoms_dict=geoms_dict,
+            masks=masks
+        )
+        valid_frames.append(frame_id)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 2. Process 3-Day (72-hr) Accumulation
+    # ═══════════════════════════════════════════════════════════════════════
+    print(f"\nProcessing 3-Day (72-hr) Accumulation...")
+    
+    # AIGFS 3-Day
+    aigfs_3day_master = np.zeros_like(M_LATS)
+    if aigfs_url:
+        grib_file_72 = f"aigfs.t{aigfs_cycle}z.sfc.f072.grib2"
+        grib_url_72 = f"{aigfs_url}{grib_file_72}"
+        idx_url_72 = f"{grib_url_72}.idx"
+        print("Downloading NOAA AIGFS 0-3 day...")
+        tmp_path = download_aigfs_apcp(grib_url_72, idx_url_72, session, 3)
+        if tmp_path:
+            lats, lons, current_total = read_aigfs_apcp(tmp_path)
+            if current_total is not None:
+                aigfs_3day_master = regrid_to_master(lats, lons, current_total)
+            if os.path.exists(tmp_path): os.remove(tmp_path)
+
+    # AIFS 3-Day
+    aifs_3day_master = np.zeros_like(M_LATS)
+    print("Downloading ECMWF AIFS 72h...")
+    lats, lons, current_total = get_aifs_tp(aifs_client, 72)
+    if current_total is not None:
+        aifs_3day_master = regrid_to_master(lats, lons, current_total)
+
+    # WeatherNext 3 3-Day
+    wn3_3day_master = np.zeros_like(M_LATS)
+    if wn3_data is not None and wn3_data.get("total_72h") is not None:
+        print("Extracting Google WeatherNext 3 0-72h...")
+        try:
+            wn3_3day_master = regrid_to_master(wn3_data["lats_2d"], wn3_data["lons_2d"], wn3_data["total_72h"])
+        except Exception as e:
+            print(f"WeatherNext 3 3-day extraction error: {e}")
+
+    # Combine 3-Day using Multi-Model Blending (MMB)
+    models_3day = {}
+    if np.nanmax(wn3_3day_master) > 0:
+        models_3day["wn3"] = wn3_3day_master
+    if np.nanmax(aifs_3day_master) > 0:
+        models_3day["aifs"] = aifs_3day_master
+    if np.nanmax(aigfs_3day_master) > 0:
+        models_3day["aigfs"] = aigfs_3day_master
+
+    print(f"Blending {len(models_3day)} models for 3-Day (72h) via MMB...")
+    consensus_3day = multi_model_blend(models_3day, lead_hours=72)
+
+    # Generate Regional Zoom Maps (3-Day)
+    print("Plotting TV Broadcast Regional Zoom Maps (3-Day)...")
+    for reg_key in ["luzon", "visayas", "mindanao"]:
+        frame_id = f"ai_precip_broadcast_3day_{reg_key}"
+        plot_broadcast_regional_map(
+            consensus_3day,
+            frame_id,
+            init_dt,
+            region_key=reg_key,
+            days=3,
+            geoms_dict=geoms_dict,
+            masks=masks
+        )
+        valid_frames.append(frame_id)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 2. Process 5-Day (120-hr) Accumulation
+    # ═══════════════════════════════════════════════════════════════════════
+    print(f"\nProcessing 5-Day (120-hr) Accumulation...")
+    
+    # AIGFS 5-Day
+    aigfs_5day_master = np.zeros_like(M_LATS)
+    if aigfs_url:
+        grib_file_120 = f"aigfs.t{aigfs_cycle}z.sfc.f120.grib2"
+        grib_url_120 = f"{aigfs_url}{grib_file_120}"
+        idx_url_120 = f"{grib_url_120}.idx"
+        print("Downloading NOAA AIGFS 0-5 day...")
+        tmp_path = download_aigfs_apcp(grib_url_120, idx_url_120, session, 5)
+        if tmp_path:
+            lats, lons, current_total = read_aigfs_apcp(tmp_path)
+            if current_total is not None:
+                aigfs_5day_master = regrid_to_master(lats, lons, current_total)
+            if os.path.exists(tmp_path): os.remove(tmp_path)
+
+    # AIFS 5-Day
+    aifs_5day_master = np.zeros_like(M_LATS)
+    print("Downloading ECMWF AIFS 120h...")
+    lats, lons, current_total = get_aifs_tp(aifs_client, 120)
+    if current_total is not None:
+        aifs_5day_master = regrid_to_master(lats, lons, current_total)
+        
+    # WeatherNext 3 5-Day
+    wn3_5day_master = np.zeros_like(M_LATS)
+    if wn3_data is not None and wn3_data.get("total_120h") is not None:
+        print("Extracting Google WeatherNext 3 0-120h...")
+        try:
+            wn3_5day_master = regrid_to_master(wn3_data["lats_2d"], wn3_data["lons_2d"], wn3_data["total_120h"])
+        except Exception as e:
+            print(f"WeatherNext 3 5-day extraction error: {e}")
+
+    # Combine 5-Day using Multi-Model Blending (MMB)
+    models_5day = {}
+    if np.nanmax(wn3_5day_master) > 0:
+        models_5day["wn3"] = wn3_5day_master
+    if np.nanmax(aifs_5day_master) > 0:
+        models_5day["aifs"] = aifs_5day_master
+    if np.nanmax(aigfs_5day_master) > 0:
+        models_5day["aigfs"] = aigfs_5day_master
+        
+    print(f"Blending {len(models_5day)} models for 5-Day (120h) via MMB...")
+    consensus_5day = multi_model_blend(models_5day, lead_hours=120)
+
+    # Generate Regional Zoom Maps (5-Day)
+    print("Plotting TV Broadcast Regional Zoom Maps (5-Day)...")
+    for reg_key in ["luzon", "visayas", "mindanao"]:
+        frame_id = f"ai_precip_broadcast_5day_{reg_key}"
+        plot_broadcast_regional_map(
+            consensus_5day,
+            frame_id,
+            init_dt,
+            region_key=reg_key,
+            days=5,
+            geoms_dict=geoms_dict,
+            masks=masks
+        )
+        valid_frames.append(frame_id)
+
+    # Metadata
+    ph_tz = timezone(timedelta(hours=8))
+    init_dt_ph = init_dt.astimezone(ph_tz) if init_dt else None
+    
+    MODEL_DISPLAY_NAMES = {
+        "wn3": "Google WeatherNext 3",
+        "aifs": "ECMWF AIFS",
+        "aigfs": "NOAA AIGFS"
+    }
+    all_keys = set(list(models_today.keys()) + list(models_3day.keys()) + list(models_5day.keys()))
+    models_used = [MODEL_DISPLAY_NAMES.get(k, k) for k in sorted(all_keys)] if all_keys else ["AI Models"]
+
+    meta = {
+        "title": "AI Multi-Model Regional Rainfall Broadcast Maps",
+        "models_used": models_used,
+        "generated_at": datetime.now(ph_tz).strftime("%Y-%m-%d %I:%M %p PHT"),
+        "run_time": init_dt_ph.strftime("%Y-%m-%d %I:%M %p PHT") if init_dt_ph else "Unknown",
+        "regions": ["luzon", "visayas", "mindanao"],
+        "periods": ["today", "3day", "5day"],
+        "max_predicted_rain_today_mm": float(np.nanmax(consensus_today)),
+        "max_predicted_rain_3day_mm": float(np.nanmax(consensus_3day)),
+        "max_predicted_rain_5day_mm": float(np.nanmax(consensus_5day)),
+        "animation_frames": valid_frames
+    }
+    with open(os.path.join(DATA_DIR, "ai_precip_outlook_meta.json"), "w") as f:
+        json.dump(meta, f, indent=2)
+        
+    print("\nGeneration complete! All Regional Broadcast Maps created successfully.")
+
+if __name__ == "__main__":
+    main()
