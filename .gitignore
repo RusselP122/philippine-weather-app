@@ -32,3 +32,18 @@ yarn-error.log*
 # GCP Service Account keys & temp folders
 gcp-key.json
 /weathernext_frames/
+
+# Excluded scripts
+ptcc_luzon.py
+ptcc_satellite.py
+forecasttrack.py
+persiann_nowcast.py
+philippine_satellite_gif.py
+zoom_earth_atcf_storm_map.py
+tropical_signal_warning.py
+himawari_brightness_temp.py
+generate_advisory_data.py
+ai_precip_outlook.py
+ai_temp_outlook.py
+plot_monitoring_spaghetti.py
+plot_ensemble_spaghetti.py
