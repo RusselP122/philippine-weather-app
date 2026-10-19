@@ -33,3 +33,4 @@ yarn-error.log*
 gcp-key.json
 /weathernext_frames/
 forecasttrack.py
+national_impact_forecast.py
