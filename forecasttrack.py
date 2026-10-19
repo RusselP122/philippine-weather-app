@@ -1229,8 +1229,7 @@ def parse_pagasa_tca_pdf(pdf_bytes, storm, ref_time=None):
     1. Initial center position, 10-minute maximum sustained winds (kt), pressure (hPa), and category at TAU 0.
     2. Track and intensity forecast points (12, 24, 36, 48, 60, 72, 96, 120 hours).
     3. Domestic storm name (e.g. ROSAL) if assigned.
-    Returns DataFrame with columns ['lead_time_hours', 'lat', 'lon', 'wind', 'pressure', 'category']
-    and the advisory issuance timestamp string.
+    Returns: (df, init_str, issued_dt)
     """
     if ref_time is None:
         ref_time = datetime.now(timezone.utc)
@@ -1242,18 +1241,18 @@ def parse_pagasa_tca_pdf(pdf_bytes, storm, ref_time=None):
             import fitz as pymupdf
         except ImportError:
             print("Notice: PyMuPDF (fitz) is not installed; cannot parse tca.pdf.")
-            return pd.DataFrame(), None
+            return pd.DataFrame(), None, None
 
     try:
         doc = pymupdf.open(stream=pdf_bytes, filetype='pdf')
         if len(doc) == 0:
-            return pd.DataFrame(), None
+            return pd.DataFrame(), None, None
         text_p1 = doc[0].get_text()
         text_p2 = doc[1].get_text() if len(doc) > 1 else ''
         full_text = text_p1 + '\n' + text_p2
     except Exception as e:
         print(f"Notice: Failed to open tca.pdf with PyMuPDF: {e}")
-        return pd.DataFrame(), None
+        return pd.DataFrame(), None, None
 
     storm_name = str(storm.get('name', '')).strip().upper()
     pagasa_name = str(storm.get('pagasa_name', '')).strip().upper()
@@ -1269,7 +1268,7 @@ def parse_pagasa_tca_pdf(pdf_bytes, storm, ref_time=None):
         name_matched = True
 
     # Check domestic name mentioned in advisory (e.g. 'given the domestic name ROSAL')
-    dom_m = re.search(r'domestic\s+name\s+([A-Z]{3,})', full_text, re.I)
+    dom_m = re.search(r'(?:given the domestic name|local name|domestic name)\s*["\']?([A-Z]{3,})["\']?', full_text, re.I)
     if dom_m:
         domestic_name = dom_m.group(1).upper()
         if domestic_name in [storm_name, pagasa_name]:
@@ -1290,9 +1289,9 @@ def parse_pagasa_tca_pdf(pdf_bytes, storm, ref_time=None):
 
     if issued_dt:
         age_hours = (ref_time - issued_dt.astimezone(timezone.utc)).total_seconds() / 3600.0
-        if age_hours > 24.0:
+        if age_hours > 30.0:
             print(f"Notice: PAGASA tca.pdf is outdated ({age_hours:.1f}h old); skipping.")
-            return pd.DataFrame(), None
+            return pd.DataFrame(), None, None
 
     # 3. Extract Initial Fix (Location of Center)
     init_lat, init_lon = None, None
@@ -1300,7 +1299,7 @@ def parse_pagasa_tca_pdf(pdf_bytes, storm, ref_time=None):
     init_pres = None
     init_cat = 'TS'
 
-    coord_m = re.search(r'\(([0-9.]+)[°\s]*[NS],\s*([0-9.]+)[°\s]*[EW]\)', text_p1)
+    coord_m = re.search(r'\(([0-9.]+)[^0-9NSEW]*[NS],\s*([0-9.]+)[^0-9NSEW]*[EW]\)', text_p1)
     if coord_m:
         init_lat = float(coord_m.group(1))
         init_lon = float(coord_m.group(2))
@@ -1328,10 +1327,10 @@ def parse_pagasa_tca_pdf(pdf_bytes, storm, ref_time=None):
         dist_km = haversine_km(init_lat, init_lon, curr_lat, curr_lon)
         if not name_matched and dist_km > 350.0:
             print(f"Notice: PAGASA tca.pdf center ({init_lat}, {init_lon}) is {dist_km:.1f}km away from {short_id}; does not match.")
-            return pd.DataFrame(), None
+            return pd.DataFrame(), None, None
         print(f"Matched official PAGASA TCA for {short_id} (dist: {dist_km:.1f}km)")
     elif not name_matched:
-        return pd.DataFrame(), None
+        return pd.DataFrame(), None, None
 
     rows = []
     # Add T+0 row
@@ -1389,19 +1388,21 @@ def parse_pagasa_tca_pdf(pdf_bytes, storm, ref_time=None):
             })
 
     df = pd.DataFrame(rows).drop_duplicates(subset=['lead_time_hours']).sort_values('lead_time_hours')
+    if not df.empty:
+        df.attrs['issued_dt'] = issued_dt
     init_str = issued_dt.strftime('%Y-%m-%d %H:%M PHT') if issued_dt else 'Latest Advisory'
-    return df, init_str
+    return df, init_str, issued_dt
 
 
 def get_pagasa_official_track(storm, data_dir='public/data'):
     """
     Fetches and parses PAGASA's official forecast track and intensity:
-    1. STRICTLY attempts cyclone.dat first (https://pubfiles.pagasa.dost.gov.ph/tamss/weather/cyclone.dat).
-       If cyclone.dat has an active bulletin for the current storm, it extracts the track and intensity.
-    2. If cyclone.dat has no active bulletin for this storm (e.g. system is outside PAR or bulletin is outdated),
-       it attempts fallback to PAGASA's Tropical Cyclone Advisory (TCA) PDF
-       (https://pubfiles.pagasa.dost.gov.ph/tamss/weather/tca.pdf).
-    3. If neither source contains active data for this storm, skips PAGASA.
+    1. Checks cyclone.dat (https://pubfiles.pagasa.dost.gov.ph/tamss/weather/cyclone.dat).
+    2. Checks tca.pdf (https://pubfiles.pagasa.dost.gov.ph/tamss/weather/tca.pdf).
+    3. If cyclone.dat is outdated (>18h old or center >350km away) but tca.pdf has a newer update,
+       uses tca.pdf data instead.
+    4. If both are available and valid, compares issuance timestamps and strictly uses the newer bulletin.
+    5. If neither source contains active data for this storm, skips PAGASA.
     """
     url_cyclone = "https://pubfiles.pagasa.dost.gov.ph/tamss/weather/cyclone.dat"
     local_cyclone = os.path.join(data_dir, "cyclone.dat")
@@ -1421,9 +1422,10 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
     curr_lat, curr_lon = float(storm['lat']), float(storm['lon'])
     short_id = get_short_atcf_id(storm['atcf_id'])
     storm_name = str(storm.get('name', '')).strip().upper()
+    pagasa_name = str(storm.get('pagasa_name', '')).strip().upper()
 
     # ─────────────────────────────────────────────────────────────────
-    # STEP 1: STRICTLY TRY cyclone.dat FIRST
+    # 1. FETCH LIVE cyclone.dat (OR LOCAL CACHE)
     # ─────────────────────────────────────────────────────────────────
     try:
         req = urllib.request.Request(
@@ -1448,110 +1450,8 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
         except Exception:
             pass
 
-    cyclone_dat_valid = False
-    df_cyclone = pd.DataFrame()
-    cyclone_init_str = None
-
-    if content_cyclone.strip():
-        parsed_pts = []
-        for line in content_cyclone.splitlines():
-            line = line.strip()
-            if not line or '{' in line:
-                continue
-            parts = [p.strip() for p in line.split(',')]
-            if len(parts) >= 5:
-                cat = parts[0]
-                date_str = parts[1]
-                time_str = parts[2]
-                try:
-                    lat = float(parts[3])
-                    lon = float(parts[4])
-                    radius = float(parts[5]) if len(parts) >= 6 and parts[5] else 0.0
-                    dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
-                    parsed_pts.append({
-                        'datetime': dt,
-                        'lat': lat,
-                        'lon': lon,
-                        'category': cat,
-                        'radius': radius
-                    })
-                except Exception:
-                    continue
-
-        if parsed_pts:
-            match = re.search(r'^([A-Za-z0-9_-]+)\{', content_cyclone.strip().splitlines()[0]) if content_cyclone.strip() else None
-            matched_name = match.group(1).upper() if match else None
-
-            idx_t0 = 0
-            for i in range(len(parsed_pts) - 1, -1, -1):
-                if parsed_pts[i]['radius'] == 0.0:
-                    idx_t0 = i
-                    break
-
-            candidate_pts = parsed_pts[idx_t0:]
-            best_idx = 0
-            best_dist = haversine_km(candidate_pts[0]['lat'], candidate_pts[0]['lon'], curr_lat, curr_lon)
-            for i, pt in enumerate(candidate_pts):
-                d = haversine_km(pt['lat'], pt['lon'], curr_lat, curr_lon)
-                if d < best_dist:
-                    best_dist = d
-                    best_idx = i
-
-            valid_pts = candidate_pts[best_idx:]
-            if not valid_pts:
-                valid_pts = candidate_pts
-
-            t0 = valid_pts[0]['datetime']
-            age_hours = 999.0
-            if t0:
-                t0_utc = t0.replace(tzinfo=timezone.utc)
-                age_hours = (ref_time - t0_utc).total_seconds() / 3600.0
-
-            if age_hours <= 18.0:
-                rows = []
-                cat_wind_map = {'TD': 30.0, 'TS': 40.0, 'STS': 55.0, 'TY': 75.0, 'STY': 110.0}
-                for pt in valid_pts:
-                    tau = max(0.0, (pt['datetime'] - t0).total_seconds() / 3600.0)
-                    c_code = pt.get('category', 'TS')
-                    w_kt = cat_wind_map.get(c_code, 45.0)
-                    pres = estimate_atkinson_holliday_pressure(w_kt)
-                    rows.append({
-                        'lead_time_hours': tau,
-                        'lat': pt['lat'],
-                        'lon': pt['lon'],
-                        'wind': w_kt,
-                        'pressure': pres,
-                        'category': c_code
-                    })
-
-                df_cand = pd.DataFrame(rows).drop_duplicates(subset=['lead_time_hours']).sort_values('lead_time_hours')
-                future_pts = df_cand[df_cand['lead_time_hours'] > 0]
-                if not future_pts.empty and len(df_cand) >= 2:
-                    first_pt = df_cand.iloc[0]
-                    first_dist_km = haversine_km(first_pt['lat'], first_pt['lon'], curr_lat, curr_lon)
-                    min_dist_km = min(haversine_km(r['lat'], r['lon'], curr_lat, curr_lon) for _, r in df_cand.iterrows())
-                    if first_dist_km <= 350.0 and min_dist_km <= 350.0:
-                        if matched_name:
-                            storm['pagasa_name'] = matched_name
-                        print(f"Matched official PAGASA track from cyclone.dat for {short_id} (Name: {matched_name}, dist: {min_dist_km:.1f}km)")
-                        cyclone_dat_valid = True
-                        df_cyclone = df_cand
-                        cyclone_init_str = t0.strftime('%Y-%m-%d %HZ') if t0 else "Latest"
-            else:
-                print(f"Notice: PAGASA cyclone.dat bulletin is outdated ({age_hours:.1f}h old). Checking tca.pdf fallback...")
-        else:
-            print("Notice: PAGASA cyclone.dat contains no parsed points. Checking tca.pdf fallback...")
-    else:
-        print("Notice: PAGASA cyclone.dat is empty or unavailable. Checking tca.pdf fallback...")
-
-    if cyclone_dat_valid:
-        cols_ret = ['lead_time_hours', 'lat', 'lon']
-        if 'wind' in df_cyclone.columns: cols_ret.append('wind')
-        if 'pressure' in df_cyclone.columns: cols_ret.append('pressure')
-        return df_cyclone[cols_ret], cyclone_init_str
-
     # ─────────────────────────────────────────────────────────────────
-    # STEP 2: FALLBACK TO tca.pdf (Tropical Cyclone Advisory)
+    # 2. FETCH LIVE tca.pdf (OR LOCAL CACHE)
     # ─────────────────────────────────────────────────────────────────
     url_tca = "https://pubfiles.pagasa.dost.gov.ph/tamss/weather/tca.pdf"
     local_tca = os.path.join(data_dir, "tca.pdf")
@@ -1580,21 +1480,147 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
         except Exception:
             pass
 
-    if pdf_bytes:
-        df_tca, tca_init_str = parse_pagasa_tca_pdf(pdf_bytes, storm, ref_time=ref_time)
-        if isinstance(df_tca, pd.DataFrame) and not df_tca.empty and len(df_tca) >= 2:
-            future_pts = df_tca[df_tca['lead_time_hours'] > 0]
-            if not future_pts.empty:
-                cols_ret = ['lead_time_hours', 'lat', 'lon']
-                if 'wind' in df_tca.columns: cols_ret.append('wind')
-                if 'pressure' in df_tca.columns: cols_ret.append('pressure')
-                return df_tca[cols_ret], tca_init_str
+    # ─────────────────────────────────────────────────────────────────
+    # 3. PARSE cyclone.dat
+    # ─────────────────────────────────────────────────────────────────
+    df_cyclone = pd.DataFrame()
+    cyclone_init_str = None
+    cyclone_issued_dt = None
+    cyclone_age_hours = 999.0
+    cyclone_matched_name = None
+    cyclone_name_match = False
+    dist_init_km = 9999.0
+
+    if content_cyclone.strip():
+        parsed_pts = []
+        for line in content_cyclone.splitlines():
+            line = line.strip()
+            if not line or '{' in line:
+                continue
+            parts = [p.strip() for p in line.split(',')]
+            if len(parts) >= 5:
+                cat = parts[0]
+                date_str = parts[1]
+                time_str = parts[2]
+                try:
+                    lat = float(parts[3])
+                    lon = float(parts[4])
+                    radius = float(parts[5]) if len(parts) >= 6 and parts[5] else 0.0
+                    dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+                    parsed_pts.append({
+                        'datetime': dt,
+                        'lat': lat,
+                        'lon': lon,
+                        'category': cat,
+                        'radius': radius
+                    })
+                except Exception:
+                    continue
+
+        if parsed_pts:
+            first_line = content_cyclone.strip().splitlines()[0]
+            matched_names = [n.strip().upper() for n in re.split(r'[{}]', first_line) if n.strip()]
+            cyclone_matched_name = matched_names[0] if matched_names else None
+
+            if storm_name and storm_name != 'INVEST':
+                if any(storm_name in mn or mn in storm_name for mn in matched_names):
+                    cyclone_name_match = True
+            if pagasa_name:
+                if any(pagasa_name in mn or mn in pagasa_name for mn in matched_names):
+                    cyclone_name_match = True
+
+            # Identify the initial analysis fix (last point where radius == 0.0)
+            idx_t0 = 0
+            for i in range(len(parsed_pts) - 1, -1, -1):
+                if parsed_pts[i]['radius'] == 0.0:
+                    idx_t0 = i
+                    break
+
+            init_pt = parsed_pts[idx_t0]
+            t0_pht = init_pt['datetime']
+            # PAGASA cyclone.dat timestamps are in PHT (UTC+8)
+            cyclone_issued_dt = t0_pht.replace(tzinfo=timezone(timedelta(hours=8)))
+            cyclone_age_hours = (ref_time - cyclone_issued_dt.astimezone(timezone.utc)).total_seconds() / 3600.0
+            dist_init_km = haversine_km(init_pt['lat'], init_pt['lon'], curr_lat, curr_lon)
+
+            valid_pts = parsed_pts[idx_t0:]
+            rows = []
+            cat_wind_map = {'TD': 30.0, 'TS': 40.0, 'STS': 55.0, 'TY': 75.0, 'STY': 110.0}
+            for pt in valid_pts:
+                tau = max(0.0, (pt['datetime'] - t0_pht).total_seconds() / 3600.0)
+                c_code = pt.get('category', 'TS')
+                w_kt = cat_wind_map.get(c_code, 45.0)
+                pres = estimate_atkinson_holliday_pressure(w_kt)
+                rows.append({
+                    'lead_time_hours': tau,
+                    'lat': pt['lat'],
+                    'lon': pt['lon'],
+                    'wind': w_kt,
+                    'pressure': pres,
+                    'category': c_code
+                })
+
+            df_cand = pd.DataFrame(rows).drop_duplicates(subset=['lead_time_hours']).sort_values('lead_time_hours')
+            future_pts = df_cand[df_cand['lead_time_hours'] > 0]
+            if not future_pts.empty and len(df_cand) >= 2:
+                if cyclone_name_match or dist_init_km <= 350.0:
+                    df_cyclone = df_cand
+                    cyclone_init_str = cyclone_issued_dt.strftime('%Y-%m-%d %H:%M PHT')
 
     # ─────────────────────────────────────────────────────────────────
-    # STEP 3: BOTH cyclone.dat AND tca.pdf RETURNED NONE -> SKIP PAGASA
+    # 4. PARSE tca.pdf
     # ─────────────────────────────────────────────────────────────────
-    print(f"Notice: No active official PAGASA track available for {short_id} (both cyclone.dat and tca.pdf checked); skipping PAGASA display.")
-    return pd.DataFrame(), None
+    df_tca = pd.DataFrame()
+    tca_init_str = None
+    tca_issued_dt = None
+
+    if pdf_bytes:
+        df_tca, tca_init_str, tca_issued_dt = parse_pagasa_tca_pdf(pdf_bytes, storm, ref_time=ref_time)
+
+    # ─────────────────────────────────────────────────────────────────
+    # 5. EVALUATE VALIDITY & SELECT THE NEWER / ACTIVE UPDATE
+    # ─────────────────────────────────────────────────────────────────
+    cyclone_is_valid = (
+        not df_cyclone.empty and 
+        len(df_cyclone) >= 2 and 
+        cyclone_age_hours <= 18.0 and
+        dist_init_km <= 350.0
+    )
+    tca_is_valid = (
+        isinstance(df_tca, pd.DataFrame) and 
+        not df_tca.empty and 
+        len(df_tca) >= 2 and 
+        tca_issued_dt is not None
+    )
+
+    if cyclone_is_valid and tca_is_valid:
+        # Both products contain valid data. If tca.pdf has a newer update, use tca.pdf!
+        if tca_issued_dt > cyclone_issued_dt:
+            print(f"Notice: PAGASA tca.pdf ({tca_init_str}) has a newer update than cyclone.dat ({cyclone_init_str}); using tca.pdf data instead.")
+            cols_ret = [c for c in ['lead_time_hours', 'lat', 'lon', 'wind', 'pressure'] if c in df_tca.columns]
+            return df_tca[cols_ret], tca_init_str
+        else:
+            if cyclone_matched_name:
+                storm['pagasa_name'] = cyclone_matched_name
+            print(f"Matched official PAGASA track from cyclone.dat for {short_id} (Name: {cyclone_matched_name}, {cyclone_init_str})")
+            cols_ret = [c for c in ['lead_time_hours', 'lat', 'lon', 'wind', 'pressure'] if c in df_cyclone.columns]
+            return df_cyclone[cols_ret], cyclone_init_str
+    elif tca_is_valid:
+        if not df_cyclone.empty:
+            print(f"Notice: PAGASA cyclone.dat is outdated ({cyclone_age_hours:.1f}h old), but tca.pdf has an active update ({tca_init_str}); using tca.pdf data instead.")
+        else:
+            print(f"Notice: PAGASA cyclone.dat unavailable for {short_id}; using tca.pdf update ({tca_init_str}).")
+        cols_ret = [c for c in ['lead_time_hours', 'lat', 'lon', 'wind', 'pressure'] if c in df_tca.columns]
+        return df_tca[cols_ret], tca_init_str
+    elif cyclone_is_valid:
+        if cyclone_matched_name:
+            storm['pagasa_name'] = cyclone_matched_name
+        print(f"Matched official PAGASA track from cyclone.dat for {short_id} (Name: {cyclone_matched_name}, {cyclone_init_str})")
+        cols_ret = [c for c in ['lead_time_hours', 'lat', 'lon', 'wind', 'pressure'] if c in df_cyclone.columns]
+        return df_cyclone[cols_ret], cyclone_init_str
+    else:
+        print(f"Notice: No active official PAGASA track available for {short_id} (both cyclone.dat and tca.pdf checked); skipping PAGASA display.")
+        return pd.DataFrame(), None
 
 
 def get_ecmwf_control_or_paired_track(storm, fpath):
@@ -3928,24 +3954,24 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
         text_color = TEXT_PRI if is_active else TEXT_MUT
         
         if idx < 2:
-            x_start, x_text = 0.020, 0.054
+            x_start, x_text = 0.020, 0.048
             y_val = 0.68 - (idx * 0.28)
         else:
-            x_start, x_text = 0.142, 0.176
+            x_start, x_text = 0.176, 0.204
             y_val = 0.68 - ((idx - 2) * 0.28)
             
-        panel_ax.plot([x_start, x_start + 0.026], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.8, transform=panel_ax.transAxes)
+        panel_ax.plot([x_start, x_start + 0.024], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.8, transform=panel_ax.transAxes)
         if is_active:
-            panel_ax.scatter([x_start + 0.013], [y_val], s=14, color='#ffffff', edgecolor=line_color, linewidth=1.0, zorder=5, transform=panel_ax.transAxes)
+            panel_ax.scatter([x_start + 0.012], [y_val], s=14, color='#ffffff', edgecolor=line_color, linewidth=1.0, zorder=5, transform=panel_ax.transAxes)
         panel_ax.text(x_text, y_val + 0.03, ag_name, color=text_color, fontsize=8.5, weight='bold', transform=panel_ax.transAxes)
         run_str = track_inits.get(ag_name, 'Latest') if is_active else 'Not Available'
-        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.8, transform=panel_ax.transAxes)
+        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.5, transform=panel_ax.transAxes)
         
-    # Vertical Divider Line 1 (placed with generous clearance after JMA text)
-    panel_ax.axvline(0.278, ymin=0.10, ymax=0.90, color=CARD_BORDER, linewidth=1.0)
+    # Vertical Divider Line 1 (generous clearance after JMA)
+    panel_ax.axvline(0.315, ymin=0.10, ymax=0.90, color=CARD_BORDER, linewidth=1.0)
     
     # ── Section 2: NWP MODELS ─────────────────────────────────────────
-    panel_ax.text(0.298, 0.88, "NWP MODELS", color='#60a5fa', fontsize=9.2, weight='bold', transform=panel_ax.transAxes)
+    panel_ax.text(0.335, 0.88, "NWP MODELS", color='#60a5fa', fontsize=9.2, weight='bold', transform=panel_ax.transAxes)
     nwp_items = [
         ('ECMWF IFS', NWP_COLORS['ECMWF IFS']),
         ('GFS', NWP_COLORS['GFS'])
@@ -3955,21 +3981,21 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
         line_color = m_color if is_active else '#334155'
         text_color = TEXT_PRI if is_active else TEXT_MUT
         
-        x_start, x_text = 0.298, 0.332
+        x_start, x_text = 0.335, 0.363
         y_val = 0.68 - (idx * 0.28)
         
-        panel_ax.plot([x_start, x_start + 0.026], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
+        panel_ax.plot([x_start, x_start + 0.024], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
         if is_active:
-            panel_ax.scatter([x_start + 0.013], [y_val], s=14, color='#ffffff', edgecolor=line_color, linewidth=1.0, zorder=5, transform=panel_ax.transAxes)
+            panel_ax.scatter([x_start + 0.012], [y_val], s=14, color='#ffffff', edgecolor=line_color, linewidth=1.0, zorder=5, transform=panel_ax.transAxes)
         panel_ax.text(x_text, y_val + 0.03, m_name, color=text_color, fontsize=8.2, weight='bold', transform=panel_ax.transAxes)
         run_str = track_inits.get(m_name, 'Latest' if is_active else 'Not Available')
-        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.7, transform=panel_ax.transAxes)
+        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.5, transform=panel_ax.transAxes)
         
-    # Vertical Divider Line 2 (placed with generous clearance after ECMWF IFS / GFS Control text)
-    panel_ax.axvline(0.485, ymin=0.10, ymax=0.90, color=CARD_BORDER, linewidth=1.0)
+    # Vertical Divider Line 2 (generous clearance after ECMWF IFS / GFS Control text)
+    panel_ax.axvline(0.495, ymin=0.10, ymax=0.90, color=CARD_BORDER, linewidth=1.0)
     
     # ── Section 3: AI MODELS ──────────────────────────────────────────
-    panel_ax.text(0.505, 0.88, "AI MODELS:", color='#a855f7', fontsize=9.2, weight='bold', transform=panel_ax.transAxes)
+    panel_ax.text(0.515, 0.88, "AI MODELS:", color='#a855f7', fontsize=9.2, weight='bold', transform=panel_ax.transAxes)
     ai_items = [
         ('AIGEFS', AI_COLORS['AIGEFS']),
         ('ECMWF AIFS', AI_COLORS['ECMWF AIFS']),
@@ -3982,22 +4008,22 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
         text_color = TEXT_PRI if is_active else TEXT_MUT
         
         if idx < 2:
-            x_start, x_text = 0.505, 0.539
+            x_start, x_text = 0.515, 0.543
             y_val = 0.68 - (idx * 0.28)
         else:
-            x_start, x_text = 0.695, 0.729
+            x_start, x_text = 0.705, 0.733
             y_val = 0.68
             
-        panel_ax.plot([x_start, x_start + 0.026], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
+        panel_ax.plot([x_start, x_start + 0.024], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
         if is_active:
-            panel_ax.scatter([x_start + 0.013], [y_val], s=14, color='#ffffff', edgecolor=line_color, linewidth=1.0, zorder=5, transform=panel_ax.transAxes)
+            panel_ax.scatter([x_start + 0.012], [y_val], s=14, color='#ffffff', edgecolor=line_color, linewidth=1.0, zorder=5, transform=panel_ax.transAxes)
         panel_ax.text(x_text, y_val + 0.03, m_name, color=text_color, fontsize=8.2, weight='bold', transform=panel_ax.transAxes)
         run_str = track_inits.get(m_name)
         if not run_str and m_name == 'WeatherNext 3 Cyclone':
             run_str = track_inits.get('WeatherNext Cyclone')
         if not run_str:
             run_str = 'Latest' if is_active else 'Not Available'
-        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.7, transform=panel_ax.transAxes)
+        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.5, transform=panel_ax.transAxes)
         
     out_abs = os.path.normpath(os.path.abspath(output_filepath))
     os.makedirs(os.path.dirname(out_abs), exist_ok=True)

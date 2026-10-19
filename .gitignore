@@ -32,3 +32,4 @@ yarn-error.log*
 # GCP Service Account keys & temp folders
 gcp-key.json
 /weathernext_frames/
+forecasttrack.py
