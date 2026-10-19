@@ -1,9 +1,9 @@
 {
-  "initialization": "2:00 AM PHT, October 18, 2026",
+  "initialization": "2:00 AM PHT, October 19, 2026",
   "model": "Google WeatherNext 3 (WNv3)",
   "has_active_tc": false,
   "active_tcs": [],
   "areas": [],
-  "two_day_day": "Tue",
-  "seven_day_day": "Sun"
+  "two_day_day": "Wed",
+  "seven_day_day": "Mon"
 }
