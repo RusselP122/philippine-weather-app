@@ -3624,6 +3624,55 @@ def prepare_anchored_track(df, curr_lat, curr_lon, max_lead_time=120.0):
     return sub_df
 
 
+def format_run_time_ph(raw_str):
+    """
+    Formats a model or agency initialization string into unified Philippine Standard Time (PHT):
+    e.g. 'Oct 19 · 11:00 PM' or 'Oct 20 · 2:00 AM'.
+    Properly handles both UTC/Z cycles (+8 hours) and PHT-tagged advisories.
+    """
+    if not raw_str or str(raw_str).strip().lower() in ['not available', 'none', '', 'null']:
+        return "Not Available"
+    s = str(raw_str).strip()
+    
+    dt_ph = None
+    if 'PHT' in s.upper():
+        clean_s = re.sub(r'PHT', '', s, flags=re.I).strip()
+        for fmt in [
+            '%Y-%m-%d %H:%M', '%Y-%m-%d %I:%M %p', '%Y-%m-%d %H',
+            '%d %B %Y %I:%M %p', '%B %d, %Y %I:%M %p', '%Y-%m-%d %H:%M:%S'
+        ]:
+            try:
+                dt_ph = datetime.strptime(clean_s, fmt)
+                break
+            except ValueError:
+                pass
+    else:
+        clean_s = re.sub(r'Z\b', '', s, flags=re.I).strip()
+        clean_s = clean_s.replace('T', ' ')
+        dt_utc = None
+        for fmt in [
+            '%Y-%m-%d %H', '%Y-%m-%d %H:%M', '%Y-%m-%d %H:%M:%S',
+            '%Y%m%d%H', '%Y%m%d%H%M', '%Y%m%d_%H'
+        ]:
+            try:
+                dt_utc = datetime.strptime(clean_s, fmt)
+                break
+            except ValueError:
+                pass
+        if dt_utc:
+            dt_ph = dt_utc + timedelta(hours=8)
+
+    if dt_ph:
+        month_name = dt_ph.strftime('%b')
+        day_num = dt_ph.day
+        hour_12 = dt_ph.hour % 12 or 12
+        minute = dt_ph.minute
+        am_pm = dt_ph.strftime('%p')
+        return f"{month_name} {day_num} \u00b7 {hour_12}:{minute:02d} {am_pm}"
+
+    return s
+
+
 def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepath, init_time_str="Latest", track_inits=None, show_satellite=True):
     """
     Renders a broadcast-grade multi-agency & ensemble comparison forecast track map
@@ -3755,7 +3804,8 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
             all_lats.extend(df['lat'].dropna().tolist())
             all_lons.extend(df['lon'].dropna().tolist())
             
-    extent = get_adaptive_viewport(all_lats, all_lons, target_aspect=1.75)
+    map_aspect = (0.90 * 12.0) / (0.615 * 7.6)
+    extent = get_adaptive_viewport(all_lats, all_lons, target_aspect=map_aspect)
     ax.set_extent(extent, crs=ccrs.PlateCarree())
     
     # Overlay Isolated Himawari Satellite Clouds (Transparent Ocean & Land)
@@ -3934,7 +3984,7 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     draw_current_storm_glyph(ax, curr_lon, curr_lat, color='#ffffff', size=130)
     
     # ── 3. Bottom Legend & Model Run Panel ────────────────────────────
-    panel_ax = fig.add_axes([0.05, 0.015, 0.90, 0.175])
+    panel_ax = fig.add_axes([0.05, 0.015, 0.90, 0.195])
     panel_ax.set_facecolor(CARD_BG)
     panel_ax.set_xlim(0, 1)
     panel_ax.set_ylim(0, 1)
@@ -3946,84 +3996,137 @@ def plot_forecast_track_map(storm, agency_tracks, ensemble_means, output_filepat
     )
     panel_ax.add_patch(panel_box)
     
-    # ── Section 1: OFFICIAL AGENCIES ──────────────────────────────────
-    panel_ax.text(0.020, 0.88, "OFFICIAL AGENCIES", color='#00d2ff', fontsize=9.2, weight='bold', transform=panel_ax.transAxes)
-    for idx, (ag_name, ag_color) in enumerate(AGENCY_COLORS.items()):
-        is_active = ag_name in agency_tracks and not agency_tracks[ag_name].empty
-        line_color = ag_color if is_active else '#334155'
-        text_color = TEXT_PRI if is_active else TEXT_MUT
-        
-        if idx < 2:
-            x_start, x_text = 0.020, 0.048
-            y_val = 0.68 - (idx * 0.28)
-        else:
-            x_start, x_text = 0.176, 0.204
-            y_val = 0.68 - ((idx - 2) * 0.28)
-            
-        panel_ax.plot([x_start, x_start + 0.024], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.8, transform=panel_ax.transAxes)
-        if is_active:
-            panel_ax.scatter([x_start + 0.012], [y_val], s=14, color='#ffffff', edgecolor=line_color, linewidth=1.0, zorder=5, transform=panel_ax.transAxes)
-        panel_ax.text(x_text, y_val + 0.03, ag_name, color=text_color, fontsize=8.5, weight='bold', transform=panel_ax.transAxes)
-        run_str = track_inits.get(ag_name, 'Latest') if is_active else 'Not Available'
-        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.5, transform=panel_ax.transAxes)
-        
-    # Vertical Divider Line 1 (generous clearance after JMA)
-    panel_ax.axvline(0.315, ymin=0.10, ymax=0.90, color=CARD_BORDER, linewidth=1.0)
+    # Hairline dividers & styling tokens
+    LINE_BORDER = '#1e293b'
+    TEXT_SUB = '#94a3b8'
     
-    # ── Section 2: NWP MODELS ─────────────────────────────────────────
-    panel_ax.text(0.335, 0.88, "NWP MODELS", color='#60a5fa', fontsize=9.2, weight='bold', transform=panel_ax.transAxes)
-    nwp_items = [
-        ('ECMWF IFS', NWP_COLORS['ECMWF IFS']),
-        ('GFS', NWP_COLORS['GFS'])
+    # Vertical Hairline Dividers separating 3 equal-width columns
+    panel_ax.axvline(0.328, ymin=0.10, ymax=0.90, color=LINE_BORDER, linewidth=0.75)
+    panel_ax.axvline(0.643, ymin=0.10, ymax=0.90, color=LINE_BORDER, linewidth=0.75)
+
+    y_head = 0.90
+    y_head_div = 0.82
+
+    row_y = [
+        {'name': 0.70, 'time': 0.57},
+        {'name': 0.46, 'time': 0.33},
+        {'name': 0.22, 'time': 0.09}
     ]
-    for idx, (m_name, m_color) in enumerate(nwp_items):
-        is_active = m_name in ensemble_means and not ensemble_means[m_name].empty
-        line_color = m_color if is_active else '#334155'
-        text_color = TEXT_PRI if is_active else TEXT_MUT
-        
-        x_start, x_text = 0.335, 0.363
-        y_val = 0.68 - (idx * 0.28)
-        
-        panel_ax.plot([x_start, x_start + 0.024], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
-        if is_active:
-            panel_ax.scatter([x_start + 0.012], [y_val], s=14, color='#ffffff', edgecolor=line_color, linewidth=1.0, zorder=5, transform=panel_ax.transAxes)
-        panel_ax.text(x_text, y_val + 0.03, m_name, color=text_color, fontsize=8.2, weight='bold', transform=panel_ax.transAxes)
-        run_str = track_inits.get(m_name, 'Latest' if is_active else 'Not Available')
-        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.5, transform=panel_ax.transAxes)
-        
-    # Vertical Divider Line 2 (generous clearance after ECMWF IFS / GFS Control text)
-    panel_ax.axvline(0.495, ymin=0.10, ymax=0.90, color=CARD_BORDER, linewidth=1.0)
-    
-    # ── Section 3: AI MODELS ──────────────────────────────────────────
-    panel_ax.text(0.515, 0.88, "AI MODELS:", color='#a855f7', fontsize=9.2, weight='bold', transform=panel_ax.transAxes)
-    ai_items = [
-        ('AIGEFS', AI_COLORS['AIGEFS']),
-        ('ECMWF AIFS', AI_COLORS['ECMWF AIFS']),
-        ('WeatherNext 3 Cyclone', AI_COLORS['WeatherNext 3 Cyclone'])
+
+    cols_data = [
+        {
+            'header': 'Official agencies',
+            'x_start': 0.035,
+            'x_line_end': 0.305,
+            'items': [
+                ('PAGASA', AGENCY_COLORS['PAGASA']),
+                ('JMA', AGENCY_COLORS['JMA']),
+                ('JTWC', AGENCY_COLORS['JTWC'])
+            ]
+        },
+        {
+            'header': 'NWP models',
+            'x_start': 0.350,
+            'x_line_end': 0.620,
+            'items': [
+                ('ECMWF IFS', NWP_COLORS['ECMWF IFS']),
+                ('GFS', NWP_COLORS['GFS'])
+            ]
+        },
+        {
+            'header': 'AI models',
+            'x_start': 0.665,
+            'x_line_end': 0.935,
+            'items': [
+                ('AIGEFS', AI_COLORS['AIGEFS']),
+                ('ECMWF AIFS', AI_COLORS['ECMWF AIFS']),
+                ('WeatherNext 3 Cyclone', AI_COLORS['WeatherNext 3 Cyclone'])
+            ]
+        }
     ]
-    for idx, (m_name, m_color) in enumerate(ai_items):
-        is_active = (m_name in ensemble_means and not ensemble_means[m_name].empty) or \
-                    (m_name == 'WeatherNext 3 Cyclone' and 'WeatherNext Cyclone' in ensemble_means and not ensemble_means['WeatherNext Cyclone'].empty)
-        line_color = m_color if is_active else '#334155'
-        text_color = TEXT_PRI if is_active else TEXT_MUT
+
+    for col in cols_data:
+        x0 = col['x_start']
+        x1 = col['x_line_end']
         
-        if idx < 2:
-            x_start, x_text = 0.515, 0.543
-            y_val = 0.68 - (idx * 0.28)
-        else:
-            x_start, x_text = 0.705, 0.733
-            y_val = 0.68
+        # 1. Header (muted gray)
+        panel_ax.text(
+            x0, y_head, col['header'],
+            color=TEXT_SUB, fontsize=8.8, fontweight='bold',
+            va='center', transform=panel_ax.transAxes
+        )
+        # 2. Horizontal hairline divider under header
+        panel_ax.plot(
+            [x0, x1], [y_head_div, y_head_div],
+            color=LINE_BORDER, linewidth=0.75,
+            transform=panel_ax.transAxes
+        )
+        
+        # 3. Column items
+        for row_idx, (name, color) in enumerate(col['items']):
+            pos = row_y[row_idx]
+            y_n = pos['name']
+            y_t = pos['time']
             
-        panel_ax.plot([x_start, x_start + 0.024], [y_val, y_val], color=line_color, linestyle='-', linewidth=2.4, transform=panel_ax.transAxes)
-        if is_active:
-            panel_ax.scatter([x_start + 0.012], [y_val], s=14, color='#ffffff', edgecolor=line_color, linewidth=1.0, zorder=5, transform=panel_ax.transAxes)
-        panel_ax.text(x_text, y_val + 0.03, m_name, color=text_color, fontsize=8.2, weight='bold', transform=panel_ax.transAxes)
-        run_str = track_inits.get(m_name)
-        if not run_str and m_name == 'WeatherNext 3 Cyclone':
-            run_str = track_inits.get('WeatherNext Cyclone')
-        if not run_str:
-            run_str = 'Latest' if is_active else 'Not Available'
-        panel_ax.text(x_text, y_val - 0.11, f"Run: {run_str}", color=TEXT_SEC if is_active else TEXT_MUT, fontsize=6.5, transform=panel_ax.transAxes)
+            swatch_x0 = x0
+            swatch_x1 = x0 + 0.036
+            swatch_mid = (swatch_x0 + swatch_x1) / 2.0
+            text_x = swatch_x1 + 0.013
+            
+            if name in ['PAGASA', 'JMA', 'JTWC']:
+                is_active = name in agency_tracks and not agency_tracks[name].empty
+                raw_run = track_inits.get(name, 'Latest')
+            elif name in ['ECMWF IFS', 'GFS']:
+                is_active = name in ensemble_means and not ensemble_means[name].empty
+                raw_run = track_inits.get(name, 'Latest')
+            else:  # AI models
+                is_active = (name in ensemble_means and not ensemble_means[name].empty) or \
+                            (name == 'WeatherNext 3 Cyclone' and 'WeatherNext Cyclone' in ensemble_means and not ensemble_means['WeatherNext Cyclone'].empty)
+                raw_run = track_inits.get(name)
+                if not raw_run and name == 'WeatherNext 3 Cyclone':
+                    raw_run = track_inits.get('WeatherNext Cyclone')
+                if not raw_run:
+                    raw_run = 'Latest' if is_active else 'Not Available'
+            
+            line_color = color if is_active else '#334155'
+            name_color = TEXT_PRI if is_active else TEXT_MUT
+            dot_face = '#ffffff' if is_active else '#1e293b'
+            dot_edge = color if is_active else '#334155'
+            
+            # Swatch line
+            panel_ax.plot(
+                [swatch_x0, swatch_x1], [y_n, y_n],
+                color=line_color, linewidth=2.8, solid_capstyle='round',
+                transform=panel_ax.transAxes, zorder=4
+            )
+            # White-ringed dot on the line
+            panel_ax.scatter(
+                [swatch_mid], [y_n],
+                s=36, facecolor=dot_face, edgecolor=dot_edge,
+                linewidth=1.8, zorder=5, transform=panel_ax.transAxes
+            )
+            
+            # Name text
+            panel_ax.text(
+                text_x, y_n, name,
+                color=name_color, fontsize=8.6, fontweight='bold',
+                va='center', transform=panel_ax.transAxes
+            )
+            
+            # Formatted PH time text
+            formatted_time = format_run_time_ph(raw_run) if is_active else "Not Available"
+            panel_ax.text(
+                text_x, y_t, formatted_time,
+                color=TEXT_SUB if is_active else TEXT_MUT, fontsize=7.2,
+                va='center', transform=panel_ax.transAxes
+            )
+
+    # Footnote at bottom right
+    panel_ax.text(
+        0.935, 0.07, "Run times in PH time",
+        color='#64748b', fontsize=7.2, ha='right', va='center',
+        transform=panel_ax.transAxes
+    )
         
     out_abs = os.path.normpath(os.path.abspath(output_filepath))
     os.makedirs(os.path.dirname(out_abs), exist_ok=True)
@@ -4169,7 +4272,8 @@ def plot_unofficial_forecast_track_map(storm, agency_tracks, ensemble_means, out
         all_lats.extend(mean_track['lat'].dropna().tolist())
         all_lons.extend(mean_track['lon'].dropna().tolist())
         
-    extent = get_adaptive_viewport(all_lats, all_lons, target_aspect=1.75, zoom_factor=1.20)
+    unofficial_aspect = (0.90 * 12.0) / (0.810 * 7.6)
+    extent = get_adaptive_viewport(all_lats, all_lons, target_aspect=unofficial_aspect, zoom_factor=1.20)
     min_lon, max_lon, min_lat, max_lat = extent
     span_lon = max_lon - min_lon
     ax.set_extent(extent, crs=ccrs.PlateCarree())
