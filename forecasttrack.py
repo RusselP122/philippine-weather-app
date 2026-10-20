@@ -1988,7 +1988,11 @@ def get_jma_official_track(storm, data_dir='public/data'):
             tdt = None
             if target_dt_str:
                 try:
-                    tdt = datetime.strptime(target_dt_str, "%Y/%m/%d %H:%M").replace(tzinfo=timezone.utc)
+                    # JMA VPTW60 timestamps are published in Japan Standard Time (JST, UTC+9).
+                    # Explicitly attach JST timezone and convert to UTC for accurate cycle labeling and age calculation.
+                    raw_dt = datetime.strptime(target_dt_str, "%Y/%m/%d %H:%M")
+                    tdt_jst = raw_dt.replace(tzinfo=timezone(timedelta(hours=9)))
+                    tdt = tdt_jst.astimezone(timezone.utc)
                     age_hours = (ref_time - tdt).total_seconds() / 3600.0
                     if age_hours > 18.0:
                         print(f"Notice: JMA product {i} for {short_id} is outdated ({age_hours:.1f}h old); skipping.")
@@ -2073,14 +2077,15 @@ def get_jma_official_track(storm, data_dir='public/data'):
                 cols_ret = ['lead_time_hours', 'lat', 'lon']
                 if 'wind' in df.columns: cols_ret.append('wind')
                 if 'pressure' in df.columns: cols_ret.append('pressure')
-                # Extract init time from targetDateTime or first forecast point
+                # Extract init time from targetDateTime or first forecast point (in UTC cycle)
                 init_str = "Latest"
                 if tdt:
                     init_str = tdt.strftime("%Y-%m-%d %HZ")
                 elif target_dt_str:
                     try:
                         p_dt = datetime.strptime(target_dt_str, "%Y/%m/%d %H:%M")
-                        init_str = p_dt.strftime("%Y-%m-%d %HZ")
+                        p_dt_utc = p_dt.replace(tzinfo=timezone(timedelta(hours=9))).astimezone(timezone.utc)
+                        init_str = p_dt_utc.strftime("%Y-%m-%d %HZ")
                     except (ValueError, TypeError):
                         pass
 
