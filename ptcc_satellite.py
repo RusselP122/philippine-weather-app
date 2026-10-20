@@ -105,6 +105,10 @@ PAGASA_STORM_MAP_2026 = {
     'WP262026': 'CHOI-WAN',
     'CHOI-WAN': 'CHOI-WAN',
     'CHOIWAN': 'CHOI-WAN',
+    '29W': 'ROSAL',
+    'WP29': 'ROSAL',
+    'WP292026': 'ROSAL',
+    'CHAMPI': 'ROSAL',
     '32W': 'UWAN',
     'FUNG-WONG': 'UWAN',
 }
@@ -975,21 +979,24 @@ def draw_fox_weather_header(img, dt_utc, storm_data=None, custom_title=None, sec
                 storm_data["storm_name"] = jma_name
                 storm_data["international_name"] = jma_name
 
-        pagasa_name = storm_data.get("pagasa_name") or PAGASA_STORM_MAP_2026.get(short_id) or PAGASA_STORM_MAP_2026.get(raw_name)
-        if pagasa_name:
-            if raw_name.startswith("TC ") or raw_name.startswith("WP") or raw_name == short_id:
-                disp_name = pagasa_name
-            elif pagasa_name in raw_name:
-                disp_name = raw_name
-            else:
-                disp_name = f"{raw_name} ({pagasa_name})"
-        else:
-            disp_name = raw_name
+        curr_lat = float(storm_data.get('lat', 0) or 0)
+        curr_lon = float(storm_data.get('lon', 0) or 0)
+        inside_par = is_point_inside_par(curr_lat, curr_lon)
 
-        if short_id and short_id not in disp_name:
-            system_text = f"{disp_name} ({short_id})"
+        pagasa_name = storm_data.get("pagasa_name") or PAGASA_STORM_MAP_2026.get(short_id) or PAGASA_STORM_MAP_2026.get(raw_name)
+        has_intl = bool(raw_name and not is_placeholder_storm_name(raw_name) and raw_name not in ["INVEST", "UNKNOWN", "CUSTOM"])
+        has_pagasa = bool(inside_par and pagasa_name and pagasa_name.upper() not in ["INVEST", "UNKNOWN"])
+        
+        if has_pagasa:
+            p_name = pagasa_name.upper()
+            if has_intl and raw_name.upper() != p_name:
+                system_text = f"{p_name} ({raw_name})"
+            else:
+                system_text = f"{p_name} ({short_id})" if short_id else p_name
+        elif has_intl:
+            system_text = f"{raw_name} ({short_id})" if short_id else raw_name
         else:
-            system_text = disp_name
+            system_text = short_id or raw_name or "TROPICAL CYCLONE"
     elif sector_title:
         system_text = sector_title
     else:
@@ -1158,6 +1165,116 @@ def parse_pagasa_pf_pdf_records(pdf_bytes):
             })
 
     return records
+
+def fetch_pagasa_tcb(storm_data, data_dir='public/data'):
+    """
+    Fetches and parses the latest official PAGASA Tropical Cyclone Bulletin (TCB)
+    from https://pubfiles.pagasa.dost.gov.ph/tamss/weather/bulletin/
+    when a storm is inside or approaching the Philippine Area of Responsibility (PAR).
+    """
+    if not storm_data:
+        return None
+
+    raw_name = str(storm_data.get('storm_name', '')).strip().upper()
+    intl_name = str(storm_data.get('international_name', '')).strip().upper()
+    pagasa_name = str(storm_data.get('pagasa_name', '')).strip().upper()
+    atcf_id = str(storm_data.get('atcf_id', '')).strip().upper()
+
+    search_names = set()
+    for n in [pagasa_name, raw_name, intl_name]:
+        if n and n not in ['INVEST', 'UNKNOWN', 'CUSTOM', 'SYSTEM'] and len(n) >= 3:
+            search_names.add(n)
+    for k in [atcf_id, raw_name, intl_name]:
+        if k in PAGASA_STORM_MAP_2026:
+            search_names.add(PAGASA_STORM_MAP_2026[k].upper())
+
+    if not search_names:
+        return None
+
+    url_idx = "https://pubfiles.pagasa.dost.gov.ph/tamss/weather/bulletin/"
+    html = ""
+    try:
+        r = _HTTP_SESSION.get(url_idx, headers={'User-Agent': 'Mozilla/5.0'}, timeout=4.0)
+        if r.status_code == 200 and len(r.text) > 100:
+            html = r.text
+    except Exception:
+        pass
+
+    matched_files = []
+    if html:
+        for m in re.finditer(r'href=[\"\'](TCB(?:%23|#)(\d+)_([a-zA-Z0-9_-]+)\.pdf)[\"\']', html, re.IGNORECASE):
+            fname = m.group(1)
+            b_num = int(m.group(2))
+            s_name = m.group(3).upper()
+            if any(s_name in sn or sn in s_name for sn in search_names):
+                matched_files.append((b_num, fname, s_name))
+
+    matched_files.sort(key=lambda x: x[0], reverse=True)
+    if not matched_files:
+        return None
+
+    best_bnum, best_fname, matched_sname = matched_files[0]
+    best_url = f"{url_idx}{best_fname}"
+    local_pdf = os.path.join(data_dir, f"TCB_{matched_sname}_#{best_bnum}.pdf")
+    pdf_bytes = None
+
+    try:
+        r = _HTTP_SESSION.get(best_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5.0)
+        if r.status_code == 200 and len(r.content) > 1000:
+            pdf_bytes = r.content
+            os.makedirs(data_dir, exist_ok=True)
+            with open(local_pdf, 'wb') as f:
+                f.write(pdf_bytes)
+    except Exception:
+        pass
+
+    if not pdf_bytes and os.path.exists(local_pdf):
+        try:
+            with open(local_pdf, 'rb') as f:
+                pdf_bytes = f.read()
+        except Exception:
+            pass
+
+    if not pdf_bytes:
+        return None
+
+    try:
+        try:
+            import pymupdf
+        except ImportError:
+            import fitz as pymupdf
+    except ImportError:
+        return None
+
+    try:
+        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        full_text = "".join(page.get_text() + "\n" for page in doc)
+
+        m_w = re.search(r'Maximum sustained winds of\s*(\d+)\s*km/h', full_text, re.IGNORECASE)
+        m_cat = re.search(r'(Super Typhoon|Typhoon|Severe Tropical Storm|Tropical Storm|Tropical Depression)', full_text, re.IGNORECASE)
+        m_p = re.search(r'central pressure of\s*(\d+)\s*hPa', full_text, re.IGNORECASE)
+
+        if m_w:
+            w_kmh = int(m_w.group(1))
+            w_kt = int(round(w_kmh / 1.852))
+            cat = m_cat.group(1).upper() if m_cat else None
+            if matched_sname:
+                storm_data['pagasa_name'] = matched_sname
+
+            return {
+                'wind_kmh': w_kmh,
+                'wind_kt': w_kt,
+                'category': cat,
+                'pressure_hpa': int(m_p.group(1)) if m_p else None,
+                'bulletin_no': best_bnum,
+                'standard': '10-MIN SUSTAINED',
+                'status': 'ACTIVE',
+                'source': f"TCB #{best_bnum} ({matched_sname})"
+            }
+    except Exception as e:
+        print(f"Notice: Error parsing PAGASA TCB PDF: {e}")
+
+    return None
 
 def fetch_pagasa_pf_pdf(storm_data, data_dir='public/data'):
     """
@@ -1542,10 +1659,24 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
         }
 
     # ── 3. PAGASA Official Bulletin ──────────────────────────────────────────
+    # 3A. STRICTLY TRY OFFICIAL TROPICAL CYCLONE BULLETIN (TCB) FIRST
+    # When a storm is inside or approaching PAR, PAGASA issues official TCBs
+    tcb_res = fetch_pagasa_tcb(storm_data, data_dir=data_dir)
+    if tcb_res and tcb_res.get('wind_kmh'):
+        pag_cat = get_agency_category('PAGASA', wind_kt=tcb_res.get('wind_kt'), wind_kmh=tcb_res.get('wind_kmh'), explicit_cat=tcb_res.get('category'), storm_name=raw_name)
+        agency_results['PAGASA'] = {
+            'wind_kt': tcb_res.get('wind_kt'),
+            'wind_kmh': tcb_res.get('wind_kmh'),
+            'category': pag_cat,
+            'status': 'ACTIVE',
+            'standard': '10-MIN SUSTAINED',
+            'source': tcb_res.get('source', 'TCB')
+        }
+        return agency_results
+
+    # 3B. CHECK cyclone.dat (SYNCHRONIZED WITH TCB FOR ACTIVE SYSTEMS)
     pagasa_kt = None
     pagasa_kmh = None
-
-    # 3A. STRICTLY LOOK cyclone.dat FIRST ALWAYS
     local_pag = os.path.join(data_dir, "cyclone.dat")
     pag_content = ""
 
@@ -1572,19 +1703,25 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
     if pag_content.strip():
         lines = pag_content.strip().splitlines()
         first_line = lines[0] if lines else ""
-        m_p = re.search(r'^([A-Za-z0-9_-]+)\{', first_line)
+        m_p = re.search(r'^([A-Za-z0-9_-]+)(?:\{([A-Za-z0-9_-]+)\})?', first_line)
         matched_p_name = m_p.group(1).upper() if m_p else ""
+        matched_intl_name = m_p.group(2).upper() if (m_p and m_p.group(2)) else ""
 
         is_p_match = False
-        if matched_p_name and (matched_p_name == raw_name or matched_p_name == pagasa_name):
+        if matched_p_name and (matched_p_name == raw_name or matched_p_name == pagasa_name or (pagasa_name and matched_p_name in pagasa_name)):
             is_p_match = True
+        elif matched_intl_name and (matched_intl_name == raw_name or matched_intl_name == storm_data.get('international_name', '').upper()):
+            is_p_match = True
+
+        if is_p_match and matched_p_name:
+            storm_data['pagasa_name'] = matched_p_name
 
         pts = []
         for l in lines[1:]:
             parts = [p.strip() for p in l.split(',')]
             if len(parts) >= 5:
                 try:
-                    cat = parts[0]
+                    cat = parts[0].strip()
                     dt = datetime.datetime.strptime(f"{parts[1]} {parts[2]}", "%Y-%m-%d %H:%M")
                     la, lo = float(parts[3]), float(parts[4])
                     rad = float(parts[5]) if len(parts) >= 6 and parts[5] else 0.0
@@ -1593,21 +1730,32 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
                     pass
 
         if pts:
-            t_last = pts[-1]['dt']
-            age_hours = (datetime.datetime.now() - t_last).total_seconds() / 3600.0
-            if age_hours <= 24.0:
-                dist_km = math.sqrt((pts[0]['lat'] - curr_lat)**2 + (pts[0]['lon'] - curr_lon)**2) * 111.0 if (curr_lat and curr_lon) else 9999.0
-                if is_p_match or dist_km <= 400.0:
-                    cat = pts[0]['cat']
-                    cat_map = {
-                        'TD': (30, 55),
-                        'TS': (45, 85),
-                        'STS': (55, 100),
-                        'TY': (75, 140),
-                        'STY': (105, 195)
-                    }
-                    if cat in cat_map:
-                        pagasa_kt, pagasa_kmh = cat_map[cat]
+            # Find the latest analysis fix (the LAST point where rad == 0.0)
+            idx_t0 = 0
+            for i in range(len(pts) - 1, -1, -1):
+                if pts[i]['rad'] == 0.0:
+                    idx_t0 = i
+                    break
+
+            latest_pt = pts[idx_t0]
+            t_analysis = latest_pt['dt']
+            # PAGASA cyclone.dat timestamps are in PHT (UTC+8)
+            now_pht = datetime.datetime.now(datetime.timezone.utc).astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
+            age_hours = (now_pht - t_analysis).total_seconds() / 3600.0
+
+            dist_km = math.sqrt((latest_pt['lat'] - curr_lat)**2 + (latest_pt['lon'] - curr_lon)**2) * 111.0 if (curr_lat and curr_lon) else 0.0
+
+            if age_hours <= 24.0 and (is_p_match or dist_km <= 500.0):
+                cat = latest_pt['cat']
+                cat_map = {
+                    'TD': (30, 55),
+                    'TS': (45, 85),
+                    'STS': (55, 100),
+                    'TY': (75, 140),
+                    'STY': (105, 195)
+                }
+                if cat in cat_map:
+                    pagasa_kt, pagasa_kmh = cat_map[cat]
 
     if pagasa_kt is not None:
         # cyclone.dat had active data for this storm -> USE IT AND FINISH!
@@ -1629,7 +1777,7 @@ def fetch_agency_storm_winds(storm_data, data_dir='public/data'):
         }
         return agency_results
 
-    # 3B. IF NO cyclone.dat DATA FOR THIS STORM, USE pf.pdf
+    # 3C. IF NEITHER TCB NOR cyclone.dat, FALLBACK TO pf.pdf (FOR STORMS OUTSIDE PAR)
     pf_res = fetch_pagasa_pf_pdf(storm_data, data_dir=data_dir)
     if pf_res and pf_res.get('wind_kmh'):
         pag_cat = get_agency_category('PAGASA', wind_kt=pf_res.get('wind_kt'), wind_kmh=pf_res.get('wind_kmh'), explicit_cat=pf_res.get('category'), storm_name=raw_name)
@@ -2336,7 +2484,25 @@ def main():
                 if jma_name:
                     storm_data["storm_name"] = jma_name
                     storm_data["international_name"] = jma_name
-            print(f"Targeting active storm: {storm_data['storm_name']} ({storm_data['atcf_id']})")
+            curr_lat = float(storm_data.get('lat', 0) or 0)
+            curr_lon = float(storm_data.get('lon', 0) or 0)
+            inside_par = is_point_inside_par(curr_lat, curr_lon)
+            short_id = storm_data.get('atcf_id', '').replace('WP', '').replace('2026', '')
+            p_name = storm_data.get('pagasa_name') or PAGASA_STORM_MAP_2026.get(short_id) or PAGASA_STORM_MAP_2026.get(storm_data.get('storm_name', '').upper())
+            raw_sname = storm_data.get('storm_name', '')
+            has_intl = bool(raw_sname and not is_placeholder_storm_name(raw_sname))
+            has_pag = bool(inside_par and p_name and p_name.upper() not in ["INVEST", "UNKNOWN"])
+            
+            if has_pag:
+                if has_intl and raw_sname.upper() != p_name.upper():
+                    title_name = f"{p_name} ({raw_sname})"
+                else:
+                    title_name = f"{p_name} ({short_id})" if short_id else p_name
+            elif has_intl:
+                title_name = f"{raw_sname} ({short_id})" if short_id else raw_sname
+            else:
+                title_name = short_id or raw_sname
+            print(f"Targeting active storm: {title_name}")
         else:
             local_st = load_storm_from_local_positions(args.storm)
             if local_st:
@@ -2346,7 +2512,25 @@ def main():
                     if jma_name:
                         storm_data["storm_name"] = jma_name
                         storm_data["international_name"] = jma_name
-                print(f"Targeting storm from local dataset: {storm_data['storm_name']} ({storm_data['atcf_id']})")
+                curr_lat = float(storm_data.get('lat', 0) or 0)
+                curr_lon = float(storm_data.get('lon', 0) or 0)
+                inside_par = is_point_inside_par(curr_lat, curr_lon)
+                short_id = storm_data.get('atcf_id', '').replace('WP', '').replace('2026', '')
+                p_name = storm_data.get('pagasa_name') or PAGASA_STORM_MAP_2026.get(short_id) or PAGASA_STORM_MAP_2026.get(storm_data.get('storm_name', '').upper())
+                raw_sname = storm_data.get('storm_name', '')
+                has_intl = bool(raw_sname and not is_placeholder_storm_name(raw_sname))
+                has_pag = bool(inside_par and p_name and p_name.upper() not in ["INVEST", "UNKNOWN"])
+                
+                if has_pag:
+                    if has_intl and raw_sname.upper() != p_name.upper():
+                        title_name = f"{p_name} ({raw_sname})"
+                    else:
+                        title_name = f"{p_name} ({short_id})" if short_id else p_name
+                elif has_intl:
+                    title_name = f"{raw_sname} ({short_id})" if short_id else raw_sname
+                else:
+                    title_name = short_id or raw_sname
+                print(f"Targeting storm from local dataset: {title_name}")
             else:
                 print(f"Notice: Storm '{args.storm}' not found in active/local feeds. Using custom center.")
                 storm_data = {

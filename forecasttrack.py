@@ -1593,15 +1593,22 @@ def get_pagasa_official_track(storm, data_dir='public/data'):
         tca_issued_dt is not None
     )
 
+    if cyclone_matched_name:
+        storm['pagasa_name'] = cyclone_matched_name
+
     if cyclone_is_valid and tca_is_valid:
-        # Both products contain valid data. If tca.pdf has a newer update, use tca.pdf!
-        if tca_issued_dt > cyclone_issued_dt:
+        # If cyclone is inside PAR or cyclone.dat is actively tracking this storm, cyclone.dat (synchronized with TCB) takes priority over tca.pdf!
+        # Once a storm enters PAR, PAGASA issues TCBs and ceases TCA advisories.
+        is_inside_par = is_point_inside_par(curr_lat, curr_lon)
+        if is_inside_par or cyclone_name_match:
+            print(f"Matched official PAGASA track from cyclone.dat for {short_id} (Name: {cyclone_matched_name}, {cyclone_init_str}) [TCB/Inside PAR priority]")
+            cols_ret = [c for c in ['lead_time_hours', 'lat', 'lon', 'wind', 'pressure'] if c in df_cyclone.columns]
+            return df_cyclone[cols_ret], cyclone_init_str
+        elif tca_issued_dt > cyclone_issued_dt:
             print(f"Notice: PAGASA tca.pdf ({tca_init_str}) has a newer update than cyclone.dat ({cyclone_init_str}); using tca.pdf data instead.")
             cols_ret = [c for c in ['lead_time_hours', 'lat', 'lon', 'wind', 'pressure'] if c in df_tca.columns]
             return df_tca[cols_ret], tca_init_str
         else:
-            if cyclone_matched_name:
-                storm['pagasa_name'] = cyclone_matched_name
             print(f"Matched official PAGASA track from cyclone.dat for {short_id} (Name: {cyclone_matched_name}, {cyclone_init_str})")
             cols_ret = [c for c in ['lead_time_hours', 'lat', 'lon', 'wind', 'pressure'] if c in df_cyclone.columns]
             return df_cyclone[cols_ret], cyclone_init_str
@@ -3485,6 +3492,17 @@ PAGASA_STORM_MAP_2026 = {
     'WP25': 'QUEENIE',
     'WP252026': 'QUEENIE',
     'SURIGAE': 'QUEENIE',
+    '26W': 'CHOI-WAN',
+    'WP26': 'CHOI-WAN',
+    'WP262026': 'CHOI-WAN',
+    'CHOI-WAN': 'CHOI-WAN',
+    'CHOIWAN': 'CHOI-WAN',
+    '29W': 'ROSAL',
+    'WP29': 'ROSAL',
+    'WP292026': 'ROSAL',
+    'CHAMPI': 'ROSAL',
+    '32W': 'UWAN',
+    'FUNG-WONG': 'UWAN',
 }
 
 
@@ -3512,10 +3530,10 @@ def is_point_inside_par(lat, lon):
 def format_storm_title(storm):
     """
     Standardizes storm titles across all charts:
-    - Inside PAR with international name: 'Queenie (Surigae)'
-    - Inside PAR without international name: 'Queenie (25W)'
-    - Outside PAR with international name: 'Surigae (25W)'
-    - Outside PAR without international name: '25W'
+    - With PAGASA local name and international name: 'Rosal (Champi)'
+    - With PAGASA local name only: 'Rosal (29W)'
+    - Without PAGASA local name: 'Champi (29W)'
+    - Neither: '29W'
     """
     raw_id = storm.get('atcf_id', '')
     short_id = get_short_atcf_id(raw_id)
@@ -3549,15 +3567,18 @@ def format_storm_title(storm):
             PAGASA_STORM_MAP_2026.get(str(storm.get('name', '')).upper())
         )
                 
-    if inside_par and p_name and str(p_name).strip().upper() not in ignored_names:
+    has_pagasa = bool(inside_par and p_name and str(p_name).strip().upper() not in ignored_names)
+    has_intl = bool(intl_name and intl_name.upper() not in ignored_names)
+    
+    if has_pagasa:
         p_name_fmt = str(p_name).strip().title()
-        if intl_name:
+        if has_intl and intl_name.upper() != p_name_fmt.upper():
             return f"{p_name_fmt} ({intl_name})"
         else:
-            return f"{p_name_fmt} ({short_id})"
+            return f"{p_name_fmt} ({short_id})" if short_id else p_name_fmt
             
-    if intl_name:
-        return f"{intl_name} ({short_id})"
+    if has_intl:
+        return f"{intl_name} ({short_id})" if short_id else intl_name
         
     return f"{short_id}"
 

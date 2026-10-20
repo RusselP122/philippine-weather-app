@@ -63,6 +63,17 @@ PAGASA_STORM_MAP_2026 = {
     'WP25': 'QUEENIE',
     'WP252026': 'QUEENIE',
     'SURIGAE': 'QUEENIE',
+    '26W': 'CHOI-WAN',
+    'WP26': 'CHOI-WAN',
+    'WP262026': 'CHOI-WAN',
+    'CHOI-WAN': 'CHOI-WAN',
+    'CHOIWAN': 'CHOI-WAN',
+    '29W': 'ROSAL',
+    'WP29': 'ROSAL',
+    'WP292026': 'ROSAL',
+    'CHAMPI': 'ROSAL',
+    '32W': 'UWAN',
+    'FUNG-WONG': 'UWAN',
 }
 
 def is_point_inside_par(lat, lon):
