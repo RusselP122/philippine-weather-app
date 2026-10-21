@@ -431,7 +431,12 @@ def parse_tcws_area_text(area_text):
             clean_p = re.sub(r'^mainland\s+', '', clean_p, flags=re.I).strip()
             clean_p = re.sub(r'^(?:and\s+)?(?:the\s+)?', '', clean_p, flags=re.I).strip()
 
-            if ' and ' in clean_p.lower():
+            if ' including ' in clean_p.lower():
+                inc_parts = re.split(r'\s+including\s+', clean_p, flags=re.I)
+                for ip in inc_parts:
+                    if ip.strip():
+                        results.append({'province': ip.strip(), 'municipalities': [], 'is_rest': is_rest})
+            elif ' and ' in clean_p.lower():
                 parts = re.split(r'\s+and\s+', clean_p, flags=re.I)
                 for sp in parts:
                     if sp.strip():
@@ -655,7 +660,7 @@ def assign_signals_to_municipalities(signals_dict, muni_hierarchy):
                 continue
 
             # Special Babuyan Islands handling (Calayan municipality in Cagayan)
-            if 'babuyan' in c_prov:
+            if c_prov in ['babuyan', 'babuyan group', 'babuyan group of islands', 'babuyan is'] or (c_prov.startswith('babuyan') and 'cagayan' not in c_prov):
                 if 'cagayan' in muni_hierarchy and 'calayan' in muni_hierarchy['cagayan']:
                     item = muni_hierarchy['cagayan']['calayan']
                     key = (item['clean_prov'], item['clean_name'])
@@ -664,7 +669,7 @@ def assign_signals_to_municipalities(signals_dict, muni_hierarchy):
                 continue
 
             # Polillo Islands handling (Quezon province)
-            if 'polillo' in c_prov:
+            if c_prov in ['polillo', 'polillo group', 'polillo group of islands'] or (c_prov.startswith('polillo') and 'quezon' not in c_prov):
                 if 'quezon' in muni_hierarchy:
                     for p_muni in ['polillo', 'panukulan', 'burdeos', 'patnanungan', 'jomalig']:
                         if p_muni in muni_hierarchy['quezon']:
