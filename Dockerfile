@@ -1,5 +1,5 @@
 # Stage 1: Build the Vite frontend
-FROM node:20-bookworm AS build
+FROM node:22-bookworm AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pandas \
     python3-matplotlib \
     python3-cartopy \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
