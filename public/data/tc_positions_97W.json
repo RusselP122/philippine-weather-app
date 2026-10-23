@@ -3,14 +3,14 @@
   "storm_name": "Invest 97W",
   "track_id": "WP972026",
   "latest": {
-    "lat": 11.0,
-    "lon": 165.8,
-    "pressure_hpa": 1005.0,
-    "wind_kt": 19.0,
-    "wind_kmh": 35,
-    "movement": "S at 14.9 km/h (8.1 kt)",
-    "init_time": "2026-10-23 00:00",
-    "category": "Low Pressure Area"
+    "lat": 10.8,
+    "lon": 166.3,
+    "pressure_hpa": 1004.0,
+    "wind_kt": 25.0,
+    "wind_kmh": 46,
+    "movement": "ESE at 9.8 km/h (5.3 kt)",
+    "init_time": "2026-10-23 06:00",
+    "category": "Tropical Depression"
   },
   "history": [
     {
@@ -30,6 +30,15 @@
       "wind_kt": 19.0,
       "wind_kmh": 35,
       "category": "Low Pressure Area"
+    },
+    {
+      "cycle": "2026-10-23 06:00",
+      "lat": 10.8,
+      "lon": 166.3,
+      "pressure_hpa": 1004.0,
+      "wind_kt": 25.0,
+      "wind_kmh": 46,
+      "category": "Tropical Depression"
     }
   ]
 }
