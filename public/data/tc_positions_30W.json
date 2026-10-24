@@ -3,14 +3,14 @@
   "storm_name": "TC 30W (Invest 97W)",
   "track_id": "WP302026",
   "latest": {
-    "lat": 10.9,
-    "lon": 166.2,
-    "pressure_hpa": 1004.0,
-    "wind_kt": 29.0,
-    "wind_kmh": 54,
-    "movement": "NW at 2.6 km/h (1.4 kt)",
-    "init_time": "2026-10-23 12:00",
-    "category": "Tropical Depression"
+    "lat": 10.6,
+    "lon": 166.3,
+    "pressure_hpa": 1000.0,
+    "wind_kt": 35.0,
+    "wind_kmh": 65,
+    "movement": "SSE at 5.9 km/h (3.2 kt)",
+    "init_time": "2026-10-23 18:00",
+    "category": "Tropical Storm"
   },
   "history": [
     {
@@ -48,6 +48,15 @@
       "wind_kt": 29.0,
       "wind_kmh": 54,
       "category": "Tropical Depression"
+    },
+    {
+      "cycle": "2026-10-23 18:00",
+      "lat": 10.6,
+      "lon": 166.3,
+      "pressure_hpa": 1000.0,
+      "wind_kt": 35.0,
+      "wind_kmh": 65,
+      "category": "Tropical Storm"
     }
   ]
 }
