@@ -1,15 +1,15 @@
 {
   "active": true,
-  "storm_name": "TC 30W (Invest 97W)",
+  "storm_name": "TC 30W",
   "track_id": "WP302026",
   "latest": {
-    "lat": 10.1,
-    "lon": 165.7,
-    "pressure_hpa": 994.0,
+    "lat": 10.6,
+    "lon": 165.9,
+    "pressure_hpa": 993.0,
     "wind_kt": 51.0,
     "wind_kmh": 94,
-    "movement": "WSW at 10.7 km/h (5.8 kt)",
-    "init_time": "2026-10-24 06:00",
+    "movement": "NNE at 10.0 km/h (5.4 kt)",
+    "init_time": "2026-10-24 12:00",
     "category": "Severe Tropical Storm"
   },
   "history": [
@@ -72,6 +72,15 @@
       "lat": 10.1,
       "lon": 165.7,
       "pressure_hpa": 994.0,
+      "wind_kt": 51.0,
+      "wind_kmh": 94,
+      "category": "Severe Tropical Storm"
+    },
+    {
+      "cycle": "2026-10-24 12:00",
+      "lat": 10.6,
+      "lon": 165.9,
+      "pressure_hpa": 993.0,
       "wind_kt": 51.0,
       "wind_kmh": 94,
       "category": "Severe Tropical Storm"

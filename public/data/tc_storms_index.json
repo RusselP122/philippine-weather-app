@@ -3,18 +3,18 @@
     "track_id": "WP292026",
     "storm_name": "TC 29W",
     "active": true,
-    "last_updated": "2026-10-24 06:00",
-    "latest_lat": 26.8,
+    "last_updated": "2026-10-24 12:00",
+    "latest_lat": 27.8,
     "latest_lon": 123.3,
     "category": "Severe Tropical Storm"
   },
   {
     "track_id": "WP302026",
-    "storm_name": "TC 30W (Invest 97W)",
+    "storm_name": "TC 30W",
     "active": true,
-    "last_updated": "2026-10-24 06:00",
-    "latest_lat": 10.1,
-    "latest_lon": 165.7,
+    "last_updated": "2026-10-24 12:00",
+    "latest_lat": 10.6,
+    "latest_lon": 165.9,
     "category": "Severe Tropical Storm"
   },
   {
